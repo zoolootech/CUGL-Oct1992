@@ -1,0 +1,56 @@
+/*                        Listing 3 -- EXAMPLE.C                            */
+/*      Sample Program to Demonstrate the Use of the Function Package       */
+
+#include "hexio.h"
+
+#define CODE_START   0x0080     /*  Start address of code space.            */
+#define CODE_END     0x08AF     /*  End address of code space.              */
+#define VECT_START   0x1FF5     /*  Start address of interrupt vectors.     */
+#define VECT_END     0x1FFF     /*  End address of interrupt vectors.       */
+
+#define SWI          0x83       /*  The 6805's SWI opcode byte.             */
+
+static void crash(msg)
+char *msg;
+{
+    fprintf(stderr,"Error -- %s.\n",msg);  exit(1);
+}
+
+int main()
+{
+    int byte;
+    unsigned addr;
+    unsigned char *bptr, sum;
+    HFILE *hfile;
+    static unsigned char buf[VECT_END + 1];
+
+    /*  First, fill the active areas of the buffer with SWI instructions.   */
+    for (bptr = &buf[CODE_START]; bptr <= &buf[CODE_END]; *bptr++ = SWI);
+    for (bptr = &buf[VECT_START]; bptr <= &buf[VECT_END]; *bptr++ = SWI);
+
+    /*  Next, read the raw program's S-record file into the buffer.         */
+    if (!(hfile = hopen("rawprog.shx","rs"))) crash("rawprog.shx not found");
+    while ((byte = hgetc(hfile)) != HEOF) {
+        if ((addr = htell(hfile)) > VECT_END) crash("address > 0x1FFF found");
+	buf[addr] = byte;
+    }
+    if (hclose(hfile)) crash("read error on rawprog.shx");
+
+    /*  Now, adjust the checksum of the active areas of the buffer to 0x00. */
+    sum = 0x00;
+    for (bptr = &buf[CODE_START]; bptr <= &buf[CODE_END]; sum += *bptr++);
+    for (bptr = &buf[VECT_START]; bptr <= &buf[VECT_END]; sum += *bptr++);
+    buf[CODE_END] -= sum;
+
+    /*  Finally, write the active areas of the buffer to an Intel hex file. */
+    if (!(hfile = hopen("fixprog.hex","wi"))) crash("disk or directory full");
+    hseek(hfile,CODE_START);
+    for (bptr = &buf[CODE_START]; bptr <= &buf[CODE_END];
+        hputc(*bptr++,hfile));
+    hseek(hfile,VECT_START);
+    for (bptr = &buf[VECT_START]; bptr <= &buf[VECT_END];
+        hputc(*bptr++,hfile));
+    if (hclose(hfile)) crash("disk or directory full");
+
+    return 0;
+}

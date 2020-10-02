@@ -1,0 +1,102 @@
+.cm File primitives for Software Tools
+.cm source:  file.doc
+.cm version: August 9, 1981
+.bp 1
+.rm 60
+.pl 66
+.he 'file.doc'File primitives for Software Tools'%'
+.fo ''page #''
+
+.ti +3
+This file discusses the file primitives
+for the software tools.
+
+.ul
+file open routine
+
+.ti +3
+READ, WRITE, READWRITE, and APPEND are global constants known
+to all programs.
+
+.ti +3
+WRITE access implies erasing the file first.
+READWRITE and APPEND access are currently illegal.
+
+.ti +3
+If name = TERMINAL  then open()
+must assign the I/O to the user's console.
+If name is PRINTER then open() must assign the I/O to the
+line printer.
+Note that because BDS C truncates names at 8 characters,
+the name TERMINAL is the same as the names TERMINAL_IN and
+TERMINAL_OUT.
+
+.ti +3
+open() returns unit numbers to the user.
+Units may be assigned to disk files, the console, or the
+line printer.
+open() never returns unit < SYS_STD.
+
+.nf
+Unit 1 is reserved for standard input.
+Unit 2 is reserved for standard output.
+Unit 3 is reserved for error output.
+Unit 4 is reserved for the console.
+Unit 5 is reserved for the line printer.
+.fi
+
+.ti +3
+open()  might save the file name for the software tools
+error routines.
+At present it does not do so.
+
+.ti +3
+The system maintains the following file information:
+
+	int sys_spec [SYS_STD + MAXOFILES];
+
+	int sys_bufp [SYS_STD + MAXOFILES];
+
+	int sys_bufn [SYS_STD + MAXOFILES];
+
+.ti +3
+As you can see, there is one entry in each array for each unit.
+If sys_bufp [unit] != ERR then I/O is assigned to the file
+whose buffer is sys_bufp [unit].
+Otherwise, if sys_spec [unit] != ERR then I/O is assigned to
+either special unit 3 (the console) or 4 (the line printer).
+If sys_bufp [unit] == sys_spec [unit] == ERR then the
+unit is not open.
+
+.ti +3
+Note that both sys_bufp [unit] and sys_spec [unit] may be
+non-ERR.
+In this case the unit is NOT a special file, it is a
+disk file.
+In other words, sys_bufp [] is checked before sys_spec []
+in getch1() and putch1() and close() and flush().
+This is somewhat of a kludge, but it makes open() simpler.
+
+.ti +3
+The array sys_bufn [unit] is used only by open() and close().
+sys_bufn [] keeps track of which disk files
+(0 -- (MAXOFILES - 1))
+have been assigned.
+Close() uses sys_bufn [] to deassign disk files.
+Sys_bufn [] may not really be needed, but without it
+close() would have to do some hairy pointer subtraction
+and division on sys_bufp [] in order to figure out what
+disk file was being closed.
+It seems simpler to use sys_bufn [].
+
+.ul
+system initialization routine
+
+.ti +3
+initst() initializes all system data areas.
+It puts the command line arguments in sys_args[] and
+puts the number of command line arguments in sys_narg.
+It redirects I/O if requested on the command line.
+This is done by calling _assign() which in turn updates
+the arrays sys_spec [], sys_bufp [] and sys_bufn [].
+

@@ -1,0 +1,71 @@
+
+/*** Listing #3
+*/
+/*** iDBCGetC - Retrieves character from kb buffer and reports status.
+*
+*   written by: John G. Nelson, Pacific Software Publishing Inc.
+*   copyright:  Pacific Software Publishing Inc.
+*   date:       11/90
+*   purpose:    To indicate type of character found in kb buffer
+*               (if any) and to return that character in a double
+*               byte character. If a double byte ANK character
+*               found, it is converted to its single byte ANK code.
+*   parameters: char *pdbcChar:  Pointer to a double byte character.
+*   return:     Function returns int corresponding
+*                   to one of following values:
+*               0:  Kb buffer is empty.
+*               1:  Single byte char found:
+*                   dbcChar[0]= 1 byte char.
+*                   dbcChar[1]= 0.
+*               2:  Double byte char found:
+*                   dbcChar[0]= 1st byte of char.
+*                   dbcChar[1]= 2nd byte of char.
+*               3:  Function key found:
+*                   dbcChar[0]= 0.
+*                   dbcChar[1]= Key scan code.
+*/
+int iDBCGetC(
+    DBC  *pdbcChar)   /*  Pointer to double byte character */
+    {
+    union REGS reg;
+    unsigned char  bScan, bChar;
+
+    if (!kbhit())  {
+        /* buffer is empty                                 */
+        pdbcChar[0] = 0;
+        pdbcChar[1] = 0;
+        return(0);
+    };
+
+    /*  buffer has data                                    */
+    reg.h.ah = GETKEY;     /* remove key from buffer       */
+    int86(KEYBOARD, &reg, &reg);
+
+    bScan       = reg.h.ah;   /* save scan code            */
+    bChar       = reg.h.al;   /* save character code       */
+    pdbcChar[0] = bChar;
+    pdbcChar[1] = bScan;
+
+    /* check if function key is present                    */
+    if (bIsFuncKey(bScan))  {
+        /*  function key found                             */ 
+        pdbcChar[0] = 0;
+        pdbcChar[1] = bScan;
+        return(3);
+
+    /*  check if kanji char read                           */
+    } else if (bIsDBC(pdbcChar))  {
+        /*  get second byte                                */
+        reg.h.ah =  GETKEY;
+        int86(KEYBOARD, &reg, &reg);
+        pdbcChar[1] = reg.h.al;  /* 2nd character code     */
+        return(2);
+
+    /* single byte character found                         */ 
+    } else {
+        pdbcChar[1] = 0;
+        pdbcChar[0] = bChar;
+        return(1);
+    }
+} /* iDBCGetC */
+

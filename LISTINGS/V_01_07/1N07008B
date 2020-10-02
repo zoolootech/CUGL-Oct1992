@@ -1,0 +1,147 @@
+
+page ,132
+title CPLP122.asm
+comment \
+
+
+  CPLP122.asm		Aug 15, 1990   Joe Felton
+
+  This TSR program redirects characters printed by the BIOS from lptl to lpt2.
+  Assuming that lpt3 does not physically exist, it uses the lpt3 port for its
+  own purposes, i.e. a command channel.	 Commands are sent by a batch file.
+  To set redirection on, execute the following batch command:
+
+				@echo <esc>rl >lpt3
+
+  To remove redirection, execute the following batch file command:
+
+				@echo <esc>r0 >lpt3
+
+  Assemble with Masm 5.1 or Tasm 1.0, link with MS Link, or Tlink.	The
+  executable must be converted to a .com file with exe2bin before loading.
+\
+
+CSEG	segment
+		assume cs: CSEG, ds: nothing
+
+LPTl = 0  ; parallel printer port 1
+LPT2 = 1  ; parallel printer port 2
+LPT3 = 2  ; cplp122 command interface
+
+LF = 10
+CR = 13
+ESCAPE = 27
+
+; cplp 3 byte command sequence: Escape, command, value.
+
+CP_RDR = 'r'	; command byte: redirect lptl to lpt2 or cancel redirect
+
+				org		100h
+
+;----------------------------------------------------------
+startup:	 jmp init_iv
+
+				  ; data area
+old17iv			  dd ?			  ; bios int 17 entry
+cmd_mode		  db 0			  ; cplp command byte sequence state
+redir			  db 0			  ; if nonzero, redirect lpt1 to lpt2
+
+
+;----------------------------------------------------------
+; cplpl22 int 17 handler
+;
+
+cp_main:						  ; int 17h entry
+		  cmp	  ah, 0			  ; print character request?
+		  jne	  prt_char		  ; ignore status and init calls
+
+		  cmp	  dx, LPTl
+		  je	  lpt1_char
+
+		  cmp	  dx, LPT3
+		  jne	  prt_char
+
+		  call	  cp_cmd_proc	  ; LPT3 is our command port
+		  iret					  ; end of interrupt
+
+lpt1_char:
+
+		cmp		cs:[redir], 0	; redirect lptl to lpt2?
+		je		prt_char
+		inc		dx				; yes
+
+prt_char:
+
+		jmp		cs:[old17iv]	; jump to bios print service
+
+
+;-------------------------------------------------------------------
+cp_cmd_proc:					; char in al for lpt3
+
+		cmp		cs:[cmd_mode], 0	; in commmand sequence?
+		jne		cpc_cmode			; yes..continue
+
+		cmp		al, ESCAPE		; begin command sequence?
+		je		cpc_ret			; yes
+		jmp		cpc_cancel
+
+cpc_cmode:
+
+		cmp cs:[cmd_mode], ESCAPE	; command byte in al?
+		jne		cpc_val				; no
+
+		cmp		al, CP_RDR		; redirect on/off cmd?
+		je		cpc_ret			; yes
+		jmp		cpc_cancel
+
+cpc_val:
+
+		cmp cs:[cmd_mode], CP_RDR 	; redirect value byte?
+		jne		cpc_cancel
+		mov		cs:[redir], al		; yes - set redirect flag
+
+cpc_cancel:
+
+		xor		al, al				; end command mode
+
+cpc_ret:
+
+		mov		cs:[cmd_mode], al	; set next command state
+		ret
+
+; end of resident code
+;-----------------------------------------------------------------
+; Take over interrupt vector 17h - BIOS print service
+
+usermsg db		CR,LF,'Print Redirector Installed',CR,LF,'$'
+
+init_iv:
+
+		mov		ax, 3517h
+		int		21h			; save existing vector
+		mov		word ptr cs:[old17iv], bx
+		mov		word ptr cs:[old17iv][2], es
+
+		lea		dx, cp_main
+		push	cs
+		pop		ds
+		mov		ax, 2517h
+		int		21h					; install our vector
+
+		mov		ah, 9
+		lea		dx, usermsg
+		int		21h					; print "installed" message
+
+		; calculate number of paragraphs to keep resident
+
+		lea		ax, usermsg
+		xor		dx, dx
+		mov		cx, 16
+		div		cx
+		inc		ax
+		mov		dx, ax
+		mov		ax, 3100h
+		int		21h					; terminate & stay resident
+
+CSEG	ends
+		end		startup

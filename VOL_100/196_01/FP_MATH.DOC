@@ -1,0 +1,97 @@
+[FP-MATH.DOC of JUGPDS Vol.19]
+
+                  64-, 128-bit Floating Point Package
+
+                              June 2, 1985
+
+                   Hakuou KATAYOSE (JUG-CP/M No.179)
+                    49-114 Kawauchi-Sanjuunin-machi, 
+                       Sendai, Miyagi 980, Japan
+                           Phone: 0222-61-3219
+  
+1. Introduction
+     This floating point math package uses an omnibus routine written for
+the BDS C's CASM preprocessor.  In addition to arithmetic computations, 
+it provides trigonometric (sin, cos, atan), logarithmic, and exponential
+functions in 64-, 128-bit versions.   I think this has wide variety of 
+potential applications.
+
+     The essential ideas of arithmetic computation implemented here have
+been borrowed from the following reference:
+	Y. Ookawa: "How to Write Arithmetic Programs for Microcomputers,"
+        Sanpou Publ., No.92 of Denshi-Kagaku (Electronics Science) Series.
+
+     The package has the following syntax:
+
+	fp64(func_No,a,b,c);
+
+where func_No has been defined in the source program of FP-TEST.C.  
+The arguments  a, b, and c must be pointers to suitable strings defined 
+outside the fp64 function.  Examine FP-TEST.C for further explanation
+on the usage of fp64.
+
+----------------------------------------------------------------------
+  func_No   #define    Function
+----------------------------------------------------------------------
+      0     FPGETK     Get constant defined in fp64
+      1     FPADD      c = a + b
+      2     FPSUB      c = a - b
+      3     FPMULT     c = a * b
+      4     FPDIV      c = a / b
+      5     FPCMP      C=1 ... a > b, C=0 ... a = b, c=-1 ... a < b    
+      6     FPNEG      c = -a
+      7     FPSFT      c = a X 2**b (-247 < b < 247)
+      8     FPHLF      c = a / 2
+      9     FPDBL      c = b X 2
+     10     FPCNV      Converts the floating number to ASCII for output
+     11     FPIN       Converts ASCII to floating number for input
+     12     FPSQRT     c = sqrt(a)
+     13     SINCOS     b = cos(a), c = sin(a); a is in radian.
+     14     ATAN2      c = tan(a/b)
+     15     EXP        c = 2**b
+     16     LOG        c = log b
+----------------------------------------------------------------------
+
+    The fundamental algorithm used by SINCOS and ATAN2 is CORDIC (COodinate 
+Rotation DIgital Computation); that for EXP and LOG is STL (Sequen-
+tial Table Lookup).  These algorithms were taken from:
+	S. Hitotsumatsu: "Numeric Computation of Elementary Functions,"
+        Modern Applied Mathematics Series, Kyoiku-Shuppan.
+
+     CORDIC has been adopted for the trigonometric functions because:
+	1) Although it is rather slow (because it requires more steps
+           to make multiple-shift calculation), CORDIC results in
+           higher accuracy.  My priority was the accuracy.
+        2) The programming with bit shifts, addition and subtraction is
+           fairly straightforward.
+        3) When I read an article on CORDIC in the November 1976 
+           issue of INTERFACE magazine, I was fascinated the idea and
+           wanted to use it someday.
+
+     The square root calculation consists of two steps: halving the
+exponent and then computing the square root of the mantissa with not
+more than  iterations of the NEwton-Raphson method.  The accuracy and 
+speed were much better than expected.
+
+      I tried to apply CORDIC to the exp and log calculations, but 
+since it needed another table, I switched to STL since it requires only
+reduce the iteration by half.
+
+     Another good reference on these subjects is:
+	J. Yamanouchi, T. Uno and S. Hitotsumatsu: "Numerical Methods 
+        for Digital Computers," Baifukan.
+
+Additional notes:
+	1) Routines such as check and check22 at end of FP64 are for
+           debugging purposes, so maybe removed.
+        2) In parts, this package uses with Z80 code, so it won't work
+           for i8080 and i8085.
+        3) If you want to modify the package, you must process
+           FP64.CSM with CASM.COM and then assemble it with MAC.COM
+           and Z80.LIB.
+        4) Z80 relative jump instructions (e.g. DJNZ) appear as byte 
+           data, so you must change the relative offset by hand 
+           calculation.  This cannot be handled by CASM.COM.
+
+Good luck and happy number crunching!
+

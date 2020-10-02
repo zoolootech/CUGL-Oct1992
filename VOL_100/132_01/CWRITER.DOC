@@ -1,0 +1,82 @@
+/*
+	Cwriter is a graphics list processor.
+ 
+	List format:
+			<forward pointer	>
+			< object number		>
+			< x position		>
+			< y position		>
+			< flag word		>
+			< object pointer	>
+			< x increment for movers>
+			< y increment for movers>
+			< x accumulator		>
+			< y accumulator		>
+			< list pointer 0 link	>
+			< count 0		>
+			< spare word #D		>
+			< spare word #E		>
+			< spare word #F		>
+
+	where -	
+		all the above items are 16 bits.
+		Forward pointer is pointer to the next list block or
+			= NULL if the last block.
+		X position is from 0 to 255
+		Y position if from 0 to 192  both referenced to the top 
+			left edge of the enclosing image box
+		Flag word maintains the state of an object (ie,blanked).
+ 
+	Objects in this list (as defined above) refer to two (or more)
+	lists which contain the same object information for a particular
+	display page. The display page lists have end at the entry
+			< Pointer to object table>
+	after the flag word which points to the actual object definition.
+	(see writeobj for that data structure). For a two page system,
+	it looks like
+			Master List
+		         /     \
+			/	\
+		       /         \
+		Page 0 list	Page 1 list
+ 
+		All interactions are with the Master list. Cwriter
+	takes the master list information and a start of page list
+	pointer and updates the page list to match the Master list.
+	Cwriter also outputs the updated information to the page screen.
+		It would be far simpler to merely erase the entire page
+	and rewrite it, but the time to do this function would be excessive.
+	Games and other graphic applications often have only a few
+	'movers'  with most objects 'static'. Only the 'movers' and
+	the objects they affect need be updated.
+		Cwriter takes 3 passes over the Master list and the
+	current page list.
+ 
+	   Pass 0: Flag any objects in the display list which have
+	moved in the master list. Update the x and y. Also, if
+	an object has become unblanked, flag it as a write and update
+	its x and y position in the display list. If an object has
+	become erased, flag the object as blanked and erased in the
+	display list and erase the object. New objects are replacements of
+        the object definition pointer which require an erase of the old object
+        and a rewrite with the new.  Objects which do no fall 
+	into the four catagories(new,moved,unblanked,blanked) are static
+	objects and are not considered in pass 0.
+ 
+	   Pass 1: Movers - Test for an overlap (underlap) with any 
+	other object in the display list. Flag such objects for write.
+		   Blanked - Test for an overlap with any other object
+	in the display list and flag that object for a write.
+		   Write   - Test for and overlap with objects which
+	are not already flagged for erase,write ,or blanked. If an overlap,
+	flag the affected object for write.
+ 
+ 	   Pass 2:	Write any object flagged for write and 
+	clear all flags except blanked.
+ 
+	If all goes well, overlapping objects will be properly
+	updated and free floating statics will not be touched. Note that
+	all list actions are the result of Pass 0 operations.
+ 
+ased in the
+	display list and erase the object. New obj

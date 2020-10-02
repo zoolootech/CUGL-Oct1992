@@ -1,0 +1,442 @@
+.bp 1
+.in 0
+.he 'DIO (3)'03/10/83'DIO (3)'
+.fo ''-#-''
+.fi
+.in 7
+.ne 6
+.ti -7
+NAME
+.br
+dio - directed I/O for BDS C
+
+
+.ne 6
+.ti -7
+SYNOPSIS
+
+.nf
+#include bdscio.h
+#include dio.h
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+	/* calls to wildexp() and dioinit() can be reversed. */
+
+	_allocp = NULL;		/* initialize storage allocation */
+	dioinit(&argc, argv);	/* direct I/O streams (required) */
+	wildexp(&argc, &argv);	/* expand wild cards (optional)  */
+	main1(argc, argv);	/* do the real work		 */
+	dioflush();		/* no error if we get here	 */
+}	
+.br
+.fi
+
+
+.ne 6
+.ti -7
+DESCRIPTION
+
+Dio is a package which, when linked together with a BDS C program,
+provides that program with the following unix-like features:
+
+.nf
+o  I/O redirection on the command line
+o  Pipes specified on the command line
+o  I/O directed to special files
+o  Wildcard expansion of file names (optional)
+.br
+.fi
+
+To use these features a program must follow the synopsis above.
+
+The version of DIO described here
+is an extension of the original version supplied
+with the BDS C compiler.
+
+
+.ne 6
+.ce
+I/O REDIRECTION AND PIPES
+
+You may activate redirection and pipes using five special arguments
+on the command line:
+
+.ne 4
+.in +5
+.ti -5
+>foo
+.br
+Causes all standard output to go to the file "foo" instead of the console.
+In particular, causes putchar() and putc(c, STD_OUT) to go to "foo".
+
+.ne 4
+.ti -5
++foo
+.br
+Like >foo except that the characters are ALSO
+sent to the console.
+
+.ne 4
+.ti -5
+@foo
+.br
+Causes all output to the standard error stream
+to be sent to foo.
+In particular, causes putc(c, STD_ERR) to go to "foo".
+
+.ne 4
+.ti -5
+<foo
+.br
+Causes all input from the standard input stream to come from file "foo".
+In particular,
+causes getchar() to return characters from the
+file named "foo" instead of from the keyboard.
+
+.ne 4
+.ti -5
+command |prog
+.br
+Causes the standard output of the command
+specified in "command" to be fed into the
+standard input of another program, "prog."
+(BOTH "command" and "prog" must be compiled
+with dio).
+Multiple pipes may be chained on one command line.
+.br
+.in -5
+
+Warning: redirection and pipes work only for TEXT.
+This mechanism should not be used for binary data.
+
+There must never be any spaces between >,+,<,@ or | and the
+corresponding filename.
+
+When no "<" or "|" operator is used, standard input comes from the
+console and all standard line editing characters are recognized.
+To indicate end-of-file, you must type
+.br
+^Z <CR>  (control-Z followed by	a carriage-return.)
+
+When no ">" or "|" operator is used, standard output goes to the
+console.
+
+
+.ne 6
+.ce
+SPECIAL FILES
+
+Special files are jargon for I/O devices (like printers or consoles)
+which appear to a program to be a disk file.
+There are two special files, namely PRINTER and TTY.
+
+.ne 7
+These special files can be named on the command line:
+
+.nf
+     >printer  sends STD_OUT to the printer.
+     @printer  sends ERR_OUT to the printer.
+     >tty      sends STD_OUT to the user's console.
+     @tty      sends ERR_OUT to the user's console.
+     <tty      gets  STD_IN from the user's console.
+.br
+.fi
+
+For obvious reasons, input can not be gotten from the printer.
+
+.ne 3
+The dio package also provides a way for a program to direct
+I/O to a particular device, regardless of the command-line settings.
+Input directed from DEV_TTY always comes from the user's console.
+Output directed to DEV_TTY always goes to the user's console.
+Output directed to DEV_LST always goes to the printer.
+
+.ne 3
+.nf
+     c = getc(DEV_TTY);   ALWAYS gets c from the user's console
+     putc(c, DEV_TTY);    ALWAYS prints c on the user's console
+     putc(c, DEV_LST);    ALWAYS prints c on the printer
+.br
+.fi
+
+
+.ne 6
+.ce
+WILDCARDS
+
+Wildexp() expands ambiguous file names (afn's) on the command line
+into a list of files which match the afn.
+Note that wildcard expansion should NOT be used for programs
+that use command-line arguments containing '*' or '?' to denote something
+besides file names.
+Examples would be the translit (tr) search (grep) or change (gres) utilities
+which use '*' and '?' in text patterns on the command line.
+
+An afn preceded by a "!" causes all names matching the given
+afn to be EXCLUDED from the resulting expansion list.
+
+When giving a "!" afn, "*" chars in the string matches to the
+end of either the filename or extension, just like CP/M,
+but "?" chars match ONE and ONLY ONE character in either
+the filename or extension.
+
+
+.ne 6
+.ce
+THE DIRECTED I/O LIBRARY
+
+The following functions make up the directed I/O library.
+
+.in +5
+.ne 4
+.ti -5
+dioinit(&argc, argv)
+.br
+Make this (or wildexp) the first routine that your main program calls.
+Dioinit() reads the command line and redirects I/O if requested.
+Any arguments that start with '<' '>' '+' '@' or '|' become invisible
+after this call.
+
+.ne 4
+.ti -5
+dioflush()
+.br
+Flushes and closes all directed output files (if any).
+Make sure you call dioflush() whenever you exit the program.
+On abnormal termination, call dioflush() before calling exit().
+
+.ne 4
+.ti -5
+getchar()
+.br
+Gets a character from the console
+or from a directed input file (or special file) if one
+was specified on the command line.
+
+.ne 4
+.ti -5
+putchar(c)
+.br
+Puts a character out to the console,
+or to a directed output file (or special file) if one
+was specified on the command line.
+
+.ne 4
+.ti -5
+putc(c, file)
+.br
+Puts a character to a file (or special file).
+This routine was not included in the old dio package.
+
+.ne 4
+.ti -5
+wildexp(&argc, &argv)
+.br 
+Expands ambiguous file names into a list of unambiguous file names.
+Wildexp() can be called before the call to dioinit() if desired.
+
+You must initialize the variable _allocp to NULL before calling wildexp().
+Note that wildexp() uses sbrk() to obtain storage so don't go playing
+around with memory that is outside the external or stack areas unless
+you obtain the memory through sbrk() or alloc() calls.
+.br
+.in -5
+
+
+.ne 6
+.ti -7
+EXAMPLES
+
+Multiple pipes may be chained on one command line.
+The following command feeds the output of program "foo" into the
+input of program "bar", the output of "bar" into the input of
+program "zot", and the output of "zot" into a file called "output":
+
+	A>foo arg1 |bar |zot arg2 arg3 >output
+
+"arg1" is an actual argument to "foo", and "arg2" and "arg3" are
+actual arguments to "zot". This illustrates how actual arguments
+may be interspersed with redirection commands. The programs see
+the actual arguments, but command line preprocessing handled by the
+"dioinit" function cause the programs to never need to know about
+the redirection commands. Note that all three programs ("foo", "bar"
+and "zot") must have been compiled and linked to use the "dio"
+package.
+
+An afn preceded by a "!" causes all names matching the given
+afn to be EXCLUDED from the resulting expansion list.
+Thus, to yield a command line containing all files except
+"COM" files, you'd say:
+
+.ce
+progname !*.com <cr>
+
+To get all files on B: except .C files, say:
+
+.ce
+prognam b:*.* !b:*.c <cr>
+
+
+.ne 6
+.ti -7
+FILES
+
+.nf
+printer, tty (special files)
+tempin.$$$, tempout.$$$ (created for pipes)
+.fi
+
+
+.ne 6
+.ti -7
+SEE ALSO
+
+file, rawfile and args on the Software Tools Disk
+
+
+.ne 6
+.ti -7
+DIAGNOSTICS
+
+.in +5
+.br
+.ti -5
+"Can't open"
+.br
+The file whose name follows a '<' does not exist.
+.br
+.ti -5
+"Can't create"
+.br
+The file whose name follows a '>' or '@' could not
+be created.
+The disk is probably full.
+.br
+.ti -5
+"bad '<' redirection"
+.br
+A file name must follow a '<' on the command line.
+No intervening blanks are allowed.
+.br
+.ti -5
+"bad '@' redirection"
+.br
+A file name must follow a '@' on the command line.
+No intervening blanks are allowed.
+.br
+.ti -5
+"bad '>' redirection"
+.br
+A file name must follow a '>' on the command line.
+No intervening blanks are allowed.
+.br
+.ti -5
+"bad pipe specifier"
+.br
+The name of a program must follow a '|'.
+No intervening blanks are allowed.
+.br
+.ti -5
+"broken pipe"
+.br
+The program whose name follows a '|' could not be loaded.
+The .com file does not exist.
+.br
+.in -5
+
+
+.ne 6
+.ti -7
+AUTHORS
+
+.nf
+Leor Zolman wrote the original dio and wildexp.
+Modifications by Edward K. Ream.
+.fi
+
+
+.ne 6
+.ti -7
+BUGS/DEFICIENCIES
+
+1.  Wildexp() leaves no way to "escape" from the
+conventions for I/O redirection.
+Names of files which start with '<' '>' '+' '@' or '|'
+are going to cause problems.
+One possibility:  use back slash as an escape character.
+Also, it would be good to allow \b to mean a blank in a file name.
+For example: read\bme.doc.
+
+.ne 6
+2.  It would be consistent to add two more special files,
+reader and punch:
+
+.nf
+   <reader  would get STD_IN from the reader.
+   >punch   would put STD_OUT to the punch.
+   @punch   would put STD_ERR to the punch.
+.br
+.fi
+
+At present, the code does NOT allow these options.
+The _dispec variable is not used at all right now,
+but it's in as a hint about how to redirect
+STD_IN from special files.
+Adding these changes would require
+a slight mod to getc() similar to the changes made to putc().
+
+
+.ne 6
+.ti -7
+NOTES
+
+1.  This dio package is upward compatible with the old version.
+In other words, you should be able to switch dio packages WITHOUT
+recompiling programs.
+All you need to do is relink using the new version of dio.
+
+2.  I (Edward K. Ream) urgently request that all those who submit
+a program to me as part of the Software Tools project use SOME
+version of dio (preferably this version).
+Please DO NOT use the old RATFOR primitives;
+they should die an immediate death.
+
+3.  Use "-f dio" to link the all programs using dio;
+this ensures that the proper
+versions of getchar(), putchar() and putc() are used.
+Do not define your own getchar(), putchar() or putc()
+or things will get confused.
+
+4.  The console input may be raw (unbuffered, one char. at a time) or
+buffered (entire line must be typed before chars are returned,
+allowing standard editing features, and characters come back one
+at a time AFTER the entire line is typed).
+The default is raw; to
+have buffered console input, uncomment the "#define BUF_CONS" line
+in dio.h and recompile this file and all files in your program.
+
+5.  Putchar() and putc() now check for ^S and ^C without
+calling BDOS.
+The actual checking is done by chkkey().
+On ^C chkkey() aborts any program in the pipe by calling dioflush()
+and exit().
+Since chkkey does all its work
+using calls to BIOS instead of BDOS, you can now ckeck for
+characters from the keyboard WITHOUT having BDOS echo them
+for you.
+On the other hand, this scheme is NOT usable with MP/M.
+
+6.  Output sent to DEV_TTY always goes to the console,
+regardless of whether STD_OUT has been redireced.
+Thus, DEV_TTY now works like STD_OUT used to work.
+I believe that this new version is closer to the
+UNIX spirit than the old.
+Basically, devices should never be re-directed while streams should be.
+
+7.  The putc() routine now has code for diablo printers and their
+^C, ^F handshaking.
+You can turn on that code with #define ACKNAK 1 in dio.c.
+ne now has code for diablo printers and their

@@ -1,0 +1,75 @@
+   alloc.h
+
+       /* Copyright 1987  Pugh-Killeen Associates */
+       #define free(x) my_free(x)
+       #define calloc(a,b)  my_calloc(a,b)
+       void *my_free();
+       void *my_calloc();
+
+   alloc.c
+
+/* Copyright 1987  Pugh-Killeen Associates */
+#include "alloc.h"
+#include <stdio.h>
+
+#undef calloc                      /* Get rid of prior defines */
+#undef free                
+
+#define MAX_POINTS 200             /* Maximum number of allocations */
+
+static void *points[MAX_POINTS];   /* Points to allocated memory */
+static int point_count;            /* Current index into points */    
+static long used;                  /* Number of bytes allocated */
+
+void *calloc();
+
+void *my_calloc(a,b)
+/* Allocate and keep track of allocations */
+int a;
+int b;
+    {
+    void *pc;
+    pc = calloc(a,b);            
+    if (pc != NULL)
+        {
+        used += (long) a * (long) b;
+        if (point_count < MAX_POINTS)
+            points[point_count++] = pc;
+        else
+            printf("\n Too many allocations to keep track off");
+        }
+    else
+        printf("\n No memory left , counter = %d used %ld",
+           point_count, used);
+    return pc;
+    }
+
+my_free(pc)    
+void *pc;
+    {
+    int i;
+    if (pc == NULL)
+        {
+        printf("Freeing NULL pointer");    
+        goto end;
+        }
+    /* See which block was allocated */
+    for (i = 0; i < point_count; i++)
+        {
+        if (points[i] == NULL)
+            continue;
+        else if (points[i] == pc)
+            {
+            free(pc);
+            points[i] = NULL;
+            goto end;
+            }
+        }
+    printf("Freeing something not allocated");
+end:        
+    return;
+    }        
+
+
+
+                   

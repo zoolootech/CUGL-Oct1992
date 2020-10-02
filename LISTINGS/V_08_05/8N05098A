@@ -1,0 +1,76 @@
+*****Listing 1*****
+
+#include <stdio.h>
+
+#define NSTACK	30				/* 2 log2 (max n) */
+typedef unsigned int ARRTYPE;	/* type of data to be sorted */
+
+void iqsort( n, arr, indx)	/* 1 based arrays */
+	unsigned int n;			/* sort arr[1..n] */
+	ARRTYPE arr[], *indx[]; /* return indx pointers to sorted arr[] */
+{
+	static unsigned int stack[NSTACK+1],  llim, rlim, iq, i, j;
+	int jstack = 1;			/* "unsigned int" may be faster... */
+	static ARRTYPE *a, *b;
+	static int swap;
+
+/* initialize pointers to input order */
+	for( i = 1; i <= n; ++i)
+		indx[i] = &arr[i];
+
+/* terminate with first pivot element (chosen same as below) */
+	indx[n + 1] = indx[((rlim = n) + (llim = 1)) >> 1];
+	do
+	{				/* while any unsorted segments remain */
+		while((int)(rlim - llim) > 1 )
+		{		/* 3 or more elements							*/
+				/* quick sort: split segment into 3 segments	*/
+				/* pick guess of median element to make segments near equal */
+			a = indx[iq = ((i = llim) + (j = rlim)) >> 1];
+			indx[iq] = indx[i];
+			indx[i] = a;		/* for left terminator */
+			for( ; ; )
+			{
+/* search for small element to be moved to left */
+				while( *a < *(b = indx[j]))
+					--j;
+				if(j <= i)
+					break;
+
+				indx[i] = b;
+
+/* search for large element to be moved to right */
+				while( *(b = indx[++i]) < *a )
+					;
+				if(i >= j)
+				{
+					i = j;
+					break;
+				}
+				indx[j--] = b;
+			}
+
+			indx[i] = a; /* new middle segment, length 1 */
+			if( (jstack += 2) > NSTACK )
+				printf("\nNSTACK exceeded");
+
+/* work shorter segment next to limit stacking */
+			stack[jstack] = (swap = (rlim-i >= i-llim)) ? rlim : (i-1);
+			stack[jstack - 1] = swap ? (i+1) : llim;
+			rlim = swap ? (i-1) : rlim;
+			llim = swap ? llim : (i+1);
+		}
+
+/* finish off short segments directly -- optional case for 2 elements */
+		if(rlim - llim == 1 && *(a = indx[llim]) > *(b = indx[llim + 1]) )
+		{
+     		indx[llim] = b;
+			indx[llim + 1] = a;
+		}
+
+/* get next segment to sort from stack */
+
+		rlim = stack[jstack--];
+		llim = stack[jstack--];
+	} while(jstack != -1);
+}

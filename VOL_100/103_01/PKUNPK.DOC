@@ -1,0 +1,187 @@
+20 MAY 81 by Kathy Bacon who is going to spend the rest of her 
+                life documenting her (and others) programs..... 
+
+DOCUMENTATION FOR PACK - UNPACK SET OF PROGRAMS USING THE 
+        HOFFMAN MINIMUM REDUNDANCY ALGORITHM 
+
+
+        The  program  PACK can be used to "pack" or encode a file into
+a form that requires less storage;  the  original  file  can  then  be
+gotten back by running it through UNPACK. 
+        Put  quite  simply,  PACK  reads through the file to be packed
+and counts the number of times each  character  in  the  file  occurs.
+Using  this information, it constructs a tree structure, which it then
+uses to generate a bit code for every character which appears  in  the
+file,  in  such  a  way that the characters which appear the most have
+the codes with the fewest bits, and those that appear less often  have
+longer  codes  (e.g.  the  character which appears the most often will
+have the bit code (0) or (1); the  next  group  will  have  the  codes
+(00),(01),  (10),(11),  etc.). It then writes out the file using these
+codes instead of the characters themselves; the  character  occurrence
+infor- mation is stored in the first four sectors of the new file. 
+        UNPACK  reads  the  occurrence information from a packed file,
+reconstructs the tree,  regenerates  the  codes  from  the  tree,  and
+finally  translates  the  bit  codes  in the packed file back to their
+character equivilents. 
+        Both PACK and UNPACK can accept more  than  one  command  line
+argument  at a time to be packed or unpacked. Also, a destination file
+can be specified like so: 
+
+        A>pack source>destin 
+
+There should be NO spaces  between  the  file  names  and  the  output
+specifier  '>'.  If  no destination file is specified, the output file
+from PACK will be source.PAK ; source.UNP from UNPACK. 
+
+                $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+        Note: any type of file can be packed. The more random  a  file
+is  the  less the savings will be. Best savings occur on text files. C
+com files offer less and assembly language com files even  less.  Even
+previously  packed files can be packed and sometimes there can be some
+savings (not all the time though). Of course you would have to  unpack
+it  twice  to get back the original. Work is in progress on shortening
+overhead of the character occurrence information. We have  packed  and
+unpacked  many  files  and  the programs seem to be fairly robust. Try
+unpacking files that are not packed. (GIGO). Savings  for  text  files
+are  typically  on the order of 30%, for com files more like 20%. Have
+fun and save space. 
+                $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+
+        The "tree" is actually an array of  elements  (512  in  all  -
+twice  the possible number of character types), each of which has four
+parts: 
+
+        1) the character occurrence value for that element 
+
+        2) a pointer to a son (called "son_zero") 
+
+        3) a pointer to a second son ("son_one") 
+
+        4) a pointer to the element's "daddy" 
+
+The first 256 array elements are the characters - each index into  the
+array  is  the  numerical equivelent of some character. Initially, all
+of the pointers are set to NIL  (-1  in  this  case);  all  occurrence
+fields  are  set to zero. Then the occurrence information is filled in
+for the first 256 elements (in PACK this  is  done  by  actully  going
+through  the  file;  in  UNPACK the information is read from the first
+four sectors of the file ). 
+
+                &&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&&& 
+
+The same function is used to  generate  the  tree  in  both  PACK  and
+UNPACK.  A  pointer  to the tree structure is passed to it; it returns
+the number of the "head" of the tree, when it's done: 
+
+{ 
+daddy = NIL; 
+nextpapa = number of char types (256) 
+
+while(1) 
+      { 
+        find the two elements in the tree with the lowest occur. 
+        values. Label one ONE, the other ZERO. 
+
+        if (both ONE and ZERO are NIL) 
+                return the current daddy 
+
+        if (ONE == NIL) 
+                return the value of ONE 
+
+        daddy = nextpapa 
+        nextpapa = nextpapa + 1 
+
+        set the pointer "son_zero" at element "daddy" to ZERO; 
+        set the pointer "son_one" at element "daddy" to ONE 
+
+        set the pointers to "dad" at elements ONE and ZERO to 
+                "daddy" 
+
+        the occurrence value at element "daddy" is the sum of 
+        the occur. values at elements ONE and ZERO 
+
+      } 
+} 
+
+This will generate a tree in which all  the  "leaves"  are  characters
+(elements  0-255  in the tree array); no character will have a son_one
+or a son_zero. 
+
+                $$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+
+Once the tree has  been  generated,  and  the  occurrence  information
+written  out  to  the  output  file, PACK uses the occurrence field at
+each element on the tree to tell whether that element in  a  "son_one"
+or  "son_zero"  of  its  "dad". This simplifies the encoding, which is
+done as follows: 
+
+
+{ 
+while (more characters in input) 
+      { 
+        get a character 
+
+        starting at the character's element in the tree, read off 
+                the element's occur. value into a stack; then go to 
+                it's "dad" and do likewise. Continue until you find 
+                an element whose "dad" is NIL. This is the head of 
+                the tree. 
+
+        read the bits back off the stack (reverse of the way they 
+                went in) one at a time, shoving them into an output 
+                byte. When there are eight in the byte, put it into 
+                the output buffer and start over with a new byte. If 
+                the output buffer is full, write it out to the file. 
+
+      } end while (more input characters) 
+
+if (there's part of an output byte left) 
+      { 
+        put it in the buffer 
+        write out the buffer to the file 
+      } 
+
+} 
+
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$ 
+
+To pack a file, we start at the "leaves" of the tree (at a  character)
+and  follow  the  "dad"s up to the "big_daddy" of the tree to generate
+the bit codes; to unpack, we do the reverse: we start at the  head  of
+the  tree  and  follow  the  bit  code  down the pointers (following a
+son_one if the bit is a one, a son_zer if it's a zero) until we  reach
+a character: 
+
+{ 
+calculate the number of characters that were in the unpacked file 
+
+while (no. decoded chars < no. in original file) 
+      { 
+        get a byte from the packed file 
+
+        for (i=1 to 8) 
+        { get a bit 
+                if (bit==0) 
+                        go to current element's son_zero 
+                else go to son_one 
+
+                if (new element is a character) 
+                { put character in output buffer 
+
+                        write out buffer if it's full 
+
+                        reset element to "big_daddy" 
+                } 
+        } 
+      } 
+if (part of a buffer done) 
+        write out buffer to file 
+} 
+
+
+
+
+
+
+
+tree 

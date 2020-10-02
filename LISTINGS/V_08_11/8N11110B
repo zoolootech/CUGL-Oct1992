@@ -1,0 +1,38 @@
+
+
+/* subtract time from all timers, enabling any that run out along the way */
+void
+timers_update(time)
+TIME time;
+{
+        static struct timer timer_last = {
+                FALSE                   /* in use */,
+                VERY_LONG_TIME          /* time */,
+                NULL                    /* event pointer */
+        };
+
+        struct timer *t;
+
+        timer_next = &timer_last;
+
+        for (t=timers;t<&timers[MAX_TIMERS];t++) {
+                if (t->inuse) {
+                        if (time < t->time) { /* unexpired */
+                                t->time -= time;
+                                if (t->time < timer_next->time)
+                                        timer_next = t;
+                        } else { /* expired */
+                                /* tell scheduler */
+                                *t->event = TRUE;
+                                t->inuse = 0;   /* remove timer */
+                        }
+                }
+        }
+
+        /* reset timer_next if no timers found */
+        if (!timer_next->inuse) timer_next = 0;
+}
+
+listing 4
+
+

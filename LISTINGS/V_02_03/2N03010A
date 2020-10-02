@@ -1,0 +1,88 @@
+/*
+ * Listing 4: Dithered print_stripe().
+ */
+#define DSZ 2	/* 2x2 dither will be used */
+
+/*
+ * 2x2 dither pattern:
+ * contains five 2x2 squares
+ */
+unsigned char dither[5][DSZ][DSZ] =
+	{
+		{0, 0,
+		 0, 0},
+
+		{0, 1,
+		 0, 0},
+
+		{1, 0,
+		 0, 1},
+
+		{0, 1,
+		 1, 1},
+
+		{1, 1,
+		 1, 1}
+	 };
+
+
+void print_stripe( int y_start )
+	{
+	int num_pix, x, y, bit_num, which_color, r, g, b, v;
+	unsigned char out_pixel, c;
+	static char graph_cmd[4] = {ESC, 'L', 0, 0};
+	static char color_sel[3] = {ESC, 'r', 0};
+
+	for (which_color = 1; which_color <= 4; which_color <<= 1)
+		{
+		color_sel[2] = which_color + '0';
+		write(print_fh, color_sel, 3);
+
+		/* Send ESC L n1 n2, where (256 * n2) + n1 is the
+		 * number of pixels across a line.
+		 */
+		num_pix = (x_max + 1) * DSZ;	/* note dither size */
+		graph_cmd[2] = num_pix & 0xff;
+		graph_cmd[3] = num_pix >> 8;
+		write(print_fh, graph_cmd, 4);
+
+		for (x = 0; x < num_pix; ++x)
+			{
+			/* Accumulate 8 pixels, vertically, into out_pixel.
+			 */
+			out_pixel = 0;
+			y = y_start;
+			for (bit_num = 7; bit_num >= 0; --bit_num, ++y)
+				{
+				getrgb(x / DSZ, y / DSZ, &r, &g, &b);
+				switch (which_color)	/* pick R, G, or B */
+					{
+					case 1:
+						v = g;
+						break;
+					case 2:
+						v = r;
+						break;
+					case 4:
+						v = b;
+						break;
+					}
+
+				/* Map 0..255 into 0..4 and look up
+				 * the proper dither pattern dot.
+				 */
+				v /= 52;
+				if (dither[v][x % DSZ][y % DSZ] == 0)
+					out_pixel |= (1 << bit_num);
+				}
+			write(print_fh, &out_pixel, 1);
+			}
+
+		c = CR;		/* send CR after each data set */
+		write(print_fh, &c, 1);
+		}
+
+	c = LF;		/* send LF after all three sets */
+	write(print_fh, &c, 1);
+	}
+

@@ -1,0 +1,284 @@
+;**************************************************************************
+;
+;		STARTUP COMMAND FILE FOR EMACS
+;			(.emacsrc)
+;
+;		Copyright (C) 1988 J.Manzai
+;		All rights Reserved
+;
+;
+;	Date Created: March 19, 1988 @(#) .emacsrc Version 1.0
+;
+;	Modifications: 24-Mar-88 Disabled the bind/unbind key function.
+;				 These Key are too similar to the search-
+;				 forward key binding and were hit too
+;				 Many times by accident. Rewrote the indent-
+;				 ation Macros to handle tabs correctly.
+;
+;	WARNING:		This file is stored with the file name 
+;				"EMACSRC". When you use this file under UNIX,
+;				you must change the name to ".emacsrc".
+;
+;				This start-up file shoud be used in conjunction
+;				with file "comp".
+;***************************************************************************
+
+; Disable the message line while this setup is running...
+
+	set $discmd FALSE
+
+; Setup some key bindings for the shifted function keys. The unshifted
+; function keys are already initialized in the EMACS ebind.h file.
+
+	bind-to-key execute-macro-11 M-!
+	bind-to-key execute-macro-12 M-@
+	bind-to-key execute-macro-13 M-#
+	bind-to-key execute-macro-14 M-$
+	bind-to-key execute-macro-15 M-%
+	bind-to-key execute-macro-16 M-^
+	bind-to-key execute-macro-17 M-&
+	bind-to-key execute-macro-18 M-*
+	bind-to-key execute-macro-19 M-_
+	bind-to-key execute-macro-20 M-+
+	
+; Set Global modes of operation
+
+	add-global-mode magic
+	add-global-mode exact
+
+; Define some useful macros
+
+	; Draw opening line of comment block
+	
+	1	store-macro
+		beginning-of-line
+		insert-string "/"
+		79 insert-string "*"
+		insert-string "~n"
+		!endm
+
+	; Draw closing line of comment block
+
+	2	store-macro
+		beginning-of-line
+		79 insert-string "*"
+		insert-string "/~n"
+		!endm
+
+	; Draw function separation line
+	
+	3	store-macro
+		beginning-of-line
+		insert-string "/* "
+		74 insert-string "-"
+		insert-string " */~n"
+		!endm
+	
+	; Center the string already typed on this line
+
+	4 	store-macro
+		write-message "[CENTERING]"
+		beginning-of-line
+		trim-line
+		previous-line
+		!if &gre $lwidth 74
+			write-message "[LINE TOO LONG]"
+			!return
+		!endif
+		!if &equal $lwidth 0
+			!return
+		!endif
+		set %i &div $lwidth 2
+		set %i &sub 37 %i
+		!while &less $curcol %i
+			insert-string " "
+		!endwhile
+		next-line
+		beginning-of-line
+		clear-message-line
+		!endm
+
+; Automatic indentation Control for C-source code..
+
+	; Handle opening "{" in c-mode editing...
+	
+	bind-to-key execute-macro-5 {
+	set %level 0
+
+	5	store-macro
+		!if &less $curcol 4
+			insert-string "{~n"
+			insert-string " "	; insert tab
+			set %level 1
+			!return
+		!else
+			set %level &add %level 1
+			insert-string "{~n"
+			beginning-of-line
+			set %tabs 0
+			!while &less %tabs %level
+				insert-string " "	; insert tab
+				set %tabs &add %tabs 1
+			!endwhile
+		!endif
+		!endm
+
+	; Handle newline when using c-mode indentation...
+
+	bind-to-key execute-macro-6	^M
+
+	6	store-macro
+		insert-string "~n"
+		beginning-of-line
+		set %tabs 0
+		!while &less %tabs %level
+			insert-string " "
+			set %tabs &add %tabs 1
+		!endwhile
+		!endif
+		!endm
+
+	; Handle closing "}" when using c-mode indentation
+
+	bind-to-key execute-macro-7 }
+
+	7	store-macro
+		set %level &sub %level 1
+		!if &equ %level 0
+			beginning-of-line
+			insert-string "}~n"
+			!return
+		!endif
+		!if &less %level 0
+			write-message "Too many closing braces!!"
+			set %save 0
+			set %level 0
+			!return
+		!endif
+		insert-string "}~n"
+		beginning-of-line
+		set %tabs 0
+		!while &less %tabs %level
+			insert-string " "	; insert tab
+			set %tabs &add %tabs 1
+		!endwhile
+		!endm
+
+	; Disable the indentation macros...
+
+	9 	store-macro
+		unbind-key {
+		bind-to-key newline ^M
+		unbind-key }
+		set %level 0
+		write-message "[AUTO INDENT DISABLE]"
+		!endm
+
+	; Start with auto-indent disabled
+
+	execute-macro-9
+
+	; Enable the indentation macros...
+
+	10	store-macro
+		bind-to-key execute-macro-5 {
+		bind-to-key execute-macro-6 ^M
+		bind-to-key execute-macro-7 }
+		write-message "[AUTO INDENT ENABLED]"
+		!endm
+
+	; Display the current binding list
+
+	8	store-macro
+		describe-bindings
+		!endm
+
+	; Display help in a new window
+
+	11	store-macro
+		help
+		!endm
+
+	; Close the current window...
+
+	12	store-macro
+		delete-window
+		!endm
+
+	; Display key bindings in new window
+
+	13	store-macro
+		describe-bindings
+		!endm
+
+	; Display current buffer status
+
+	14 	store-macro
+		list-buffers
+		previous-window
+		!endm
+
+	; Increase size of current window
+
+	19	store-macro
+		grow-window
+		!endm
+
+	; Decrease size of current window
+
+	20 	store-macro
+		shrink-window
+		!endm
+
+	; Control the development environment
+
+	bind-to-key execute-macro-25 M-\
+	set %ftime TRUE
+
+	25	store-macro
+		!force delete-other-windows
+		!if &seq %ftime TRUE
+			set %name &left $cfname &sub &sindex $cfname "." 1
+			set %ftime FALSE
+		!endif
+		save-file
+		write-message "[STANDBY, WORKING....]"
+		!force pipe-command &cat "comp " %name
+		clear-message-line
+		delete-buffer &cat %name ".e"
+		!force find-file &cat %name ".e"
+		!if &seq $status TRUE
+			beginning-of-file
+			!force search-forward "[0-9][0-9]*"
+			set %eline $match
+			next-window
+			goto-line %eline
+		!else
+			next-window
+			delete-other-windows
+			delete-buffer &cat %name ".e"
+			write-message "No errors - press <retrun> to continue..."
+			&gtkey
+		!endif
+		!endm
+
+	bind-to-key execute-macro-26 M-|
+	
+	26	store-macro
+		pipe-command %name
+		next-window
+		!endm
+
+	; Disable the bind/unbind key functions...
+
+		unbind-key M-K
+		unbind-key M-^K
+
+	; Enable the message line now that the setup is complete...
+
+		set $discmd TRUE
+	
+
+
+		
+

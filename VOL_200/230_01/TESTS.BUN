@@ -1,0 +1,2092 @@
+: To unbundle, sh this file
+echo unbundling Makefile 1>&2
+cat >Makefile <<'End'
+.SUFFIXES : .st .test
+
+BINDIR = ../bin
+
+FILES = Makefile in *.st *.out
+
+.st.test:
+	$(BINDIR)/st -m $*.st <in | diff - $*.out
+
+install:
+	echo Performing Self Checking Tests
+	-make basic.test
+	-make blocks.test
+	-make fork.test
+	-make new.test
+	-make super.test
+	-make copy.test
+	-make num.test
+	-make file.test
+	-make primes.test
+	-make collect.test
+	-make 4queen.test
+	echo The following produce cycles, thus have nonzero differences
+	-make phil.test
+	echo Differences in random numbers may change results in following
+	-make sim1.test
+	-make sim2.test
+	echo Finished Self Checking Tests
+	
+bundle:
+	bundle $(FILES) >../tests.bundle
+
+# if the CURSES routines are available, and the form library has been
+# built in the /prelude subdirectory (see Makefile there), the following
+# executes the plane example
+plane:
+	$(BINDIR)/st -m -g form plane.st <in
+
+# if the PLOT(3) routines are available, and the pen library has been
+# built in the /prelude subdirectory (see Makefile there), the following
+# executes the pens exame
+pen:
+	$(BINDIR)/st -m -g pen penshow.st <in
+End
+echo unbundling in 1>&2
+cat >in <<'End'
+Main new main
+End
+echo unbundling 4queen.st 1>&2
+cat >4queen.st <<'End'
+Class Queen
+| myrow mycolumn neighbor boardsize |
+[
+        build: aQueen col: aNumber size: brdmax
+
+                neighbor <- aQueen.
+                mycolumn <- aNumber.
+                myrow <- 1.
+                boardsize <- brdmax.
+                neighbor first.
+                ^ self
+
+|       checkCol: colNumber row: rowNumber      | cd |
+                (rowNumber = myrow) ifTrue: [ ^ false ].
+                cd <- colNumber - mycolumn.
+                ((myrow + cd) = rowNumber) ifTrue: [ ^ false ].
+                ((myrow - cd) = rowNumber) ifTrue: [ ^ false ].
+                (neighbor isNil) ifFalse:
+                        [ ^ neighbor checkCol: colNumber row: rowNumber ].
+                ^ true
+
+|       first
+                myrow <- 1.
+                ^ self checkrow
+
+|       next
+                myrow <- myrow + 1.
+                ^ self checkrow
+
+|       checkrow
+                (neighbor isNil) ifTrue: [^ myrow].
+                [myrow <= boardsize] whileTrue:
+                        [(neighbor checkCol: mycolumn row: myrow)
+                                ifTrue: [^ myrow]
+                                ifFalse: [myrow <- myrow + 1] ].
+                ((neighbor next) isNil) ifTrue: [^ nil].
+                ^ self first
+
+|       printboard
+                (neighbor isNil) ifFalse: [ neighbor printboard].
+                ('Col ', mycolumn asString , ' Row ' ,
+                    myrow asString) print
+]
+
+Class Main
+| lastq |
+[
+        main | size |
+
+                size <- 4.
+                lastq <- nil.
+                (1 to: size) do: [:x |
+                         lastq <- Queen new build: lastq col: x size: size ].
+                lastq first.
+                lastq printboard
+]
+End
+echo unbundling 8queen.st 1>&2
+cat >8queen.st <<'End'
+Class Queen
+| myrow mycolumn neighbor boardsize |
+[
+        build: aQueen col: aNumber size: brdmax
+
+                neighbor <- aQueen.
+                mycolumn <- aNumber.
+                myrow <- 1.
+                boardsize <- brdmax.
+                neighbor first.
+                ^ self
+
+|       checkCol: colNumber row: rowNumber      | cd |
+                (rowNumber = myrow) ifTrue: [ ^ false ].
+                cd <- colNumber - mycolumn.
+                ((myrow + cd) = rowNumber) ifTrue: [ ^ false ].
+                ((myrow - cd) = rowNumber) ifTrue: [ ^ false ].
+                (neighbor isNil) ifFalse:
+                        [ ^ neighbor checkCol: colNumber row: rowNumber ].
+                ^ true
+
+|       first
+                myrow <- 1.
+                ^ self checkrow
+
+|       next
+                myrow <- myrow + 1.
+                ^ self checkrow
+
+|       checkrow
+                (neighbor isNil) ifTrue: [^ myrow].
+                [myrow <= boardsize] whileTrue:
+                        [(neighbor checkCol: mycolumn row: myrow)
+                                ifTrue: [^ myrow]
+                                ifFalse: [myrow <- myrow + 1] ].
+                ((neighbor next) isNil) ifTrue: [^ nil].
+                ^ self first
+
+|       printboard
+                (neighbor isNil) ifFalse: [ neighbor printboard].
+                ('Col ', mycolumn asString , ' Row ' ,
+                    myrow asString) print
+]
+
+Class Main
+| lastq |
+[
+        main | size |
+
+                size <- 8.
+                lastq <- nil.
+                (1 to: size) do: [:x |
+                         lastq <- Queen new build: lastq col: x size: size ].
+                lastq first.
+                lastq printboard
+]
+End
+echo unbundling basic.st 1>&2
+cat >basic.st <<'End'
+Class Main
+[
+	main
+		88 print.
+		3.14159 print.
+		'this is it' print.
+		#(this is also it) print.
+		88 respondsTo: #+ ; print.
+		Object respondsTo.
+		smalltalk at: 3 put: #(22 17).
+		(smalltalk at: 3) print.
+		Smalltalk respondsTo.
+]
+End
+echo unbundling blocks.st 1>&2
+cat >blocks.st <<'End'
+Class Main
+[
+	main
+		(2 < 3) ifTrue: ['correct-1' print].
+		((2 < 3) ifTrue: ['correct-2']) print.
+		[:x | x print] value: 'correct-3' .
+		((2 < 3) or: [3 < 4]) ifTrue: ['correct-4' print].
+		((2 > 3) or: [3 < 4]) ifTrue: ['correct-5' print].
+		((2 < 3) and: [3 < 4]) ifTrue: ['correct-6' print].
+		((2 > 3) and: [3 < 4]) ifFalse: ['correct-7' print].
+		self test1 print
+|
+	test1
+		self test2: [^ 'correct-8'].
+		'should not print' print
+|
+	test2: aBlock
+		self test3: aBlock.
+		'should not print' print
+|
+	test3: bBlock
+		bBlock value.
+		'should not print' print
+]
+End
+echo unbundling check.st 1>&2
+cat >check.st <<'End'
+Class CheckBook
+| balance |
+[
+	new
+		balance <- 0
+|
+	+ amount
+		balance <- balance + amount.
+		^ balance
+|
+	- amount
+		balance <- balance - amount.
+		^ balance
+]
+
+End
+echo unbundling collect.st 1>&2
+cat >collect.st <<'End'
+Class Main
+| i |
+[
+	main
+		self test1.
+		self test2.
+		self test3
+|
+	test1		| j |
+		(i <- 'example') print.
+		i size print.
+		i asArray print.
+		(i occurrencesOf: $e) print.
+		i asBag print.
+		(j <- i asSet) print.
+		j asString reversed print.
+		i asDictionary print.
+		(j <- i asList) print.
+		j addFirst: 2 / 3.
+		j addAllLast: (12.5 to: 15 by: 0.75).
+		j print.
+		j removeLast print.
+		(j , #($a 7) ) print.
+		(i reject: [:x | x isVowel] ) print.
+		(i copyWithout: $e) print.
+		i sort print.
+		(i sort: [:x :y | y < x]) print.
+		i keys print.
+		i values print.
+		(i atAll: (1 to: 7 by: 2) put: $x) print
+|
+	test2			| j |
+		i <- (1 to: 6) asBag print.
+		i size print.
+		(i select: [:x | (x \\ 2) strictlyPositive] ) print.
+		(j <- (i collect: [:x | x \\ 3]) asSet ) print.
+		j size print
+|
+	test3
+		('bead' at: 1 put: $r) print
+]
+End
+echo unbundling cond.st 1>&2
+cat >cond.st <<'End'
+Class Main
+[
+	main			| i |
+		((2 < 3) ifTrue: ['correct']) print.
+		(2 < 3) ifTrue: ['correct' print ].
+		i <- 1.
+		[i < 3] whileTrue: [i <- i + 1].
+		(i >= 3) ifTrue: ['correct' print]
+]
+
+End
+echo unbundling control.st 1>&2
+cat >control.st <<'End'
+"
+     control the values produced by a generator
+"
+Class ControlGenerator :Generator
+| firstGenerator secondGenerator
+  currentFirst currentSecond
+  controlBlock computeBlock |
+[
+        initA: fGen b: sGen control: aBlock compute: anotherBlock
+                firstGenerator <- fGen.
+                secondGenerator <- sGen.
+                controlBlock <- aBlock.
+                computeBlock <- anotherBlock
+
+|       first
+                currentFirst <- firstGenerator first.
+                currentSecond <- secondGenerator first.
+                (currentFirst isNil & currentSecond isNil) ifTrue: [^ nil].
+                ^ self controlGeneratorNext
+
+|       next
+                ^ self controlGeneratorNext
+
+|       controlGeneratorNext    | control returnedValue |
+                control <- 0.
+                [ control anyMask: 12] whileFalse: [
+                  control <- controlBlock value: currentFirst
+                                          value: currentSecond.
+                   (control allMask: 64) ifTrue: [^nil].
+                   (control allMask: 32) ifTrue:
+                                [currentFirst <- firstGenerator first].
+                   (control allMask: 16) ifTrue:
+                                [currentSecond <- secondGenerator first].
+                   (control allMask: 12)
+                      ifTrue:
+                          [returnedValue <- computeBlock
+                               value: currentFirst value: currentSecond]
+                      ifFalse: [
+                         (control allMask: 8) ifTrue:
+                           [returnedValue <- computeBlock value: currentFirst].
+                         (control allMask: 4) ifTrue:
+                           [returnedValue <- computeBlock value: currentSecond].
+                         ].
+                   (control allMask: 2) ifTrue:
+                           [currentFirst <- firstGenerator next].
+                   (control allMask: 1) ifTrue:
+                           [currentSecond <- secondGenerator next].
+                  ].
+                ^ returnedValue
+]
+End
+echo unbundling copy.st 1>&2
+cat >copy.st <<'End'
+Class Main
+| i j k l |
+[
+	main
+		i <- Test new.
+		i set: 17.
+		j <- Test new.
+		j set: i.
+		k <- j deepCopy.
+		l <- j shallowCopy.
+		i set: 12.
+		k print.
+		l print.
+		i <- Test new.
+		i set: 17.
+		j <- #(2).
+		j at: 1 put: i.
+		k <- j deepCopy.
+		l <- j shallowCopy.
+		i set: 12.
+		k print.
+		l print.
+]
+Class Test
+| var |
+[
+	printString
+		^ 'test value ', var printString
+|
+	set: aVal
+		var <- aVal
+]
+
+End
+echo unbundling fib.st 1>&2
+cat >fib.st <<'End'
+Class Fib :Generator
+| lastNumber  nextToLastNumber |
+[
+	first
+    		nextToLastNumber <- 0.
+    		^ lastNumber <- 1
+|
+  	next			| sum |
+    		sum <- nextToLastNumber + lastNumber.
+    		nextToLastNumber <- lastNumber.
+    		^ lastNumber <- sum
+]
+End
+echo unbundling file.st 1>&2
+cat >file.st <<'End'
+Class Main
+[
+	main		| f g |
+		f <- File new ; open: 'file.st'.
+		g <- File new ; open: 'foo' for: 'w'.
+		f do: [:x | g write: x reversed].
+		g <- File new ; open: 'foo' for: 'r'.
+		g do: [:x | x print].
+		f modeCharacter.
+		f first print.
+		10 timesRepeat: [ f next print ].
+		(f at: 2) print.
+		f currentKey print.
+		f size print.
+]
+
+End
+echo unbundling fork.st 1>&2
+cat >fork.st <<'End'
+Class Main
+[
+	loop1
+		10 timesRepeat: [17 print]
+|
+	loop2
+		10 timesRepeat: [23 print]
+|
+	main
+		[self loop1] fork.
+		self loop2
+]
+
+End
+echo unbundling generator.st 1>&2
+cat >generator.st <<'End'
+Class Generator :Collection
+[
+	, aGenerator
+		^ DyadicControlGenerator new;
+			firstGen: self
+			secondGen: aGenerator
+			control: [:x :y |
+				(x isNil)
+					ifTrue:
+						[(y isNil)
+							ifTrue:  [2r01000000]
+							ifFalse: [2r00000101]
+						]
+					ifFalse: [2r00001010] ]
+			compute: [:x | x ]
+|
+  	collect: xformBlock
+    		^ MonadicControlGenerator new;
+       			initGen: self deepCopy
+       			control: [ :x |
+				(x isNil)
+					ifTrue:  [2r1000]
+					ifFalse: [2r0101]
+				 ]
+       			init: []
+       			compute: [:x | xformBlock value: x]
+|
+	first: limit     | count |
+    		count <- 0.
+		^ MonadicControlGenerator new;
+       			initGen: self deepCopy
+       			control: [ :x |
+                 			(x isNil)
+                  			ifTrue:  [2r1000]
+                  			ifFalse: [((count <- count + 1) > limit)
+                             				ifTrue:  [2r1000]
+                             				ifFalse: [2r0101]
+                           			 ]
+                		 ]
+       			init: [count <- 0]
+       			compute: [:x | x]
+|
+  	select: condBlock
+    		^ MonadicControlGenerator new;
+       			initGen: self deepCopy
+       			control: [ :x |
+                 		(x isNil)
+                  			ifTrue:  [2r1000]
+                  			ifFalse: [(condBlock value: x)
+                             				ifTrue:  [2r0101]
+                             				ifFalse: [2r0001]
+                           			 ]
+                		 ]
+       			init: []
+       			compute: [:x | x]
+|
+  	until: condBlock
+    		^ MonadicControlGenerator new;
+       			initGen: self deepCopy
+       			control: [ :x |
+                 		(x isNil)
+                  			ifTrue:  [2r1000]
+                  			ifFalse: [(condBlock value: x)
+                             				ifTrue:  [2r1000]
+                             				ifFalse: [2r0101]
+                           			 ]
+                		 ]
+       			init: []
+       			compute: [:x | x]
+|
+	with: aGenerator when: conditionBlock
+		^ DyadicControlGenerator new ;
+			firstGen: self
+			secondGen: aGenerator
+			control: [:x :y |
+				(x isNil)
+					ifTrue: [(y isNil)
+						ifTrue:  [2r01000000]
+						ifFalse: [2r00000101] ]
+					ifFalse: [(y isNil)
+						ifTrue:  [2r00001010]
+						ifFalse: [(conditionBlock
+							value: x value: y)
+							ifTrue:  [2r00001010]
+							ifFalse: [2r00000101]
+							] ] ]
+			compute: [:x | x ]
+]
+
+Class MonadicControlGenerator :Generator
+| subGenerator  currentValue  controlBlock  initBlock  computeBlock |
+[
+  	initGen: aGenerator
+	control: conBlk
+	init: iniBlk
+	compute: cmpBlk
+    		subGenerator <- aGenerator.
+    		controlBlock <- conBlk.
+    		initBlock <- iniBlk.
+    		computeBlock <- cmpBlk.
+    		currentValue <- nil
+|
+  	first
+    		(currentValue <- subGenerator first) isNil
+      			ifTrue: [^ nil].
+    		initBlock value.
+    		^ self next
+|
+  	next     | control  returnedValue |
+    		control <- 0.
+    		[control anyMask: 2r0100] whileFalse:
+      			[
+        			control <- controlBlock value: currentValue.
+
+        			(control anyMask: 2r1000) ifTrue:
+          				[^ nil].
+        			(control anyMask: 2r0100) ifTrue:
+          				[returnedValue <-
+						computeBlock value: currentValue].
+        			(control anyMask: 2r0010) ifTrue:
+          				[currentValue <- subGenerator first].
+        			(control anyMask: 2r0001) ifTrue:
+				    [currentValue <- subGenerator next]
+  			].
+    		^ returnedValue
+]
+Class DyadicControlGenerator :Generator
+| firstGenerator secondGenerator
+  currentFirst currentSecond
+  controlBlock computeBlock |
+[
+	firstGen: firstGen
+	secondGen: secondGen
+	control: contBlock
+	compute: compBlock
+
+                firstGenerator <- firstGen.
+                secondGenerator <- secondGen.
+                controlBlock <- contBlock.
+                computeBlock <- compBlock
+
+|       first
+                currentFirst <- firstGenerator first.
+                currentSecond <- secondGenerator first.
+                (currentFirst isNil & currentSecond isNil) ifTrue: [^ nil].
+                ^ self next
+
+|       next    	| control returnedValue |
+                control <- 0.
+                [ control anyMask: 2r00001100] whileFalse: [
+                  control <- controlBlock value: currentFirst
+                                          value: currentSecond.
+                   (control allMask: 2r01000000) ifTrue: [^nil].
+                   (control allMask: 2r00100000) ifTrue:
+                                [currentFirst <- firstGenerator first].
+                   (control allMask: 2r00010000) ifTrue:
+                                [currentSecond <- secondGenerator first].
+                   (control allMask: 2r00001100)
+                      ifTrue:
+                          [returnedValue <- computeBlock
+                               value: currentFirst value: currentSecond]
+                      ifFalse: [
+                         (control allMask: 2r00001000) ifTrue:
+                           [returnedValue <- computeBlock value: currentFirst].
+                         (control allMask: 2r00000100) ifTrue:
+                           [returnedValue <- computeBlock value: currentSecond].
+                         ].
+                   (control allMask: 2r00000010) ifTrue:
+                           [currentFirst <- firstGenerator next].
+                   (control allMask: 2r00000001) ifTrue:
+                           [currentSecond <- secondGenerator next].
+                  ].
+                ^ returnedValue
+]
+End
+echo unbundling new.st 1>&2
+cat >new.st <<'End'
+Class Acl
+| vara |
+[
+	new
+		vara <- 'correct'
+|
+	printa
+		vara print
+]
+
+Class Bcl :Acl
+| varb |
+[
+	new
+		varb <- 'correct'
+|
+	printb
+		varb print
+]
+
+Class Main
+[
+	main		| i |
+		i <- Bcl new .
+		i printb .
+		i printa
+]
+End
+echo unbundling num.st 1>&2
+cat >num.st <<'End'
+Class Main
+[
+	testChars
+		($A max: $a) print.
+		(4 between: 3.1 and: (17/3)) print.
+		($A < $0) print.
+		$A asciiValue print.
+		$A asString print.
+		$A printString print.
+		$A isVowel print.
+		$A digitValue print
+|
+	testNums
+		3 + 4.1 ; print.
+		3.14159 exp print.
+		1 pi exp print.
+		3.5 radians print.
+		13 roundTo: 5 ; print.
+		13 truncateTo: 5 ; print.
+		(smalltalk perform: #+ withArguments: #(3 4.1) ) print.
+		(smalltalk doPrimitive: 10 withArguments: #(3 4) ) print
+|
+	testInts
+		5 allMask: 4 ; print.
+		4 allMask: 5 ; print.
+		5 anyMask: 4 ; print.
+		5 bitAnd: 3 ; print.
+		5 bitOr: 3 ; print.
+		5 bitInvert print.
+		254 radix: 16 ; print.
+		5 reciprocal print.
+		-5 // 4 ; print.
+		-5 quo: 4 ; print.
+		-5 \\ 4 ; print.
+		-5 rem: 4 ; print.
+		4 factorial print.
+|
+	testFloats
+		2.1 ^ 4 ; print.
+		0.5 arcSin print.
+		4.3 sqrt print.
+		256 log: 10 ; print.
+		16rC.ABC print.
+		(14.5408 radix: 16) print.
+		0.5236 radians sin print.
+		(100 @ 12) transpose print.
+|
+	main
+		self testChars.
+		self testNums.
+		self testInts.
+		self testFloats.
+]
+End
+echo unbundling penshow.st 1>&2
+cat >penshow.st <<'End'
+"
+	this is useful only if the plot(3) routines work
+"
+Class Main
+| bic show |
+[
+	init
+		bic <- Pen new.
+		show <- PenShow new.
+		show withPen: bic.
+		bic extent: 0 @ 0 to: 500 @ 500.
+|
+	main
+		self init.
+		self polyShow.
+		self spiralShow.
+		self formShow.
+|
+	polyShow
+		bic erase.
+		bic up.
+		bic goTo: 50 @ 50.
+		bic down.
+		(3 to: 8) do: [:i |
+			show poly: i length: 10 ].
+|
+	spiralShow
+		bic erase.
+		bic up.
+		bic goTo: 250 @ 250.
+		bic down.
+		show spiral: 150 angle: 89
+|
+	formShow	| newForm saveBic |
+		newForm <- Form new.
+		saveBic <- bic.
+		bic <- PenSave new.
+		bic setForm: newForm.
+		bic direction: 0.0.
+		bic down.
+		show withPen: bic.
+		self polyShow.
+		bic <- saveBic.
+		bic down.
+		newForm with: bic displayAt: -15 @ ( -15 ).
+		newForm with: bic displayAt: 0 @ 0.
+		newForm with: bic displayAt: 20 @ ( -20 ).
+		^ newForm
+]
+End
+echo unbundling phil.st 1>&2
+cat >phil.st <<'End'
+Class  Main
+[
+	main
+		( DiningPhilosophers new: 5 ) dine: 4
+]
+
+Class  DiningPhilosophers
+| diners  forks  philosophers |
+[
+	new: aNumber
+	    diners <- aNumber.
+	    forks <- Array new: aNumber.
+	    philosophers <- Array new: aNumber.
+	    (1 to: diners) do:
+		[ :p | forks at: p put: (Semaphore new: 1).
+		       philosophers at: p put: (Philosopher new: p)]
+
+|
+	dine: time
+	    (1 to: diners) do:
+		[ :p | (philosophers at: p)
+			    leftFork: (forks at: p)
+			    rightFork: (forks at: ((p \\ diners) + 1))].
+	    time timesRepeat:
+		[(1 to: diners) do: [ :p | (philosophers at: p) philosophize]].
+	    (1 to: diners) do:
+		[ :p | (philosophers at: p) sleep]
+]
+
+Class  Philosopher
+| leftFork  rightFork  myName  myPhilosophy |
+[
+	new:  name
+	    myName <- name.
+	    myPhilosophy <- [[true] whileTrue:
+				[self think.
+				 self getForks.
+				 self eat.
+				 self releaseForks.
+				 selfProcess suspend]
+			    ] newProcess
+
+|
+	leftFork: lfork  rightFork: rfork
+	    leftFork <- lfork.
+	    rightFork <- rfork
+|
+	getForks
+	    ((myName \\ 2) == 0)
+		ifTrue: [leftFork wait.  rightFork wait]
+		ifFalse: [rightFork wait.  leftFork wait]
+|
+	releaseForks
+	    leftFork signal.
+	    rightFork signal
+
+|
+	think
+	    ('Philosopher ',(myName asString),' is thinking.') print.
+	    10 timesRepeat: [selfProcess yield]
+|
+	eat
+	    ('Philosopher ',(myName asString),' is eating.') print.
+	    10 timesRepeat: [selfProcess yield]
+
+|
+	philosophize
+	    myPhilosophy resume
+|
+	sleep
+	    myPhilosophy terminate.
+	    ('Philosopher ',(myName asString),' is sleeping.') print.
+	    myPhilosophy <- nil
+]
+End
+echo unbundling plane.st 1>&2
+cat >plane.st <<'End'
+Class Main
+[
+	main	| i |
+		i <- Plane new.
+		i init.
+		i fly.
+		i bomb.
+]
+Class Plane
+| plane bomb cloud |
+[
+	init
+		plane <- Form new.
+		plane row:  1 put: '                    '.
+		plane row:  2 put: '   \                '.
+		plane row:  3 put: '   |\       --------'.
+		plane row:  4 put: '   |\\________/ /___|'.
+		plane row:  5 put: '   | -- SU   / /    0'.
+		plane row:  6 put: '   <--------/ /-----|'.
+		plane row:  7 put: '         --------    '.
+		plane row:  8 put: '            rm *'.
+		bomb <- 'rm *'.
+		cloud <- Form new.
+		cloud row:  1 put: '   (  ) )'.
+		cloud row:  2 put: ' (  *  )  )'.
+		cloud row:  3 put: '( { } ) * )'.
+		cloud row:  4 put: ' ( - ) ) )'.
+		cloud row:  5 put: '   ( )'.
+		^ plane
+|
+	bomb			| location bombLocation |
+		smalltalk clearScreen.
+		'FILES' printAt: 23 @ 60.
+		cloud printAt: 1@30.
+		location <- 1 @ 1.
+		plane printAt: location.
+		(1 to: 8) do: [:j |
+			location <- j @ (j * 3).
+			plane printAt: location].
+		plane row: 8 put: '                 '.
+		bombLocation <- (location x + 7) @ (location y + 10).
+		(7 to: 2 by: -1) do: [:j |
+			location <- j @ (location y + 3).
+			plane printAt: location.
+			'         ' printAt: bombLocation.
+			bombLocation <- (bombLocation x + 1) @
+					(bombLocation y + 3).
+			bomb printAt: bombLocation ].
+		'        ' printAt: bombLocation.
+		'*****OPPS*****' printAt: 23 @ 55.
+		' ' printAt: 21 @ 0.
+|
+	fly			| sky |
+		smalltalk clearScreen.
+		(10 to: 50 by: 5) do: [:i |
+			sky <- Form new.
+			sky placeForm: cloud at: 10 @ 40.
+			sky overLayForm: plane at: 10 @ i.
+			sky printAt: 1 @ 1
+			].
+		' ' printAt: 21 @ 0
+|
+	display
+		plane printAt: 10@10 . '   ' print
+]
+End
+echo unbundling prime.st 1>&2
+cat >prime.st <<'End'
+Class Main
+[
+	main	| x gen |
+		gen <- Primes new.
+		(smalltalk time: [ x <- gen first.
+		[x < 300]
+			whileTrue: [ x print. x <- gen next] ] ) print.
+]
+Class Primes
+| lastPrime |
+[
+	first
+		^ lastPrime <- 2
+|
+	next
+		[lastPrime <- lastPrime + 1.
+		 self testNumber: lastPrime]
+			whileFalse.
+		^ lastPrime
+|
+	testNumber: n
+		(Primes new) do: [:x |
+			(x squared > n) ifTrue: [ ^ true ].
+			(n \\ x = 0) ifTrue: [ ^ false ] ]
+]
+End
+echo unbundling prime3.st 1>&2
+cat >prime3.st <<'End'
+Class Main
+[
+	main	| x gen |
+		gen <- Primes new.
+		(smalltalk time: [
+		x <- gen first.
+		[x < 300]
+			whileTrue: [ x print. x <- gen next] ]) print
+]
+Class Primes
+| prevPrimes lastPrime |
+[
+	first
+		prevPrimes <- LinkedList new.
+		prevPrimes add: (lastPrime <- 2).
+		^ lastPrime
+|
+	next
+		[lastPrime <- lastPrime + 1.
+		 self testNumber: lastPrime]
+			whileFalse.
+		prevPrimes addLast: lastPrime.
+		^ lastPrime
+|
+	testNumber: n
+		prevPrimes do: [:x |
+			(x squared > n) ifTrue: [ ^ true ].
+			(n \\ x = 0) ifTrue: [ ^ false ] ]
+]
+End
+echo unbundling prime4.st 1>&2
+cat >prime4.st <<'End'
+Class Main
+[
+	main	| x gen |
+		gen <- Primes new.
+		(smalltalk time: [x <- gen first.
+		[x < 300]
+			whileTrue: [ x print. x <- gen next] ] ) print
+]
+Class Primes
+| prevPrimes lastPrime |
+[
+	first
+		prevPrimes <- Set new.
+		prevPrimes add: (lastPrime <- 2).
+		^ lastPrime
+|
+	next
+		[lastPrime <- lastPrime + 1.
+		 self testNumber: lastPrime]
+			whileFalse.
+		prevPrimes add: lastPrime.
+		^ lastPrime
+|
+	testNumber: n
+		prevPrimes do: [:x |
+			(n \\ x = 0) ifTrue: [ ^ false ] ].
+		^ true
+]
+End
+echo unbundling primes.st 1>&2
+cat >primes.st <<'End'
+Class Main
+[
+	main
+		(Primes new) do: [:x | x print]
+]
+Class Primes
+| primeGenerator lastFactor |
+[
+	first
+		primeGenerator <- 2 to: 300.
+		lastFactor <- primeGenerator first.
+		^ lastFactor
+|
+	next
+		primeGenerator <- (Factor new ;
+					remove: lastFactor
+					from:   primeGenerator ).
+		^ lastFactor <- primeGenerator next.
+]
+
+Class Factor
+| myFactor generator |
+[
+	remove: factorValue from: generatorValue
+		myFactor <- factorValue.
+		generator <- generatorValue
+|
+	next		| possible |
+		[(possible <- generator next) notNil]
+			whileTrue:
+				[(possible \\ myFactor ~= 0)
+					ifTrue: [ ^ possible] ].
+		^ nil
+]
+
+
+End
+echo unbundling prob.st 1>&2
+cat >prob.st <<'End'
+Class DiscreteProbability
+	| randnum |
+[
+	initialize
+		randnum <- Random new
+
+|	next
+		^ self inverseDistribution: randnum next
+
+|	computeSample: m outOf: n	
+		m > n ifTrue: [^ 0.0]
+		^ n factorial / (n - m) factorial
+]
+
+Class Geometric	:DiscreteProbability
+	| prob |	
+
+[
+	mean: m
+		prob <- m
+
+|	mean
+		^ 1.0 / prob
+
+|	variance
+		^ (1.0 - prob) / prob * prob
+
+|	density: x
+		x > 0 ifTrue: [^prob * ((1.0-prob) raisedTo: x-1)]
+		      ifFalse: [^1.0]
+
+|	inverseDistribution: x
+		^ (x ln / (1.0 - prob) ln) ceiling
+]
+
+Class Binomial	:DiscreteProbability
+	| number prob |
+[
+	events: num mean: p
+		(p between: 0.0 and: 1.0)
+		   ifFalse: [self error: 'mean must be > 0'].
+		number <- num.
+		prob <- p
+
+|	mean
+		^ prob
+
+|	variance
+		^ prob * (1 - prob)
+
+|	density: x
+		(x between: 0.0 and number)
+		   ifTrue: [^((self computeSample: x outOf: number)
+			/ (self computeSample: x outOf: x))
+			* (prob raisedTo: x) * ((1 - prob) raisedTo: number - x)]
+		   ifFalse: [^0.0]
+
+|	inverseDistribution: x
+		x <= prob
+			ifTrue: [^ 1]
+			ifFalse: [^ 0]
+
+|	next
+	| t |
+		t <- 0.
+		number timesRepeat: [t <- t + super next].
+		^ t
+]
+End
+echo unbundling sim1.st 1>&2
+cat >sim1.st <<'End'
+"
+	Simple Minded simulation from Chapter 6 of book
+"
+Class Main
+[
+	main		| i |
+		i <- IceCreamStore new.
+		[i time < 25] whileTrue: [ i proceed ].
+		i reportProfits
+]
+
+Class Simulation
+| currentTime nextEvent nextEventTime |
+[
+	new
+		currentTime <- 0
+|
+
+	time
+		^ currentTime
+|
+	addEvent: event at: eventTime
+		nextEvent <- event.
+		nextEventTime <- eventTime
+|
+	proceed
+		currentTime <- nextEventTime.
+		self processEvent: nextEvent
+]
+
+Class IceCreamStore :Simulation
+| profit rand |
+[
+	new
+		profit <- 0.
+		rand <- Random new.
+		"rand randomize.  taken out so results remain the same"
+		self scheduleArrival
+|
+	scheduleArrival
+		self addEvent: Customer new
+			at: (self time + (rand randInteger: 5))
+|
+	processEvent: event
+		('customer received at ', self time printString) print.
+		profit <- profit + ( event numberOfScoops * 0.17 ).
+		self scheduleArrival
+|
+	reportProfits
+		('profits are ', profit printString) print
+]
+
+Class Customer
+| rand |
+[
+	new
+		(rand <- Random new) "--randomize (taken out)"
+|
+	numberOfScoops		| number |
+		number <- rand randInteger: 3.
+		('customer has ', number printString , ' scoops ') print.
+		^ number
+]
+End
+echo unbundling sim2.st 1>&2
+cat >sim2.st <<'End'
+"
+	Simple Minded simulation from Chapter 6 of book
+
+	IceCream Store -
+		single event queue
+		multiple group size
+		discrete probability on number of scoops selected
+"
+Class Main
+[
+	main		| i |
+		i <- IceCreamStore new.
+		[i time < 25] whileTrue: [ i proceed ].
+		i reportProfits
+]
+
+Class Simulation
+| currentTime nextEvent nextEventTime |
+[
+	new
+		currentTime <- 0
+|
+	time
+		^ currentTime
+|
+	addEvent: event at: eventTime
+		nextEvent <- event.
+		nextEventTime <- eventTime
+|
+	proceed
+		currentTime <- nextEventTime.
+		self processEvent: nextEvent
+]
+
+Class IceCreamStore :Simulation
+| profit rand scoopDistribution |
+[
+	new
+		profit <- 0.
+		rand <- Random new.
+		(scoopDistribution <- DiscreteProbability new)
+			defineWeights: #(65 25 10).
+		self scheduleArrival
+|
+	scheduleArrival
+		self addEvent: Customer new
+			at: (self time + (rand randInteger: 5))
+|
+	processEvent: event
+		('customer received at ', self time printString) print.
+		profit <- profit + ((self scoopsFor: event groupSize)  * 0.17 ).
+		self scheduleArrival
+|	
+	scoopsFor: group		| number |
+		number <- 0.
+		group timesRepeat:
+			[number <- number + scoopDistribution next].
+		('group of ', group printString, ' have ', number
+		printString, ' scoops ') print.
+		^ number
+
+|
+	reportProfits
+		('profits are ', profit printString) print
+]
+
+Class Customer
+| groupSize |
+[
+	new
+		groupSize <- (Random new "randomize" ) randInteger: 8
+|
+	groupSize
+		^ groupSize
+]
+
+Class DiscreteProbability
+| weights rand max |
+[
+	defineWeights: anArray
+		weights <- anArray.
+		(rand <- Random new) "randomize".
+		max <- anArray inject: 0 into: [:x :y | x + y]
+|
+	next	| index value |
+		value <- rand randInteger: max.
+		index <- 1.
+		[value > (weights at: index)]
+			whileTrue: [value <- value - (weights at: index).
+					index <- index + 1].
+		^ index
+]
+
+End
+echo unbundling sim3.st 1>&2
+cat >sim3.st <<'End'
+"
+	Simple Minded simulation from Chapter 6 of book
+
+	IceCream Store -
+		multiple event queue
+"
+Class Main
+[
+	main		| i |
+		i <- IceCreamStore new.
+		[i time < 60] whileTrue: [ i proceed ].
+		i reportProfits
+]
+
+Class Simulation
+| currentTime eventQueue |
+[
+	new
+		eventQueue <- Dictionary new.
+		currentTime <- 0
+|
+	time
+		^ currentTime
+|
+	addEvent: event at: eventTime
+		(eventQueue includesKey: eventTime)
+			ifTrue: [(eventQueue at: eventTime) add: event]
+			ifFalse: [eventQueue at: eventTime
+					put: (Set new ; add: event)]
+|	
+	addEvent: event next: timeIncrement
+		self addEvent: event at: currentTime + timeIncrement
+|
+	proceed		| minTime eventset event |
+		minTime <- 99999.
+		eventQueue keysDo:
+			[:x | (x < minTime) ifTrue: [minTime <- x]].
+		currentTime <- minTime.
+		eventset <- eventQueue at: minTime ifAbsent: [^nil].
+		event <- eventset first.
+		eventset remove: event.
+		(eventset isEmpty) ifTrue: [eventQueue removeKey: minTime].
+		self processEvent: event
+]
+
+Class IceCreamStore :Simulation
+| profit arrivalDistribution rand scoopDistribution remainingChairs |
+[
+	new
+		profit <- 0.
+		remainingChairs <- 15.
+		rand <- Random new.
+		(arrivalDistribution <- Normal new)
+			setMean: 3.0 deviation: 1.0.
+		(scoopDistribution <- DiscreteProbability new)
+			defineWeights: #(65 25 10).
+		self scheduleArrival
+|
+	scheduleArrival			| newcustomer  time |
+		newcustomer <- Customer new.
+		time <- self time + (arrivalDistribution next).
+		(time < 15) ifTrue: [
+			self addEvent: [self customerArrival: newcustomer]
+				at: time ]
+|
+	processEvent: event
+		('event received at ', self time printString) print.
+		event value.
+		self scheduleArrival
+|
+	customerArrival: customer	| size |
+		size <- customer groupSize.
+		('group of size ', size printString , ' arrives') print.
+		(size < remainingChairs)
+			ifTrue: [remainingChairs <- remainingChairs - size.
+				 'take chairs, schedule order' print.
+				 self addEvent:
+					[self customerOrder: customer]
+					next: (rand randInteger: 3).
+				]
+			ifFalse: ['finds no chairs, leave' print]
+|
+	customerOrder: customer		| size numScoops |
+		size <- customer groupSize.
+		numScoops <- 0.
+		size timesRepeat:
+			[numScoops <- numScoops + scoopDistribution next].
+		('group of size ', size printString, ' orders ' ,
+		numScoops printString, ' scoops') print.
+		profit <- profit + (numScoops * 0.17).
+		self addEvent:
+			[self customerLeave: customer]
+			next: (rand randInteger: 5)
+|
+	customerLeave: customer		| size |
+		size <- customer groupSize.
+		('group of size ', size printString, ' leaves') print.
+		remainingChairs <- remainingChairs + customer groupSize
+|
+	reportProfits
+		('profits are ', profit printString) print
+]
+
+Class Customer
+| groupSize |
+[
+	new
+		groupSize <- (Random new "randomize") randInteger: 8
+|
+	groupSize
+		^ groupSize
+]
+
+Class DiscreteProbability
+| weights rand max |
+[
+	defineWeights: anArray
+		weights <- anArray.
+		(rand <- Random new) "randomize".
+		max <- anArray inject: 0 into: [:x :y | x + y]
+|
+	next	| index value |
+		value <- rand randInteger: max.
+		index <- 1.
+		[value > (weights at: index)]
+			whileTrue: [value <- value - (weights at: index).
+					index <- index + 1].
+		^ index
+]
+
+Class Normal :Random
+| mean deviation |
+[
+	new
+		self setMean: 1.0 deviation: 0.5
+|
+	setMean: m deviation: s
+		mean <- m.
+		deviation <- s
+|
+	next		| v1 v2 s u |
+		s <- 1.
+		[s >= 1] whileTrue:
+			[v1 <- (2 * super next) - 1.
+			 v2 <- (2 * super next) - 1.
+			  s <- v1 squared + v2 squared ].
+		u <- (-2.0 * s ln / s) sqrt.
+		^ mean + (deviation * v1 * u)
+]
+End
+echo unbundling super.st 1>&2
+cat >super.st <<'End'
+Class One
+[
+        test
+                ^ 1
+|       result1
+                ^ self test
+]
+
+Class Two :One
+[
+        test
+                ^ 2
+]
+
+Class Three :Two
+[
+        result2
+                ^ self result1
+|       result3
+                ^ super test
+]
+
+Class Four :Three
+[
+        test
+                ^ 4
+]
+
+Class Main
+| example1 example2 example3 example4 |
+[
+        main
+                example1 <- One new.
+                example2 <- Two new.
+                example3 <- Three new.
+                example4 <- Four new.
+                example1 test print.
+                example1 result1 print.
+                example2 test print.
+                example2 result1 print.
+                example3 test print.
+                example4 result1 print.
+                example3 result2 print.
+                example4 result2 print.
+                example3 result3 print.
+                example4 result3 print
+]
+End
+echo unbundling temp.st 1>&2
+cat >temp.st <<'End'
+Class Main
+[
+	main		| i |
+
+		i <- 1.
+		[i < 3] whileTrue: [i print. i <- i + 1]
+]
+
+End
+echo unbundling turing.st 1>&2
+cat >turing.st <<'End'
+"
+	Turing machine simulator contributed by Jan Gray,
+		the University of Waterloo
+"
+Class Main
+[
+	main			| tm |
+		tm <- TuringMachine new initialize.
+		tm delta state: 0 input: $# nextState: 1 output: $L.
+		tm delta state: 1 input: $I nextState: 1 output: $i.
+		tm delta state: 1 input: $i nextState: 1 output: $L.
+		tm delta state: 1 input: $# nextState: 2 output: $R.
+		tm delta state: 2 input: $i nextState: 2 output: $R.
+		tm delta state: 2 input: $# nextState: 'halt' output: $#.
+		tm tape: 'IIIIII'.
+		tm delta print.
+		tm run
+]
+Class TuringMachine
+|       tape            "Infinite tape"
+        state           "Current state, TM continues if state is a number"
+        delta           "A TransitionTable, which for each (state, input)
+                         gives (next state, output)"
+        tapeMoves       "A Dictionary which maps L and R into [tape left]
+                         and [tape right]"
+|
+[
+        initialize
+                tapeMoves <- Dictionary new.
+                tapeMoves at: $L put: [tape left].
+                tapeMoves at: $R put: [tape right].
+                delta <- TransitionTable new.
+                self tape: ''.
+                self state: 0
+|
+        tape: aString
+                tape <- Tape new with: aString
+|
+        state: aState
+                state <- aState
+|
+        delta
+                ^ delta
+|
+        step
+                | next |
+                next <- delta atState: state input: tape read.
+                state <- next state.
+                (state isKindOf: Number)
+                        ifTrue: [(tapeMoves includesKey: next symbol)
+                                        ifTrue:  [(tapeMoves at: next symbol) value]
+                                        ifFalse: [tape write: next symbol]]
+|
+        run
+                state <- 0.
+                self print.
+                [state isKindOf: Number] whileTrue: [self step print]
+|
+        printString
+                ^ 'State ', state printString, ', Tape ', tape printString
+]
+Class Pair	:Magnitude
+| state symbol |
+[
+        state: aState symbol: aSymbol
+                state <- aState.
+                symbol <- aSymbol
+|
+        state
+                ^ state
+|
+        symbol
+                ^ symbol
+|
+	< aPair
+		^ state < aPair state or:
+			[state = aPair state and: [symbol < aPair symbol]]
+|
+        printString
+                ^ state printString, '	', symbol printString
+]
+Class TransitionTable :Dictionary
+[
+        state: aState input: in nextState: nextState output: out
+                self at: (Pair new state: aState symbol: in)
+                     put: (Pair new state: nextState symbol: out).
+		^ nil
+|
+        atState: aState input: in
+                ^ self at: (Pair new state: aState symbol: in)
+                       ifAbsent: [^ Pair new state: 'hung' symbol: nil].
+|
+        print
+                'State	Read	Next	Write' print.
+		self binaryDo: [:x :y |
+			(x printString , '	', y printString) print]
+]
+Class Tape :Object
+| tape position |
+[
+        with: aString
+                tape <- '#', aString, '#'.
+                position <- tape size
+|
+        read
+                ^ tape at: position
+|
+        write: aChar
+                tape at: position put: aChar.
+|
+        left
+                (position > 1)
+                        ifTrue: [position <- position - 1]
+|
+        right
+                (position = tape size)
+                        ifTrue: [tape <- tape, '#'].
+                position <- position + 1
+|
+        printString
+                ^ (tape copyFrom: 1 to: position - 1), '{',
+                  ((tape at: position) asString), '}',
+                  (tape copyFrom: position + 1 to: tape size)
+]
+End
+echo unbundling visitor.st 1>&2
+cat >visitor.st <<'End'
+Class SimulationObject :Object	
+	| sizeDist waitDist |
+[
+	init
+		sizeDist <- Binomial new initialize events: 5 mean: 0.4.
+		waitDist <- Random new	"uniform distribution"
+
+|	size
+		^ sizeDist next
+
+|	wait: sizeGroup	  "uniform distribution from 1 to 6"
+		^ waitDist next * sizeGroup * 6
+]
+
+Class Visitor	:SimulationObject
+	| sizeGroup wait alreadyEaten |
+[
+	initialize: superClass
+		sizeGroup <- superClass size.
+		wait <- superClass wait: sizeGroup.
+		alreadyEaten <- false
+
+|	entering
+		(alreadyEaten == false)
+		     ifTrue: [alreadyEaten <- true. ^ true].
+		^ false
+
+|	time	
+		^ wait
+
+|	groupSize
+		^ sizeGroup
+
+]
+End
+echo unbundling 4queen.out 1>&2
+cat >4queen.out <<'End'
+Little Smalltalk
+	Col 1 Row 2
+Col 2 Row 4
+Col 3 Row 1
+Col 4 Row 3
+Main
+	
+
+End
+echo unbundling basic.out 1>&2
+cat >basic.out <<'End'
+Little Smalltalk
+	88
+3.14159
+this is it
+#( #this #is #also #it )
+True
+shallowCopy
+respondsTo:
+printString
+print
+notNil
+next
+isNil
+isMemberOf:
+isKindOf:
+first
+error:
+do:
+deepCopy
+copy
+class
+asSymbol
+asString
+~=
+=
+~~
+==
+#( 22 17 )
+time:
+sh:
+perform:withArguments:
+noDisplay
+doPrimitive:withArguments:
+displayAssign
+display
+debug:
+date
+clearScreen
+Main
+	
+
+End
+echo unbundling blocks.out 1>&2
+cat >blocks.out <<'End'
+Little Smalltalk
+	correct-1
+correct-2
+correct-3
+correct-4
+correct-5
+correct-6
+correct-7
+correct-8
+Main
+	
+
+End
+echo unbundling collect.out 1>&2
+cat >collect.out <<'End'
+Little Smalltalk
+	example
+7
+#( $e $x $a $m $p $l $e )
+2
+Bag ( $x $l $m $p $a $e $e )
+Set ( $l $p $m $a $x $e )
+exampl
+Dictionary ( 1 @ $e 2 @ $x 3 @ $a 4 @ $m 5 @ $p 6 @ $l 7 @ $e )
+List ( $e $x $a $m $p $l $e )
+List ( 0.666667 $e $x $a $m $p $l $e 12.5 13.25 14 14.75 )
+14.75
+List ( 0.666667 $e $x $a $m $p $l $e 12.5 13.25 14 $a 7 )
+xmpl
+xampl
+aeelmpx
+xpmleea
+Set ( 7 6 5 4 3 2 1 )
+Bag ( $x $l $m $p $a $e $e )
+xxxmxlx
+Bag ( 1 2 3 4 5 6 )
+6
+Bag ( 1 3 5 )
+Set ( 2 1 0 )
+3
+read
+Main
+	
+
+End
+echo unbundling copy.out 1>&2
+cat >copy.out <<'End'
+Little Smalltalk
+	test value test value 17
+test value test value 12
+#( test value 17 )
+#( test value 12 )
+Main
+	
+
+End
+echo unbundling file.out 1>&2
+cat >file.out <<'End'
+Little Smalltalk
+	niaM ssalC
+[
+| g f |		niam	
+.'ts.elif' :nepo ; wen eliF -< f		
+.'w' :rof 'oof' :nepo ; wen eliF -< g		
+.]desrever x :etirw g | x:[ :od f		
+.'r' :rof 'oof' :nepo ; wen eliF -< g		
+.]tnirp x | x:[ :od g		
+.retcarahCedom f		
+.tnirp tsrif f		
+.] tnirp txen f [ :taepeRsemit 01		
+.tnirp )2 :ta f(		
+.tnirp yeKtnerruc f		
+.tnirp ezis f		
+]
+
+$C
+$l
+$a
+$s
+$s
+$
+$M
+$a
+$i
+$n
+$
+
+$a
+3
+335
+Main
+	
+
+End
+echo unbundling fork.out 1>&2
+cat >fork.out <<'End'
+Little Smalltalk
+	17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+17
+23
+Main
+	
+
+End
+echo unbundling new.out 1>&2
+cat >new.out <<'End'
+Little Smalltalk
+	correct
+correct
+Main
+	
+
+End
+echo unbundling num.out 1>&2
+cat >num.out <<'End'
+Little Smalltalk
+	$a
+True
+False
+65
+A
+$A
+True
+10
+7.1
+23.1406
+23.1407
+3.5 radians
+15
+10
+7.1
+7
+True
+False
+True
+1
+7
+-6
+16rFE
+0.2
+-2
+-1
+1
+-1
+24
+19.4481
+0.523599 radians
+2.07364
+2.40824
+12.6709
+16rE.8A71DE
+0.500001
+12 @ 100
+Main
+	
+
+End
+echo unbundling phil.out 1>&2
+cat >phil.out <<'End'
+Little Smalltalk
+	Philosopher 1 is thinking.
+Philosopher 2 is thinking.
+Philosopher 3 is thinking.
+Philosopher 4 is thinking.
+Philosopher 1 is eating.
+Philosopher 5 is thinking.
+Philosopher 3 is eating.
+Philosopher 5 is eating.
+Philosopher 2 is eating.
+Philosopher 4 is eating.
+Philosopher 1 is thinking.
+Philosopher 2 is thinking.
+Philosopher 3 is thinking.
+Philosopher 4 is thinking.
+Philosopher 1 is eating.
+Philosopher 5 is thinking.
+Philosopher 3 is eating.
+Philosopher 5 is eating.
+Philosopher 2 is eating.
+Philosopher 4 is eating.
+Philosopher 1 is sleeping.
+Philosopher 2 is sleeping.
+Philosopher 3 is sleeping.
+Philosopher 4 is sleeping.
+Philosopher 5 is sleeping.
+Main
+	
+
+End
+echo unbundling primes.out 1>&2
+cat >primes.out <<'End'
+Little Smalltalk
+	2
+3
+5
+7
+11
+13
+17
+19
+23
+29
+31
+37
+41
+43
+47
+53
+59
+61
+67
+71
+73
+79
+83
+89
+97
+101
+103
+107
+109
+113
+127
+131
+137
+139
+149
+151
+157
+163
+167
+173
+179
+181
+191
+193
+197
+199
+211
+223
+227
+229
+233
+239
+241
+251
+257
+263
+269
+271
+277
+281
+283
+293
+Main
+	
+
+End
+echo unbundling sim1.out 1>&2
+cat >sim1.out <<'End'
+Little Smalltalk
+	customer received at 4
+customer has 3 scoops
+customer received at 5
+customer has 3 scoops
+customer received at 8
+customer has 3 scoops
+customer received at 10
+customer has 3 scoops
+customer received at 13
+customer has 3 scoops
+customer received at 14
+customer has 3 scoops
+customer received at 19
+customer has 3 scoops
+customer received at 23
+customer has 3 scoops
+customer received at 27
+customer has 3 scoops
+profits are 4.59
+Main
+	
+
+End
+echo unbundling sim2.out 1>&2
+cat >sim2.out <<'End'
+Little Smalltalk
+	customer received at 4
+group of 7 have 10 scoops
+customer received at 5
+group of 7 have 9 scoops
+customer received at 8
+group of 7 have 11 scoops
+customer received at 10
+group of 7 have 7 scoops
+customer received at 13
+group of 7 have 9 scoops
+customer received at 14
+group of 7 have 10 scoops
+customer received at 19
+group of 7 have 11 scoops
+customer received at 23
+group of 7 have 8 scoops
+customer received at 27
+group of 7 have 8 scoops
+profits are 14.11
+Main
+	
+
+End
+echo unbundling sim3.out 1>&2
+cat >sim3.out <<'End'
+Little Smalltalk
+	event received at 3.46877
+group of size 7 arrives
+take chairs, schedule order
+event received at 5.81336
+group of size 7 arrives
+take chairs, schedule order
+event received at 6.46877
+group of size 7 orders 10 scoops
+event received at 6.81336
+group of size 7 orders 9 scoops
+event received at 8.81336
+group of size 7 leaves
+event received at 8.91228
+group of size 7 arrives
+take chairs, schedule order
+event received at 9.46877
+group of size 7 leaves
+event received at 10.9123
+group of size 7 orders 11 scoops
+event received at 10.9499
+group of size 7 arrives
+take chairs, schedule order
+event received at 11.1909
+group of size 7 arrives
+finds no chairs, leave
+event received at 11.9123
+group of size 7 leaves
+event received at 11.9204
+group of size 7 arrives
+take chairs, schedule order
+event received at 12.3266
+group of size 7 arrives
+finds no chairs, leave
+event received at 13.1723
+group of size 7 arrives
+finds no chairs, leave
+event received at 13.6961
+group of size 7 arrives
+finds no chairs, leave
+event received at 13.7641
+group of size 7 arrives
+finds no chairs, leave
+event received at 13.9204
+group of size 7 orders 7 scoops
+event received at 13.9499
+group of size 7 orders 9 scoops
+event received at 14.3689
+group of size 7 arrives
+finds no chairs, leave
+event received at 14.3911
+group of size 7 arrives
+finds no chairs, leave
+event received at 16.9499
+group of size 7 leaves
+event received at 17.9204
+group of size 7 leaves
+profits are 7.82
+Main
+	
+
+End
+echo unbundling super.out 1>&2
+cat >super.out <<'End'
+Little Smalltalk
+	1
+1
+2
+2
+2
+4
+2
+4
+2
+2
+Main
+	
+
+End
+

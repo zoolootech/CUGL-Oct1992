@@ -1,0 +1,141 @@
+/* trmnl2.c */
+#include <stdio.h>
+#include "ibmint.dlc"    /* "trsifm.mxc" for trs-80 and CP/M.         */
+#define MSDOS 1          /* 0 for trs-80 and CP/M.                    */
+#define RXBUFSIZ 64      /* Sizes of buffers for sending              */
+#define TXBUFSIZ 64      /* and receiving.                            */
+#define COMCHAR '`'      /* Control-7 on the trs-80 keyboard.         */
+#define SEND "S"         /* Disk operations, send,                    */
+#define RECEIVE "R"      /*   and receive.                            */
+#define BITMASK 255      /* Admit all 8 bits of received byte.        */
+#define LINE_SIZ 256     /* Size of buffer for disk writes.           */
+#define XON 17           /* Control Q (XON).                          */
+#define ECHO_RX_TX 0     /* Echo back to remote? no.                  */
+#define ECHO_KB_SC 1     /* Echo kb to screen?  yes.                  */
+#define ECHO_FRX_SC 1    /* Echo file input to screen? yes.           */
+#define ECHO_FTX_SC 1    /* Echo file output to screen? yes.          */
+#define RXSC_CR_LF 1     /* CRLF to screen for recieved CR? yes.      */
+#define TX_WAIT 1        /* Wait for XON after sending a line? yes.   */
+#define RX_TRIG 1        /* Send XON     after disk write? yes.       */
+
+FILE *stream ;           /* Just one channel, in or out.              */
+int diskop=0 ;           /* Disk ops: 0 (none), 1 (in), 2 (out).      */
+int line_wait=0 ;        /* Flag for CTRL-Q wait.                     */
+int eof_flag = 0 ;       /* EOF signal.                               */
+char rxbuf[RXBUFSIZ] ;   /* Input char buffer.                        */
+int txbuf[TXBUFSIZ] ;    /* Output char buffer, type int for EOF.     */
+int scptr,rxptr,txptr,kbptr ;       /* IO ring buffer pointers.       */
+
+void getstr(s) char *s ; /****** Get string from keyboard,  ***********/
+{ int c ;                /* terminated by space or newline.           */
+  for(c=getchar(); (c == ' ') || (c == '\t') ; c=getchar()) ;       /**/
+  for(; (c != ' ') && (c != '\n'); c=getchar() ) *s++ = toupper(c) ;
+  *s = '\0' ;                                                       /**/
+}
+                         /**** Line-buffered output to disk file. *****/
+void putcbuf(c,stream) int c ; FILE *stream ; /* Limited length.      */
+{ static int ix = 0 ; static char buf[LINE_SIZ] ;                   /**/
+  if( c == '\n' ) return ;               /* Ignore linefeed.          */
+  if( MSDOS && (c == '\r') ) c = '\n' ;  /* CR->LF if MS-DOS.         */
+  if( c != EOF ) buf[ix++] = c ;         /* Insert byte, bump ptr.    */
+  if( ((c == EOF) || (c == '\n') ||                                 /**/
+            (c == '\r')) && (ix > 0) || (ix >= LINE_SIZ - 1)  )     /**/
+    { buf[ix] = '\0' ;                   /* If lineend or EOF or      */
+      fputs(buf,stream) ;                /* long line, write.         */
+      if( RX_TRIG && (ix < LINE_SIZ - 1))  /* If XON is in use,       */
+         { while( !txready() )     ;     /* send XON as soon as tx    */
+           txbyte(XON) ;                 /* register is empty.        */
+         }                                                          /**/
+      ix = 0 ;                           /* Reset buffer ptr.         */
+    }
+}
+
+int dispatch()           /****** Keyboard command handler. ************/
+{ char kbuf[80] ;        /* Returns 1 if command done right, else 0   */
+  if ( (diskop == 2) && RX_TRIG )      /* If disk output buffered,    */
+              putcbuf(EOF,stream) ;    /* purge buffer.               */
+  if( diskop )                         /* If file open, close it.     */
+    { diskop=line_wait= 0 ;                                         /**/
+      fclose(stream) ;                                              /**/
+      return(1) ;                                                   /**/
+    }                                                               /**/
+  fputs("\nDISK COMMAND->",stderr) ;   /* Display prompt.             */
+  getstr(kbuf) ;                       /* Get command string.         */
+  if( strcmp(kbuf,SEND) == 0 )         /* Test if Send.               */
+     { getstr(kbuf) ;                  /* Get file name.              */
+       if( (stream=fopen(kbuf,"r")) != NULL )   /* Try to open.       */
+         { diskop = 1 ;                /* Sending in progress.        */
+           eof_flag = 0 ;              /* Clear flags to start.       */
+           line_wait = 0 ;                                          /**/
+           return(1) ;                 /* Return success signal.      */
+         }                                                          /**/
+     }                                                              /**/
+  if( strcmp(kbuf,RECEIVE) != 0 ) return(0) ; /* Test if receive.     */
+  getstr(kbuf) ;                       /* Get file name.              */
+  if( (stream=fopen(kbuf,"w")) == NULL ) return(0) ; /* Failure.      */
+  diskop = 2 ;                         /* Receiving in progress.      */
+  return(1) ;                          /* Return success signal.      */
+}
+
+void putch2(c) int c ;   /* putch ignoring LF, but CRLF for CR. ********/
+{ if(c == '\n') return ; putch(c) ; if(c == '\r') putch('\n') ; }   /**/
+
+void tx_insert(c) int c ; /**** FIFO buffer-access routines. **********/
+{ txbuf[kbptr] = c ; kbptr = ++kbptr % TXBUFSIZ ; }                 /**/
+                                                                    /**/
+int tx_extract()                                                    /**/
+{int c; c = txbuf[txptr] ; txptr = ++txptr % TXBUFSIZ ; return(c) ; }
+                                                                    /**/
+void rx_insert(c) int c ;                                           /**/
+{ rxbuf[rxptr] = c ; rxptr = ++rxptr % RXBUFSIZ ; }                 /**/
+                                                                    /**/
+int rx_extract()                                                    /**/
+{int c; c = rxbuf[scptr] ; scptr = ++scptr % RXBUFSIZ ; return(c) ; }
+
+main()      /************* Initialization, and polling loop. **********/
+{ int byte ;                           /* Use CTRL-C to exit.         */
+  setcom() ;                           /* Initialize communications.  */
+  scptr=rxptr=txptr=kbptr=diskop = 0 ; /* Zero pointers & flags.      */
+  while(1)                             /* Loop forever.               */
+    { if( rxready() )                  /***** Receive a byte?  ********/
+        { byte = rxbyte() & BITMASK ;                               /**/
+          if( byte == XON ) { line_wait = 0; continue ; }           /**/
+          if(ECHO_RX_TX) tx_insert(byte) ;                          /**/
+          rx_insert(byte) ;                                         /**/
+        }                                                           /**/
+      if( kbhit() )                    /***** Byte from kb? ***********/
+        { byte = getch() ;                                          /**/
+          if(byte == COMCHAR) { dispatch() ; continue ; }           /**/
+          if(ECHO_KB_SC) putch2(byte) ;                             /**/
+          tx_insert(byte) ;                                         /**/
+        }                                                           /**/
+      if( scptr != rxptr )             /***** Byte to screen? *********/
+        { byte = rx_extract() ;                                     /**/
+          if( diskop == 2 )            /* Byte to disk? */          /**/
+            { putcbuf(byte,stream) ;                                /**/
+              if(ECHO_FRX_SC) putch2(byte) ;                        /**/
+            }                                                       /**/
+          else if(RXSC_CR_LF) putch2(byte) ;                        /**/
+          else putch(byte) ;                                        /**/
+        }                                                           /**/
+                                      /****** Byte from disk? *********/
+      if( (diskop == 1) && !line_wait && !eof_flag && txready() )   /**/
+        { byte = getc(stream) ;                                     /**/
+          if(byte == EOF) eof_flag = 1 ;                            /**/
+          if(byte == '\n') byte = '\r' ;                            /**/
+          tx_insert(byte) ;                                         /**/
+          if(ECHO_FTX_SC) putch2(byte) ;                            /**/
+        }                                                           /**/
+                                      /***** Send a byte? *************/
+      if( (txptr != kbptr) && txready() )                           /**/
+       if( (diskop != 1) || !line_wait )                            /**/
+        { byte = tx_extract() ;                                     /**/
+          if((byte == EOF) && (diskop == 1)) {dispatch() ; continue ; }
+          txbyte(byte) ;                                            /**/
+          if((byte == '\r') && (diskop == 1) && TX_WAIT) line_wait = 1 ;
+        }                                                           /**/
+      if( comerror & 9 )      /**** Ring-buffer or overrun error? *****/
+        { fprintf(stderr,"\ncomerror %d\n",comerror) ; comerror = 0 ; }
+    }                                                               /**/
+}
+

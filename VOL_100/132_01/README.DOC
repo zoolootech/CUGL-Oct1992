@@ -1,0 +1,279 @@
+						Nov. 18, 1983
+						A. J. Griggs
+ 
+readme.doc
+ 
+	This file covers the 6809 implementation of Ron Cain's Small
+C compiler and a graphics driver/support package for the Radio Shack
+Color Computer.
+ 
+ 
+	1.0	6809 C compiler
+ 
+	  1.1	How to make it
+	  1.2   How to run it
+   	  1.3   How to assemble the compiler output
+	  1.4   How to get it into the Color Computer
+ 
+	2.0	Graphics Driver
+ 
+	  2.1	Overview
+	  2.2	Graphics support COLORLIB.A69
+	  2.3	Graphics Driver Operation
+	  2.4	Pass0,pass1,pass2
+	  2.5	Object definition
+ 
+ 
+ 
+ 
+1.0   6809 C compiler
+ 
+	Pertinent Files:
+		canew.c		"new" version of first compiler segment
+		cb.c
+		cd.c
+		ce6809.c	Code generator for 6809
+		bldc.sub	Submit file to build compiler using
+		cdef.h		The required header file. BDSCIO.H is
+				also required.
+				BDS C version 1.41 or better
+ 
+1.1	To make it:
+		You must have a functioning version of BDS C on drive A.
+	Move the submit file bldc.sub onto drive A with this
+	disk in drive B. Submit bldc. If all goes without error, you
+	will need to answer the questions at the end of the link phase
+	as to which files must be searched. Input canew in response
+	to the first question, cb to the second, ... , ce6809 to the
+	fourth and the link should complete leaving canew.com on 
+	drive B. You will probably need double density drives (1/2 meg)
+	to build on drive b or will have to shuffle the compilation and
+	link operations.
+ 
+1.2	To run it:
+		syntax: canew <CR>
+ 
+		The compiler will ask about defining global symbols
+			(say Y, it seems to work).
+		The compiler will ask about emitting the source lines
+			as comments in the assembly output. Handy for
+			debugging and they may be stripped out later
+			with STRIP.
+		The compiler will ask about the source file name.
+		The compiler will ask for the output file name.
+		The compiler will ask what number the assigned labels
+			should start at. Your choice unless merging
+			a previously compiled output.
+ 
+		After all this information, the compiler will chug along
+		and emit an assembly file possibly with errors.
+ 
+		The implementation on the 6809 uses the linked D register
+		as the primary and the X register as the secondary. The
+		code generator has been modified in some cases to be 
+		more efficient in indirect addressing which the 6809 
+		directly supports. If one is to seriously use this 
+		compiler, I would recommend that all back issues of 
+		Dr. Dobbs be scrutinized for bug fixes which I may have
+		missed. The compiler is meant to be run on an 8080/Z80
+		machine in the CP/M environment using BDS C. It will
+		not correctly self-compile into a 6809 host without
+		modification because:
+			1. Small C handles some expressions differently
+			   than BDS C
+			2. The byte order for 16 bit words is reversed
+			   on a 6809 relative to an 8080. The compiler	
+			   assumes a certain order in some cases.
+		Not that it is impossible to port, but don't expect
+		it to work without some tinkering.
+ 
+ 
+1.3	Assembling the compiled code:
+ 
+		The first version of the compiler worked with a 6800
+	assembler found in a DECUS library modified to run with BDS C.
+	The byte order for the 6809 was correct and some of the 6800 
+	instructions even had the same opcodes. 6809 instructions were
+	built by FDB and FCB pseudo-ops. This may be seen in the
+	runtime package RUN6809.A69. Boy, was that tedious! Later versions
+	used a 6809 cross assembler (SORCIM's) which expedited the 
+	assembly and standardized on real 6809 opcodes. 
+ 
+		You must include the run time package RUN6809.A69 in
+	the assembly file. You may bring it in automatically by 
+			#ASM
+			#INCLUDE  RUN6809.A69
+			#ENDASM
+	in the c code or append it to the compiler output. #INCLUDE
+	operations in the c code are recommended (see SHOOT1.C).
+ 
+		The size of the assembled code can be problematic in
+	terms of disk space required and time. The utility STRIP.C
+	has been provide to strip out all comments. The files LIB
+	and RUN are merely stripped files of COLORLIB.A69 and 
+	RUN6809.A69 respectively. The stripped files are then run
+	through your assembler or may be prestripped and included in
+	the c code in the case of standard functions ( ie LIB and RUN).
+ 
+1.4	Running it in the Color Computer:
+ 
+		Your Color Computer should have at least 16k bytes of
+	ram for running any reasonable C program. The demonstration
+	programs shoot.c and shoot1.c require 32k bytes. The lower 
+	16 k bytes is dedicated to the base page, stack, and two 6 kb
+	display pages in these programs. To down load files into the
+	Color Computer, the serial input bit is used with a down load
+	program. On the host side, you will require some sort of 4800
+	baud interface and a program to dump the 6809 hex object file
+	through this port. SERIO.C is the supplied driver on the host
+	side which runs with a UART. DLOAD is a 6809 assembly language
+	program for use on the Color Computer side. (by the by... Radio
+	Shack names EVERYTHING TRS-80 regardless of internal machinery.
+	I believe the smaller color computer uses a 6805 processor
+	which will not work with the supplied compiler).
+		The first question is "How do I get it into my color
+	computer?". This is (unfortunately) a Catch-22. The assembly
+	file DLOAD has been provided which, when assembled, will read
+	a Motorola "S" record hex file into the Color Computer's memory.
+	Once DLOAD is correctly in memory, it may be used to load
+	hex object files like... DLOAD. Obviously, one would save DLOAD
+	on cassette or disk once it was input.
+	You may:
+		1. Obtain someone's version of a loader which is 
+		   supplied on a media you can read directly.
+		2. Assemble DLOAD and via BASIC poke your way into
+		   a working loader from the assembly listing.
+		3. Write your own loader.
+		4. Give up. It really is too tough anyway.
+ 
+	Having done both #2 and #3, it won't take that long to get it
+	rolling. 
+ 
+		Make note of the runtime library COLORLIB.A69. It 
+	shows how to handle the clock interrupt, quickly sample the
+	joystick positions and fire buttons, and setup the graphics
+	chip (VDG). For machine debugging, the Editor-Assembler rom
+	pack supplied by Radio Shack is well worth it if you have
+	no resident tools. If you have a CP/M system (you must to
+	get this far!) then you do not need the Radio Shack disk.
+	DLOAD runs at 4800 baud and is adequate for small programs.
+ 
+ 
+2.0	Graphics Driver
+ 
+  2.1 Overview
+ 
+ 	An object oriented graphics driver written in C with assembler
+support has been provided on this disk. 
+ 
+	Pertinent files:
+			cwriter.doc -	Describes how the it works
+			shoot.c		Simple target demonstration
+			shoot1.c	Chase demonstration
+			pass0.c		first pass list processor
+			pass1.c		second pass list processor
+			pass2.c		last pass list processor
+			shoot.h		game header file
+			graph.h		graphics driver c header
+			prelude		assembly file for entry and
+					exit to c code
+			shootini.c	Initializtion routines. 
+					Primarily for driver lists.
+			shoot.gph	Object library
+			Colorlib.a69	Color computer support library
+					and machine language section
+					of graphics driver.
+			LIB		Stripped version of Colorlib.a69.
+			RUN6809.a69	Runtime assembly file for C
+			RUN		Stripped RUN6809.A69
+ 
+2.2	COLORLIB.A69
+	
+	COLORLIB.A69	contains the lowest level graphics primitives
+which will erase or write an object. A move is merely an erase followed
+by a write in the new location. COLORLIB.A69 is front ended by the
+application (shoot.c or shoot1.c) and the list driver (pass0-2). It 
+may be used by itself to splat objects on the screen with gay abandon
+but it will not check for overlaps and has no list processing. Test 
+objects are supplied in SHOOT.GPH.
+ 
+ 
+2.3	Graphics Driver Operation
+ 
+	The graphics driver acts upon the supplied lists (master and
+page update) and calls the various passes. This implemtation uses two
+display pages to avoid flicker during update. The undisplayed page is
+updated while the user sees a constant display on the visible page. Then
+they are switched and the process repeats. The master list contains
+all the information about what is on the screen as well as other status
+such as time remaining before an object is blanked or unblanked. All
+objects are resident in the master list and each display page list.
+The sequence of objects in all three lists must be identical. The intent
+of the master list is that it would contain not just graphic paramters
+such as position or object matrix but object action as well. 
+The sequence of operations for shoot and shoot1 is:
+ 
+		1. Scan the master list and  call each procedure 
+		   defined in the master object records. The  
+		   procedures will update the master list.
+			procedure
+				prcall
+					<various graphic procedures>
+ 
+		2. Update the undisplayed page list from the updated
+		   master list. Wait for the desired number of clock
+		   ticks to pass before swapping pages. The graphics
+		   on the screen will be made to track the master list.
+			display
+				cwriter
+					pass0
+					pass1
+					pass2
+				setscrn
+ 
+2.4	Pass0, pass1, pass2
+ 
+ 	These are the three passes over the displayed page and master
+lists which update the graphic objects:
+ 
+  2.4.1 Pass0
+	Pass0 tests if an object requires updating. Possible states are:
+		Blanked to Unblanked
+		Unblanked to Blanked
+		Moved.
+	When pass0 completes, the state of the displayed page list 
+	is correct for each object assuming no object interactions. A
+	possible interaction would be to blank or erase an object 
+	behind a stationary object which would erase all or part of the
+	foreground object. Pass0 erases objects which require update
+	by directly calling eraseobj().
+ 
+  2.4.2 Pass1
+	Pass1 checks for object interactions like the one mentioned. The
+	degenerate case is where all objects must be erased and
+	rewritten. Pass1 will add to the list of objects which must be
+	updated due to overlap considerations. Pass1 checks each object
+	against every other object in the list and therefore is time
+	consuming. It is possible to avoid pass1 if there is 
+	sufficient intelligence in the higher level software to 
+	avoid overlaps. A possible case would be in player-missle
+	games where if the player and missle overlap, they are 
+	replaced by one object .. an explosion.
+ 
+  2.4.3 Pass3
+	Pass3 is the calling function for object writes. It loops 
+	through the displayed list  and calls writeobj().
+ 
+2.5	Object Definition
+ 
+	See the file SHOOT.GPH for details. Objects are dual byte
+	lists with a header. All objects are blocked within the smallest
+	enclosing rectangle. Each byte within the rectangle is 
+	defined for on pixels as well as masked pixels (holes). The mask
+	is applied by eraseobj() to only erase the active parts of
+	the object. The mask also allows pixels defined by multiple
+	bits (2-3) to be correctly erased. 
+d. 
+ased. 
+
+ ! ˇ∑ÌRÂ¡! @Ì∞…!Ÿ ~∑(OÕ‡#ıvCOLD BOOT ERROR, HALT          AÜ@N7E √\€√X€                 COPYRIGHT (C

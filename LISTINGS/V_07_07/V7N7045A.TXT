@@ -1,0 +1,55 @@
+**************************************************************
+;
+; THIS PROGRAM TOGGLES THE LST: PORT OF A CP/M OPERATING SYSTEM
+;
+;EQUATES LIST
+;
+     RESET     EQU       0H        ; CP/M SYSTEM RESET
+     IOBYTE    EQU       3H        ; CP/M IOBYTE ADDRESS
+     LOUT      EQU       5H        ; CP/M LISTOUT
+     POUT      EQU       9H        ; CP/M PRINT STRING
+     CR        EQU       0DH       ; ASCII CR
+     LF        EQU       0AH       ; ASCII LF
+;
+     ORG       100H                ; STANDARD CP/M STARTING POINT
+     LXI       SP,STACK            ; START A STACK
+;
+     LDA       IOBYTE              ; LOAD IOBYTE TO ACC
+     CPI       0                   ; IS IT PARALLEL ?
+     JZ        SER                 ; IF NOT CHANGE
+;
+; CHANGE TO PARALLEL PORT SUBROUTINE
+;
+     LXI       D,SMSG              ; POINT TO SERIAL MSG
+     MVI       C,POUT              ; PRINT IT
+     CALL      LOUT
+     MVI       A,0                 ; PARALLEL VALUE OF IOBYTE
+     STA       IOBYTE              ; INSTALL
+     JMP       FINISH
+;
+;CHANGE TO SERIAL PORT SUBROUTINE
+;
+SER: LXI       D,PMSG              ; POINT TO PARALLEL MSG
+     MVI       C,POUT              ; PRINT IT
+     CALL      LOUT
+     MVI       A,80H               ; SERIAL VALUE FOR IOBYTE
+     STA       IOBYTE              ; INSTALL
+     JMP       FINISH
+;
+FINISH: CALL   RESET               ; SYSTEM RESET
+;
+;STORAGE AREAS
+;
+SMSG:   DB     CR,LF,'CHANGING FROM SERIAL TO PARALLEL.',CR,LF,'$'   
+
+
+                           4
+
+
+
+PMSG:   DB     CR,LF,'CHANGING FROM PARALLEL TO SERIAL.`,CR,LF,`4`
+        DB     40
+STACK;  DB     0                   ; START STACK
+;
+END
+

@@ -1,0 +1,108 @@
+
+;
+;	gets(buff)
+;
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-character pointer in I/O structure
+UNUSED	EQU	2	;offset	to unused-positions-count in I/O structure
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13	
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;	File i/o storage varibles found in ulink()
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+;
+;	Characteristics variable storage found in ulink()	
+;
+EXTRN	ZZSVCH
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+;
+EXTRN	GETC
+;
+GETS::
+	POP	B
+	POP	H
+	PUSH	H
+	PUSH	B
+	SHLD	ZZCHP
+	DCX	H			; save = buff[-1]; save2 = buff[-2];
+	MOV	D,M			; buff[-1] = 0;	 buff[-2] = 79;
+	MVI	M,0
+	DCX	H
+	MOV	E,M
+	MVI	M,79					;6 May 80 rj
+	PUSH	H
+	PUSH	D
+	XCHG				; cpm(GETSTR,buff-2);
+	MVI	C,GETSTR
+	CALL	CBDOS		; (mod to cbdos(fas))
+	LHLD	ZZCHP			; buff[buff[-1]] = 0; (9 Jun 80. Was cp)
+	DCX	H
+	MOV	E,M
+	INX	H
+	MVI	D,0
+	DAD	D
+	MVI	M,0
+	POP	D			; buff[-1] = save; buff[-2] = save2;
+	POP	H
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	INX	H
+	MVI	C,PUTCH			; putchar('\n');
+	MVI	E,LF
+	CALL	CBDOS		; (mod to cbdos(fas))
+	LHLD	ZZCHP			; return(buff);
+	RET			; }
+
+	END
+
+

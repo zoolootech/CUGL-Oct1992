@@ -1,0 +1,169 @@
+;-----------------------------------------------------------------------;
+; INITVID.ASM,	Written Sept 1991 by Jonathan Wood, SoftCircuits	;
+;									;
+; Routines to determine host display adapter. Assembled using MASM 6.0.	;
+; To assemble for different C memory models, modify the .MODEL		;
+; directive to the correct model and recompile. To interface with other	;
+; languages, change the language specifier on the same line. Depending	;
+; on the language, you may need to modify the way parameters are	;
+; accessed and which registers are saved.				;
+;-----------------------------------------------------------------------;
+
+	.MODEL	small,c			;Specify memory model/language
+
+MONO_SEG	EQU	0B000h		;Standard display segments
+COLOR_SEG	EQU	0B800h
+
+	.DATA
+video_segment	DW	COLOR_SEG	;Display memory segment address
+video_type	DB	0FFh		;Display combination code
+video_iscolor	DB	01h		;1 = color, 0 = mono
+video_mode	DB	03h		;Video display mode
+video_page	DB	00h		;Video display page
+video_rows	DB	25h		;Number of text rows
+video_cols	DB	80h		;Number of text columns
+
+	.CODE
+;-----------------------------------------------------------------------;
+; Determines the active display adapter and various display parameters.	;
+;									;
+; Prototype:	void initvideo(void);					;
+;									;
+;-----------------------------------------------------------------------;
+initvideo	PROC USES si di bp
+	mov	ah,0Fh			;Read video information
+	int	10h
+	mov	video_mode,al		;Video display mode
+	mov	video_page,bh		;Video display page
+	mov	video_cols,ah		;Number of text columns
+	mov	video_segment,MONO_SEG	;Assume mono display for now
+	mov	video_iscolor,0
+	int	11h			;Read equipment list
+	and	al,00110000b		;Isolate video bits
+	cmp	al,00110000b		;Was it mono?
+	je	find_adapter		;Yes
+	mov	video_segment,COLOR_SEG	;Else set color display
+	mov	video_iscolor,1
+find_adapter:
+	call	ps2_state		;Read PS/2 video state
+	jnz	adapter_set		;Done if supported
+	call	ega_state		;Read EGA video state
+	jnz	adapter_Set		;Done if supported
+	call	cga_state		;Determine CGA or MDA
+adapter_set:
+	sub	ax,ax			;Adjust display segment for
+	mov	es,ax			; current video page
+	mov	ax,es:[044Eh]
+	mov	cl,4
+	shr	ax,cl
+	add	video_segment,ax
+	ret
+initvideo	ENDP
+
+;-----------------------------------------------------------------------;
+; This procedure attempts to access PS/2 compatible ROM BIOS video	;
+; services. The zero flag is set if they aren't supported.		;
+;									;
+;	Output:	zf	Zero flag set if PS/2 compatible ROM BIOS is	;
+;			not present.					;
+;									;
+;-----------------------------------------------------------------------;
+ps2_state	PROC	NEAR
+	mov	ax,1A00h		;Read PS/2 display code
+	int	10h
+	cmp	al,1Ah			;Was function supported?
+	lahf				;Toggle zero flag (zf = 1 if
+	xor	ah,01000000b		; al is not equal to 1Ah)
+	sahf
+	jz	no_ps2			;PS/2 BIOS not present
+	mov	video_type,bl		;Save active display code
+	mov	ax,1130h		;Read font code
+	sub	bh,bh			;Font code (not used)
+	int	10h
+	inc	dl			;Adjust row count (clears zf)
+	mov	video_rows,dl		; and save
+no_ps2:
+	ret
+ps2_state	ENDP
+
+;-----------------------------------------------------------------------;
+; If PS/2 compatible ROM BIOS is not present, this procedure attempts	;
+; to access the EGA ROM BIOS video services.				;
+;									;
+;	Output:	zf	Zero flag set if EGA not active			;
+;									;
+;-----------------------------------------------------------------------;
+ega_state	PROC	NEAR
+	mov	ah,12h			;Read EGA video state
+	mov	bl,10h
+	int	10h
+	cmp	bl,10h			;Was function supported?
+	je	no_ega			;No, EGA BIOS not present
+	cmp	video_iscolor,bh	;Is EGA the active display
+	je	no_ega			;No, find active display
+	add	bh,4			;Else calculate display code
+	mov	video_type,bh		; and save
+	mov	ax,1130h		;Read font code
+	sub	bh,bh			;Font code (not used)
+	int	10h
+	inc	dl			;Adjust row count (clears zf)
+	mov	video_rows,dl		; and save
+no_ega:
+	ret
+ega_state	ENDP
+
+;-----------------------------------------------------------------------;
+; This procedure is called if neither PS/2 or EGA comaptible ROM BIOS	;
+; was active. It simply assumes 25 text rows and sets video_type to MDA	;
+; or CGA depending on the value of video_iscolor.			;
+;-----------------------------------------------------------------------;
+cga_state	PROC	NEAR
+	mov	video_rows,25		;If we get here, must be 25 rows
+	mov	video_type,01h		;Assume MDA display adapter for now
+	cmp	video_iscolor,0		;Is it mono?
+	je	no_cga			;Yes
+	mov	video_type,02h		;Else set CGA display adapter
+no_cga:
+	ret
+cga_state	ENDP
+
+;-----------------------------------------------------------------------;
+; This routine fills a buffer with the current video parameter values.	;
+; Note: initvideo() must be called first in order for this procedure to	;
+; return meaningful values.						;
+;									;
+; Usage:	void getvconfig(struct video *);			;
+;									;
+; Where:	struct video {						;
+;			int segment;     				;
+;			int type;		        		;
+;			int iscolor;			        	;
+;			int mode;				        ;
+;			int page;				        ;
+;			int rows;				        ;
+;			int columns;				        ;
+;		};							;
+;									;
+;-----------------------------------------------------------------------;
+getvconfig	PROC USES si di, buffer:PTR
+	cld
+	IF @DataSize
+	les	di,buffer		;Load far struct pointer into es:di
+	ELSE
+	mov	di,buffer		;Load near struct pointer into es:di
+	push	ds
+	pop	es
+	ENDIF
+	mov	si,OFFSET video_segment	;ds:si points to display variables
+	lodsw				;Copy video segment to buffer
+	stosw
+	mov	cx,6			;Copy 6 more byte values
+	sub	ah,ah			;Clear high byte of ax
+copy_loop:
+	lodsb				;Load byte value in al
+	stosw				;Copy word value to buffer
+	loop	copy_loop
+	ret
+getvconfig	ENDP
+
+	END

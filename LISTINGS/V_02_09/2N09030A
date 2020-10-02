@@ -1,0 +1,145 @@
+; DEVICE.ASM
+; Replaces C Startup code for Turbo C 2.0
+; C++ 1.0 With Device Driver code
+
+; define the standard Turbo C segments 
+; in their correct order
+_TEXT	SEGMENT BYTE PUBLIC 'CODE'
+        EXTRN _MAIN:NEAR
+        PUBLIC _REQUEST_OFFSET,_MENU_CTL_END,_LEAVE
+_TEXT   ENDS
+
+_DATA	SEGMENT WORD PUBLIC 'DATA'
+_DATA	ENDS
+
+_BSS	SEGMENT WORD PUBLIC 'BSS'
+_BSS	ENDS
+
+; Add a "HEAP" segment so that we can cheat and dynamically
+; allocate memory even though we have a driver format.
+
+_BSSHEAP SEGMENT PARA PUBLIC 'HEAP'
+   public __ENDDATA
+   __ENDDATA label byte ;hook for dynamic memory allocation
+_BSSHEAP ENDS
+
+DGROUP  GROUP   _TEXT, _DATA, _BSS, _BSSHEAP
+
+_TEXT	SEGMENT
+        ORG     00H
+        assume cs:_TEXT
+
+BEGIN:
+
+;************* DEVICE_HEADER *************;
+
+POINTER        DD      -1        ;No more drivers
+ATTRIBUTE      DW      08000H    ;Character type 
+DEVICE_STRAG   DW      STRATEGY
+DEVICE_INT     DW      INTERRUPT
+DEVICE_NAME    DB      "MENUCTL$" ;Name for DOS
+
+;-------------------------;
+
+REQUEST_HEADER STRUC
+
+HEADER_LENGTH  DB      ?
+UNIT_CODE      DB      ?
+COMMAND_CODE   DB      ?
+STATUS         DW      ?
+RESERVED       DQ      ?
+
+REQUEST_HEADER ENDS
+
+DONE           EQU     0000000100000000B   ;Status codes.
+UNKNOWN_CMD    EQU     1000000000000011B
+
+;parameter save area
+
+_REQUEST_OFFSET DW      ?
+REQUEST_SEG    DW      ?
+STACK_SEG      DW      ?
+STACK_PTR      DW      ?
+FIRST_TIME     DB      -1
+
+;              CODE AREA
+;              ---------
+
+;--------------------------------------------------------;
+; The only task of the strategy procedure is to save the ;
+; pointer to the request header.                         ;
+;--------------------------------------------------------;
+
+STRATEGY       PROC    FAR
+
+               MOV     CS:_REQUEST_OFFSET,BX    
+               MOV     CS:REQUEST_SEG,ES       
+               ;Request header address is passed in ES:BX.
+               RET
+
+STRATEGY       ENDP
+
+;--------------------------------------------------------;
+; The interrupt procedure will be called immediately     ;
+; after the strategy.                                    ;
+;--------------------------------------------------------;
+
+INTERRUPT      PROC    FAR
+
+  PUSH    AX  ;Responsible for all registers.
+  PUSH    BX
+  PUSH    CX
+  PUSH    DX
+  PUSH    DS
+  PUSHF
+
+  MOV     DS,CS:REQUEST_SEG       
+  MOV     BX,CS:_REQUEST_OFFSET
+          ;Retrieve request header pointer
+  OR      STATUS[BX],DONE     ;Tell DOS we are done.
+  CMP     COMMAND_CODE[BX],0  ;Is it INIT command?
+  JNZ     WRONG_CMD           ;If not, set error and leave
+  CMP     CS:FIRST_TIME,0     ;See if first time through
+  JZ      WRONG_CMD           ;No, set bad and leave
+  MOV     CS:FIRST_TIME,0     ;Reset first time flag
+  JMP     SHORT MAKE_STACK    ;Everything ok, do our stuff
+
+WRONG_CMD:     
+  OR      STATUS[BX],UNKNOWN_CMD  ;Else, exit with confused
+  JMP     SHORT DEVICE_EXIT       ; message to DOS.
+
+MAKE_STACK:    
+  MOV     AX,CS                   ;get cs
+  MOV     DS,AX                   ;put it in ds
+  MOV     STACK_SEG,SS            ;Save DOS stack.
+  MOV     STACK_PTR,SP
+  CLI
+  MOV     SS,AX                   ;Make new stack.
+  MOV     SP,0FFFEH
+  STI
+
+  JMP     _MAIN                   ;Go do our stuff.
+
+_LEAVE:        
+  CLI
+  MOV     SS,CS:STACK_SEG          ;restore stack seg
+  MOV     SP,CS:STACK_PTR
+  STI
+
+DEVICE_EXIT:   
+  POPF                       ;Restore rest of registers.
+  POP     DS
+  POP     DX
+  POP     CX
+  POP     BX
+  POP     AX
+  RET                        ;Far return back to DOS.
+
+INTERRUPT      ENDP
+
+_MENU_CTL_END LABEL   WORD 
+      ; mark the end of DEVICE.ASM in memory
+
+_TEXT   ENDS
+
+	END	BEGIN

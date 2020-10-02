@@ -1,0 +1,94 @@
+         EST:  finding the ..est file(s) on your disk.
+
+The EST program finds the largEST, smallEST, oldEST, newEST files.  It was
+suggested by a colleague who needed to know which were the largest files on
+his hard disk.  He wanted to identify a set of files which might be potential
+candidates for deletion to free up space on his disk.  No existing utility
+(that we knew of) provided this information so I decided to write one (nature
+abhors a vacuum).
+
+This simple utility illustrates the use of a number of powerful functions from
+the Microsoft C run-time library.
+
+* _splitpath
+* _makepath
+* _dos_findfirst
+* _dos_findnext
+
+
+_splitpath breaks up a path specification into its component parts (drive,
+directory, file name, and extension).  _makepath reassembles a path name from
+supplied parts.  If the NULL pointer is supplied as a pointer to one of the
+component parts of the path, both functions will ignore that component in
+building or decomposing a path.
+
+EST uses _splitpath and _makepath to separate the file name and extension from
+the supplied path parameter.  If no path was given, the default is "*.*" in
+the current directory.
+
+Path names in MS-DOS are essentially ambiguous.  You cannot tell by scanning
+the name whether it represents a file or a directory.  Therefore, if you
+specify
+
+          EST/o guess
+
+EST cannot tell whether you want just file name 'guess' or the set
+'guess\*.*'.  To remove this ambiguity, we require that any path which is a
+directory must end with the back slash ('\').
+
+
+Finding Files
+
+_dos_findfirst finds the first file whose name and attributes match supplied
+ambiguous name and attribute parameters.  Unfortunately, the documentation
+does not clearly state how to find a subdirectory.  For the path name, do you
+specify:
+
+     \MYDIR or \MYDIR\* or \MYDIR\*.* or what?
+
+It turns out that "\MYDIR\*" and \MYDIR\*.*" will both find subdirectories of
+MYDIR.  All of the above will work as parameters to DIR from the DOS prompt.
+Only "DIR \MYDIR\*." will select directories and other files having no
+extension.  However, both "\MYDIR\*" and "\MYDIR\*." will return files with no
+extension when used as parameters to _dos_findfirst.
+
+The documentation for _dos_findfirst implies that only files or directories
+matching the supplied attributes will be returned.  Actually, the logic for
+building the set of entries passed back by these functions is:
+
+1.   Add to the set all files which match the ambiguous path name (including
+     system, hidden, directory and volid files).
+2.   If _A_HIDDEN is not chosen, remove all hidden files from the set.
+3.   If _A_SYSTEM is not chosen, remove all system files from the set.
+4.   If _A_SUBDIR is not chosen, remove all subdirectory files from the set.
+5.   If _A_VOLID is chosen alone, remove all but the volid file.
+6.   If _A_VOLID is not chosen, remove the volid file.
+
+The attributes _A_RDONLY and _A_ARCH have no effect on directory searches.
+That is, if you are searching for all files which have the _A_RDONLY or
+_A_ARCH bit set in the attribute, you must test each file returned for this
+condition, _dos_findfirst and _dosfindnext will not select these out for you.
+The only directory search which selects only the file which exactly matches
+the attribute of the search is _A_VOLID.  However, if _A_VOLID is used in
+combination with any of (_A_HIDDEN, _A_SYSTEM, _A_SUBDIR), it will return all
+matching files plus the volid file.  Therefore, _dos_findfirst and
+_dos_findnext may return many files which have attributes which do not match
+those you are searching for.  So, you must test the attributes of each
+returned file to ensure that a true match is made.
+
+
+Searching Subdirectories
+
+Unfortunately, to find all subdirectories in a directory requires a separate
+search since the first criterion is that the ambiguous file reference must be
+matched.  As noted above, subdirectories may be matched by "*".  The function
+findfiles will call itself recursively if subdirectory search is required and
+one is found.  This is like a depth-first tree search.  Each file found must
+be tested for the _A_SUBDIR attribute since more than just subdirectories will
+be returned.
+
+Once no more subdirectories are found, findfiles begins another search, this
+time using the file path specification supplied when est was invoked.  All of
+the files returned are tested for inclusion in the sets oldest, newest,
+largest, smallest as specified by est options.
+

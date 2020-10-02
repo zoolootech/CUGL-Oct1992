@@ -1,0 +1,164 @@
+Reprinted from: Micro/Systems Journal, Volume 1. No. 2. May/June 1985   
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Subscriptions are $20/yr, $35/2yrs domestic (published bimonthly)
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+THE C FORUM  
+
+by Don Libes
+
+Writing a translation program in C
+
+     This month, I would like discuss building a translation 
+program using the C language that is in the style of a UNIX 
+filter.  I mean it to be educational rather than practical, so I 
+have forsaken completeness and instead concentrated on ideas and 
+program readability.  My intent is that you should be able take 
+what I've given you here and build on it.
+     My example will be a program to "undecipher" WordStar 
+document files.  It's been a while since I've used WS, but for a 
+long time it was my primary tool for word processing.  More and 
+more, I find myself using other editors and text processors.  
+Some of the reasons are:
+
+1) WS doesn't support high quality devices such as laser 
+printers.
+
+2) WS doesn't support bitmapped screens.
+
+3) WS isn't as sophisticated as newer editors and text 
+processors.
+
+4) WS isn't integrated with other programs that use text files.
+
+     WS's lack of integration is one of its more annoying traits.  
+If you're like me, you've probably typed in a good many documents 
+through WS.  Now, say we want to use a WS-text file as input to 
+another program or even another computer system to be integrated 
+into a non-WS document.  We've got problems.
+     If you've ever printed a raw WS document file on your screen 
+(without going through WS), you will have already noticed that 
+there is more in the file than just the text.  If you haven't, 
+try it.  You will notice that most of the text appears, but some 
+of the characters are wrong and there are a lot of non-printable 
+characters embedded in the file.
+     All the information is there, but WS uses the high-order bit 
+in the byte for information as well as including extra bytes for 
+print control characters.  Unfortunately, MicroPro will not give 
+out the format of their WS document files, but don't let that 
+disuade you.  It's not that difficult to decipher.
+     Due to space limitations, I simply can't cover all the 
+goodies in WS. I've restricted myself to the things you are most 
+likely to see, however, and following my lead, it should not be 
+hard to extend what I've given you.
+     If you want to probe your own files, try loading them into 
+the debugger and dumping the file so that you can see the byte 
+codes alongside the ASCII characters.  After some studying it 
+should become clear.  This is what I found:
+
+1. Some characters have their most significant bit (MSB) on.  
+This is used to denote several things (see below).
+2. Lines are terminated with cr-lf sequences.
+
+3. Dot cmds (e.g. ".op") appear in the file verbatim.
+
+4. Blanks, with the MSB on, are soft, meaning they have been 
+added automatically by WS to pad out the line.
+
+5. Hyphens, with the MSB on, are soft, having been added by a 
+rejustify operation (although potentially with user guidance).
+
+6. Linefeeds, with the MSB on, are soft, having been added 
+automatically.  Hard linefeeds denote the end of a paragraph.
+
+7. WS print control characters (e.g. ^B) appear in the file 
+verbatim.
+
+8. Tabs do not appear in the file, but are stored as blanks.
+
+9. All other characters appear as themselves in the file.  
+Characters at the ends of words in paragraphs that have been 
+justified have their MSB on.
+     Assuming that we want to transfer this file to another 
+computer system, we must change the file so that it looks like an 
+ordinary text file.  This means that we have to do things like 
+get rid of the high-order bits and remove the WS-dependent 
+directives like the dot commands and the print control 
+characters.
+     Accompanying this column is a program I've written that 
+handles the basic problems of "unsofting" a WS document file.  
+Most of the more esoteric features aren't handled.  However, 
+given the start, you should be able to easily add the code to 
+handle any additional conditions you find really necessary.
+     You can also customize it to your application.  With some 
+simple changes it could be used to generate troff files, for 
+example.  The conventions I have chosen to use actually mimic 
+"wsconv", a public domain program from the PC/BLUE software 
+library (distributed without source, unfortunately), author 
+unknown.
+     I'll briefly go through some of the more interesting parts 
+of the program.  I will refer to source lines by the the numbers 
+running down the left hand side of the program listing.
+     The program is written in the style of a typical UNIX 
+filter.  It copies its input to its output with appropriate 
+modifications.  Internally, the program sits in a loop, reading 
+one character at a time.  Based on the character attributes and 
+the current state, the character is printed out and/or the state 
+is changed.
+     Lines 13-17 define and use #CONTROL.  This macro generates 
+control character values given the corresponding letter.
+     Lines 19-26 define the conventions for handling WS print 
+control characters.  For example, an underlined string will print 
+out as <_string_>.  We actually use this convention when sending 
+files to our typesetter.
+     Line 28: Anything declared as "boolean" should only have the 
+value TRUE or FALSE.  This is purely a semantic interpretation 
+since "boolean" is typedef'ed to "int".
+     Lines 33-46 define several state variables that will be used 
+to make decisions along with the next character.
+     Lines 53-56: Our first problem is turning off the 8th bit on 
+all characters.  This is done by #toascii, defines in <types.h>.  
+To remember that the bit was on, we use msb_was_set.
+     Lines 57-61: WS terminates lines with a crlf.  Assuming our
+system terminates lines with a nl (like a UNIX system), we can just
+disregard the cr.  If a hyphen added by a justify operation is
+encountered, we attempt to remove it by delaying line wrap until we see
+the real end of the current word.
+     Lines 62-64: For lack of space, I have chosen to ignore 
+handling dot commands.  They can be handled here without any 
+problems.
+     Lines 65-75: Spaces come in two flavors - soft and hard.  
+Hard ones are real, but soft ones have been added by a 
+justification operation.  Tabs are denoted by hard spaces, so 
+we'll try to undo that too.
+     Line 79 recognizes the start of a dot command.
+     Lines 82-85: Handle WS print control characters.  wscntrl() 
+does everything.  iswscntrl() just recognizes the characters.
+     Lines 86-88: Remove all the other ws control characters we 
+are too lazy to correctly handle.
+     Lines 89-104: If the character hasn't been handled at this 
+point, its got to be text, which is just passed through.  If 
+we're at the beginning of a word, we also perform the 
+translation of spaces back to tabs here by calling space_out().
+     Lines 108-130 define space_out().  This routine takes a 
+source and destination column, and prints out the least number 
+of tabs and spaces to move the cursor to the destination column.
+     Lines 152-180 define wscntrl().  This translates control 
+character directives into printable versions.
+
+     I encourage readers to write to me about topics or problems 
+that you want to know about.  I want this column to reader 
+driven.  Write to me care of Micro/Systems Journal, Box 1192, 
+Mountainside NJ 07092.
+
+Source code will be found in a separate file.
+

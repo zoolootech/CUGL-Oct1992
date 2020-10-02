@@ -1,0 +1,148 @@
+DEFINT A-Z
+REM The TYPE -- END TYPE in Basic is the similar
+REM as a structure in C.
+
+TYPE RegType
+	 ax    AS INTEGER
+	 bx    AS INTEGER
+	 cx    AS INTEGER
+	 dx    AS INTEGER
+	 bp    AS INTEGER
+	 si    AS INTEGER
+	 di    AS INTEGER
+	 flags AS INTEGER
+END TYPE
+
+REM The DECLARE SUB Interrupt below is required because
+REM it is an external call to the Basic Library.
+REM In C or Assembly it would be defined as EXTERN
+REM In QuickBasic or Professional Basic the DECLARE
+REM is the same as ProtoTyping in C.
+
+DECLARE SUB Interrupt (intnum AS INTEGER, inreg AS RegType, outreg AS RegType)
+DECLARE SUB PrintScreen ()
+DECLARE FUNCTION CheckPrinter% ()
+CONST False = 0, True = NOT False
+REM clear the screen
+CLS
+REM call to function to ok printer
+ok = CheckPrinter
+IF NOT ok THEN
+	PRINT "Printer Error. Screen Print not attempted."
+ELSEIF ok THEN
+	REM put something on the screen for test.
+	FOR i = 1 TO 5
+		PRINT "Lucy"    'My dog's name.
+	NEXT
+	CALL PrintScreen
+	REM check for error on Screen Print
+	REM set to low memory
+	DEF SEG = 0
+	REM peek byte @ 0050:0000
+	REM error codes
+	REM 0 = ok
+	REM 1 = Printing in Progress
+	REM 255 = Error on previous Screen Dump
+	status = PEEK(&H500)
+	REM restore segment
+	DEF SEG
+	SELECT CASE status
+		CASE 0, 1
+			PRINT "Screen Print Successful."
+		CASE 255
+			PRINT "Error occured. Screen Not Printed"
+	END SELECT
+END IF
+END
+
+'
+'
+'
+FUNCTION CheckPrinter
+	DIM inregs AS RegType, outregs AS RegType
+	REM use Bios Interrupt 17h , Service 2
+	REM on entry ah = 2
+	REM          dx = Printer
+	REM Printer Number  0 = lpt1, 1 = lpt2, etc.
+	REM to set ah to 2
+	inregs.ax = &H200
+	REM using lpt1 which is 0
+	inregs.dx = &H0
+	REM set interrupt to 17h
+	interruptnum = &H17
+	CALL Interrupt(interruptnum, inregs, outregs)
+	REM split ax..  HiByte  LoByte
+	REM only HiByte is needed
+	IF outregs.ax < 0 THEN
+		Result& = outregs.ax + 65536
+	ELSE
+		Result& = outregs.ax
+	END IF
+	HiByte = Result& \ 256
+	REM LoByte = Result& AND &HFF
+	REM bit mask
+	REM 76543210
+	REM 1           Printer Not Busy
+	REM 0           Printer Busy
+	REM  1          Printer Acknowledgement
+	REM   1         Out Of Paper
+	REM    1        Printer Selected
+	REM     1       I/O error
+	REM      ??     Not Used
+	REM        1    Time-Out
+	IF (HiByte AND 128) = 128 THEN
+		REM  "Not busy"
+		CheckPrinter = True
+	ELSE
+		REM  "Busy"
+		CheckPrinter = False
+		EXIT FUNCTION
+	END IF
+	REM bit checking for other printer conditions
+	IF (HiByte AND 64) = 64 THEN
+		REM  "Acknowledge"
+	ELSE
+		REM  "No acknowledge"
+	END IF
+	IF (HiByte AND 32) = 32 THEN
+		REM  "Out of paper"
+		CheckPrinter = False
+		EXIT FUNCTION
+	ELSE
+		REM  "Not out of paper"
+	END IF
+	IF (HiByte AND 16) = 16 THEN
+		REM  "Selected"
+	ELSE
+		REM  "Not selected"
+		CheckPrinter = False
+		EXIT FUNCTION
+	END IF
+	IF (HiByte AND 8) = 8 THEN
+		REM  "I/O error"
+		CheckPrinter = False
+		EXIT FUNCTION
+	ELSE
+		REM  "No I/O error"
+	END IF
+	IF (HiByte AND 1) = 1 THEN
+		REM  "Time out"
+		CheckPrinter = False
+		EXIT FUNCTION
+	ELSE
+		REM  "No time out"
+	END IF
+END FUNCTION
+
+'
+'
+'
+SUB PrintScreen
+	DIM inregs AS RegType, outregs AS RegType
+	REM use Bios Interrupt 5
+	REM Registers on entry not significant
+	REM Registers on return are unchanged
+	interruptnum = &H5
+	CALL Interrupt(interruptnum, inregs, outregs)
+END SUB
+

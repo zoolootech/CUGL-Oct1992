@@ -1,0 +1,3082 @@
+;/*
+;*****************************************************************
+;*	Written by : Hakuo Katayose (JUG-CP/M No.179)		*
+;*		JIP 980						*
+;*		49-114 	kawauchi-Sanjuunin-machi		*
+;*		Sendai, Miyagi, Japan.				*
+;*		Telph.No (0222)61-3219				*
+;*	Edited  by : 						*
+;*								*
+;*****************************************************************
+;*/
+;
+	INCLUDE	"BDS.LIB"
+
+
+BIASEXP	EQU	0400H
+NBYTES	EQU	8
+
+;
+;--------------------------------------------------------------
+;--------------------------------------------------------------
+;
+; 64_bit INTEGER basic_subroutines.
+;
+;	IMUL64	64_bit multiplay.	LA   =  LA  * (hl).
+;	IDIV64	64_bit divide.		LA   =  LA  / (hl).
+;	IADDA	64_bit addition.	LA   =  LA  + (hl).
+;	ISUBA	64_bit subtruction.	LA   =  LA  - (hl).
+;	
+;	IADD64	64_bit addition.	(de) = (de) + (hl).
+;	ISUB64	64_bit subtruction.	(de) = (de) - (hl).
+;	
+;	ICMP64	64_bit compare.		c,z  = (de) - (hl).
+;
+;	INEG64	64_bit negation.	(hl) = ~(hl).
+;	
+;	SFTL64	64_bit left shift.	(carry set).
+;	SFTR64	64_bit right shift.	(carry set).
+;	
+;	DSHFTL	128_bit left  shift.
+;	DSHFTR	128_bit right shift.
+;	
+;	ITENTH	64_bit 10 times.	(hl) = (hl) * 10.
+;	
+;
+; work area:
+;	TEN	64_bit constant.	10.
+;	LLWORK	LLong type work_area.
+;	
+;--------------------------------------------------------------
+;
+
+;
+;--------------------------------------------------------------
+;--------------------------------------------------------------
+;
+; 64_bit floting opration result flags.
+;
+;	EP		1  byte length.
+;	OUTSGN		1  byte length.
+;	OUTBUF		20 byte length.
+;	
+;	OVF		1  byte length.
+;	UNF		1  byte length.
+;	ZERO		1  byte length.
+;	MINUS		1  byte length.
+;
+;--------------------------------------------------------------
+;	
+; 64_bit floting work_registers.
+;
+;	TEMPW		16 byte length.
+;	
+;	UU		nbytes byte length.
+;	VV		nbytes byte length.
+;	WW		nbytes byte length.
+;	XX		nbytes byte length.
+;	YY		nbytes byte length.
+;	
+;--------------------------------------------------------------
+;
+; 64_bit floting Acc registers.
+;
+;	LA	64_bit floting ACC_A.		A_Acc extention.
+;	AREG	64_bit floting ACC_A.		A_Acc.
+;	AEXP	64_bit floting ACC_A.		expornemt.
+;	ASIGN	64_bit floting ACC_A.		sign_flag.
+;	
+;	LB	64_bit floting ACC_B.		B_Acc extention.
+;	BREG	64_bit floting ACC_B.		B_Acc.
+;	BEXP	64_bit floting ACC_B.		expornemt.
+;	BSIGN	64_bit floting ACC_B.		sign_flag.
+;	
+;	TEN1	64_bit floting constant.	10.0
+;	ONE	64_bit floting constant.	 1.0
+;	TENM1	64_bit floting constant.	 0.1
+;	NUM0	64_bit floting constant.	 0.0
+;
+;
+;
+;
+
+	FUNCTION	fp64
+	call	arghak
+	push	b
+
+	lda	arg1
+	cpi	255
+	jz	FPTST1
+	cpi	254
+	jz	FPTST2
+
+	lhld	arg1
+	dad	h
+	lxi	b,JMPTBL
+	dad	b
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	push	h
+	popix
+
+	lhld	arg3
+	xchg
+	lhld	arg2		; de = arg3. hl = arg2.
+
+	pcix
+
+JMPTBL:	dw	FPGETK
+	dw	FPADD		; no.1
+	dw	FPSUB
+	dw	FPMUL
+	dw	FPDIV
+	dw	FPCMP
+	dw	FPNEG
+	dw	FPSFT
+	dw	FPHALF
+	dw	FPDBL
+	dw	FPCNV		; no.10
+	dw	FPIN
+	dw	SQRT
+	dw	SIN
+	dw	ATAN2
+	dw	EXPP
+	dw	LOG
+	dw	exitp		;jmp17
+	dw	exitp		;jmp18
+	dw	exitp		;jmp19
+	dw	exitp		;jmp20
+	dw	LLADD
+	dw	LLSUB
+	dw	LLMUL
+	dw	LLDIV
+	dw	LLCMP
+	dw	LLNEG
+	dw	LLMOV
+	dw	LLSFTL
+	dw	LLSFTR
+	dw	ATOLL
+	dw	LLTOA
+	dw	LLTEN
+
+exitp:	lhld	arg4
+	xchg
+	call	pack
+	lxi	h,OVF
+	xra	a
+	ora	m
+	inx	h
+	ora	m
+	inx	h
+	ora	m
+	inx	h
+	ora	m
+	mov	l,a
+	mvi	h,0
+	pop	b
+	ret
+;
+;
+;
+FPADD:	push	h
+	lxi	h,BREG
+	call	unpack		; (arg3) --> Bcc. (Unpack).
+	pop	d
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	call	FPADD0
+	jmp	exitp
+;
+;
+FPSUB:	push	h
+	lxi	h,BREG
+	call	unpack		; (arg3) --> Bcc. (Unpack).
+	pop	d
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	call	FPSUB0
+	jmp	exitp
+;
+;
+FPMUL:	push	h
+	lxi	h,BREG
+	call	unpack		; (arg3) --> Bcc. (Unpack).
+	pop	d
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	call	FPMUL0
+	jmp	exitp
+;
+;
+FPDIV:	push	h
+	lxi	h,BREG
+	call	unpack		; (arg3) --> Bcc. (Unpack).
+	pop	d
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	call	FPDIV0
+	jmp	exitp
+;
+;
+FPCMP:	lxi	b,NBYTES-1
+	dad	b
+	xchg
+	dad	b
+	ldax	d
+	ora	a
+	jp	fpcmp1
+	mov	a,m
+	ora	a
+	xchg
+	jm	fpcmp2
+	lxi	h,-1
+	pop	b
+	ret
+
+fpcmp1:	mov	a,m
+	ora	a
+	jp	fpcmp2
+	lxi	h,1
+	pop	b
+	ret
+
+fpcmp2:	call	icmp64
+	lxi	h,0
+	pop	b
+	rz
+	lxi	h,-1
+	rc
+	lxi	h,1
+	ret
+;
+;
+FPNEG:	lhld	arg2
+	xchg
+	lhld	arg4
+	xchg
+	lxi	b,NBYTES
+	ldir
+	lhld	arg4
+	lxi	b,nbytes-1
+	dad	b
+	mvi	a,080h
+	xra	m
+	mov	m,a
+	pop	b
+	ret
+;
+;
+FPCNV:	xchg
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	jmp	FPCONV
+;
+;
+LLADD:	xchg
+	lhld	arg4
+	push	h
+	xchg
+	lxi	b,NBYTES
+	ldir
+	pop	d
+	lhld	arg2
+	call	iadd64
+	pop	b
+	ret
+
+LLSUB:	xchg
+	lhld	arg4
+	push	h
+	xchg
+	lxi	b,NBYTES
+	ldir
+	pop	d
+	lhld	arg3
+	call	isub64
+	pop	b
+	ret
+
+LLMUL:	lxi	d,la
+	lxi	b,nbytes
+	ldir
+	lhld	arg3
+	call	imul64
+	lhld	arg4
+	xchg
+	lxi	h,la
+	lxi	b,nbytes
+	ldir
+	pop	b
+	ret
+
+LLDIV:	lxi	d,la
+	lxi	b,nbytes
+	ldir
+	lhld	arg3
+	call	idiv64
+	lhld	arg4
+	xchg
+	lxi	h,la
+	lxi	b,nbytes
+	ldir
+	pop	b
+	ret
+
+LLCMP:	lxi	b,NBYTES-1
+	dad	b
+	xchg
+	lhld	arg3
+	dad	b
+	ora	a
+	xchg
+	lhld	arg3
+	call	icmp64
+	lxi	h,0
+	pop	b
+	rz
+	lxi	h,-1
+	rc
+	lxi	h,1
+	ret
+
+LLNEG:	call	ineg64
+	pop	b
+	ret
+
+LLTEN:	call	itenth
+	pop	b
+	ret
+
+LLMOV:	xchg
+	lhld	arg4
+	xchg
+	lxi	b,nbytes
+	ldir
+	pop	b
+	ret
+
+LLSFTL:	lda	arg4
+	rar
+	call	sftl64
+	jmp	sftext
+
+LLSFTR:	lxi	d,nbytes-1
+	dad	d
+	lda	arg3
+	rar
+	call	sftr64
+	pop	b
+sftext:	lxi	h,0
+	rnc
+	lxi	h,080h
+	ret
+
+ATOLL:	mvi	a,' '
+	sta	asign
+	lxi	h,0
+	shld	la
+	shld	la+2
+	shld	la+4
+	shld	la+6
+	lhld	arg2
+encod1:	mov	a,m
+	call	isdigit
+	jnc	encod3
+	cpi	' '
+	jz	encod2
+	cpi	'+'
+	jz	encoda
+	cpi	'-'
+	jnz	encod8
+	mvi	a,'-'
+	sta	asign
+encoda:	inx	h
+	jmp	encod3
+encod2:	inx	h
+	jmp	encod1
+
+encod3:	mvi	b,18
+encod7:	mov	a,m
+	call	isdigit
+	jnc	encod9
+	cpi	','
+	jnz	encod8
+	inx	h
+	jmp	encod7
+encod9:	push	b
+	push	h
+	push	psw
+	lxi	h,la
+	call	itenth
+	pop	psw
+	ani	0fh
+	lxi	h,la
+	add	m
+	mov	m,a
+	jnc	encod5
+	mvi	b,nbytes-1
+encod4:	inx	h
+	mvi	a,0
+	adc	m
+	mov	m,a
+	jnc	encod5
+	dcr	b
+	jnz	encod4
+encod5:	pop	h
+	pop	b
+	inx	h
+	dcr	b
+	jnz	encod7
+
+encod8:	lda	asign
+	cpi	'-'
+	lxi	h,la
+	cz	ineg64
+	lhld	arg4
+	xchg
+	lxi	h,la
+	lxi	b,nbytes
+	ldir
+	pop	b
+	ret
+
+LLTOA:	lxi	d,la
+	lxi	b,nbytes
+	ldir
+	lxi	h,outbuf
+	lxi	d,outbuf+1
+	lxi	b,18
+	mvi	m,' '
+	ldir
+	lxi	h,outbuf+19
+	mvi	m,0
+	lhld	la
+	mov	a,h
+	ora	l
+	jnz	decode
+	lhld	la+2
+	mov	a,h
+	ora	l
+	jnz	decode
+	lhld	la+4
+	mov	a,h
+	ora	l
+	jnz	decode
+	lhld	la+6
+	mov	a,h
+	ora	l
+	jnz	decode
+	lxi	h,outbuf+18
+	mvi	m,'0'
+	lxi	h,outbuf
+	pop	b
+	ret
+
+decode:	lda	la+nbytes-1
+	ani	080h	
+	mvi	a,' '
+	jz	decod1
+	lxi	h,la
+	call	ineg64
+	mvi	a,'-'
+decod1:	sta	outsgn
+	lxi	h,outbuf+18
+	mvi	m,'0'
+decod3:	push	h
+	lxi	h,ten
+	call	idiv64
+	pop	h
+	jc	decod4
+	lda	la+nbytes
+	adi	'0'
+	mov	m,a
+	dcx	h
+	mov	a,m
+	ana	a
+	jnz	decod3
+decod4:	lda	outsgn
+	mov	m,a
+	lxi	h,outbuf
+	pop	b
+	ret
+
+FPHALF:	xchg
+	lhld	arg4
+	xchg
+	lxi	b,nbytes
+	ldir
+	lhld	arg4
+	lxi	d,nbytes-2
+	dad	d
+	mov	a,m
+	sui	010h
+	mov	m,a
+	jnc	fphlf1
+	inx	h
+	dcr	m
+fphlf1:	pop	b
+	ret
+
+FPDBL:	xchg
+	lhld	arg4
+	xchg
+	lxi	b,nbytes
+	ldir
+	lhld	arg4
+	lxi	d,nbytes-2
+	dad	d
+	mov	a,m
+	adi	010h
+	mov	m,a
+	jnc	fpdbl1
+	inx	h
+	inr	m
+fpdbl1:	pop	b
+	ret
+
+FPSFT:	xchg
+	lhld	arg4
+	xchg
+	lxi	b,nbytes
+	ldir
+	lhld	arg3
+	mov	a,h
+	ora	l
+	jz	fpsft5
+	dad	h
+	dad	h
+	dad	h
+	dad	h
+	xchg
+	lhld	arg4
+	lxi	b,nbytes-1
+	dad	b
+	push	h
+	mov	a,m
+	dcx	h
+	mov	l,m
+	mov	h,a
+	ani	080h
+	dadc	d
+	jpo	fpsft4		; parity=odd --> no overflow.
+	lxi	h,0
+	jnc	fpsft3
+	lxi	h,07fffh
+fpsft3:	ora	h
+	mov	h,a
+fpsft4:	xchg
+	pop	h
+	mov	m,d
+	dcx	h
+	mov	m,e
+fpsft5:	pop	b
+	ret
+;
+;--------------------------------------------------------------
+; FLOATING POINT DIVIDE ------ Acc = Acc / Bcc.
+;--------------------------------------------------------------
+
+FPDIV0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	ovrfw
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	;
+fdiv1:	lxi	h,0
+	shld	LA
+	shld	LA+2
+	shld	LA+4
+	shld	LA+6
+	lxi	h,LA+NBYTES+NBYTES-1
+	xra	a
+	call	dshftr
+	lxi	h,BREG+NBYTES-1
+	xra	a
+	call	sftr64
+	lhld	BEXP
+	inx	h
+	shld	BEXP
+	mvi	b,NBYTES*8
+fdiv2:	lxi	d,AREG+NBYTES-1
+	lxi	h,BREG+NBYTES-1
+	call	icmp64		; comp  Acc - Bcc.
+	jc	fdiv3		; if Acc < Bcc then fdiv3.
+	lxi	d,AREG
+	lxi	h,BREG
+	call	isub64		; Acc = Acc - Bcc.
+	xra	a
+fdiv3:	cmc
+	lxi	h,LA
+	call	dshftl
+	dcr	b
+	jnz	fdiv2
+
+	lxi	h,LA
+	lxi	d,AREG
+	lxi	b,NBYTES
+	ldir
+	lhld	AEXP
+	lxi	d,BIASEXP+2
+	dad	d
+	xchg
+	lhld	BEXP
+	xchg
+	jmp	expnrm
+
+
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT MULTIPLY ------ Acc = Acc * Bcc.
+;--------------------------------------------------------------
+;
+FPMUL0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	;
+fmul3:	lhld	AREG
+	shld	LA
+	lhld	AREG+2
+	shld	LA+2
+	lhld	AREG+4
+	shld	LA+4
+	lhld	AREG+6
+	shld	LA+6
+	lxi	h,BREG
+	call	imul64
+
+	lhld	AEXP
+	xchg
+	lhld	BEXP
+	dad	d
+	lxi	d,BIASEXP
+
+expnrm:	ora	a
+	dsbc	d
+	shld	AEXP
+	jc	undrfw
+	mov	a,h
+	cpi	BIASEXP/128
+	jnc	ovrfw
+	lda	ASIGN
+	lxi	h,BSIGN
+	xra	m
+	sta	ASIGN
+	jmp	fpnorm
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT ADDITION  Acc = Acc + Bcc.
+; FLOATING POINT SUBTRACT  Acc = Acc - Bcc.
+;--------------------------------------------------------------
+;
+
+FPSUB0:	lda	BSIGN
+	xri	080h
+	sta	BSIGN
+;
+FPADD0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	xchg
+	jnz	fadd1
+	lxi	h,BREG
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	fpnorm
+fadd1:	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	fpnorm
+	xchg
+	dsbc	d
+	jz	fadd4
+	jnc	fadd2
+
+	lda	ASIGN		; Acc_flag <--> Bcc_flag.
+	mov	c,a
+	lda	BSIGN
+	sta	ASIGN
+	mov	a,c
+	sta	BSIGN
+	call	swap64
+	lhld	AEXP
+	xchg
+	lhld	BEXP
+	shld	AEXP
+	xchg
+	shld	BEXP
+
+	xchg
+	ora	a
+	dsbc	d
+fadd2:	mov	a,h
+	ora	a
+	jnz	fpnorm
+	mov	a,l
+	cpi	NBYTES*8-1
+	jnc	fpnorm
+	mov	b,a
+	lhld	BEXP
+	xchg
+fadd3:	xra	a
+	lxi	h,BREG+NBYTES-1
+	call	sftr64
+	inx	d
+	dcr	b
+	jnz	fadd3
+fadd4:	xchg
+	shld	BEXP
+	lda	ASIGN
+	lxi	h,BSIGN
+	xra	m
+	jnz	fadd5
+;
+;  if same sign.
+;
+	lxi	d,AREG
+	lxi	h,BREG
+	call	iadd64		; (Acc) = (Acc) + (Bcc).
+	jnc	fpnorm
+	lxi	h,AREG+NBYTES-1	; if carry_flag set then,
+	call	sftr64		;  shift right
+	lhld	AEXP
+	inx	h
+	shld	AEXP		;  & exp = exp + 1.
+	jmp	fpnorm
+;
+;  if different sign.
+;
+fadd5:	lxi	d,AREG
+	lxi	h,BREG
+	call	isub64		; Acc = Acc - Bcc.
+	jnc	fpnorm
+	lxi	h,AREG
+	call	ineg64		; negate Acc.
+	lda	BSIGN
+	sta	ASIGN		; Asign = Bsign.
+	call	fpnorm
+	ret
+;
+;--------------------------------------------------------------
+; UNPACK (DE) -> (HL).
+;--------------------------------------------------------------
+;
+
+UNPACK:	xra	a
+	mov	m,a
+	inx	h
+	push	h
+	xchg
+	lxi	b,NBYTES
+	ldir
+	pop	h
+	xra	a
+	rld		; 1
+	inx	h
+	rld		; 2
+	inx	h
+	rld		; 3
+	inx	h
+	rld		; 4
+	inx	h
+	rld		; 5
+	inx	h
+	rld		; 6
+	inx	h
+	rld		; 7
+	inx	h
+	rld		; 8
+	inx	h
+	mov	c,a
+	ani	BIASEXP/128-1
+	mov	m,a
+	mov	a,c
+	ani	08h
+	mvi	a,0
+	jz	unpck1
+	mvi	a,080h
+unpck1:	inx	h
+	mov	m,a
+	ret
+
+;
+;--------------------------------------------------------------
+; PACK SOURCE = A REG , DESTINATION = DE.
+;--------------------------------------------------------------
+;
+
+PACK:	push	d
+	lxi	h,OVF
+	mov	a,m		; OVF
+	inx	h
+	ora	m		; UNF
+	inx	h
+	ora	m		; ZERO
+	jnz	pack1
+
+	lxi	h,AREG+1
+	mvi	b,NBYTES-2
+	call	inca
+
+pack1:	lda	ASIGN
+	ora	a
+	mvi	c,0
+	jz	pack2
+	mvi	c,08h
+pack2:	lda	AEXP+1
+	ani	00000111b
+	ora	c
+	lxi	h,AEXP
+	rrd		; 1
+	dcx	h
+	rrd		; 2
+	dcx	h
+	rrd		; 3
+	dcx	h
+	rrd		; 4
+	dcx	h
+	rrd		; 5
+	dcx	h
+	rrd		; 6
+	dcx	h
+	rrd		; 7
+	dcx	h
+	rrd		; 8
+
+	pop	d
+	lxi	b,NBYTES
+	ldir
+	RET
+;
+;
+; INCREMENT A AND CORRECT FORM.
+;
+inca:	mov	a,m
+	adi	08h
+	mov	m,a
+	rnc
+inca1:	inx	h
+	inr	m
+	rnz
+	dcr	b
+	jnz	inca1
+	;
+	stc
+	call	sftr64
+	lhld	AEXP
+	inx	h
+	shld	AEXP
+	mov	a,h
+	cpi	BIASEXP/128
+	rc
+	mvi	h,BIASEXP/128-1
+	shld	AEXP
+	mvi	a,08h
+	sta	OVF
+	ret
+
+;
+;--------------------------------------------------------------
+; FLOTING NUMBER OUTPUT CONVERTION.
+;--------------------------------------------------------------
+;
+
+FPCONV:	lda	ASIGN
+	ora	a
+	mvi	a,' '
+	jz	conv1
+	mvi	a,'-'
+conv1:	sta	outsgn
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	conv9
+
+	xra	a
+	sta	ASIGN
+	lxi	h,0
+	shld	EP		; EP = 0;
+conv20:	lxi	h,256
+	shld	k2		; k2 = 256;
+
+conv2:	lxi	d,AREG+NBYTES+1
+	lxi	h,ONE +NBYTES+1
+	call	icmp80
+	jc	mconv		; if (A < 1.0) then mconv.
+
+	lxi	h,TEN256	; T  = TEN256;
+	shld	T		;
+
+pconv1:	lxi	d,NBYTES+1
+	dad	d
+	lxi	d,AREG+NBYTES+1
+	call	icmp80
+	jc	pconv2		; if (A < *T) then  pconv2
+
+	lhld	T		; A = A / *T;
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0;
+
+	lhld	k2		; EP = EP + k2;
+	xchg
+	lhld	EP
+	dad	d
+	shld	EP
+				;			}
+pconv2:
+	lhld	k2
+	srlr	h
+	rarr	l		;		k2 = k2 / 2;
+	shld	k2
+	mov	a,h
+	ora	l
+	jz	conv3
+
+	lhld	T
+	lxi	d,nbytes+3
+	dad	d
+	shld	T		;		T = T + NBYTES+3;
+	jmp	pconv1		;	}
+
+;
+;
+;
+mconv:	lxi	d,AREG+nbytes+1
+	lxi	h,TENM1+nbytes+1
+	call	icmp80
+	jnc	conv3		; if (A >= 0.1) then conv3
+
+	lxi	h,TENM128	; T  = 10**(-128);
+	shld	T
+
+	lxi	d,AREG+NBYTES+1
+	lxi	h,TENM256+NBYTES+1
+	call	icmp80
+	jnc	mconv1		; if (A >= *T) then mconv2
+	lxi	h,TEN256
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0;
+	lxi	h,TEN256
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0;
+
+	lxi	h,-512
+	shld	EP
+	jmp	conv20
+
+mconv1:	lhld	T
+	lxi	d,nbytes+1
+	dad	d
+	lxi	d,AREG+NBYTES+1
+	call	icmp80
+	jc	mconv2		; if (A < *T) then mconv2.
+
+	lhld	k2
+	srlr	h
+	rarr	l		;		k2 = k2 / 2;
+	shld	k2
+
+	lhld	T
+	lxi	d,nbytes+3
+	dad	d
+	shld	T		;		T = T + NBYTES+3;
+	jmp	mconv1		;	}
+
+
+mconv2:	lhld	T		;			A = A / *T;
+	dcx	h
+	lxi	d,BREG+NBYTES+2
+	lxi	b,NBYTES+3
+	lddr
+	call	FPDIV0;
+
+	lhld	k2		;			EP = EP - k2;
+	xchg
+	lhld	EP
+	ora	a
+	dsbc	d
+	shld	EP
+	jmp	conv20
+
+
+conv3:	lxi	d,AREG+NBYTES+1
+	lxi	h,ONE +NBYTES+1
+	call	icmp80
+	jc	conv4		; if (A < 1.0) then conv4.
+	lxi	h,TEN1
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0
+	lhld	EP
+	inx	h
+	shld	EP
+conv4:	lxi	h,0h
+	shld	AREG-1
+	lhld	AEXP
+	lxi	d,BIASEXP
+	xchg
+	ora	a
+	dsbc	d
+	jz	conv6
+	mov	b,l
+conv5:	lxi	h,AREG+NBYTES-1
+	xra	a
+	call	sftr72
+	dcr	b
+	jnz	conv5
+conv6:	mvi	b,15
+	lxi	h,outbuf+2
+conv7:	call	tenth
+	adi	'0'
+	mov	m,a
+	inx	h
+	dcr	b
+	jnz	conv7
+
+	call	tenth
+	cpi	5
+	jc	conv8
+
+	mvi	b,15
+conv70:	dcx	h
+	mov	a,m
+	inr	a
+	mov	m,a
+	cpi	'9'+1
+	jnz	conv8
+	mvi	a,'0'
+	mov	m,a
+	dcr	b
+	jnz	conv70
+
+	mvi	a,'1'
+	sta	outbuf+2
+	lxi	h,outbuf+3
+	lxi	d,outbuf+4
+	lxi	b,14
+	mvi	m,'0'
+	ldir
+	lhld	EP
+	inx	h
+	shld	EP
+
+conv8:	mvi	a,0
+	sta	outbuf+17
+	mvi	a,'0'
+	sta	outbuf
+	mvi	a,'.'
+	sta	outbuf+1
+	lxi	h,EP
+	pop	b
+	ret
+
+conv9:	lxi	h,outbuf+2
+	lxi	d,outbuf+3
+	lxi	b,15
+	mvi	m,'0'
+	ldir
+	mvi	m,0
+	jmp	conv8
+;
+tenth:	push	h
+	push	d
+	push	b
+ 	lxi	h,AREG-1
+	lxi	d,BREG-1
+	lxi	b,NBYTES+4
+	LDIR
+	stc
+	lxi	h,AREG-1
+	call	sftl72
+	mvi	a,0
+	ral
+
+	lxi	h,AREG-1
+	call	sftl72
+	ral
+
+	mov	c,a
+	lxi	d,AREG-1
+	lxi	h,BREG-1
+	call	iadd72
+	mvi	a,0
+	adc	c
+
+	lxi	h,AREG-1
+	call	sftl72
+	ral
+	pop	b
+	pop	d
+	pop	h
+	ret
+
+;
+;
+;
+FPIN:	call	cleara
+	lxi	h,0
+	shld	EPX
+	mvi	a,0
+	sta	SIGNX
+	sta	outsgn
+	lhld	arg2
+	xra	a		; null terminator search.
+ 	lxi	b,100
+	ccir
+	jnz	fpin15		; if not found goto fpin15.
+	xchg
+	lhld	arg2
+	xchg
+	ora	a
+	dsbc	d
+	push	h		; string length save.
+;
+	mov	b,h
+	mov	c,l
+	lhld	arg2
+	mvi	a,'E'
+	ccir
+	pop	b
+	jz	fpin1
+;
+	lhld	arg2
+	mvi	a,'e'
+	ccir
+	jnz	fpin6
+;
+;
+fpin1:	dcx	h
+	mvi	m,0
+	inx	h
+	mov	a,m
+	cpi	'-'
+	jnz	fpin2
+	sta	SIGNX
+	jmp	fpin3
+fpin2:	cpi	'+'
+	jnz	fpin4
+fpin3:	inx	h
+fpin4:	call	ctoi
+	jc	fpin5
+	push	h
+	lhld	EPX
+	mov	d,h
+	mov	e,l
+	dad	h
+	dad	h
+	dad	d
+	dad	h
+	mov	e,a
+	mvi	d,0
+	dad	d
+	shld	EPX
+	pop	h
+	jmp	fpin3
+
+fpin5:	lda	SIGNX
+	cpi	'-'
+	jnz	fpin6
+	lhld	EPX
+	xchg
+	lxi	h,0
+	ora	a
+	dsbc	d
+	shld	EPX
+;
+fpin6:	xra	a
+	sta	SIGNX
+	lhld	arg2
+	mov	a,m
+	cpi	'+'
+	jz	fpin7
+	cpi	'-'
+	jnz	fpin8
+	sta	outsgn
+fpin7:	inx	h
+fpin8:	mov	a,m
+	cpi	'.'
+	jz	fpin10		; goto real part.
+	cpi	'0'
+	jnz	fpin11		; goto integer part.
+	jmp	fpin7
+;
+fpin10:	inx	h
+	mov	a,m
+	cpi	'0'
+	jnz	fpin13
+	xchg			; real part. ( 0.000...nn)
+	lhld	EPX
+	dcx	h
+	shld	EPX
+	xchg
+	jmp	fpin10
+;
+fpin11:	call	ctoi		; integer part.
+	jc	fpin12
+	call	fpinx
+	inx	h
+	jmp	fpin11
+;
+fpin12:	cpi	'.'
+	jnz	fpin14
+	inx	h
+fpin13:	call	ctoi		; real part. ( n.mmm)
+	jc	fpin14
+	call	fpinx
+	xchg
+	lhld	EPX
+	dcx	h
+	shld	EPX
+	xchg
+	inx	h
+	jmp	fpin13
+;
+fpin14:	lhld	EPX
+	mov	a,h
+	ora	a
+	jz	fpin15
+	lxi	h,AREG
+	lxi	d,xx
+	lxi	b,NBYTES+3
+	ldir
+	call	exp
+	lxi	h,AREG
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+;
+	lda	SIGNX
+	cpi	'-'
+	jnz	fpin17
+	call	FPDIV0
+	jmp	fpin15
+fpin17:	call	FPMUL0
+
+fpin15:	lda	outsgn
+	ora	a
+	jz	fpin16
+	mvi	a,080h
+	sta	ASIGN
+fpin16:	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+
+ctoi:	mov	a,m
+	call	isdigit
+	rc
+	sui	'0'
+	ret
+
+fpinx:	push	h
+	push	psw
+	lxi	h,TEN1
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	pop	psw
+	mov	c,a
+	add	a
+	add	a
+	add	c
+	add	a
+	add	c
+	mov	c,a
+	mvi	b,0
+	lxi	h,NUM0
+	dad	b
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPADD0
+	pop	h
+	ret
+;
+exp:	lhld	EPX
+	mov	a,h
+	ora	a
+	jp	exp0
+	xchg
+	lxi	h,0
+	ora	a
+	dsbc	d
+	shld	EPX
+	mvi	a,'-'
+	sta	SIGNX
+;
+exp0:	lxi	h,ONE
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lhld	EPX
+	mov	a,h
+	ora	a
+	jz	exp1
+	lxi	h,TEN256
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lhld	EPX
+exp1:	mvi	c,128
+	mvi	b,0
+exp2:	mov	a,l
+	ora	a
+	rz
+	sub	c
+	jc	exp3
+	mov	l,a
+	push	b
+	push	h
+	mov	a,b
+	add	a
+	add	a
+	add	b
+	add	a
+	add	b
+	mov	c,a
+	mvi	b,0
+	lxi	h,TEN128
+	dad	b
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	pop	h
+	pop	b
+exp3:	srlr	c
+	inr	b
+	jmp	exp2
+;
+cleara:	push	h
+	lxi	h,0
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	shld	AREG+6
+	shld	AREG+8
+	shld	AREG+9
+	pop	h
+	ret
+
+SIGNX	ds	1
+EPX	ds	2
+T	ds	2
+numlen	ds	2
+;
+;
+FPTST1:	lhld	arg2
+	mov	d,h
+	mov	e,l
+	dad	h
+	dad	h
+	dad	d
+	dad	h
+	dad	d
+	lxi	d,TEN256
+	dad	d
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	FPCONV
+
+FPGETK:	mov	d,h
+	mov	e,l
+	dad	h
+	dad	h
+	dad	d
+	dad	h
+	dad	d
+	lxi	d,TEN256
+	dad	d
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	fpin16
+
+
+FPTST2:	lhld	arg2
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	FPCONV
+;
+;
+;
+isdigit:cpi	'0'
+	rc
+	cpi	'9'+1
+	cmc
+	ret
+
+imul64:	shld	tmp
+	lxi	h,0
+	shld	areg
+	shld	areg+2	
+	shld	areg+4
+	shld	areg+6
+	mvi	b,nbytes*8
+loopml:	lxi	h,la+nbytes-1
+	call	sftr64
+	jnc	jumpml
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	iadd64
+jumpml:	lxi	h,areg+nbytes-1
+	call	sftr64
+;	djnz	loopml
+	db	010h,0e5h
+	call	sftr64
+	ret
+;
+;
+;
+idiv64:	shld	tmp
+	lxi	h,0
+	shld	areg
+	shld	areg+2	
+	shld	areg+4
+	shld	areg+6
+	mvi	b,nbytes*8
+	lda	la+nbytes-1
+	bit	7,a
+	jnz	loopdv
+dvchkk:
+;	djnz	dvchk
+	db	010h,02h
+	stc
+	ret
+dvchk:	lxi	h,la
+	call	sftl64
+	jp	dvchkk
+loopdv:	lxi	h,la
+	call	dshftl
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	isub64
+	jnc	jumpdv
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	iadd64
+jumpdv:	cmc	
+;	djnz	loopdv
+	db	010h,0e0h
+	lxi	h,la
+	call	sftl64
+	ana	a
+	ret
+;
+;
+;
+iadd88:	ldax	d
+	add	m	; 7
+	stax	d
+	inx	h
+	inx	d
+iadd80:	ldax	d
+	adc	m	; 8
+	stax	d
+	inx	h
+	inx	d
+iadd72:	ldax	d
+	adc	m	; 8
+	stax	d
+	inx	h
+	inx	d
+iadd64:	ldax	d
+	adc	m	; 1
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 2
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 3
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 4
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 5
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 6
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 7
+	stax	d
+	inx	h
+	inx	d
+	ldax	d
+	adc	m	; 8
+	stax	d
+	ret
+;
+;
+;
+isub88:	ldax	d
+	sub	m	; 7
+	stax	d
+	inx	d
+	inx	h
+isub80:	ldax	d
+	sbb	m	; 8
+	stax	d
+	inx	d
+	inx	h
+isub72:	ldax	d
+	sbb	m	; 8
+	stax	d
+	inx	d
+	inx	h
+isub64:	ldax	d
+	sbb	m	; 1
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 2
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 3
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 4
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 5
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 6
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 7
+	stax	d
+	inx	d
+	inx	h
+	ldax	d
+	sbb	m	; 8
+	stax	d
+	ret
+;
+;
+;
+icmp88:	ldax	d
+	sub	m
+	rnz
+	dcx	d
+	dcx	h
+icmp80:	ldax	d
+	sub	m
+	rnz
+	dcx	d
+	dcx	h
+icmp72:	ldax	d
+	sub	m
+	rnz
+	dcx	d
+	dcx	h
+icmp64:	ldax	d
+	sub	m	;1
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;2
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;3
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;4
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;5
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;6
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;7
+	rnz
+	dcx	d
+	dcx	h
+	ldax	d
+	sub	m	;8
+	ret
+;
+ineg88:	mov	a,m		; .1
+	cma
+	adi	1
+	mov	m,a
+	inx	h
+	mov	a,m		; .2
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .3
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .4
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	jmp	ineg0
+ineg64:	mov	a,m
+	cma
+	adi	1
+	mov	m,a
+	inx	h
+ineg0:	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	inx	h
+	mov	a,m		; .
+	cma
+	aci	0
+	mov	m,a
+	ret
+;
+;
+;
+dshftl:	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+sftl88	ralr	m
+	inx	h
+sftl80:	ralr	m
+	inx	h
+sftl72:	ralr	m
+	inx	h
+sftl64:	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+sftl32:	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	inx	h
+	ralr	m
+	ret
+;
+;
+;
+dshftr:	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+sftr96:	rarr	m
+	dcx	h
+sftr88:	rarr	m
+	dcx	h
+sftr80:	rarr	m
+	dcx	h
+sftr72:	rarr	m
+	dcx	h
+sftr64:	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+sftr32:	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	dcx	h
+	rarr	m
+	ret
+
+itenth:	shld	lltmp
+	lxi	d,llwork
+	lxi	b,nbytes
+	ldir
+	xra	a
+	lhld	lltmp
+	call	sftl64
+	ral
+	ora	a
+	lhld	lltmp
+	call	sftl64
+	ral
+	mov	c,a
+	lhld	lltmp
+	lxi	d,llwork
+	xchg
+	call	iadd64
+	mvi	a,0
+	adc	c
+	ora	a
+	lhld	lltmp
+	call	sftl64
+	ral
+	ret
+
+swap72:	lhld	AEXP		; Acc <--> Bcc.
+	xchg
+	lhld	BEXP
+	shld	AEXP
+	xchg
+	shld	BEXP
+swap64:	lhld	AREG		; Acc <--> Bcc.
+	xchg
+	lhld	BREG
+	shld	AREG
+	xchg
+	shld	BREG
+	lhld	AREG+2		; Acc <--> Bcc. byte_2,3
+	xchg
+	lhld	BREG+2
+	shld	AREG+2
+	xchg
+	shld	BREG+2
+	lhld	AREG+4		; Acc <--> Bcc. byte_4,5
+	xchg
+	lhld	BREG+4
+	shld	AREG+4
+	xchg
+	shld	BREG+4
+	lhld	AREG+6		; Acc <--> Bcc. byte 6,7
+	xchg
+	lhld	BREG+6
+	shld	AREG+6
+	xchg
+	shld	BREG+6
+	ret
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT normalization.
+;--------------------------------------------------------------
+;
+fpnorm:	lhld	AEXP
+	xchg
+	lxi	b,1
+fpnrm1:	lda	AREG+NBYTES-1
+	ral
+	jc	fpnrm2
+	lxi	h,la
+	call	dshftl
+	xchg
+	dsbc	b
+	xchg
+	jnc	fpnrm1
+	jmp	undrfw
+
+fpnrm2:	xchg
+	mov	a,h
+	cpi	BIASEXP/128
+	jnc	ovrfw
+	shld	AEXP
+	jmp	extnrm
+
+
+ovrfw:	lxi	h,0ffffh
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	shld	AREG+6
+	mvi	h,BIASEXP/128-1
+	shld	AEXP
+	mvi	a,08h
+	sta	OVF
+	xra	a
+	sta	ZERO
+	jmp	extnrm
+	;
+	;
+undrfw:	lxi	h,0
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	shld	AREG+6
+	shld	AEXP
+	mvi	a,04h
+	sta	UNF
+	xra	a
+	sta	ZERO
+extnrm:	lda	ASIGN
+	ora	a
+	jz	extnm2
+	mvi	a,1
+extnm2:	sta	MINUS
+	ret
+	;
+	;
+setzero:
+	lxi	h,0
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	shld	AREG+6
+	shld	AEXP
+	shld	OVF
+	mvi	a,020h
+	sta	ZERO
+	xra	a
+	sta	ASIGN
+	sta	MINUS
+	ret
+
+;
+;
+;
+SQRT:	xchg
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	lxi	h,AREG
+	lxi	d,yy
+	lxi	b,NBYTES+3
+	ldir
+	lhld	AEXP
+	lxi	d,BIASEXP+1
+	ora	a
+	dsbc	d		; AEXP = AEXP - 0401H.
+	srar	h
+	rarr	l
+	jc	sqrt1
+	dad	d
+	shld	AEXP
+	ora	a
+	lxi	h,AREG+NBYTES-1
+	call	sftr64
+	lxi	h,AREG
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	ora	a
+	lxi	h,AREG+NBYTES-1
+	call	sftr64
+	ora	a
+	lxi	h,AREG+NBYTES-1
+	call	sftr64
+	ora	a
+	lxi	h,AREG+NBYTES-1
+	call	sftr64
+	lxi	d,AREG
+	lxi	h,BREG
+	call	iadd64
+	lhld	AREG+NBYTES-1
+	lxi	b,70h
+	dad	b
+	shld	AREG+NBYTES-1
+	jmp	sqrt2
+sqrt1:	inx	h
+	dad	d
+	shld	AEXP
+	lxi	h,AREG+NBYTES-1
+	ora	a
+	call	sftr64
+	lxi	h,AREG
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,BREG+NBYTES-1
+	ora	a
+	call	sftr64
+	lxi	h,BREG+NBYTES-1
+	ora	a
+	call	sftr64
+	lxi	h,BREG+NBYTES-1
+	ora	a
+	call	sftr64
+	lxi	d,AREG
+	lxi	h,BREG
+	call	isub64
+	lhld	AREG+NBYTES-1
+	lxi	b,048h
+	dad	b
+	shld	AREG+NBYTES-1	
+sqrt2:	mvi	b,5
+sqrt3:	push	b
+	lxi	h,AREG
+	lxi	d,xx
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,yy
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0		; fp64(FPDIV,yy,x,xx);
+
+	lxi	h,xx
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPADD0		; fp64(FPADD,x,xx,xx);
+
+	lhld	AEXP
+	dcx	h
+	shld	AEXP		; fp64(FPHLF,xx,0,x);
+	pop	b
+	dcr	b
+	jnz	sqrt3
+
+	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+;
+;
+;
+SETCRD:	xchg			; (hl) --> (de) encode.
+	inx	h
+	inx	h
+	inx	h
+	shld	vv3
+	inx	h
+	xchg
+	lxi	b,NBYTES-1
+	ldir
+	xchg
+	dcx	h
+	shld	vvn
+	mov	a,m
+	ani	0fh
+	mov	m,a
+	xchg
+	mov	a,m
+	ani	080h
+	sta	vvsign
+	mov	a,m
+	ani	07fh
+	dcx	h
+	mov	l,m
+	mov	h,a
+	xra	a
+	dad	h
+	ral
+	dad	h
+	ral
+	dad	h
+	ral
+	dad	h
+	ral
+	mov	e,h
+	mov	d,a
+	lxi	h,BIASEXP+3
+	dsbc	d
+	jc	errstc
+	lxi	h,BIASEXP
+	dsbc	d
+	jc	stcrd4
+	mov	a,h
+	ora	a
+	jnz	errstc
+	mov	a,l
+	cpi	NBYTES*8
+	jnc	errstc
+	mov	b,a
+	lda	vvsign
+	ora	a
+	jz	stcrd1
+	lhld	vv3
+	call	ineg64
+stcrd1:	mov	a,b
+	ora	a
+	jz	stcrd3
+stcrd2:	mov	a,c
+	ral
+	lhld	vvn
+	call	sftr88
+	dcr	b
+	jnz	stcrd2
+
+stcrd3:	lxi	h,ATN00
+	shld	tw
+	lxi	h,ATN29
+	lxi	d,zz
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,0
+	shld	ii		; set ii.(counter)
+	xra	a
+	ret
+
+stcrd4:	xchg
+stcrd5:	lhld	vv3
+	ora	a
+	call	sftl64
+	inx	d
+	mov	a,d
+	ora	e
+	jnz	stcrd5
+	lda	vvsign
+	ora	a
+	jz	stcrd3
+	lhld	vv3
+	call	ineg64
+	jmp	stcrd3
+;
+errstc:	scf
+	ret
+;
+;
+crdpck:	xra	a
+	sta	ASIGN
+	shld	vv3
+	lxi	b,NBYTES+2
+	dad	b
+	mvi	b,NBYTES*8
+	lxi	d,BIASEXP+3
+	mov	a,m
+	ora	a
+	jp	cdpck1
+	mvi	a,080h
+	sta	ASIGN
+	lhld	vv3
+	call	ineg88
+cdpck1:	lhld	vv3
+	ora	a
+	call	sftl88
+	jm	cdpck2
+	dcx	d
+	dcr	b
+	jnz	cdpck1
+	lxi	d,0
+cdpck2:	xchg
+	shld	AEXP
+	lhld	vv3
+	inx	h
+	inx	h
+	inx	h
+	lxi	d,AREG
+	lxi	b,NBYTES
+	ldir
+	ret
+;
+;	sin(t,x,y)
+;
+;
+SIN:	lxi	h,xx
+	lxi	d,xx+1
+	lxi	b,NBYTES*3+9-1
+	mvi	m,0
+	ldir			; yy = 0.0.
+
+	lxi	h,KKK
+	lxi	d,xx
+	lxi	b,NBYTES+3
+	ldir			; xx = 1.0/K. (0.6...)
+
+	lhld	arg2
+	lxi	d,vv
+	call	setcrd
+
+	mvi	b,26
+sin2:	push	b
+	call	CRDSIN
+	lda	ii
+	inr	a
+	sta	ii
+	lhld	tw
+	lxi	b,NBYTES+3
+	dad	b
+	shld	tw
+	pop	b
+	dcr	b
+	jnz	sin2
+
+	lxi	h,vv
+	call	crdpck
+	lxi	h,AREG
+	lxi	d,vv
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	call	crdpck
+	lxi	h,AREG
+	lxi	d,xx
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,yy
+	call	crdpck
+	lxi	h,AREG
+	lxi	d,yy
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,vv
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	lxi	h,AREG
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPSUB0
+	lhld	arg3
+	xchg
+	call	pack
+
+	lxi	h,vv
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	lxi	h,yy
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPADD0
+	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+;
+;
+CRDSIN:	call	CORD16
+	lda	vv+NBYTES+2
+	ora	a
+	jp	CORD17
+	jmp	CORD18
+;
+;	atan(t,x,y)
+;	char *t,*x, *y;		; atan(t)
+;	{
+ATAN2:	lxi	h,xx
+	lxi	d,xx+1
+	lxi	b,NBYTES*3+9-1
+	mvi	m,0
+	ldir
+
+	lxi	h,010h
+	shld	xx+NBYTES+2	; xx = 1.0
+
+	lhld	arg2
+	lxi	d,yy
+	call	setcrd
+
+	mvi	b,NBYTES*8
+atan22:	push	b
+	call	CRDATN
+	lda	ii
+	inr	a
+	sta	ii
+	cpi	30
+	jc	atan3
+	lxi	h,zz+NBYTES-2
+	ora	a
+	call	sftr32
+	lxi	h,zz
+	jmp	atan4
+atan3:	lhld	tw
+	lxi	b,NBYTES+3
+	dad	b
+atan4:	shld	tw
+	pop	b
+	dcr	b
+	jnz	atan22
+
+	lxi	h,xx
+	call	crdpck
+	lxi	h,KK
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	lhld	arg3
+	xchg
+	call	pack
+
+	lxi	h,vv
+	call	crdpck
+	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+;
+;
+CRDATN:	call	CORD16
+	lda	yy+NBYTES+2
+	ora	a
+	jm	CORD17
+	jmp	CORD18
+;
+;
+;
+CORD16:	lxi	h,yy
+	lxi	d,uu
+	lxi	b,NBYTES+3
+	ldir			; fp64(FPSFT,y,-i,u);
+	lda	ii
+	mov	b,a
+	ora	a
+	jz	c162
+c161:	lxi	h,uu+NBYTES+2
+	mov	a,m
+	ral
+	call	sftr88
+	dcr	b
+	jnz	c161
+
+c162:	lxi	h,xx
+	lxi	d,ww
+	lxi	b,NBYTES+3
+	ldir			; fp64(FPSFT,x,-i,w);
+	lda	ii
+	mov	b,a
+	ora	a
+	rz
+c163:	lxi	h,ww+NBYTES+2
+	mov	a,m
+	ral
+	call	sftr88
+	dcr	b
+	jnz	c163
+	ret
+;
+;
+CORD17:	lxi	d,xx
+	lxi	h,uu
+	ora	a
+	call	isub88		; xx = xx - uu.
+;
+	lxi	d,yy
+	lxi	h,ww
+	ora	a
+	call	iadd88		; yy = yy + ww.
+;
+	lxi	d,vv
+	lhld	tw
+	call	isub88		; vv = vv - g[i].
+	ret
+;
+;
+CORD18:	lxi	d,xx
+	lxi	h,uu
+	ora	a
+	call	iadd88		; xx = xx + uu.
+;
+	lxi	d,yy
+	lxi	h,ww
+	ora	a
+	call	isub88		; yy = yy - ww.
+;
+	lxi	d,vv
+	lhld	tw
+	call	iadd88		; vv = vv + g[i].
+	ret
+;
+;
+;
+LOG:	lxi	h,xx
+	lxi	d,xx+1
+	lxi	b,NBYTES*3+9-1
+	mvi	m,0
+	ldir
+
+	lhld	arg2
+	xchg
+	lxi	h,AREG
+	call	unpack
+	lhld	AEXP
+	push	h
+	lxi	h,BIASEXP
+	shld	AEXP
+	lhld	arg4
+	xchg
+	call	pack
+
+	mvi	a,0
+	sta	ASIGN
+	pop	h
+	lxi	d,BIASEXP
+	ora	a
+	dsbc	d
+	jnc	log14
+	mvi	a,080h
+	sta	ASIGN
+	lxi	d,0
+	xchg
+	ora	a
+	dsbc	d
+log14:	mov	a,h
+	lxi	d,BIASEXP+16
+	mvi	b,16
+log12:	ora	a
+	jm	log11
+	dcx	d
+	slar	l
+	ral
+	dcr	b
+	jnz	log12
+
+log11:	mov	h,a
+	shld	AREG+6
+	xchg
+	shld	AEXP
+	lxi	h,0
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	lxi	h,loge
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0
+	lxi	h,AREG
+	lxi	d,uu
+	lxi	b,NBYTES+3
+	ldir
+
+	lhld	arg4
+	lxi	d,xx
+	call	setcrd
+	lxi	h,1
+	shld	ii
+	lxi	h,LOG1
+	shld	tw
+
+	mvi	b,29
+log2:	push	b
+;	call	check
+	call	STLLOG
+	lda	ii
+	inr	a
+	sta	ii
+	lhld	tw
+	lxi	b,NBYTES
+	dad	b
+	shld	tw
+	pop	b
+	dcr	b
+	jnz	log2
+
+	lxi	h,ww+3
+	lxi	d,ww+4
+	lxi	b,NBYTES-2
+	mvi	m,0
+	ldir
+	mvi	a,010h
+	sta	ww+NBYTES+2	; xx = 1.0
+	lxi	d,ww+3
+	lxi	h,xx+3
+	call	isub64
+
+	lxi	d,yy+3
+	lxi	h,ww+3
+	call	isub64
+
+	lxi	h,yy
+	call	crdpck
+	lxi	h,uu
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPADD0
+	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+;
+STLLOG:	lxi	h,xx+3
+	lxi	d,ww+3
+	lxi	b,NBYTES
+	ldir			; fp64(FPSFT,x,-i,w);
+	lda	ii
+	mov	b,a
+slog1:	lxi	h,ww+NBYTES+2
+	mov	a,m
+	ral
+	call	sftr64
+	dcr	b
+	jnz	slog1
+
+	lxi	d,ww+3
+	lxi	h,xx+3
+	ora	a
+	call	iadd64
+	lda	ww+NBYTES+2	; xx = 1.0
+	cpi	010h
+	rnc
+	lxi	h,ww+3
+	lxi	d,xx+3
+	lxi	b,NBYTES
+	ldir
+
+	lxi	d,yy+3
+	lhld	tw
+	call	isub64
+	ret
+;
+;
+;
+INT:	lhld	AEXP
+	lxi	d,BIASEXP
+	ora	a
+	dsbc	d
+	mov	b,l
+	lxi	h,0
+	shld	AEXP
+intg1:	lxi	h,AREG
+	ora	a
+	call	sftl80
+	dcr	b
+	jnz	intg1
+intg2:	lhld	AEXP
+	shld	xexp
+	lxi	h,BIASEXP
+	shld	AEXP
+
+	xchg
+	lda	AREG+NBYTES-1
+	ral
+	jc	intg5
+	mvi	b,NBYTES*8
+intg3:	dcx	d
+	lxi	h,AREG
+	ora	a
+	call	sftl64
+	jm	intg4
+	dcr	b
+	jnz	intg3
+	lxi	d,0
+intg4:	xchg
+	shld	AEXP
+intg5:	ora	a
+	ret
+;
+EXPP:	lxi	h,xx
+	lxi	d,xx+1
+	lxi	b,NBYTES*3+9-1
+	mvi	m,0
+	ldir
+
+	mvi	a,010h
+	sta	yy+NBYTES+2	; yy = 1.0
+
+	lxi	h,0
+	shld	xexp
+
+	lhld	arg2
+	lxi	d,NBYTES-2
+	dad	d
+	mov	e,m
+	inx	h
+	mov	d,m
+	lxi	h,03cf9h
+	ora	a
+	dsbc	d
+	jnc	expp6
+	lxi	h,040b8h
+	ora	a
+	dsbc	d
+	jc	expp8
+
+	lxi	h,0400dh
+	ora	a
+	dsbc	d
+	jnc	expp1
+
+	lhld	arg2
+	xchg
+	lxi	h,AREG
+	call	unpack
+	lxi	h,loge
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	call	INT
+	lxi	h,loge
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0
+	lhld	arg4
+	xchg
+	call	pack
+	lhld	arg4
+	jmp	expp11
+
+expp1:	lhld	arg2
+expp11:	lxi	d,xx
+	call	setcrd
+
+	lxi	h,1
+	shld	ii
+	lxi	h,LOG1
+	shld	tw
+
+	mvi	b,29
+expp2:	push	b
+	call	STLEXP
+	lda	ii
+	inr	a
+	sta	ii
+	lhld	tw
+	lxi	b,NBYTES
+	dad	b
+	shld	tw
+	pop	b
+	dcr	b
+	jnz	expp2
+
+	lhld	xx+3
+	xchg
+	lhld	xx+5
+
+	xchg
+	dad	h
+	xchg
+	dadc	h
+
+	mvi	b,29
+expp3:	xchg
+	dad	h
+	xchg
+	dadc	h
+	exx
+	cc	STLEXX
+	exx
+	lda	ii
+	inr	a
+	sta	ii
+	dcr	b
+	jnz	expp3
+	
+expp6:	lxi	h,yy
+	call	crdpck
+expp7:	lhld	xexp
+	xchg
+	lhld	AEXP
+	dad	d
+	shld	AEXP
+	lhld	arg4
+	xchg
+	call	pack
+	pop	b
+	ret
+expp8:	lxi	h,-1
+	shld	AREG
+	shld	AREG+2
+	shld	AREG+4
+	shld	AREG+6
+	lxi	h,08000h
+	shld	AEXP
+	mvi	a,0
+	sta	ASIGN
+	jmp	expp7
+;
+STLEXP:	lxi	h,xx+3
+	lxi	d,ww+3
+	lxi	b,NBYTES
+	ldir			; fp64(FPSFT,x,-i,w);
+	lxi	d,ww+3
+	lhld	tw
+	call	isub64
+	rc
+
+	lxi	h,ww+3
+	lxi	d,xx+3
+	lxi	b,NBYTES
+	ldir
+
+STLEXX:	lxi	h,yy+3
+	lxi	d,uu+3
+	lxi	b,NBYTES
+	ldir
+	lda	ii
+	mov	b,a
+sexp1:	lxi	h,uu+NBYTES+2
+	mov	a,m
+	ral
+	call	sftr64
+	dcr	b
+	jnz	sexp1
+
+	lxi	d,yy+3
+	lxi	h,uu+3
+	call	iadd64
+	ret
+;
+;
+ten	db	10,0,0,0,0,0,0,0
+lltmp	ds	2
+llwork	ds	nbytes+3
+;
+
+k2	ds	2
+EP	ds	2
+OUTSGN	ds	1
+OUTBUF	ds	20
+	;
+OVF	ds	1
+UNF	ds	1
+ZERO	ds	1
+MINUS	ds	1
+;
+;
+ii	ds	2
+tw	ds	2
+vv3	ds	2
+vvn	ds	2
+vvsign	ds	1
+xexp	ds	2
+xx	ds	nbytes+3
+yy	ds	nbytes+3
+vv	ds	nbytes+3
+uu	ds	nbytes+3
+ww	ds	nbytes+3
+zz	ds	nbytes+3
+;
+;
+LA	DS	NBYTES
+AREG	DS	NBYTES
+AEXP	DS	2
+ASIGN	DS	1
+	;
+LB:	DS	NBYTES
+BREG:	DS	NBYTES
+BEXP:	DS	2
+BSIGN:	DS	1
+;
+;
+;
+ten256:	db	08eh,0deh,0f9h,09dh,0fbh,0ebh,07eh,0aah
+	dw	biasexp+353h
+	db	000h
+ten128:	db	0e0h,08ch,0e9h,080h,0c9h,047h,0bah,093h
+	dw	biasexp+1aah
+	db	000h
+ten64:	db	0d5h,0a6h,0cfh,0ffh,049h,01fh,078h,0c2h
+	dw	biasexp+0d5h
+	db	000h
+ten32:	db	09eh,0b5h,070h,02bh,0a8h,0adh,0c5h,09dh
+	dw	biasexp+06bh
+	db	000h
+ten16:	db	000h,000h,000h,004h,0bfh,0c9h,01bh,08eh
+	dw	biasexp+036h
+	db	000h
+ten8:	db	000h,000h,000h,000h,000h,020h,0bch,0beh
+	dw	biasexp+01bh
+	db	000h
+ten4:	db	000h,000h,000h,000h,000h,000h,040h,09ch
+	dw	biasexp+00eh
+	db	000h
+ten2:	db	000h,000h,000h,000h,000h,000h,000h,0c8h
+	dw	biasexp+007h
+	db	000h
+ten1:	db	000h,000h,000h,000h,000h,000h,000h,0a0h
+	dw	biasexp+004h
+	db	000h
+one:	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+001h
+	db	000h
+;
+tenm256:
+	db	03ah,019h,07ah,063h,025h,043h,031h,0c0h
+	dw	biasexp-352h
+	db	000h
+tenm128:
+	db	0a1h,0e4h,0bch,064h,07ch,046h,0d0h,0ddh
+	dw	biasexp-1a9h
+	db	000h
+tenm64:	db	0a5h,0e9h,039h,0a5h,027h,0eah,07fh,0a8h
+	dw	biasexp-0d4h
+	db	000h
+tenm32:	db	0bah,094h,039h,045h,0adh,01eh,0b1h,0cfh
+	dw	biasexp-06ah
+	db	000h
+tenm16:	db	05bh,0e1h,04dh,0c4h,0beh,094h,095h,0e6h
+	dw	biasexp-035h
+	db	000h
+tenm8:	db	0fdh,0ceh,061h,084h,011h,077h,0cch,0abh
+	dw	biasexp-01ah
+	db	000h
+tenm4:	db	02ch,065h,019h,0e2h,058h,017h,0b7h,0d1h
+	dw	biasexp-00dh
+	db	000h
+tenm2:	db	00ah,0d7h,0a3h,070h,03dh,00ah,0d7h,0a3h
+	dw	biasexp-006h
+	db	000h
+tenm1:	db	0cdh,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	dw	biasexp-003h
+	db	000h
+;
+;
+;
+num0:	db	000h,000h,000h,000h,000h,000h,000h,000h
+	dw	000h
+	db	000h
+num1:	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+001h
+	db	000h
+num2:	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+002h
+	db	000h
+num3:	db	000h,000h,000h,000h,000h,000h,000h,0c0h
+	dw	biasexp+002h
+	db	000h
+num4:	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+003h
+	db	000h
+num5:	db	000h,000h,000h,000h,000h,000h,000h,0a0h
+	dw	biasexp+003h
+	db	000h
+num6:	db	000h,000h,000h,000h,000h,000h,000h,0c0h
+	dw	biasexp+003h
+	db	000h
+num7:	db	000h,000h,000h,000h,000h,000h,000h,0e0h
+	dw	biasexp+003h
+	db	000h
+num8:	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+004h
+	db	000h
+num9:	db	000h,000h,000h,000h,000h,000h,000h,090h
+	dw	biasexp+004h
+	db	000h
+;
+;
+;
+pai:	db	035h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+002h
+	db	000h
+pai2:	db	035h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+003h
+	db	000h
+paid2:	db	035h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+001h
+	db	000h
+paid4:	db	035h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+000h
+	db	000h
+;
+;
+pai180:	db	0aeh,0c8h,0e9h,094h,012h,035h,0fah,08eh
+	dw	biasexp-005h
+	db	000h
+ee:	db	09bh,04ah,0bbh,0a2h,048h,054h,0f8h,0adh
+	dw	biasexp+002h
+	db	000h
+log10:	db	0feh,08ah,01bh,0cdh,04bh,078h,09ah,0d4h
+	dw	biasexp+002h
+	db	000h
+loge:	db	0bbh,0f0h,017h,05ch,029h,03bh,0aah,0b8h
+	dw	biasexp+001h
+	db	000h
+;
+;
+;
+KK	DB	000H,05AH,05EH,043H,0A8H,0EDH,074H,09BH
+	DW	BIASEXP+000H
+	DB	000H
+;
+;
+KKK	DB	05DH,067H,07FH,0A6H,0E5H,035H,084H,0DAH,04EH,0B7H,009H
+ATN00:	DB	028H,05EH,04CH,023H,08CH,016H,022H,0AAH,0FDH,090H,00CH
+	DB	022H,07FH,02BH,0DAH,0D3H,06EH,058H,0C1H,019H,06BH,007H
+	DB	01EH,0B7H,055H,0ACH,01BH,090H,025H,0BFH,06EH,0EBH,003H
+	DB	02FH,091H,065H,0DCH,0F6H,0C2H,0AAH,0A9H,05BH,0FDH,001H
+	DB	028H,0CBH,036H,04EH,0EFH,067H,0B9H,0DDH,0AAH,0FFH,000H
+	DB	0CFH,03BH,0A1H,092H,0D8H,0A5H,0EEH,056H,0F5H,07FH,000H
+	DB	0E3H,0F9H,06EH,035H,0E5H,076H,0B7H,0AAH,0FEH,03FH,000H
+	DB	0C4H,000H,02DH,097H,0BAH,0BBH,055H,0D5H,0FFH,01FH,000H
+	DB	013H,0BBH,094H,0DBH,0DDH,0ADH,0AAH,0FAH,0FFH,00FH,000H
+	DB	0A7H,05CH,0EAH,0EEH,06EH,055H,055H,0FFH,0FFH,007H,000H
+	DB	053H,06EH,077H,077H,0ABH,0AAH,0EAH,0FFH,0FFH,003H,000H
+	DB	0A9H,0BBH,0BBH,05BH,055H,055H,0FDH,0FFH,0FFH,001H,000H
+	DB	0DEH,0DBH,0DDH,0AAH,0AAH,0AAH,0FFH,0FFH,0FFH,000H,000H
+	DB	0EFH,0EEH,056H,055H,055H,0F5H,0FFH,0FFH,07FH,000H,000H
+	DB	077H,0B7H,0AAH,0AAH,0AAH,0FEH,0FFH,0FFH,03FH,000H,000H
+	DB	0BCH,055H,055H,055H,0D5H,0FFH,0FFH,0FFH,01FH,000H,000H
+	DB	0AEH,0AAH,0AAH,0AAH,0FAH,0FFH,0FFH,0FFH,00FH,000H,000H
+	DB	055H,055H,055H,055H,0FFH,0FFH,0FFH,0FFH,007H,000H,000H
+	DB	0AAH,0AAH,0AAH,0EAH,0FFH,0FFH,0FFH,0FFH,003H,000H,000H
+	DB	055H,055H,055H,0FDH,0FFH,0FFH,0FFH,0FFH,001H,000H,000H
+	DB	0AAH,0AAH,0AAH,0FFH,0FFH,0FFH,0FFH,0FFH,000H,000H,000H
+	DB	055H,055H,0F5H,0FFH,0FFH,0FFH,0FFH,07FH,000H,000H,000H
+	DB	0AAH,0AAH,0FEH,0FFH,0FFH,0FFH,0FFH,03FH,000H,000H,000H
+	DB	055H,0D5H,0FFH,0FFH,0FFH,0FFH,0FFH,01FH,000H,000H,000H
+	DB	0AAH,0FAH,0FFH,0FFH,0FFH,0FFH,0FFH,00FH,000H,000H,000H
+	DB	055H,0FFH,0FFH,0FFH,0FFH,0FFH,0FFH,007H,000H,000H,000H
+	DB	0EAH,0FFH,0FFH,0FFH,0FFH,0FFH,0FFH,003H,000H,000H,000H
+	DB	0FDH,0FFH,0FFH,0FFH,0FFH,0FFH,0FFH,001H,000H,000H,000H
+	DB	000H,000H,000H,000H,000H,000H,000H,001H,000H,000H,000H
+ATN29:	DB	000H,000H,000H,000H,000H,000H,080H,000H,000H,000H,000H
+;
+;
+LOG1:	DB	0FDH,012H,0E6H,02FH,0FBH,0C8H,07CH,006H
+	DB	036H,044H,053H,0F3H,0F8H,0FEH,091H,003H
+	DB	05FH,02EH,0AFH,0E2H,076H,070H,0E2H,001H
+	DB	033H,015H,08BH,000H,086H,051H,0F8H,000H
+	DB	001H,0CCH,0E0H,039H,06CH,00AH,07EH,000H
+	DB	0C8H,007H,0F8H,061H,051H,081H,03FH,000H
+	DB	089H,067H,010H,06BH,02AH,0E0H,01FH,000H
+	DB	0E0H,085H,058H,051H,005H,0F8H,00FH,000H
+	DB	03AH,0C4H,06AH,0AAH,000H,0FEH,007H,000H
+	DB	022H,056H,051H,015H,080H,0FFH,003H,000H
+	DB	0B1H,06AH,0AAH,002H,0E0H,0FFH,001H,000H
+	DB	056H,051H,055H,000H,0F8H,0FFH,000H,000H
+	DB	06BH,0AAH,00AH,000H,0FEH,07FH,000H,000H
+	DB	051H,055H,001H,080H,0FFH,03FH,000H,000H
+	DB	0AAH,02AH,000H,0E0H,0FFH,01FH,000H,000H
+	DB	055H,005H,000H,0F8H,0FFH,00FH,000H,000H
+	DB	0ABH,000H,000H,0FEH,0FFH,007H,000H,000H
+	DB	015H,000H,080H,0FFH,0FFH,003H,000H,000H
+	DB	003H,000H,0E0H,0FFH,0FFH,001H,000H,000H
+	DB	000H,000H,0F8H,0FFH,0FFH,000H,000H,000H
+	DB	000H,000H,0FEH,0FFH,07FH,000H,000H,000H
+	DB	000H,080H,0FFH,0FFH,03FH,000H,000H,000H
+	DB	000H,0E0H,0FFH,0FFH,01FH,000H,000H,000H
+	DB	000H,0F8H,0FFH,0FFH,00FH,000H,000H,000H
+	DB	000H,0FEH,0FFH,0FFH,007H,000H,000H,000H
+	DB	080H,0FFH,0FFH,0FFH,003H,000H,000H,000H
+	DB	0E0H,0FFH,0FFH,0FFH,001H,000H,000H,000H
+	DB	0F8H,0FFH,0FFH,0FFH,000H,000H,000H,000H
+	DB	000H,000H,000H,080H,000H,000H,000H,000H
+;
+	DB	000H,000H,000H,040H,000H,000H,000H,000H
+	DB	000H,000H,000H,020H,000H,000H,000H,000H
+	DB	000H,000H,000H,010H,000H,000H,000H,000H
+;
+;
+check2:	push	psw
+	push	b
+	push	d
+	push	h
+	mov	a,h
+	call	outhex
+	mov	a,l
+	call	outhex
+	mov	a,d
+	call	outhex
+	mov	a,e
+	call	outhex
+	mvi	a,':'
+	call	outc
+	jmp	check3
+
+check:	push	psw
+	push	b
+	push	d
+	push	h
+check3:	lxi	h,xx
+	call	hexout
+	lxi	h,yy
+	call	hexout
+	lxi	h,ww
+	call	hexout
+	lxi	h,uu
+	call	hexout
+	mvi	a,0ah
+	call	outc
+	mvi	a,0dh
+	call	outc
+	pop	h
+	pop	d
+	pop	b
+	pop	psw
+	ret
+;
+outc:	push	h
+	push	d
+	push	b
+	push	psw
+	mov	e,a
+	mvi	c,2
+	call	5
+	pop	psw
+	pop	b
+	pop	d
+	pop	h
+	ret
+;
+hexout:	lxi	d,NBYTES+2
+	dad	d
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	dcx	h
+	mov	a,m
+	call	outhex
+	mvi	a,' '
+	call	outc
+	ret
+;
+outhex:	push	h
+	push	d
+	push	b
+	mov	c,a
+	rar
+	rar
+	rar
+	rar
+	call	outhx1
+	mov	a,c
+	call	outhx1
+	pop	b
+	pop	d
+	pop	h
+	ret
+;
+outhx1:	ani	0fh
+	adi	'0'
+	cpi	'9'+1
+	jc	outhx2
+	adi	7
+outhx2:	call	outc
+	ret
+	
+	ENDFUNCTION
+ 

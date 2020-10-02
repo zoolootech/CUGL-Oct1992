@@ -1,0 +1,224 @@
+/************************************************************
+ *  Program: RMENU Menu Interpreter
+ *  Module: rcmenu.h -- Interpreter Module header file
+ *  Written by: Leor Zolman, 7/91
+ ************************************************************/
+
+#include <curses.h>
+
+#define min(x,y) ((x) < (y) ? (x) : (y))
+
+
+/********************* Curses Configuration *****************/
+
+#ifndef KEY_UP
+#   define  OLD_CURSES 1           /* no KEY_UP definition: old Curses */
+#else
+#   define  OLD_CURSES 0           /* KEY_UP defined: new Curses       */
+#endif
+
+#if OLD_CURSES                     /* under old Curses, emulate some   */
+#   define  INIT_FAIL   ERR        /* of new Curses' features          */
+#   ifdef CTRL
+#       undef CTRL
+#   endif
+#   define CTRL(x)      ((x) & 037)
+#   define  KEY_UP      CTRL('P')
+#   define  KEY_DOWN    CTRL('N')
+#   define  KEY_LEFT    CTRL('B')
+#   define  KEY_RIGHT   CTRL('F')
+#   define  beep()      write(1, "\007", 1);
+#   define  keypad(a,b)
+#else
+#   define  INIT_FAIL   NULL
+#endif 
+
+#if XENIX
+#define resetty reset_tty
+#endif
+
+#if DOS                                /* Color definitions for DOS:   */
+#define DOS_FCOLOR  A_CYAN             /* Normal DOS foreground color  */
+#define DOS_BCOLOR  A_BLACK            /* Normal DOS background color  */
+
+#define M_FCOLOR    A_YELLOW           /* Normal Menu foregnound color */
+#define M_BCOLOR    A_BLUE             /* Normal Menu background color */
+
+#define MREV_FCOLOR A_BLUE             /* Reverse Menu foregnd color   */
+#define MREV_BCOLOR A_WHITE            /* Reverse Menu backgnd color   */
+#endif
+
+
+/*************** Default menu control options ***************/
+
+#define ON_ERROR        50                 /* prompt option            */
+
+#define SHELL_PROMPT    FALSE              /* Prompt for shell escape? */
+
+#define DEF_PRECLEAR    YES
+#define DEF_POSTCLEAR   NO
+#define DEF_PROMPT      ON_ERROR             /*  YES, NO or ON_ERROR   */
+#define DEF_ESCAPE      YES
+
+#define DEF_COLUMNS     1
+#define DEF_SPACING     2
+
+
+/************** Screen layout characteristics ***************/
+
+#define MAX_IROWS   18                 /* # of item rows MUST BE EVEN) */
+#define HOME_Y      2                  /* upper left y for 1st Item    */
+#define HOME_X      1                  /* upper left x for 1st Item    */
+#define SCREEN_COLS 80                 /* # of columns on the screen   */
+
+#define TITLE_ROW   0                  /* row on screen for menu title */
+#define HELP_ROW0   20                 /* row that "HELP" sign goes on */
+#define HELP_COL0   36                 /* column that "HELP" sign goes */
+#define HELP_ROW    21                 /* row on screen for HELP text  */
+#define PROMPT_ROW  23                 /* row for prompt text          */
+
+
+/** System/hardware-dependent Key codes and line numbers: ***/
+
+#if DOS
+#   define LAST_ROW       24               /* last row of screen       */
+#   define MAX_PATH_STACK 5                /* maximum nested submenus  */
+#else
+#   define LAST_ROW     23                 /* last row of screen       */
+#endif
+
+#define ERR_ROW     (PROMPT_ROW - 1)
+
+
+/************** Shell Escape Control Parameters *************/
+
+#define SH_PROMPT_STR \
+    " Press Enter for sub-shell, ESC to abort\
+ ('exit' returns from shell): "
+
+#define MENU_OPTS \
+ " Space/arrows/item#=Choose  ENTER=Run\
+  'e'=Previous  'x'=Exit "
+
+#define MENU_SHELL  " !=shell "
+#define MENU_PROMPT " -> "
+
+#ifndef DOS
+#   define SHELL_ESC    "PS1=\"\n('exit' returns to\
+ Menu)\n$ \"; export PS1; exec sh -"
+#endif
+
+
+/********** Other Miscellaneous constants: *****************/
+
+#define ESC         033                /* ESC key                      */
+#define EXITALL     2                  /* "super exit" code            */
+
+#define KEY_RUN     '\r'                   /* raw-mode Enter key       */
+#define KEY_SHOW    'a'                /* show action text for an item */
+#define K_DIRECT    (-2)               /* values returned by get_cmd() */
+#define K_EXIT      (-3)
+#define K_EXITALL   (-4)
+#define K_SHELL     (-5)
+#define K_UNKNOWN   (-6)
+#define K_VERSION   (-7)               /* report version number        */
+
+#define STANDOUT    1                  /* video mode codes passed to   */
+#define NORMAL      2                  /* the draw_item() function     */
+
+
+/********************* Global data **************************/
+
+extern struct levels {
+    int n_menus;                               /* # currently active   */
+    int max_menus;                             /* highest ever active  */
+    struct menu2 {
+        int most_items;                        /* most Items allocated */
+        MENU Menu;                             /* the header structure */
+        ITEM *Items[MAX_ITEMS];                /* the actual items     */
+
+        int field_len;                         /* length of item field */
+        struct coord {                         /* coords of each item  */
+            int ypos, xpos;
+            int spaces_needed;                 /* # of spaces to fill  */
+        } coords[MAX_ITEMS];
+
+    } *Menus[MAX_MENUS];
+} LMenus[MAX_NEST];
+
+typedef struct levels LEVELS;
+typedef struct menu2 MENU2;
+typedef struct coord COORDS;
+
+extern  int     nestlev;               /* current nesting level        */
+extern  int     echox, echoy;          /* Location of item # echo area */
+extern  int     debug;                 /* true to display sys commands */
+
+extern  char    SysShell[80];          /* System Command Interpreter   */
+
+/********************* Prototypes: **************************/
+
+#if __STDC__ || XENIX            /* Standard C, supporting prototypes: */
+
+void    init_win(void);
+void    close_win(void);
+void    pre_shell(void);
+void    post_shell(void);
+void    tty_curses(void);
+void    tty_shell(void);
+void    push_path(void);
+void    pop_path(void);
+
+int     ld_menu(char *);
+void    placement(MENU *);
+void    free_menus(void);
+int     do_menu(char *, char *);
+int     sub_menu(int, char *);
+void    draw_menu(MENU2 *, int);
+int     get_cmd(int, int, int *);
+int     put_msg(int, char *, ...);
+int     do_item(MENU2 *, int, char *);
+void    draw_item(MENU2 *, int, int, int);
+int     fatal(char *, ...);
+void    do_cmnd(ITEM *, char *);
+int     do_emenu(ITEM *, char *);
+int     system0(char *);
+char *  make_path( char *, char *);
+char *  make_cmd( char *, char *);
+void    show_item(MENU2 *, int, char *);
+void    show_cmnd(ITEM *, char *);
+void    hlight_on(void);
+void    hlight_end(void);
+
+#else                                  /* K&R C, minimal "prototypes:" */
+
+int     init_win();
+int     close_win();
+int     pre_shell();
+int     post_shell();
+int     tty_curses();
+int     tty_shell();
+int     push_path();
+int     pop_path();
+
+int     ld_menu();
+int     placement();
+int     free_menus();
+int     do_menu();
+int     sub_menu();
+int     draw_menu();
+int     get_cmd();
+int     put_msg();
+int     do_item();
+int     draw_item();
+int     fatal();
+int     do_cmnd();
+int     do_emenu();
+int     system0();
+char *  make_path();
+char *  make_cmd();
+int     show_item();
+int     show_cmnd();
+int     hlight_on();
+int     hlight_end();
+#endif

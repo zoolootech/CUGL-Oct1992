@@ -1,0 +1,255 @@
+
+              Listing 3, Foreground Monitor Program
+              -------------------------------------
+
+/*
+**  MONITOR.C
+**  Foreground Monitor Program
+**
+**  Written in MicroSoft C version 6.00
+**  Build String:
+**    cl monitor.c -link graphics
+**
+**  Written By:  John R. Naleszkiewicz
+**        Date:  March 15, 1991
+**     Version:  1.00
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <graph.h>
+#include <dos.h>
+
+#define SINGLE   0
+#define DOUBLE   1
+
+#define CHAR     0
+#define STRING   1
+#define SHORT    2
+#define LONG     3
+#define ESCape   27
+
+char boxChar[2][6] = {
+  { 0xda, 0xc4, 0xbf, 0xc0, 0xd9, 0xb3, },
+  { 0xc9, 0xcd, 0xbb, 0xc8, 0xbc, 0xba, }
+};
+
+/* This structure defines which variables are monitored */
+struct Variable_Struct {
+  char far * name;           /*  Far Pointer to Variable Name  */
+  unsigned char type;        /*  Variable Type  */
+  unsigned char indirect;    /*  Indirection Count  */
+  unsigned short ind_flag;   /*  Indirection Type Flag  */
+  void far * var;            /*  Far Pointer to Variable  */
+} far * element;
+
+
+/* the interrupt vector number used to gain entry into TSR */
+#define  INT_VECTOR    0x68
+#define  FORMAT_ID     01
+
+union    REGS  regs;
+
+
+static int  frameColor, textColor;
+static int  uRow, uColumn, lRow, lColumn;
+static int  rowMAX, colMAX;
+static char filler[10] = "         ";
+static char chbuf[2]   = " ";
+
+
+void drawBox( int type,
+              int ulr, int ulc, int lrr, int lrc,
+              int frame, int text, int background )
+{
+  int i;
+  char buffer[81];
+
+  _settextwindow( ulr, ulc, lrr, lrc );
+  _setbkcolor( (long) background );
+  _settextcolor( textColor = text );
+  _clearscreen( _GWINDOW );
+  _wrapon( _GWRAPOFF );
+  _settextcolor( frameColor = frame );
+
+  rowMAX = lrr - ulr + 1;
+  colMAX = lrc - ulc + 1;
+
+  strset( filler, boxChar[type][1] );
+
+  buffer[colMAX] = '\0';
+  for( i = 1; i < colMAX-1 ; i++ )
+    buffer[i] = boxChar[type][1];
+
+  _settextposition( rowMAX, 1 );
+  buffer[0]        = boxChar[type][3];
+  buffer[colMAX-1] = boxChar[type][4];
+  _outtext( buffer );
+
+  _settextposition( 1, 1 );
+  buffer[0]        = boxChar[type][0];
+  buffer[colMAX-1] = boxChar[type][2];
+  _outtext( buffer );
+
+  chbuf[0] = boxChar[type][5];
+  for( i = 2 ; i < rowMAX ; i++ ) {
+    _settextposition( i, 1 );
+    _outtext( chbuf );
+    _settextposition( i, colMAX );
+    _outtext( chbuf );
+  }
+  _settextposition( 23, 19 );
+  _outtext( "Press the ESCape Key to EXIT the Monitor" );
+
+  _settextcolor( text );
+  _settextposition( 1, 27 );
+  _outtext( " Non-Intrusive TSR Monitor " );
+
+  _settextwindow( uRow = ulr+1, uColumn = ulc+1,
+                  lRow = lrr-1, lColumn = lrc-1 );
+}
+
+
+void clearEOL()
+{
+  struct rccoord loc;
+
+  loc = _gettextposition();
+  if( loc.col < colMAX-2 ) {
+    _settextwindow( loc.row+uRow-1, 
+                    loc.col+uColumn-1, loc.row+uRow-1, lColumn );
+    _scrolltextwindow( _GSCROLLUP );
+    _settextwindow( uRow, uColumn, lRow, lColumn );
+    _settextposition( loc.row, loc.col );
+  }
+}
+
+
+void dotFill( int x )
+{
+  struct rccoord pos;
+
+  pos = _gettextposition();
+  x -= pos.col;
+  while( --x > 0 )
+    _outtext( "." );
+}
+
+
+void far * resolve( int index )
+{
+  int      pos, cnt;
+  void     far * pointer;
+  unsigned mask;
+
+  if( element[index].indirect == 0 )
+    return element[index].var;
+
+  cnt = element[index].indirect;
+  pointer = element[index].var;
+
+  for( mask = 1 ; cnt ; cnt--, mask <<= 1 ) {
+    if( (element[index].ind_flag & mask) == 0 ) {
+      /* resolve the near pointer */
+      (unsigned) pointer = *( (unsigned far *) pointer );
+    }
+    else {
+      /* resolve the far pointer */
+      pointer = *( (void far * far *) pointer );
+    }
+  }
+
+  return pointer;
+}
+
+
+void putValue( int index )
+{
+  char str[20];
+
+  switch( element[index].type ) {
+    case CHAR:
+      str[0] = *( (char far *) resolve( index ));
+      str[1] = '\0';
+      _outtext( str );
+      break;
+
+    case STRING:
+      _outtext( (char far *) resolve( index ) );
+      break;
+
+    case SHORT:
+      _outtext( itoa( *((int far *) resolve( index )), str, 10 ) );
+      break;
+
+    case LONG:
+      _outtext( ltoa( *((long far *) resolve( index )), str, 10 ));
+      break;
+  }
+
+  clearEOL();
+}
+
+
+void nothingToMonitor()
+{
+  printf( "Non-Intrusive Monitor\nVersion 1.00\n" );
+  printf( "Written by John R. Naleszkiewicz\n\n" );
+  printf( "No TSR loaded that can be monitored" );
+  exit( 1 );
+}
+
+
+void main()
+{
+  int cc;
+  int vars;
+  int index;
+
+  if( _dos_getvect( INT_VECTOR ) == NULL )
+    nothingToMonitor();
+
+  /* Check for a Valid Data Block Format */
+  regs.x.ax = 0;
+  if( int86( INT_VECTOR, &regs, &regs ) != FORMAT_ID )
+    nothingToMonitor();
+
+  /* Find out How Many Variables to Monitor */
+  regs.x.ax = 1;
+  if( (vars = int86( INT_VECTOR, &regs, &regs )) == 0 )
+    nothingToMonitor();
+
+  /* Get the Data Block Address */
+  regs.x.ax = 2;
+  int86( INT_VECTOR, &regs, &regs );
+  element = (struct Variable_Struct far *) 
+             (((long) regs.x.dx << 16) + (long) regs.x.ax);
+
+  drawBox( DOUBLE, 1, 1, 25, 80, 14, 15, 1 );
+
+  /* display the variable names */
+  for( index = 0 ; index < vars ; index++ ) {
+    _settextposition( index+3, 10 );
+    _outtext( element[index].name );
+    dotFill( 40 );
+  }
+
+  for( cc = 0 ; cc != ESCape ; ) {
+    for( index = 0 ; index < vars ; index++ ) {
+      _settextposition( index+3, 40 );
+      putValue( index );
+    }
+
+    /* check if any keyboard characters have been pressed */
+    if( kbhit() ) {
+      if( (cc = getch()) == 0 )
+        (void) getch();
+    }
+  }
+
+  /* restore screen colors and exit */
+  _setbkcolor( 0 );
+  _settextcolor( 7 );
+  _clearscreen( _GCLEARSCREEN );
+}
+

@@ -1,0 +1,39 @@
+/* Listing 3 written for Microway NDP C-386 */
+/* Copyright 1990 by Gary R. Olhoeft */
+void plot_image_32(address)         /* only supports full screen images */
+unsigned int address;
+{
+  reg$edx unsigned edx;             /* required by inline assembler */
+  asm("hstdata  equ  0C7000h");     /* Hercules Graphics Station Card */
+  asm("hstctrl  equ  0C7D00h");     /* GB1024 34010 host addresses */
+  asm("hstadrl  equ  0C7E00h");  
+  asm("hstadrh  equ  0C7F00h");  
+  edx = address;                    /* address of image */
+  asm(edx," push   ebp");           /* save base page (frame pointer) */
+  asm("     mov    ebp,esp");       /* make new frame pointer */
+  asm("     push   es");            /* save es */ 
+  asm("     mov    ax,034h");       /* setup Phar Lap LDT to first Mbyte */
+  asm("     mov    es,ax");         /* es points to first Mbyte real memory */
+  asm("     mov    ax,es:hstctrl"); /* get 34010 state */
+  asm("     push   ax");            /* save 34010 state */
+  asm("     or     ax,0D800h");     /* turn on 34010 autoincrement */
+  asm("     mov    es:hstctrl,ax"); /* setup 34010 for transfer */
+  asm("     xor    ax,ax");         /* zero */
+  asm("     mov    es:hstadrl,ax"); /* start at beginning of 34010 */
+  asm("     mov    es:hstadrh,ax"); /*     video memory */
+  asm("     mov    esi,edx");       /* setup image starting address */
+  asm("     mov    ecx,245760");    /* 512x480 pixel count */
+  asm("     cld");                  /* clear direction pointer */
+  asm("clp: lodsw");                /* get first two bytes of image */
+  asm("     xchg   ah,al");         /* swap bytes for correct color order */
+  asm("     mov    es:hstdata,ax"); /* send word (half-pixel) to 34010 */
+  asm("     lodsb");                /* get third byte */
+  asm("     xor    ah,ah");         /* fourth byte is zero (overlay unused) */
+  asm("     mov    es:hstdata,ax"); /* send second half-pixel to 34010 */
+  asm("     loop   clp");           /* decrement ecx and loop until zero */
+  asm("     pop    ax");            /* get saved 34010 state */
+  asm("     mov    es:hstctrl,ax"); /* restore 34010 state */
+  asm("     pop    es");            /* restore es */
+  asm("     pop    ebp");           /* restore base page */
+}
+

@@ -1,0 +1,346 @@
+
+
+                                 BDSMARK.C
+
+
+
+                               David D. Clark
+                            507 N. Division St.
+                            Bristol, IN   46507
+
+
+
+        The Problem
+
+          BD Softwares' C compiler was one of the first C compilers
+        for micro computers and is still one of the best.  A lot of
+        good public domain and commercial software (like my favorite
+        word processing program and another of my favorite C
+        compilers) has been written with it.  It is a fast
+        development system and produces fast and compact code.
+
+          Unfortunatley, it is only available for CP/M systems.  If
+        you have a computer running a different operating system or
+        CPU and you want to port some of the excellent software
+        written in BDS C, you have to resort to a different compiler
+        on the new machine.  That is not the only problem however.
+        BDS C prior to version 1.6 is not a particularly portable
+        version of C because a number of the "standard" library
+        routines are not standard as used in "The C Programming
+        Language" (1) (hereafter referred to as "K&R") or C compilers
+        running on UNIX.  (Some of these routines do not really
+        exist in the UNIX C standard library but are simulations of
+        UNIX system calls on a CP/M system.)
+
+          When I started working with a Zenith Z-150 running MS-DOS,
+        I was faced with the formidable task of porting a lot of my
+        favorite public domain and self-written programs, written in
+        BDS C, to the new system.  Too, now that version 1.6 has
+        arrived, with its more standard i/o library, I have a lot of
+        code that needs translation to the new version as well.
+
+
+        The Nonstandard "Standard" Functions
+
+          After a bit of careful reading, I determined that there
+        were 9 functions in the old (pre version 1.6) BDS C standard
+        library that were not implemented as per K&R or, if K&R was
+        not clear about a particular function, the UNIX version 7 C
+        compiler.  Some of the differences are trivial, others are
+        not.  These functions, and the differences between the BDS
+        version and the standard version, are listed below:
+
+        creat          The BDS C version requires only one
+                       parameter, the file name, while the K&R
+                       version requires two: the file name and a
+                       protection mode.  Admittedly, the protection
+                       mode argument is useless in a CP/M
+                       environment, but may be needed under a
+                       different operating system.  This function is
+                       the same in the new version of the BDS
+                       library.
+
+        exit           According to K&R, exit will flush any open
+                       buffered files before closing them.  BDS C
+                       does not flush the file buffer before closing
+                       the file.
+
+        fgets          Again, there is a difference in the number
+                       and meaning of parameters accepted by the old
+                       BDS C function and the K&R version.  The old
+                       BDS C function expects to be called with a
+                       pointer to the string to fill and a pointer
+                       to a BDS C specific file buffer associated
+                       with the input device.  The K&R version also
+                       expects to be called with a pointer to the
+                       string to be filled, but followed by the
+                       maximum number of characters to fill the
+                       string with and a pointer to a FILE variable
+                       associated with the input device.  This
+                       version of this function included with
+                       version 1.6 of BDS C is K&R compatible.
+
+        fopen          In this case, the arguments and the value
+                       returned by the functions are different.  The
+                       old BDS library function expects to be called
+                       with a pointer to the name of the file and a
+                       pointer to the buffer variable to be
+                       associated with the open file.  It returns an
+                       integer representing the file descriptor of
+                       the opened file or -1 if an error occurs
+                       during the attempt to open the file.  The K&R
+                       version also expects a pointer to the name of
+                       the file but expects a pointer to a character
+                       representing the mode (read, write or append)
+                       in which the file is to be opened.  The
+                       function returns a pointer to a FILE variable
+                       to be associated with the open file or NULL
+                       in case of an error.  The new BDS C 1.6
+                       function is compatible.
+
+        getc           The new version of this function differs from
+                       the old in that it now differentiates between
+                       text and binary modes.  In text mode, CP/M
+                       line end sequences (a carriage return/line
+                       feed pair) is translated to a single line
+                       feed character.
+
+        getchar        The new version of this function
+                       distinguishes between text and binary modes
+                       like getc.
+
+        putc           The new version of this function also
+                       differentiates between binary and text
+                       modes.
+
+        puts           The difference here is small but can greatly
+                       affect screen displays that use the
+                       function.  The UNIX version of the function
+                       always appends a new line character to the
+                       end of the string it prints to the standard
+                       output.  The BDS function does not.
+
+        read           In this case, one of the arguments in the BDS
+                       version of the function represents the number
+                       of 128 byte blocks to be read.  This is
+                       reasonable in a CP/M environment where the
+                       smallest unit of disk I/O is 128 bytes.  The
+                       K&R version of the function expects the
+                       corresponding argument to represent the
+                       number of individual bytes to be read.  The
+                       functions return values representing
+                       different things too.  The BDS function
+                       returns the number of blocks read while the
+                       K&R version returns the number of bytes.
+                       This function has not changed in the new
+                       version of the BDS library.
+
+        tolower        This function is somewhat ambiguously defined
+                       in K&R. The UNIX version (a macro actually)
+                       does the conversion regardless of whether of
+                       not the argument was upper case to begin
+                       with.  The BDS function checks the argument
+                       to determine if it is upper case before
+                       performing the conversion.  Most other
+                       microcomputer versions of C do the same check
+                       before conversion.
+
+        toupper        The same problem occurs with this function as
+                       with tolower.  UNIX does not check the case
+                       of the argument before converting while BDS C
+                       does.  This seems like a very innocuous
+                       difference, but it is the one that most often
+                       caused me trouble.  Again, most microcomputer
+                       versions of C now do the case checking before
+                       conversion
+
+        write          Once more, there is a difference in the
+                       parameters expected by the two versions of
+                       the function.  The difference is the same as
+                       that with read.  The K&R version expects the
+                       number of bytes to write while the BDS
+                       version expects the number of 128 byte blocks
+                       to transfer.  The values returned by the
+                       functions are different too.  The K&R
+                       function returns the number of bytes actually
+                       written while the BDS version returns the
+                       number of blocks.  This function is the same
+                       in the new version of the BDS library.
+
+          Changing the calls when switching compilers is not really
+        too difficult.  The read and write functions sometimes cause
+        problems if numeric calculations are based on the values
+        they return.  The real problem is finding all of the calls
+        to this set of functions in a long program and taking
+        corrective action.  When I first started porting some
+        lengthy programs, attempting to find every single instance
+        of calls to these functions just about drove me up the
+        walls.  In my desire to finish some of the conversions
+        before the turn of the century with my normal cheerful
+        demeanor still intact, I decided to let the computer help
+        me.
+
+
+        The Program
+
+          Listing 1 shows my solution to the problem.  Bdsmark.c
+        reads a BDS C program as input and writes the program to its
+        output.  Along the way, it examines each legal C identifier
+        existing outside of a comment or constant string.  If the
+        identifier matches one of those in a list of nonstandard
+        function names, the identifier is "marked" in the output
+        file.  The marking consists of preceeding and suceeding
+        double carat marks ("^^").  This marking not only makes the
+        function names easy to spot, it also makes the program
+        uncompilable.  This prevents compilation and subsequent
+        subtle execution errors in programs where some of the names
+        might have been missed by the programmer.  The program does
+        not do any checking for legal C syntax.  It assumes that the
+        input file contains a legal, compilable C program.  If the
+        program contains syntax errors of various sorts, it is
+        possible that the program will be fatal to bdsmark.
+
+          The program is invoked from the command line by typing the
+        program name followed two file names.  The first file name
+        should be the file containing the C language source file to
+        mark.  The second file name should be the name of a file to
+        write the marked version of the program to.  If a file with
+        the same name already exists, it will be overwritten.  The
+        main function attempts to open the input and output files
+        specified on the command line.  If successful, it passes
+        control to the function scanner to handle just about
+        everything else.  If the requested files cannot be opened,
+        an error message is printed and the program terminates.  If
+        the number of command line arguments is incorrect, a short
+        usage message is printed and the program terminates.
+
+          The function scanner does most of the real work of the
+        program.  It simply reads characters from the input file,
+        checks for some special types of characters, and writes
+        characters to the output file.  Scanner looks for four types
+        of C program constructs: comments, string constants,
+        character constants and identifiers.  Checking for comments
+        and string and character constants is only needed if you
+        want to avoid marking function names which appear in
+        comments or string constants.
+
+          If a potential comment is detected, by reading a '/'
+        character, control is passed to the function commenter to
+        handle the rest of the comment.  The commenter function
+        first checks for the '*' after the slash to indicate that a
+        comment has really been detected.  If not, control is
+        returned to scanner.  If a comment is started, commenter
+        passes characters from the input to the output file until a
+        matching end-of-comment token ("*/") is detected.  After the
+        comment has been completely scanned, control is returned to
+        scanner.  Commenter will accept UNIX style nested comments
+        of the form:
+
+             /* printf("The number is %d/n", i);   /* a comment */
+
+          Once the initial open-comment token has been detected, the
+        function will continue to pass characters through until a
+        close-comment token is detected.  As such, it will not
+        handle correctly comments of the form allowed by some
+        compilers:
+
+             /* printf("The number is %d/n", i);  /* a comment */ */
+
+          To avoid marking and altering function names that appear
+        in string constants, scanner must be able to recognize and
+        pass string constants unchanged.  This is not quite as
+        straightforward as it seems.  The tricky part is to catch
+        double quote characters embedded in the string by use of the
+        escape sequence '\"'.  That part of the program looks for a
+        backslash character and, if one is detected, it reads the
+        next character and writes it without regard for what it is.
+        Otherwise, the program just looks for the terminal double
+        quote of the string.
+
+          One of the consequences of requiring the program to handle
+        string constants correctly is that it must handle character
+        constants as well.  Otherwise, a double quote used in a
+        character constant would incorrectly trigger the part of the
+        program that handles string constants.  Again, escape
+        sequences within the character constant must be recognized
+        and handled correctly.  Character constants may therefore
+        contain from one to four characters (in the case of an octal
+        constant) between the single quote delimiters.  The code in
+        the listing looks for and recognizes these different
+        possibilities.
+
+          The source code for bdsmark is actually a fairly good test
+        file to run the program on.  Since it must be able to
+        recognize the special cases, the source contains many of
+        those special cases itself.
+
+          Most of the processing takes place when a legal C
+        identifier is detected.  If the function iscfsym determines
+        that a character is a legal one to start a C identifier
+        with, that token is copied into the variable "token".
+        Copying stops when the function iscsym determines that the
+        current scan character is not a valid component of a C
+        identifier or if the token becomes longer than TOKLEN - 1
+        (since none of the function names we are interested in are
+        that long).  In this program, the functions iscfsym and
+        iscsym could be replaced by the functions isalpha and
+        isalnum since none of the nonstandard function names start
+        with an underscore.  I used the two longer functions in case
+        I make changes to the array of function names some time in
+        the future.
+
+          Once an identifier has been read into "token", the
+        function tsttoken is called to see if it matches one of the
+        function names in the initialized external variable nonstd.
+        Nonstd is an array of pointers to characters, just like the
+        argv argument to the main function, each of which points to
+        an initialized array of characters containing the name of
+        one of the nonstandard functions.  The names are arranged in
+        alphabetical order.  Since there are only nine names,
+        tsttoken does a simple linear search of the array.  If
+        tsttoken finds a match, scanner writes a marked version of
+        the identifier to the output file, otherwise, the token is
+        written unchanged.
+
+          You may notice in several places in the program that local
+        variables are declared with the static storage class.  For
+        the compilers I use, this produces smaller and faster code.
+        Others may prefer to use auto or register variables.
+        Another seeming peculiarity in the code is the use of
+        sequences of fputs and putc functions where a single printf
+        would seem more logical.  I chose the longer sequence of
+        calls to individual functions exactly to avoid using a
+        printf.  Using printf would increase the size of the program
+        by 5K to 10K, depending on the compiler, because most of the
+        floating point and long integer library routines would be
+        pulled in as well.  As is, the program compiles to a code
+        file of from 4K to 10K, depending on the compiler.
+
+          The program can be compiled "as is" on a number of
+        compilers including Eco-C88 under MS-DOS and Aztec C II
+        under CP/M.  If you remove the preprocessor directive to
+        include the file "ctype.h", the program can be compiled by
+        Q/C and Eco-C for the Z80 under CP/M.  Changes to make the
+        program compatible with other compilers should be easy.
+
+
+        Conclusion
+
+          Bdsmark.c is a simple program that handles a tedious job.
+        By marking all occurrences of calls to BDS C library
+        functions that are not implemented in a standard manner, the
+        program can assist in porting some of the large number of
+        programs written in BDS C to other operating systems and
+        processors.  Since the marked programs are uncompilable,
+        there is no chance of subtle bugs sneaking into a program
+        just because an occurence of one of the nonstandard
+        functions slipped past the programmer.  The programmer must
+        at least look at the marked funtions before the program can
+        be compiled.  The program itself is fairly portable.  It
+        should be possible to use it with a variety of C compilers
+        with minimal changes.
+
+        ----------
+        1. Brian W. Kernighan and Dennis M. Ritchie, "The C
+        Programming Language", Prentice-Hall, 1978
+

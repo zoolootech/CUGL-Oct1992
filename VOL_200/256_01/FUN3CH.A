@@ -1,0 +1,52 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     FUN3CH.A     Create Handle
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int FUN3CH(name, attr, &_carryf)
+;	-----           char *name;  (ASCIIZ string)
+;	                int attr;
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC FUN3CH_
+
+FUN3CH_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	dx,[bp+4]	; get address of file name
+	mov	cx,[bp+6]	; the file attribute
+	mov	ah,3ch	; the Function No.
+	int	21h
+	jc	FUN3CH_ERROR
+	jmp	FUN3CH_QUIT
+FUN3CH_ERROR:
+	mov	si,[bp+8]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+FUN3CH_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

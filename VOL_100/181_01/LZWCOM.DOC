@@ -1,0 +1,408 @@
+
+                LZWCOM - FILE COMPRESSOR UTILITY
+                        by KENT WILLIAMS
+
+                          INTRODUCTION
+
+     Most information processed by computers contains redundancy 
+- repeated characters, words, phrases, etc.  Since computers do 
+not have infinite storage, or infinite time in which to transfer 
+information, there is much interest in ways to remove redundancy 
+from data. The LZWCOM program implements the Lempel/Ziv/Welch 
+data compression algorithm, and allows files to be made smaller, 
+for transmission and storage. 
+
+     Users of RCPMs (Remote CP/M computers) and other bulletin 
+board facilities may be familiar with the SQUEEZE and UNSQUEEZE 
+programs.  These programs are the standard way to compress and 
+uncompress information for transfer by modem.  
+
+     These programs use the Huffman Encoding algorithm, which 
+exploits the fact that certain characters are more likely to 
+appear in a stream of data than others.  The input data is 
+translated such that frequently occuring characters are 
+represented by short bit strings, and infrequently occuring 
+characters by longer bit strings.
+
+     Huffman encoding performs very badly upon data that does not 
+conform to the assumptions made about character frequency.  The 
+SQUEEZE program gets around this fact by taking two passes 
+through a file during the compression process: one to gather 
+statistical information on the data, and a second to actually 
+encode it.  A table giving the coding scheme used is added to the 
+front of the file to facilitate decoding.
+
+     There are some problems with this method.  It involves the 
+overhead of making two passes through a file, a time penalty, and 
+attaching a table to the resulting compressed file, a space 
+penalty.  It also will perform poorly on data in which there is 
+no clear pattern of character frequency, such as object code and 
+floating point numbers.  Object files will sometimes actually 
+grow when passed through Huffman encoding.
+
+                    THE LEMPEL/ZEV ALGORITHM
+
+     Lempel/Zev encoding exploits redundancy on a different 
+level.  Instead of viewing data as a stream of characters, it 
+views it as a sequence of strings.  A table of strings is built 
+during encoding, whose members have this property: If a string 
+<<string><one_character>> is in the table, then <string> is in 
+the table as well.
+
+     Each element of the string table contains two elements: a 
+predecessor, which is the index of the prefix string, and a 
+follower, which is the suffix character.  The string signified by 
+a particular element is the string composed of the predecessor 
+string plus the suffix string.
+
+     Therefore, if one starts out with a table initialized to 
+one-character strings, one can represent new strings by the index 
+of a string already in the table, and one character.  If a string 
+already in the table is encountered, then the index of the string 
+in the table can be written to output, rather than the string 
+itself.  
+
+     This means that it can yield better results than Huffman 
+encoding on data that contains repeated character strings, but a 
+nearly even distribution of character frequency, such as object 
+code produced by compilers.  Its best-case compression potential 
+is also markedly superior, as one code can theoretically 
+represent a string nearly as long as the table is large, whereas 
+Huffman compression's best case is representing one character by 
+one bit, or 1:8.
+
+     Worst case performance is more difficult to determine, but I 
+have never seen LZ compression expand data, whereas I have 
+observed Huffman encoding doing just that.
+
+     The convention generally followed is to use a table allowing 
+4096 strings, so that a twelve-bit code can be used to represent 
+each string.  This seems to provide the best trade-off between 
+table size and code length - to use a shorter code would unduly 
+limit the number of possible strings, and a longer code would 
+make the table prohibitively large.  Also 12 bit codes are 
+relatively easy to pack and unpack with a microcomputer.
+
+COMPRESSION ALGORITHM
+
+     The compressor makes one pass through the source file, 
+progressively biting off larger strings, dynamically building the 
+string table.  The decompressor is able to repeat the process in 
+reverse, proceeding from the fact that it starts from the same 
+table of one character, or 'atomic' strings.  
+
+     The mechanics of the algorithm are actually more difficult 
+to describe and comprehend than they are to actually implement.  
+This psuedo-code should help to explain it.
+
+     assume a table whose elements contain:
+        a predecessor code, which is either NO_PREDECESSOR
+        or the index of another element in the table 
+        (signifying a prefix string), 
+        and a 'follower character' (the last character of
+        the string.
+
+     the function 'code' combines these two elements to 
+     produce a unique code (i.e. an index into the table)
+     for the resulting string.
+
+     initialize the table to 'atomic' strings, i.e. 
+     (NO_PREDECESSOR,character).
+     read a character current_input_char from input
+     Current_Code = code(NO_PREDECESSOR, C)
+
+     WHILE getchar(current_input_char) <> end of file
+       IF code(Current_Code, C) is in the table THEN
+          Current_Code = code(Current_Code,C)
+       ELSE
+          write Current_Code to output
+          IF there is still room in the string table THEN
+            add code(Current_Code,C) to the string table
+          ENDIF
+          Current_Code = code(NO_PREDECESSOR,C)
+       ENDIF
+     ENDWHILE
+     write Current_Code to output ( always one left )
+
+
+     The first character to be translated is a special case, in 
+that the code for it is written immediately to output.  (As I 
+have implemented the algorithm, the codes correspond directly to 
+the index of an entry in the string table.)  It then serves as a 
+'seed' for the rest of the processing.
+
+     Whether it is the first, or any following pass through the 
+main loop, the last known code (Current_Code) is used as the 
+starting point for parsing a string from input.  It is combined 
+with the character read from input to generate a new code.  If 
+that new code is in the table already, then it becomes 
+Current_Code, and you go back to the top of the loop to get 
+another character.  
+
+     When code(Current_Code,current_input_char) isn't in the 
+string table, Current_code is written to output.  The string 
+code(Current_Code,current_input_char) is added to the string 
+table.  Code(NO_PRED,current_input_char) becomes Current_Code.
+
+     When end of file is reached, you fall out of the loop, write 
+the last code to output, and exit.
+
+     The actual code to implement this process (outside of sundry 
+housekeeping and support functions) takes up 30 lines.  Though 
+the concepts behind it may seem elusive, the algorithm has a 
+certain elegance.
+
+DECOMPRESSION ALGORITHM
+
+     Reversing the process is a little more complex, as I found 
+out during debugging.  For several days it seemed that I had 
+acheived irreversible data compression.
+
+The psuedocode:
+
+     initialize table (same as compression)
+     Current_Code = Old_Code = Getcode
+
+     output String_table[Current_code].follower (first character 
+                                                 of file)
+     Final_Char = String_table[Current_Code].follower
+
+     WHILE getcode(Current_Code) <> end of file
+
+        Intermediate = Current_Code   (save a copy for later)
+
+        IF Current_Code isn't in the table (a special case)
+           output Final_Char
+           Current_Code = Old_Code
+           Intermediate = code(Old_Code,Final_Char) (save for later)
+        ENDIF
+
+        WHILE String_table[Current_code].predecessor <> NO_PREDECESSOR 
+        (while we haven't reached 'atomic' code)
+           push(String_table[Current_code].follower
+           (decode the string backwards into a stack)
+           Current_Code = String_table[Current_Code].predecessor
+           (walk backwards up the string)
+        endwhile
+
+        Output String_table[Current_Code].follower
+        (first character in string)
+        & assign it to Final_Char
+
+        WHILE stack isn't empty
+          pop characters and write them to output
+       
+        Add code(Old_Code,Final_Char) to string table
+        Old_Code = Intermediate (This is the later
+                                 we were saving it for)
+     ENDWHILE          
+
+
+     Decompression hinges on the fact that with one exception, 
+the algorithm is never presented with a code that isn't either 
+atomic, or one that it has already added to the table itself.  
+Decoding, therefore is a matter of decoding strings in reverse of 
+the way they were decoded.
+
+     The one ugly exception happens when the compressor 
+encounters a string of the form
+
+     <C><string><C><string><C>
+     
+where <C> is any character, <string> is any string, and 
+<<C><string>> is already in the table.
+      
+     The problem is that the compressor writes the code for 
+<<C><string>> to output, and then adds < <<C><string>> <C> > to 
+the string table.
+
+     The decompressor will also have <<C><string>> in the table, 
+but it will not have < <<C><string>> <C> >, which is what the 
+compressor will send it next.
+
+     Luckily (and someone smarter than I has verified this) this 
+is the only time the compressor will encounter an unknown code, 
+and for this case, the following relationships pertain:
+
+     1. The uncompressor knows that the unknown code is an
+     extension of the prior code.
+     2. The most recently translated character is the first
+     character of the prior code.
+     3. The final character of the unknown code is the same as 
+     the first character of the prior code.   
+
+     Once any unknown codes are taken care of, it becomes simple 
+to repeatedly pull off the last character of the code, push it on 
+a stack  and set the code variable to its predecessor, until the 
+predecessor is NO_PREDECESSOR.  Once this is the case, the 
+follower character of that code is sent to output.  Then the 
+characters on the stack, if any, are popped off and sent to 
+output.  The table is updated with the string produced by the 
+prior code and the current final character, and you go back to 
+the top of the loop.
+
+THE PROGRAM
+
+     The program will compile and run properly, so long as the 
+standard C environment is supported by the compiler, up to and 
+including the UNIX C compiler.  If you plan to use BDS C, or 
+another non-standard compiler, areas of incompatability are 
+isolated in the file I/O section at the end of COMMLZW.C.  Other 
+possible problem areas might be:
+
+     1.  Command line arguments, which are often not supported by
+         subset compilers.
+
+     2.  The use of long integers in the function h() in 
+         COMMLZW.C.  The function will work with 16-bit
+         integers, but you lose several bits of precision,
+         robbing the mid-square hash function of some of its
+         randomness.
+
+     3.  The '#ifdef' preprocessor directive is not supported
+         by all subset compilers.  These can be removed with no
+         ill effect.
+
+     The '#ifdef DEBUG' statements have been left in the source 
+code, to allow you to view the compression of text files on the 
+console.  If the program is compiled with DEBUG defined, and you 
+compress or decompress a text file, the codes being read or 
+written, along with the characters that they stand for, will be 
+sent to standard output.  This will give you a better grasp of 
+the operation of the algorithm.
+
+     The source code modules LZWCOM.C and LZWUNC.C are the 
+compressor and uncompressor main programs respectively.  Aside 
+from housekeeping code at the top and bottom, they are very 
+literal translations of the psuedocode presented above.
+
+     LZWUNC uses a pointer to the current entry extensively to 
+try and minimize the overhead of calculating offsets into arrays.  
+This is (hopefully) dealt with in a fairly straightforward 
+manner.
+
+     COMMLZW.C contains the routines to support maintenance of 
+the string table, and the peculiar I/O requirements of the 
+program.
+
+     Since the program spends 90% of its time putting things into 
+and looking things up in the string table, I have tried to make 
+this process more efficient.  Each element of the string table 
+contains a member called 'next,' which points either to the next 
+element that hashed to that location in the table, or to -1.  If 
+a collision occurs on hash, a linked list is built, consisting of 
+all elements that hashed to that location.
+
+     This became necessary because as the table became full, it 
+took longer and longer to determine whether a particular code was 
+in the table, or to find an empty slot to use for a new entry.  
+On my Z80 system, the program would 'go away' for minutes at a 
+time, processing one sector.  
+
+     Now, if a particular string is not in a relatively short 
+linked list, it isn't in the table.  When a slot is needed for a 
+new string, searches through 'full' areas are minimized.
+
+COMPILING
+
+     The files LZWCOM.C, LZWUNC.C, and COMMLZW.C are all compiled 
+seperately.  LZWCOM and LZWUNC must then each be linked with 
+COMMLZW and the standard library.  The submit file I used with 
+Aztec C is
+
+     cz -f -q lzwcom
+     as -zap lzwcom
+     cz -f -q lzwunc
+     as -zap lzwunc
+     cz -f -q commlzw
+     as -zap commlzw
+     ln lzwcom.o commlzw.o c.lib
+     ln lzwunc.o commlzw.o c.lib
+
+     '-f' forces the compiler to do in-line frame allocation, and 
+'-q' tells it to promote automatic variables to statics.  These 
+switches speed up execution somewhat, in theory. The '-zap' 
+option on assembly kills the assembly source file when the 
+assembler gets done.
+
+     Different compilers, I am sure, require different switches, 
+but the basic principle of seperate compilation will hold here.
+
+RUNNING
+
+     LZWCOM and LZWUNC both take two command line arguments: a 
+source file name and a destination file name.  The compressor 
+reads an uncompressed file as its source and outputs a compressed 
+file as its destination.  The decompressor, of course, operates 
+in reverse.
+
+EXAMPLE (on a CP/M system)
+
+     A>LZWCOM COMPRESS.DOC COMPRESS.DQC
+     .............................................................
+     A>LZWUNC COMPRESS.DQC COMPRESS.DOC
+     ................................
+
+     Both programs print a period for every sector read.  It 
+would probably be desirable to suppress this if you regularly 
+uncompress text files with the console as the output file, as the 
+periods will interfere somewhat with viewing the file on the 
+screen.  This should cause no problems with sending the output of 
+the uncompressor to the printer, or other devices as desired.
+
+     On a 4 MHZ Z-80 CP/M system, the compressor can process a 
+sector about every 2 seconds, slowing down slightly when the 
+string table begins to fill up.  The uncompressor runs slightly 
+faster than that.  If you are using a more advanced system, your 
+results should be better.
+
+
+POSSIBLE ENHANCEMENTS 
+
+     This method of compression will tend to lose some efficiency 
+on very large files, as when the string table gets filled up, the 
+compressor no longer adapts to the data.  It might be a good idea 
+in those cases to break longer files into blocks of 16K or so, 
+and reinitialize the table between blocks.
+
+     The readc and writec routines could be changed to buffer 
+more data at each disk access.  As it stands, if you get input 
+from one floppy disk and output to another one, the drive motors 
+keep up a regular tango beat.
+
+     The source code, as it stands, is as optimized as I could 
+make it.  The program can, however, be speeded up markedly by 
+converting the the hash and unhash routines to assembly code.  
+The program spends most of its time putting things into and 
+taking things out of the string table, so this can improve run 
+time quite a bit. Just doing some simple hand 'peephole' 
+optimization of the assembly source produced by the Aztec 
+compiler produced noticable improvement.
+.pa
+                          RESULTS/CONCLUSIONS
+
+     In my experience, these programs produce better compression 
+ratios in about the same time as the SQ17.COM program in the 
+public domain.  Terry Welch (who I assume is the Welch in 
+Lempel/Ziv/Welch) in his article on the subject (IEEE Computer, 
+June 1984) did more extensive testing, and came up with these 
+results.
+
+     DATA TYPE                     COMPRESSION RATION
+     ________________________________________________
+     English Text                       1.8
+     Cobol Files                      2 to 6
+     Floating Point Arrays              1.0
+     Formatted Scientific Data          2.1
+     System Log Data                    2.6
+     Program Source Code                2.3
+     Object Code                        1.5
+
+     These programs should provide a good way to transfer and 
+store data in a more compressed form.  They are written to be 
+portable to a wide variety of systems - virtually any system with 
+a standard C compiler.  They are also an implementation of an 
+elegant algorithm - of interest in its own right.
+
+em with 
+a standard C compiler.  They are also an implementation

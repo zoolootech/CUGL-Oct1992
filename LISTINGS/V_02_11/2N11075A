@@ -1,0 +1,704 @@
+//  VCR.CPP - VCR device driver class.
+//      VCR::VCR - Constructor for VCR
+//      VCR::~VCR - Destructor for VCR
+//      VCR::SendCommand - Send command string to VCR
+//      VCR::Stop - Puts the VCR into Stop mode.
+//      VCR::Eject - Causes the tape to be ejected from the VCR.
+//      VCR::Rewind - Places the VCR into full speed rewind.
+//      VCR::FastForward - Places the VCR into full speed fast forward.
+//      VCR::PlayFastReverse - Places the VCR into fast reverse play.
+//      VCR::PlayFastForward - Places the VCR into fast forward play.
+//      VCR::Still - Causes the VCR to Still on the current frame.
+//      VCR::Record - Begin recording mode.
+//      VCR::Play - Begins normal play mode.
+//      VCR::ReversePlay - Begins normal reverse play mode;
+//      VCR::StepForward - From a still frame, advance to next field.
+//      VCR::StepReverse - From a still frame, step to previous field.
+//      VCR::PowerToggle - Toggle VCR power.
+//      VCR::ValidateFrame - Adjust frame format to ensure validity
+//      VCR::ReceiveResponse - Receive VCR response to request
+//      VCR::ShuttleOn - Enables jog/shuttle mode
+//      VCR::ShuttleUp - Increase shuttle speed
+//      VCR::ShuttleDown - Decrease shuttle speed
+//      VCR::ForwardShuttle - Forward shuttle
+//      VCR::ReverseShuttle - Reverse Shuttle
+//      VCR::CueToFrame - Cue to frame
+//      VCR::SetCueType - Set cue type
+//      VCR::PlayToFrame - Play to frame
+//      VCR::PlaySegment - Play segment
+//      VCR:AudioInsertToFrame - Audio insert to frame
+//      VCR::AudioVideoInsertToFrame - Audio/Video insert to frame
+//      VCR::Preplay - Preroll play
+//      VCR::Calibrate - Calibrate
+//      VCR::ClearCounter - Clear frame count
+//      VCR::AudioSelect - Audio select
+//      VCR::ResetVCR - Perform VCR reset
+//      VCR::RequestFrame - Request current frame count
+//      VCR::RequestMode - Request current VCR mode
+
+#include    <stdio.h>
+
+#include    "VCR.h"
+
+
+/******************************************************************
+*   VCR::ReceiveResponse - Receive VCR response to command
+*
+*
+*   Class Variables Used:
+*       Port *SerialPort
+*
+*   Returns:
+*       Str sResponse
+*
+*   Copyright:
+*       Original code by William H. Roetzheim (619) 669-6970
+*       Copyright (c) 1991 by William H. Roetzheim
+*       All rights reserved.
+**********************************************************************/
+Str VCR::ReceiveResponse (void)
+
+{
+    int     i = 0;
+    char    szBuffer [21];
+
+    // wait for start of command string
+    while (i != 0x02) i = spSerialPort->InChar();
+
+    // Receive actual response
+    int nBufferIndex = 0;
+    i = spSerialPort->InChar ();
+    while (i != 0x03)
+    {
+        szBuffer [nBufferIndex++] = i;
+        i = spSerialPort->InChar ();
+    }
+    szBuffer [nBufferIndex] = 0;
+    return (Str) szBuffer;
+}
+
+
+
+/******************************************************************
+*   VCR::ValidateFrame - Adjust frame fields to ensure validity
+*
+*   Parameters:
+*       struct Frame& sfFrame (in/out) - frame to be adjusted.
+*
+**********************************************************************/
+void    VCR::ValidateFrame (struct Frame& sfFrame)
+{
+    // If out of range, attempt to bring into range
+    if (sfFrame.nFrame < 0) sfFrame.nFrame = 0;
+    sfFrame.nSecond += (sfFrame.nFrame / 30);
+    sfFrame.nFrame %= 30;
+    if (sfFrame.nSecond < 0) sfFrame.nSecond = 0;
+    sfFrame.nMinute += (sfFrame.nSecond / 60);
+    sfFrame.nSecond %= 60;
+    if (sfFrame.nMinute < 0) sfFrame.nMinute = 0;
+    sfFrame.nHour += (sfFrame.nMinute / 60);
+    sfFrame.nMinute %= 60;
+    if (sfFrame.nHour < 0) sfFrame.nHour = 0;
+    if (sfFrame.nHour > 9) sfFrame.nHour = 9;
+}
+
+
+
+/******************************************************************
+*   VCR::ShuttleOn - Enables jog/shuttle mode
+*
+*   Notes:
+*       1.  When received, the VCR enters the shuttle mode.  This
+*           enables the shuttle up/down commands and the field
+*           step commands.
+*
+*       2.  The VCR responds to this command by Still framing at
+*           the current tape position.
+*
+*       3.  Executing Still or Stop commands will terminate this
+*           mode.
+*
+
+*       4.  Command duration is 300 mSec.  Up to 1 seconds may be
+*           required for the VCR to obtain a clean still frame.
+*
+*       5.  Audio is muted, video playback is output.
+*
+**********************************************************************/
+void VCR::ShuttleOn (void)
+{
+    SendCommand ("A@S");
+}
+
+
+
+/******************************************************************
+*   VCR::ShuttleUp - Increase shuttle speed
+*
+*   Notes:
+*       1.  Each time this command is received, the VCR increases
+*           the speed of the shuttle mode playback.  This is
+*           equivalent to turning the shuttle ring on the VCR
+*           clockwise.
+*
+*       2.  From a still frame, each command steps through 9
+*           speeds, varying from slow field advance to fast
+*           forward playback.
+*
+*       3.  Once maximum speed is attained, additional commands have
+*           no effect.
+*
+*       4.  Maximum command duration is 300 mSec.
+*
+*       5.  Audio is muted in all but normal playback speed, video
+*           is output at all speeds.
+*
+**********************************************************************/
+void    VCR::ShuttleUp (void)
+{
+    SendCommand ("A@O");
+}
+
+
+
+/******************************************************************
+*   VCR::ShuttleDown - Decrease shuttle speed
+*
+*   Notes:
+*       1.  Each time this command is received, the VCR decreases
+*           the speed of the shuttle mode playback.  This is
+*           equivalent to turning the shuttle ring on the VCR
+*           counterclockwise.
+*
+*       2.  From a still frame, each command steps through 9
+*           speeds, varying from slow field advance to fast
+*           reverse playback.
+*
+*       3.  Once maximum speed is attained, additional commands have
+*           no effect.
+*
+*       4.  Maximum command duration is 300 mSec.
+*
+
+*       5.  Audio is muted in all but normal playback speed, video
+*           is output at all speeds.
+*
+**********************************************************************/
+void    VCR::ShuttleDown (void)
+{
+    SendCommand ("A@P");
+}
+
+
+
+
+/******************************************************************
+*   VCR::ForwardShuttle - Forward shuttle
+*
+*   Parameters:
+*       int nSpeed - Speed in range of 0 to 8
+*
+*   Notes:
+*       1.  This command places the VCR into the forward shuttle
+*           mode at the specified speed.  When changing shuttle
+*           speeds, the VCR will gradually change from the
+*           current speed to the new speed.
+*
+*       2.  A speed of 0 will select still frame.  To freeze the
+*           picture faster, use ShuttleOn() instead.
+*
+*       3.  The speed argument consists of a number from 0 to 8,
+*           where 8 is the maximum forward play speed.  Numbers
+*           outside of this range are brought into range.
+*
+*       4.  It may take several seconds to change from the current
+*           speed to the specified speed.
+*
+*       5.  Video is output in all modes, audio is output at normal
+*           play speed.
+*
+**********************************************************************/
+void VCR::ForwardShuttle (int nSpeed)
+{
+    char    szBuffer [6];
+
+    if (nSpeed < 0) nSpeed = 0;
+    if (nSpeed > 8) nSpeed = 8;
+    sprintf (szBuffer, "AAF%d", nSpeed);
+    SendCommand (szBuffer);
+}
+
+/******************************************************************
+*   VCR::ReverseShuttle - Reverse shuttle
+*
+*   Parameters:
+*       int nSpeed - Speed in range of 0 to 8
+*
+*   Notes:
+*       1.  This command places the VCR into the reverse shuttle
+*           mode at the specified speed.  When changing shuttle
+*           speeds, the VCR will gradually change from the
+*           current speed to the new speed.
+*
+
+*       2.  A speed of 0 will select still frame.  To freeze the
+*           picture faster, use ShuttleOn() instead.
+*
+*       3.  The speed argument consists of a number from 0 to 8,
+*           where 8 is the maximum reverse play speed.  Numbers
+*           outside of this range are brought into range.
+*
+*       4.  It may take several seconds to change from the current
+*           speed to the specified speed.
+*
+*       5.  Video is output in all modes, audio is output at normal
+*           play speed.
+*
+**********************************************************************/
+void VCR::ReverseShuttle (int nSpeed)
+{
+    char    szBuffer [6];
+
+    if (nSpeed < 0) nSpeed = 0;
+    if (nSpeed > 8) nSpeed = 8;
+    sprintf (szBuffer, "AAG%d", nSpeed);
+    SendCommand (szBuffer);
+}
+
+
+
+/******************************************************************
+*   VCR::CueToFrame - Cue to frame
+*
+*   Parameters:
+*       struct Frame NewFrame - Frame to cue to.
+*
+*   Notes:
+*       1.  Within frame structure:
+*               nHour is 0 - 9
+*               nMinute is 0 - 59
+*               nSecond is 0 - 59
+*               nFrame is 0 - 29
+*
+*       2.  There are 30 frames in each second.
+*
+*       3.  This command searches to the selected frame, then
+*           stills.  No audio or video is enabled on completion of
+*           the cue.  To enable video, send a still command upon
+*           completion of the cue.  To begin playing at this
+*           location, send a play command after the cue.
+*
+*       4.  Audio and video are set to passthrough during the search
+*           process.
+*
+*       5.  This command is the recommended way of changing the
+*           position of the tape, since it will automatically accelerate
+*           and declerate the tape when nearing the cue point.  To prevent
+*           cueing errors, do not send cue commands that would cause the
+*           VCR to run off the beginning or end of the recorded portion
+*           of the tape.
+*
+*       6.  If frame accuracy is not required, use the SetCueType command
+*           to set Coarse mode.  This will allow the VCR to cue at high
+*           speed, but with lower accuracy.
+
+*
+*       7.  You can use the RequestMode() command to tell when this
+*           command is complete.  Wait until RequestMode() returns
+*           StillMode.
+*
+*       8.  This command may take several minutes to complete,
+*           depending on the frame position.
+*
+*       9.  Audio and video are set to passthrough.
+*
+*       10. This command will automatically adjust NewFrame
+*           field values to be within the valid ranges.
+*
+**********************************************************************/
+void VCR::CueToFrame (struct Frame NewFrame)
+{
+    char    szBuffer [12];
+
+    // Check ranges of NewFrame fields
+    ValidateFrame (NewFrame);
+
+    // Build ASCII command string
+    sprintf (szBuffer, "A@T%01d%02d%02d%02d", NewFrame.nHour,
+        NewFrame.nMinute, NewFrame.nSecond, NewFrame.nFrame);
+
+    SendCommand (szBuffer);
+}
+
+
+/******************************************************************
+*   VCR::SetCueType - Set cue type
+*
+*   Parameters:
+*       CueType ctType - Fine or Coarse
+*
+*   Notes:
+*       1.  This command determines if the VCR will perform the
+*           cue command in a coarse or fine mode.  The coarse
+*           cue is faster, but will result in errors in the tape
+*           frame counter.  If high accuracy is desired, the
+*           cue type must be set to fine mode.
+*
+**********************************************************************/
+void VCR::SetCueType (CueType ctType)
+{
+    if (ctType == Fine) SendCommand ("AAD0");
+    else SendCommand ("AAD1");
+}
+
+
+/******************************************************************
+*   VCR::PlayToFrame - Play to frame
+*
+*   Parameters:
+*       struct Frame EndFrame - frame to play to
+*
+*   Notes:
+*       1.  This command is usually used after a selected frame
+*           has been reached using the Cue command.  Once the cue
+*           has completed, the PlayToFrame command allows the
+
+*           selected video scene to be viewed.  Upon reaching the
+*           end frame, the VCR automatically stills and the audio
+*           and video are muted.
+*
+**********************************************************************/
+void VCR::PlayToFrame (struct Frame EndFrame)
+{
+    char    szBuffer [12];
+
+    // Check ranges of EndFrame fields
+    ValidateFrame (EndFrame);
+
+    // Build ASCII command string
+    sprintf (szBuffer, "A@U%01d%02d%02d%02d", EndFrame.nHour,
+        EndFrame.nMinute, EndFrame.nSecond, EndFrame.nFrame);
+
+    SendCommand (szBuffer);
+}
+
+/******************************************************************
+*   VCR::PlaySegment - Play segment
+*
+*   Parameters:
+*       struct Frame StartFrame
+*       struct Frame EndFrame
+*
+*   Notes:
+*       1.  This command searches to StartFrame (using the selected
+*           cue type), then immediately begins normal playback.
+*           When EndFrame is reaches, the VCR goes into still frame
+*           mode.
+*
+*       2.  During the search, audio and video are muted.  They are also
+*           muted when EndFrame is reached.
+*
+*       3.  RequestMode() can be used to tell when the segment is complete.
+*           Wait for the mode to equal StillMode.
+*
+**********************************************************************/
+void    VCR::PlaySegment (struct Frame StartFrame, struct Frame EndFrame)
+{
+    char    szBuffer [22];
+
+    // Check ranges of StartFrame fields
+    ValidateFrame (StartFrame);
+
+    // check ranges of EndFrame fields
+    ValidateFrame (EndFrame);
+
+    // Build ASCII command string
+    sprintf (szBuffer, "A@Q%01d%02d%02d%02d%01d%02d%02d%02d",
+            StartFrame.nHour, StartFrame.nMinute, StartFrame.nSecond,
+                StartFrame.nFrame,
+            EndFrame.nHour, EndFrame.nMinute, EndFrame.nSecond,
+                EndFrame.nFrame);
+
+    SendCommand (szBuffer);
+}
+
+
+
+
+/******************************************************************
+*   VCR::AudioInsertToFrame - Audio insert to frame
+*
+*   Parameters:
+*       struct Frame EndFrame
+*
+*   Notes:
+*       1.  This command dubs over any existing normal audio tracks,
+*           leaving the HI-FI audio unchanged.  For accurate edits,
+*           place the VCR in Still at the starting frame using the
+*           cue or still commands.  When ready to begin dubbing,
+*           send the AudioInsertToFrame() command.  The VCR will
+*           first perform a preroll action.  This causes the tape
+*           to be reversed for a few seconds, and then begin forward
+*           play.  This allows proper video synchronization to be
+*           established prior to the insert edit.  Once the edit point
+*           is reached, the VCR will begin recording over the audio,
+*           and will then still on the selected EndFrame.
+*
+*       2.  For proper recording, there must be video recorded on the
+*           tape for the duration of the over dub.  Existing video is
+*           left unchanged.
+*
+*       3.  For the source VCR for the audio, you should use the
+*           PrePlay() command to begin audio playback.  The preroll time
+*           will then be matched to ensure audio and video synchronization.
+*
+**********************************************************************/
+void VCR::AudioInsertToFrame (struct Frame EndFrame)
+{
+    char    szBuffer [12];
+
+    // Check ranges of EndFrame fields
+    ValidateFrame (EndFrame);
+
+    // Build ASCII command string
+    sprintf (szBuffer, "AA@%01d%02d%02d%02d", EndFrame.nHour,
+        EndFrame.nMinute, EndFrame.nSecond, EndFrame.nFrame);
+
+    SendCommand (szBuffer);
+}
+
+
+/******************************************************************
+*   VCR::AudioVideoInsertToFrame - Audio/video insert to frame
+*
+*   Parameters:
+*       struct Frame EndFrame
+*
+*   Notes:
+*       1.  This command edits over any existing video and audio
+*           tracks.  For accurate edits,
+*           place the VCR in Still at the starting frame using the
+*           cue or still commands.  When ready to begin dubbing,
+*           send the AudioVideoInsertToFrame() command.  The VCR will
+*           first perform a preroll action.  This causes the tape
+*           to be reversed for a few seconds, and then begin forward
+*           play.  This allows proper video synchronization to be
+*           established prior to the insert edit.  Once the edit point
+
+*           is reached, the VCR will begin recording
+*           and will then still on the selected EndFrame.
+*
+*       2.  For proper recording, there must be video recorded on the
+*           tape for the duration of the over dub.
+*
+*       3.  For the source VCR for the audio, you should use the
+*           PrePlay() command to begin playback.  The preroll time
+*           will then be matched to ensure audio and video synchronization.
+*
+**********************************************************************/
+void VCR::AudioVideoInsertToFrame (struct Frame EndFrame)
+{
+    char    szBuffer [12];
+
+    // Check ranges of EndFrame fields
+    ValidateFrame (EndFrame);
+
+    // Build ASCII command string
+    sprintf (szBuffer, "AAB%01d%02d%02d%02d", EndFrame.nHour,
+        EndFrame.nMinute, EndFrame.nSecond, EndFrame.nFrame);
+
+    SendCommand (szBuffer);
+}
+
+
+/******************************************************************
+*   VCR::Preplay - Preroll play
+*
+*   Notes:
+*       1.  This command begins play mode, after first performing
+*           a preroll action.  The preroll will cause the tape
+*           to be reverse played for a few seconds, before
+*           beginning normal forward play.  This ensures that
+*           proper video synchronization is in place prior to the
+*           start of an edit.
+*
+*       2.  The preroll time in this command is matched to the preroll
+*           time in the audio and video insert commands.  This ensures
+*           that two VCRs will perform exact and clean insert edits.
+*
+*       3.  The actual preroll requires 3 seconds.
+*
+**********************************************************************/
+void VCR::PrePlay (void)
+{
+    SendCommand ("AAC");
+}
+
+
+
+/******************************************************************
+*   VCR::Calibrate - Calibrate
+*
+*   Notes:
+*       1.  Since the VCR uses video frame counts to establish tape
+*           position, it is important to set a starting reference
+*           point for the count.  The calibrate command automatically
+*           sets this point to the start of the video tape.  This
+*           should be performed every time a new tape is placed in
+
+*           the VCR, and may be repeated should tape errors
+*           accumulate after excessive tape starting and stopping.
+*
+*       2.  When issued, the tape rewinds to the beginning and the
+*           frame counter is reset on the tape leader.  Thereafter,
+*           the frame counter reports the number of video frames counted
+*           since the beginning of the tape.
+*
+**********************************************************************/
+void VCR::Calibrate (void)
+{
+    SendCommand ("A@V");
+}
+
+
+/******************************************************************
+*   VCR::ClearCounter - Clear frame count
+*
+*   Notes:
+*       1.  In some instances, it may be desirable to manually
+*           reset the tape frame counter.  This allows the
+*           frame counter to be referenced from a starting
+*           point other than the start of tape.  To accomplish
+*           this, the tape should be positioned to the desired
+*           reference frame, then placed in still.  Issue the
+*           ClearCounter() command to reset the counter.
+*
+*       2.  Note that the VCR will not cue to less than 0.  Ensure
+*           that the reference point is set prior to any frames
+*           that will need to be accessed using the cue time.
+*
+**********************************************************************/
+void VCR::ClearCounter (void)
+{
+    SendCommand ("A@X");
+}
+
+
+
+/******************************************************************
+*   VCR::AudioSelect - Audio select
+*
+*   Notes:
+*       1.  This command changes the audio output mode from
+*           mono, stereo, HI-FI.  Every time the command is
+*           received, the audio mode steps to the next type.
+*
+**********************************************************************/
+void VCR::AudioSelect (void)
+{
+    SendCommand ("AAE");
+}
+
+
+/******************************************************************
+*   VCR::ResetVCR - Perform VCR reset
+*
+*   Notes:
+*       1.  This command cancels any command in process.  It will
+*           immediately place the VCR into Stop mode, and turn
+
+*           on audio and video.  It is recommended that this command
+*           be issued by the computer control program each time
+*           the program is started.
+*
+**********************************************************************/
+void VCR::ResetVCR (void)
+{
+    SendCommand ("A@Z");
+}
+
+
+
+/******************************************************************
+*   VCR::RequestFrame - Request current frame count
+*
+*   Returns:
+*       struct Frame
+*
+*   Notes:
+*       1.  This command returns the current frame value.  It may
+*           be sent while another command is still in the process
+*           of being executed.  Negative frame counts are returned
+*           as 0.
+*
+*       2.  Normal reply time for this command is 30 mSec.
+*
+**********************************************************************/
+struct Frame VCR::RequestFrame (void)
+{
+    Str sReturn;
+    struct  Frame sfFrame;
+    Str sBuffer;
+
+    SendCommand ("ZI");
+    sReturn = ReceiveResponse ();
+
+    // Parse hours
+    sBuffer = sReturn.Slice (0, 0);
+    sfFrame.nHour = sBuffer.ToInt ();
+
+    // Parse minutes
+    sBuffer = sReturn.Slice (1, 2);
+    sfFrame.nMinute = sBuffer.ToInt ();
+
+    // Parse seconds
+    sBuffer = sReturn.Slice (3,4);
+    sfFrame.nSecond = sBuffer.ToInt ();
+
+    // Parse frames
+    sBuffer = sReturn.Slice (5,6);
+    sfFrame.nFrame = sBuffer.ToInt ();
+
+    return sfFrame;
+}
+
+/******************************************************************
+*   VCR::RequestMode - Request current VCR mode
+*
+*   Returns:
+*       VCRMode
+
+*
+*   Notes:
+*       1.  This command asks the VCR what operating mode it is
+*           currently in.  For some commands, such as Cue, the
+*           VCR mode will change as the tape is fast forwarded,
+*           played, and stilled.
+*
+*       2.  This command should be used to determine if a tape
+*           is in the VCR and the power is on.
+*
+*       3.  Normal reply time is 30 mSec.
+*
+**********************************************************************/
+VCRMode VCR::RequestMode (void)
+{
+    Str sReturn;
+
+    SendCommand ("ZA");
+    sReturn = ReceiveResponse ();
+
+    if (sReturn.Find ("A@@") != INVALID) return StopMode;
+    if (sReturn.Find ("A@A") != INVALID) return EjectMode;
+    if (sReturn.Find ("A@B") != INVALID) return RewindMode;
+    if (sReturn.Find ("A@C") != INVALID) return FFMode;
+    if (sReturn.Find ("A@D") != INVALID) return PlayFRMode;
+    if (sReturn.Find ("A@E") != INVALID) return PlayFFMode;
+    if (sReturn.Find ("A@F") != INVALID) return StillMode;
+    if (sReturn.Find ("A@H") != INVALID) return RecordMode;
+    if (sReturn.Find ("A@J") != INVALID) return PlayMode;
+    if (sReturn.Find ("A@O") != INVALID) return PowerOffMode;
+    if (sReturn.Find ("A@Z") != INVALID) return NoTapeMode;
+    return INVALID;
+}
+// End of File

@@ -1,0 +1,86 @@
+/****************************  Listing 3  ****************************/
+/*******                                                       *******/
+/*******   Add this code at the end of the program section     *******/
+/*******       of yref2.y, after first deleting main()         *******/
+/*******                                                       *******/
+/*********************************************************************/
+
+main()
+{
+         char word[32];
+         root = NULL;
+
+         yyparse();
+         treeprint(root);
+
+}
+
+struct tnode *addtree(struct tnode *p, char *w)
+{
+        int cond;
+        struct symlist *list;
+
+        if (p == NULL)
+                {
+                p = talloc();
+                p->word = strdup(w);
+                p->count = 1;
+                p->first = p->current = lalloc();
+                p->current->line = line_num;
+                p->current->decl = yn_decl;
+                p->left = p->right = NULL;
+                }
+        else if ((cond = strcmp(w, p->word)) == 0)
+                {
+                p->count++;
+                list = p->current;
+                p->current = list->next = lalloc();
+                p->current->line = line_num;
+                p->current->decl = yn_decl;
+                }
+        else if (cond < 0)
+                p->left = addtree(p->left, w);
+        else
+                p->right = addtree(p->right, w);
+        return p;
+}
+
+void treeprint(struct tnode *p)
+{
+        int i;
+
+        if (p != NULL)
+           {
+           treeprint(p->left);
+           printf("\n\n%-31s   Count:%4d\n    ", p->word, p->count);
+           listprint(p->first, p->count);
+           treeprint(p->right);
+           }
+}
+
+void listprint(struct symlist *list, int c)
+{
+        struct symlist *n;
+        int i, j;
+
+        for ( i = 0, j = 1, n = list; i < c; i++, j++, n = n->next)
+           {
+           printf(" %4d%c", n->line, n->decl ? '*' : ' ');
+           if ( j == 8 )
+              {
+              j = 0;
+              printf("\n    ");
+              }
+           }
+}
+
+struct tnode *talloc(void)
+{
+        return (struct tnode *) malloc(sizeof(struct tnode));
+}
+
+struct symlist *lalloc(void)
+{
+        return (struct symlist *) malloc(sizeof(struct symlist));
+}
+

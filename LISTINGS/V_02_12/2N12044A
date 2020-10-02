@@ -1,0 +1,86 @@
+/*
+ * Listing 2: U2BIN.C
+ * Convert a Mu-Law encoded file to offset binary.
+ * Written for Turbo C 2.0, by Bob Bybee, 7/91
+ *
+ * Usage: u2bin <infile> <outfile> [expon] [clip]
+ *
+ *   infile    is Mu-Law encoded file
+ *   outfile   is offset binary file for TOSPKR
+ *   expon     is exponent for uncompression (optional)
+ *   clip      is clipping factor (optional)
+ *
+ * Defaults of expon = 3, clip = 5 seem to sound good.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+
+#define DEFAULT_EXP  3.0
+#define DEFAULT_CLIP 5.0
+
+int xlat[128];
+
+void main( int ac, char **av )
+    {
+    int c_in, c_out, sign, i;
+    FILE *in_fp, *out_fp;
+    float mag, expon, clip;
+
+    /* See if <infile> and <outfile> were given,
+     * open them if so.
+     */
+    --ac, ++av;
+    if (ac < 2)
+        {
+        printf("usage: u2bin <infile> <outfile> "
+            "[expon] [clip]\n");
+        exit(1);
+        }
+
+    if ((in_fp = fopen(*av, "rb")) == NULL ||
+        (out_fp = fopen(av[1], "wb")) == NULL)
+        {
+        printf("can't open files!\n");
+        exit(1);
+        }
+
+    if (ac >= 3 && (expon = atof(av[2])) > 0.0)
+        ;   /* use command-line exponent */
+    else
+        expon = DEFAULT_EXP;
+
+    if (ac >= 4 && (clip = atof(av[3])) > 1.0)
+        ;   /* use command-line clipping */
+    else
+        clip = DEFAULT_CLIP;
+
+    /* Create data translation table for these
+     * values of expon and clip.
+     */
+    for (i = 0; i <= 127; ++i)
+        {
+        mag = clip * 127.0 * pow((127 - i) / 127.0, expon);
+        if (mag > 127.0)
+            mag = 127.0;    /* clip */
+        xlat[i] = (int)mag;
+        }
+
+    /* Read in the file and translate each byte.
+     */
+    while ((c_in = getc(in_fp)) != EOF)
+        {
+        if (c_in <= 127)
+            sign = 1;
+        else
+            sign = -1;
+
+        c_out = (sign * xlat[c_in & 127]) + 127;
+        putc(c_out, out_fp);
+        }
+
+    fclose(in_fp);
+    fclose(out_fp);
+    exit(0);
+    }
+

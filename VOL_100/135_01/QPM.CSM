@@ -1,0 +1,183 @@
+;
+;	qpm.csm---a collection of BDSc language
+;	routines for prime number research.
+;
+;	by Hugh S. Myers
+;
+;	4/4/84
+;	4/6/84
+;
+
+	include <bds.lib>
+
+;
+;	qprime(s)---a quick check for primality.  Returns absolute
+;	true or false on a string 's'<65536 and absolute false 
+;	or maybe on all others.  Does a modified sieve test.
+;
+	function	qprime
+	external	gets1,qpm
+
+	call	gets1	;de->s1 or s
+	jmp	qpm	;main body of function
+
+	endfunc
+;
+;	sqprime(n)---a quick check for primality.  Returns absolute
+;	true or false on an integer 'n'<65536 and absolute false 
+;	or maybe on all others.  Does a modified sieve test.  Initial
+;	code converts integer at (hl) to vli format.
+;
+	function	sqprime
+	external	qpm
+
+	call	ma1toh	;get n
+	mov	a,h
+	ora	a
+	jz	l1
+	cpi	80h
+	jc	l2
+	call	cmh+1	;compliment hl
+	mov	a,h
+	ora	a
+	mvi	a,81h
+	jz	l3
+	inr	a
+
+l3:
+	sta	var
+	shld	var+1
+	lxi	d,var
+	jmp	qpm
+
+l1:
+	mvi	a,1
+	jmp	l3
+
+l2:
+	mvi	a,2
+	jmp	l3
+
+var:	db	0,0,0
+
+	endfunc
+;
+;	qpm---main body of qprime(s) and sqprime(n).
+;
+	function	qpm
+
+	external	pare,moov,modulus
+
+true	equ	1
+false	equ	0
+maybe	equ	-1
+
+	push	b
+	lxi	h,op1
+	call	moov
+	lxi	h,limit
+	call	pare
+	jnc	next
+	lxi	h,ptable
+	shld	ptr
+	inx	d	;point de at length byte+1
+
+lookup:
+	call	getop
+	ora	a
+	jz	next
+	inx	h	;point hl at length byte+1 of nth prime
+	ldax	d	;get value from at de
+	cmp	m	;compare with nth prime
+	jz	rettrue
+	jmp	lookup
+
+next:
+	lxi	h,ptable
+	shld	ptr
+
+mtest:
+	lxi	d,op1
+	lxi	h,op2
+	call	moov
+	xchg
+	call	getop
+	ora	a
+	jz	possible
+	call	modulus
+	ldax	d
+	ora	a
+	jz	retfalse
+	jmp	mtest
+
+possible:
+	lxi	d,op1
+	lxi	h,ulimit
+	call	pare
+	jnc	retmaybe
+
+rettrue:
+	lxi	h,true
+	jmp	retn
+
+retmaybe:
+	lxi	h,maybe
+	jmp	retn
+
+retfalse:
+	lxi	h,false
+
+retn:
+	pop	b
+	ret
+;
+;	getop---return HL addressed to nth member of table
+;	indexed by ptr.  Increment ptr by 2.  Save DE.
+;	Return A as zero if at end of table, else not.
+;
+
+getop:
+	push	d
+	lhld	ptr
+	mov	a,m
+	inx	h
+	shld	ptr
+	lxi	d,op
+	stax	d
+	dcx	d
+	xchg
+	pop	d
+	ora	a
+	ret
+
+;
+; data
+;
+op1:		ds	256
+op2:		ds	256
+
+ulimit:		db	2,0ffh,0ffh
+
+limit:		db	2,0,1
+
+		db	1
+op:		db	0
+
+ptr:		dw	0
+
+ptable:		db	2,3,5,7,11
+		db	13,17,19,23,29
+		db	31,37,41,43,47
+		db	53,59,61,67,71
+		db	73,79,83,89,97
+		db	101,103,107,109,113
+		db	127,131,137,139,149
+		db	151,157,163,167,173
+		db	179,181,191,193,197
+		db	199,211,223,227,229
+		db	233,239,241,251
+		db	0
+
+	endfunc
+	end
+

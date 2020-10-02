@@ -1,0 +1,132 @@
+
+#include <windows.h>
+
+long FAR PASCAL EditWndProc(
+    HWND hWnd,          /* window handle */
+    unsigned message,   /* message type */
+    WORD wParam,        /* additional information */
+    LONG lParam         /* additional information */
+    );
+
+/* define names to use with Get/SetProp */
+#define REALEDITLO      MAKEINTRESOURCE(1)
+#define REALEDITHI      MAKEINTRESOURCE(2)
+
+/* call to setup an edit control - returns TRUE if OK, FALSE if not */
+BOOL InitMLE(hDialogWnd, EditId)
+HWND hDialogWnd;        /* window handle of edit control */
+int EditId;                     /* Id of edit control within dialog box */
+{
+    extern HANDLE hInst;
+    HWND hEditWnd;      /* window handle of the MLE */
+    FARPROC lpfnRealEdit;       /* the 'real' edit control's WndProc */
+    FARPROC lpfnNewEdit;        /* the new edit control WndProc */
+
+    /* find the edit control's window handle */
+    hEditWnd = GetDlgItem(hDialogWnd, EditId);
+    if (!hEditWnd)
+        return(FALSE);
+
+/* subclass edit control to make return work properly */
+/* store the 'real' WndProc address using properties */
+/* use properties because a static variable would only */
+/* work for the case of a single edit control in a single */
+/* dialog box at one time */
+    lpfnRealEdit = (FARPROC) GetWindowLong(hEditWnd, GWL_WNDPROC);
+    if (!SetProp(hEditWnd, REALEDITLO, LOWORD(lpfnRealEdit)))
+        return(FALSE);
+    if (!SetProp(hEditWnd, REALEDITHI, HIWORD(lpfnRealEdit)))
+        return(FALSE);
+
+    /* make the address of the new one */
+    lpfnNewEdit = MakeProcInstance((FARPROC)EditWndProc,hInst);
+    if (!lpfnNewEdit)
+        return(FALSE);
+
+    /* and make it the address of the edit control's WndProc */
+    SetWindowLong(hEditWnd, GWL_WNDPROC, (long)lpfnNewEdit);
+    /* don't need to store the address of the new proc, cause */
+    /* its in the window long! */
+    return(TRUE);
+}
+
+/* subclass the edit box in order to make return and tab act as one */
+/* would expect. The editbox in v3 requires that CTRL-RETURN is */
+/* pressed to get the "normal" action - BW - 29/5/91 */
+
+
+long FAR PASCAL EditWndProc(
+    HWND hWnd,          /* window handle */
+    unsigned message,   /* message type */
+    WORD wParam,        /* additional information */
+    LONG lParam         /* additional information */
+    )
+{
+    FARPROC lpfnRealEdit;
+    long lret;
+    char States[265];
+/* it's 265 cause the ref manual says 265 - */
+/* but I think its a wee typo and should be 256 */
+/* - but then again, there's no harm in being safe */
+
+/* get the real WndProc's address from the property list */
+    lpfnRealEdit = (FARPROC)MAKELONG(GetProp(hWnd, REALEDITLO),
+                     GetProp(hWnd, REALEDITHI));
+    switch (message)    {
+        /* Catch KEYDOWN message and pretend that Ctrl is pressed */    
+        case WM_KEYDOWN:
+            if ((wParam == VK_RETURN) || (wParam == VK_TAB))
+                {
+                GetKeyboardState (States);
+                States [VK_CONTROL] ^= 0x80;    /* xor state of <CTRL> key */
+                SetKeyboardState (States);
+                }
+            break;
+
+        /* we need to trap WM_DESTROY to un-subclass the control */
+        case WM_DESTROY:
+            {
+            FARPROC lpfnNewEdit;
+            /* get the address of this WndProc */
+            lpfnNewEdit = (FARPROC)GetWindowLong(hWnd, GWL_WNDPROC);
+            /* replace it with the 'real' WndProc */
+            SetWindowLong(hWnd, GWL_WNDPROC, (long)lpfnRealEdit);
+            /* free the procinstance for this WndProc */
+            FreeProcInstance(lpfnNewEdit);
+            /* and clean up the property list */
+            RemoveProp(hWnd, REALEDITLO);
+            RemoveProp(hWnd, REALEDITHI);
+            break;
+            }
+        default:
+            break;
+        }
+    /* now call the window proc */
+    lret = CallWindowProc(lpfnRealEdit, hWnd, message, wParam, lParam);
+    /* now make sure the ctrl is removed */
+    switch (message)    {
+        /* Clear pretend Ctrl as soon as done
+           call for TAB */
+        case WM_KEYDOWN:
+            if (wParam == VK_TAB)
+                {
+                GetKeyboardState (States);
+                States [VK_CONTROL] ^= 0x80;
+                SetKeyboardState(States);
+                }
+            break;
+        /* Clear pretend Ctrl when get WM_KEYUP (WM_KEYDOWN
+           and WM_KEYUP translate to WM_CHAR) */
+        case WM_CHAR:
+            if (wParam == VK_RETURN)
+                {
+                GetKeyboardState (States);
+                States [VK_CONTROL] ^= 0x80;
+                SetKeyboardState (States);
+                }
+            break;
+        default:
+            break;
+        }
+    return(lret);
+}

@@ -1,0 +1,84 @@
+Listing 2. Stream sockets example. The client program.
+
+
+/* send -- sends strings to a local or remote server in the Internet domain. 
+ * "send" operates in conjunction with the "receive" server program.
+ *     Usage:  send <server name>
+ */ 
+
+#include  <sys/types.h>
+#include  <sys/socket.h>
+#include  <netdb.h>
+#include  <netinet/in.h>
+
+#define   FAIL   1
+#define   SUCC   0
+#define   PROMPT  printf("type string to be sent (ctrl-d to exit) : ")
+#define   PORT_NUMBER  2227          /* the port number through which client
+                                      * server communication takes places. 
+                                      * Must be the same in client and server. 
+                                      */
+
+/* ---------------------------------------------------------------------- */
+ 
+main(ac, av)
+    int ac;   char **av ;
+{
+    int sock ;                       /* client process socket descriptor  */
+    struct sockaddr_in sock_addr ;   /* Internet socket address structure */
+    char line[256] ;                 /* message to be sent                */    
+    char message[12] ;               /* termination message from server   */
+    struct hostent *host_struct, *gethostbyname() ;
+    char *server_name = av[1] ;      /* remote server name                */ 
+    char *progr_name = av[0] ;
+    void error() ;                   /* the same routine of listing 1     */
+
+
+    if (ac != 2)  {
+        fprintf(stderr, "error -- usage: %s <server name>\n", progr_name);
+        exit(FAIL) ;
+    }
+
+    /* get server address */
+    if ((host_struct = gethostbyname(server_name)) == NULL)  {
+        fprintf(stderr, "%s: unknown server %s\n", progr_name, server_name) ;   
+        exit(FAIL) ;
+    } 
+
+    /* allocate a stream socket descriptor */
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+        error(progr_name, ": error opening socket") ;
+
+    /* copy server address and type to socket structure */
+    bcopy(host_struct->h_addr, (char *)&sock_addr.sin_addr.s_addr,
+          host_struct->h_length) ; 
+    sock_addr.sin_port = PORT_NUMBER ;
+    sock_addr.sin_family = AF_INET ;
+
+    /* connect to remote server process */
+    if (connect(sock, (struct sockaddr *)&sock_addr, sizeof sock_addr) == -1)  {
+        if (close(sock) == -1)
+            error("error closing client socket", "") ;
+        error(progr_name, ": socket connection error") ;
+    }
+
+    /* send lines to remote host */
+
+    while (PROMPT, gets(line) != NULL)
+        if (write(sock, line, sizeof line) < 0)
+            error(progr_name, ": error writing to remote host") ;
+
+    /* with the following shutdown the client manifests its intention 
+     * not to send any more data to the server.
+     */
+    if (shutdown(sock, 1) == -1)
+        error(progr_name, ": shutdown") ;
+
+    /* read server termination message */
+    if (read(sock, message, sizeof message) != sizeof message)
+        error(progr_name, ": read") ; 
+    printf("\n%s\n", message) ;
+    if (close(sock) == -1)
+        error("error closing client socket", "") ;
+    exit(SUCC) ;
+}

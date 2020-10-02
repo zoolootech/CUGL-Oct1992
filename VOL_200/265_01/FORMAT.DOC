@@ -1,0 +1,463 @@
+
+
+
+				  - 1 -
+
+
+
+       1.  Introduction
+
+       This document describes the physical and	logical	 format	 of
+       the data	exchange standard of the C Users Group.
+
+       This standard  allowes  it  to  transfer	 data  files  among
+       different systems.
+
+
+       2.  Exchange Media
+
+       This  standard  does  not  define  only	some  general  data
+       exchange	 medias.   All possible	medias may be used, as long
+       as CUG has the necessary	hardware  and  driver  software	 to
+       read and	write the physical format.
+
+       Because of the real-world systems, at  least  the  following
+       medias should be	supported:
+
+	  - 8 inch, single sided, single  density  diskette  (about
+	    254KB?)
+
+	  - 5.25  inch,	 double	 sided,	 double	 density   diskette
+	    (360KB) as found in	the IBM	PC family of computers
+
+	  - 3.5	inch, ????, ???	diskette (720KB) as  found  in	the
+	    newer  IBM PS/2 systems and	many smaller machines (like
+	    Atari ST)
+
+	  - 9 track industrial standard	tape
+
+       From all	medias only the	9-track	tape needs explantation: It
+       is  for	some  systems  easier to read tapes than diskettes.
+       Other systems  (Unisys  Series 1100  e.	g.)  don't  support
+       diskette	 drives	but tapes.  To support such systems, the 9-
+       track tape is the only alternative and must be  included	 as
+       exchange	 media.	(I'm not sure if it's better to	write tapes
+       in the EBCDIC character set????).
+
+       Other exchange medias may be standardized if requested.	The
+       most  important	fact  is  that	there  must be input/output
+       drivers which are able to read the media	as a single file,
+       bypassing the operating system directory	structure.
+
+
+       3.  Archive Format
+
+       The archive file	is a single sequential file that contains a
+       well-defined  set  of  header  and  data	 blocks.   A single
+       header/data block set describes an  entire  file.   Multiple
+       sets may	be included in a single	archive	file, as long as no
+
+
+
+
+
+
+
+
+
+
+
+				  - 2 -
+
+
+
+       single set is devided across archive file boundaries.
+
+       The archive file	contains only true ascii  characters  (that
+       is, characters within the range 0..127)1.
+
+       The archive file	format bases on	the  X/OPEN  cpio  standard
+       (with -c	option active).	 One goal of this exchange standard
+       is that X/OPEN cpio disks can be	read and written  with	CUG
+       utilities.
+
+       3.1  File Layout
+
+       As mentioned above, the file contains  a	 continous  set	 of
+       header (HDRB) and data (DATB) blocks.  A	special	end-of-file
+       header block (EOFB) annonces the	end of	the  archive  file.
+       Note  that this block may be present before the physical	end
+       of file.	 There is no corresponding begin-of-file block.
+
+		    Figure 1....  general archive layout
+	      <HDRB><DATB><HDRB><DATB>...<HDRB><DATB><EOFB>
+
+       3.2  Header Block (HDRB)	Format
+
+       The header block	closely	corrosponds to the X/OPEN cpio file
+       header  standard.   It  can  be	described  by the following
+       scanf():
+
+       scanf("%6o%6o%6o%6o%6o%6o%6o%6o%11lo%6o%6o%s",
+
+	  >isn't this an error and the following correct:  <
+	  >scanf("%6o%6o%6o%6o%6o%6o%6o%6o%11lo%6o%11lo%s",<
+
+	     &Hdr.h_magic, &Hdr.h_dev, &Hdr.h_ino, &Hdr.h_mode,
+	     &Hdr.h_uid, &Hdr.h_gid, &Hdr.h_nlink, &Hdr.h_rdev,
+	     &Longtime,	&Hdr.h_namesize, &Longfile, Hdr.h_name);
+
+       Because most of the fields in the header	 record	 only  have
+       meaning	 on  Unix  systems,  they  are	only  included	for
+       conformance to the X/OPEN standard and are not used  by	the
+       exchange	 standard.  Their exact	meaning	in the CUG exchange
+       format is as follows2:
+
+
+       __________
+
+	1. If the target system	ueses a	different character set,
+	   conversion takes place when reading and writing the
+	   exchange media not when building or	extracting the
+	   archive files.
+
+	2. Note	that the term "not used" means that the	field is
+
+
+
+
+
+
+
+
+
+
+
+				  - 3 -
+
+
+
+       h_magic	      Identifies the record as header block.   Must
+		      be  the constant 070707 (octal).	Every other
+		      value indicates an error.
+
+       h_dev	      not used
+
+       h_ino	      not used
+
+       h_mode	      not used,	set  to	 0100666  on  output  (this
+		      setting identifies it as a regular file which
+		      can be read and written by  everyone  to	the
+		      Unix cpio)
+
+       h_uid	      not used
+
+       h_gid	      not used
+
+       h_nlink	      not used,	ignored	on input,  set	to  one on
+		      output
+
+       h_rdev	      not used
+
+       Longtime	      not used
+
+       h_namesize     This field contains the length of	 the  null-
+		      terminated   pathname  h_name  including	the
+		      null-byte.
+
+       Longfile	      This field contains the  exact size  of	the
+		      following	  data	block  (DATB).	 Immedeatly
+		      after reading Longfile number bytes from	the
+		      archive,	the  next  archive record must be a
+		      HDRB (or EOFB).
+
+       h_name	      File name	of the following data block (DATB).
+		      When  extracting	the  archive, the following
+		      data block is stored under this name.
+
+		      Note that	there are  restrictions	 for  file-
+		      name  construction: No system-dependant parts
+		      should be	included.  This	is  even  true	for
+		      pathnames,   which  are  not  common  to	all
+		      systems.	So the following  rules	 should	 be
+		      applied to file name construction.  They base
+		      on the KERMIT file transfer protocol and will
+
+
+       ____________________________________________________________
+
+	   ignored on input and	set to zero on output.
+
+
+
+
+
+
+
+
+
+
+
+
+				  - 4 -
+
+
+
+		      guarantee	that the file can be created  under
+		      virtually	 every operating system.  Violation
+		      of  this	rules  may  cause  useless  of	the
+		      archive file on some OS.
+
+			 - The only allowed characters in filenames
+			   are	digits	and  upper-case	alphabetics
+			   (ascii 0x30-0x39 and	0x41-0x5a).
+
+			 - A  filename	consits	 of   at   most	  8
+			   characters,	an  optional  period and at
+			   most	additional  three  characters.	 If
+			   you	want  to  specify  the	last  three
+			   characters, the period _m_u_s_t be included.
+			   This	 are  the  same	rules as for MS-DOS
+			   files (without pathnames).
+
+			 - No  system-dependant	 information  (like
+			   drive  specifiers  or  pathnames) may be
+			   included.
+
+       3.3  EOF Block (EOFB) Format
+	
+       The EOF block is a special case of the header  block.   It's
+       an  ordinary  header  block  with  Longfile  set	to zero	and
+       h_name set to the constant "TRAILER!!!".
+
+       3.4  Data Block (DATB) Format
+
+       The data	block contains the files data.	No file	is splitted
+       across  two  or	more  data  blocks.   To achive	portability
+       between different systems, the following	 restrictions  must
+       be applied to the data block:
+
+	  - The	 data	block	contains   only	  printable   ascii
+	    characters.	  The  one  and	 only  exception  from this
+	    general rule is the	newline	character, which is used to
+	    partition source lines.
+
+	  - The	 newline  sequence  consits  of	 a  single  newline
+	    character ('0, ascii 0x10).	 This representation is	not
+	    affected  by  the  target  system	newline	  sequence.
+	    Newline conversion is (if needed) done when	reading	and
+	    writing the	archive	files.
+
+	  - Tabulation characters are  expanded	 when  the  archive
+	    file   is	written.    They   are	 not  automatically
+	    recompressed when extracting the archive file.  This is
+	    neccessary	because	of the different tab settings under
+	    different operating	systems	(some don't support tabs at
+	    all).
+
+
+
+
+
+
+
+
+
+
+
+				  - 5 -
+
+
+
+       4.  Implementation
+
+       The exchange utilities are divided in two parts:	 The  first
+       one  read  or  write  the  exchange  media,  constructing an
+       ordinary	sequential file	that can  be  processed	 by  normal
+       operating  system  calls.   The	second part reads or writes
+       these sequential	files and extracts the single source files.
+
+
+       5.  Usage of the archive/unarchive Utilities
+
+       - usage of unarchive utility:
+	 read  file start-sector byte-length
+	       file is the name	of the sequential output file
+	       start-sector is the first sector	read form
+	       sector length is	computed using the byte	length
+
+       - usage of archive utility:
+	 write file start-sector
+	       file is the name	of the sequential input	file
+	       start-sector is the first sector	written	to
+	       the byte	length is determined by	the length of the input
+	       file. no	input file may be larger than a	single disk
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				 CONTENTS
+
+
+       1.  Introduction.........................................  1
+
+       2.  Exchange Media.......................................  1
+
+       3.  Archive Format.......................................  1
+	   3.1	File Layout.....................................  2
+	   3.2	Header Block (HDRB) Format......................  2
+	   3.3	EOF Block (EOFB) Format.........................  4
+	   3.4	Data Block (DATB) Format........................  4
+
+       4.  Implementation.......................................  5
+
+       5.  Usage of the	archive/unarchive Utilities.............  5
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				  - i -
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+			     LIST OF FIGURES
+
+
+       Figure 1.  general archive layout........................  2
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				  - ii -
+
+
+
+
+

@@ -1,0 +1,95 @@
+{Buttons - Extensions to ObjectWindows Copyright (C) Doug Overmyer 7/1/91}
+unit Buttons;
+{************************  Interface    ***********************}
+interface
+uses WinTypes, WinProcs, WinDos, Strings, WObjects;
+type
+PODButton = ^TODButton;
+TODButton = object(TButton)
+	HBmp :HBitmap;
+  State:Integer;
+  constructor	Init(AParent:PWindowsObject; AnID:Integer;ATitle:PChar;
+  	X,Y,W,H:Integer;IsDefault:Boolean;BMP:PChar);
+  destructor	Done;virtual;
+  procedure	DrawItem(var Msg:TMessage);virtual;
+end;
+{************************  Implementation      **********************}
+implementation
+constructor	TODButton.Init(AParent:PWindowsObject; AnID:Integer;ATitle:PChar;
+   	X,Y,W,H:Integer;IsDefault:Boolean;BMP:PChar);
+begin
+	TButton.Init(AParent,AnID,ATitle,X,Y,W,H,IsDefault);
+  Attr.Style := Attr.Style or bs_OwnerDraw;
+  HBmp := LoadBitmap(HInstance,BMP);
+end;
+
+destructor	TODButton.Done;
+begin
+	DeleteObject(HBmp);
+	TButton.Done;
+end;
+
+procedure	TODButton.DrawItem(var Msg:TMessage);
+var
+	TheDC,MemDC:HDc;
+	ThePen,Pen1,Pen2,OldPen:HPen;
+  TheBrush,OldBrush:HBrush;
+  OldBitMap:HBitMap;
+  LPts,RPts:Array[0..2] of TPoint;
+  PDIS :^TDrawItemStruct;
+  X,Y,W,H:Integer;
+  PenWidth,OffSet:Integer;
+  DBU:LongRec;
+begin
+	LongInt(DBU) := GetDialogBaseUnits;                  
+	PDIS := Pointer(Msg.lParam);
+  if PDIS^.itemAction = oda_Focus then Exit;
+	if ((PDIS^.itemAction and oda_Select ) > 0) and
+  	((PDIS^.itemState and ods_Selected) > 0) then State := 1 else State := 0;                     {1 = depressed}
+  X := PDIS^.rcItem.left;    Y := PDIS^.rcItem.top;
+  W := PDIS^.rcItem.right-PDIS^.rcItem.left;  H := PDIS^.rcItem.bottom-PDIS^.rcItem.top;
+  OffSet := Round(H / (DBU.lo * 4));               {scale highlites based on size}
+  PenWidth := OffSet;
+  LPts[0].x := W; LPts[0].y := 0;
+  LPts[1].x := 0; LPts[1].y := 0;
+  LPts[2].x := 0; LPts[2].y := H;
+  RPts[0].x := 0; RPts[0].y := H;
+  RPts[1].x := W; RPts[1].y := H;
+  RPts[2].x := W; RPts[2].y := 0;
+  MemDC := CreateCompatibleDC(PDIS^.HDC);
+  OldBitMap := SelectObject(MemDC,HBMP);
+  if State = 0 then BitBlt(PDIS^.HDC,X,Y,W,H, MemDC,0,0,SrcCopy)
+  	else BitBlt(PDIS^.HDC,X+OffSet,Y+OffSet,W,H, MemDC,0,0,SrcCopy);
+  SelectObject(MemDC,OldBitMap);
+  DeleteDC(MemDC);
+	Pen1 := CreatePen(ps_Solid,OffSet,$00000000);
+  OldPen := SelectObject(PDIS^.HDC,Pen1);
+  PolyLine(PDIS^.HDC,LPts,3);
+  PolyLine(PDIS^.HDC,RPts,3);
+  SelectObject(PDIS^.HDC,OldPen);
+  DeleteObject(Pen1);
+  LPts[0].x := W-OffSet; 	LPts[0].y := OffSet;
+  LPts[1].x := OffSet; 		LPts[1].y := OffSet;
+  LPts[2].x := OffSet;		LPts[2].y := H-OffSet;
+  RPts[0].x := OffSet; 		RPts[0].y := H-OffSet;
+  RPts[1].x := W-OffSet; 	RPts[1].y := H-OffSet;
+  RPts[2].x := W-OffSet; 	RPts[2].y := OffSet;
+  if State = 0 then
+  	begin
+		Pen1 := CreatePen(ps_Solid,PenWidth,$00FFFFFF);       {white hilite}
+    Pen2 := CreatePen(ps_Solid,PenWidth,$00808080);
+    end
+  else
+  	begin
+  	Pen1 := CreatePen(ps_Solid,PenWidth,$00808080);       {black hilite}
+		Pen2 := CreatePen(ps_Solid,Penwidth,$00808080);
+    end;
+  OldPen := SelectObject(PDIS^.HDC,Pen1);
+  PolyLine(PDIS^.HDC,LPts,3);
+  SelectObject(PDIS^.HDC,Pen2);
+  DeleteObject(Pen1);
+  PolyLine(PDIS^.HDC,RPts,3);
+  SelectObject(PDIS^.HDC,OldPen);
+  DeleteObject(Pen2);
+end;
+end.

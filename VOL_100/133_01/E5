@@ -1,0 +1,207 @@
+/*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	FILE: e5
+
+	FUNCTIONS: readfile, writefile, exists, scans, retag, format
+
+	PURPOSE: read and write files
+
+*/
+
+#include "e.h"
+
+readfile(name)	/* read file 'name' and insert it after current line*/
+char *name;
+{
+	int c, i, line;
+
+	if (fopen(name,fbuf) == FAIL) {
+		error("Can't find file");
+		name[0]='\0'; 
+		return(FAIL);
+		}
+	puttext();
+	line=cline;
+	do {
+		for (i=0; i < LLIM && (c=getc(fbuf)) != FAIL && c != '\n'
+			&& c != ENDFILE; ) text[i++]=c;
+		if (text[i-1] == '\r') i--;
+		text[i]='\0';
+		if (line%10 == 0) putlineno(line);
+		} while (inject(line++,text) != FAIL && c != FAIL && c != ENDFILE);
+	fclose(fbuf);
+	gettext(cline);
+}
+
+writefile(from,to,name,nametoprint,exiting)
+int from, to, exiting;
+char *name, *nametoprint;
+{
+	int l, copying, copysecstart,copybytestart;
+	char c, *t, *getline();
+
+	puttext();
+	if (name[0] <= ' ') {
+		error("Bad name");
+		return FAIL;
+		}
+	if (fcreat(name,fbuf) == FAIL) {
+		error("Can't write file - directory full?");
+		return(FAIL);
+		}
+	putmess("Saving "); 
+	puts(nametoprint);
+	copying=NO;
+	if (exiting) to=lastread;
+	else if (to == lastl) to=loc(lastl,0);
+	for (l=from; l <= to; ) {
+		t=getline(l++);
+		while (*t) if (putc(*t++,fbuf) == FAIL) goto diskfull;
+		if (l <= to ) {
+			if (putc('\r',fbuf) == FAIL) goto diskfull;
+			if (putc('\n',fbuf) == FAIL) goto diskfull;
+			}
+		}
+	if (exiting && (lastl == UNKNOWN) || !goteof) {
+		copysecstart=tell(textbuf->_fd) -
+		(textbuf->_nleft + SECSIZ)/SECSIZ;
+		copybytestart=SECSIZ-(textbuf->_nleft + SECSIZ)%SECSIZ;
+		if (putc('\r',fbuf) == FAIL) goto diskfull;
+		if (putc('\n',fbuf) == FAIL) goto diskfull;
+		copying=YES;
+		while ( (c=getc(textbuf)) != ENDFILE && c != FAIL)
+			if (putc(c,fbuf) == FAIL) goto diskfull;
+		}
+	if (putc(ENDFILE,fbuf) == FAIL)goto diskfull;
+	if (fflush(fbuf) == FAIL) goto diskfull;
+	if (fclose(fbuf) == FAIL) {
+		error("Can't close file");
+		goto reposition;
+		}
+	if (copying) fclose(textbuf);
+	return YES;
+diskfull:
+	error("Disk full");
+reposition:
+	if (copying) {
+		fclose(fbuf); 
+		funlink(name);
+		seek(textbuf->_fd,copysecstart,0);
+		textbuf->_nleft=0;
+		while (copybytestart--) getc(textbuf);
+		}
+	return FAIL;
+}
+
+exists(name)
+char *name;
+{
+	char c;
+
+	c='y';
+	if (checkexists(name)) {
+		putmess("OK to replace "); 
+		puts(name); 
+		puts(" ? ");
+		putch((c=getlow()));
+		putret(); 
+		}
+	return c == 'y';
+}
+
+checkexists(name)	/*return YES if file 'name' exists, else NO */
+char *name;
+{
+	int fd;
+	
+	if (dskcheck(setjmp(dskerr)) != 0 || (fd=open(name,0)) == FAIL) return NO;
+	close(fd);
+	return YES;
+}
+
+scans(answer,maxlen)
+char *answer;
+int maxlen;
+{
+	char c, getscankey();
+	int n, i;
+
+	maxlen--;
+	n=0;
+	while (n < maxlen) {
+		switch((c=getscankey())) {
+		case LEFTKEY	:
+		case DELLEFT	:
+			if (n) {
+				putch(BACKSP); 
+				putch(' ');
+				putch(BACKSP);
+				n--; 
+				answer--;
+				}
+			break;
+		case CR		:
+		case ESCKEY	:
+			n=maxlen; 
+			break;
+		case RETRIEVE	:
+			if (n == 0) {
+				while (*answer) {
+					dispch(*answer++);
+					n++;
+					}
+				break;
+				}
+		default		:   
+			dispch(c); 
+			*answer++=c; 
+			n++;
+			break;
+			}
+		}
+	*answer='\0';
+	putret();
+	return c;
+}
+
+retag(name,tag)	/*puts a new suffix on a file name*/
+char *name, *tag;
+{
+	for (; *name && *name != '.'; name++);
+	if (!*name)*name='.';
+	for (++name; (*name=*tag); name++, tag++);
+}
+
+format(name)	/*puts filename 'name' into a standard format, adding
+		disk drive if not supplied.  Accepts user area numbers
+		Output format is UU/D:FFFFFFFF.xxx   */
+char *name;
+{
+	char tempname[FILELEN], *cn, *ct;
+	int n, t;
+	
+	if (!*name) return;
+	for (n=t=0; isdigit(name[n]); n++) tempname[n]=name[n];	/*copy user area*/
+	if (n && name[n] == '/') {
+		tempname[n]='/';
+		t=++n;
+		}
+	if (name[n+1] != ':') {				/*insert drive */
+		tempname[t++]= curdsk+'A';
+		tempname[t++]=':';
+		}
+	for (; t < FILELEN && (tempname[t]=name[n]); t++, n++); /*copy rest*/
+
+	for (cn=name,ct=tempname; (*cn=toupper(*ct++)); cn++) /*upcase all but extn */
+		if (*cn == '.') break;
+	while (*cn++) *cn=tolower(*ct++);
+}
+start,0);
+		textbuf->_nleft=0;
+		while (copybytestart--) getc(textbuf);
+		}

@@ -1,0 +1,73 @@
+
+/* ------------------------------------------------------------ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <string.h>
+
+#define EXACT 1			/* locate_node match flags */
+#define INEXACT 2
+#define NUMELEM(a) (sizeof(a)/sizeof((a)[0]))
+
+typedef struct node {
+	struct node *pfwd;	/* ptr to next node in list */
+	struct node *pbwd;	/* ptr to prev node in list */
+	void (*process)(unsigned);	/* function to call */
+	unsigned priority;	/* function priority */
+} Node;
+
+Node *proot_node;	/* start of data list */
+Node *pfree_node = NULL;/* next free node */
+
+Node *get_free_node(void);
+Node *locate_node(unsigned priority, int match);
+
+void add_node(void);		/* action functions */
+void help(void);
+void myexit(void);
+
+void proc_cmd(int dummy);
+
+void idle(unsigned);		/* process functions */
+void pro1(unsigned);
+void pro2(unsigned);
+void pro3(unsigned);
+
+/* --------------------------------------------------------------
+
+FUNCTION MAIN: 
+	
+The dummy header node head_node is allocated and initialized in
+the declaration.
+
+A. Register proc_cmd as the handler for the next SIGINT signal.
+	
+B. Cycle indefinitely through circular list, processing nodes.
+	
+-------------------------------------------------------------- */
+	
+main()
+{
+	const Node *pnode;		/* Node just allocated */
+	static Node head_node = {
+		&head_node,
+		&head_node,
+		&idle,
+		0
+	};
+
+/*A*/	pnode = proot_node = &head_node;
+	if (signal(SIGINT, proc_cmd) == SIG_ERR) {
+		fprintf(stderr, "can't register handler\n");
+		exit(EXIT_FAILURE);
+	}
+
+/*B*/	while (1) {
+		(*pnode->process)(pnode->priority);
+		pnode = pnode->pfwd;
+	}
+
+	return(EXIT_SUCCESS);
+}
+

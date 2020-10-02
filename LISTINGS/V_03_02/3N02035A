@@ -1,0 +1,181 @@
+{FONTS - Extensions to ObjectWindows Copyright (C) Doug Overmyer 10/1/91}
+unit Fonts;
+interface
+uses WinTypes, WinProcs, WinDos, Strings, WObjects,StdDlgs;
+
+type
+PIntObj = ^TIntObj;
+TIntObj = object(TObject)
+	Int:Integer;
+  constructor Init(NewInt:Integer);
+  destructor Done;virtual;
+end;
+
+type                          
+PFontItem = ^TFontItem;
+TFontItem = object(TObject)
+	LogFont:TLogFont;
+  FontType:Integer;
+  Sizes:PCollection;
+  constructor Init(NewItem:TLogFont;NewType:Integer);
+  destructor Done;virtual;
+end;
+
+PFontCollection = ^TFontCollection;   
+TFontCollection = object(TSortedCollection)
+	function KeyOf(Item:Pointer):Pointer;virtual;
+  function Compare(Key1,Key2:Pointer):Integer;virtual;
+  function GetCount:Integer;virtual;
+end;
+
+type PFonts = ^TFonts;
+TFonts = object
+	LogPixlX,LogPixlY:Integer;
+  constructor Init;
+  destructor Done;virtual;
+  procedure ReInit;virtual;
+  procedure Enumerate(TheDC:hDC);virtual;
+  function At(Index:Integer):pointer;virtual;
+  function Count:Integer;virtual;
+  function LogPixX:Integer;virtual;
+  function LogPixY:Integer;virtual;
+end;
+{************************  Implementation  **********************}
+implementation
+{************************  Global Variables  *********************}
+var
+  Faces:PFontCollection;
+{************************  TIntObj     ***************************}
+constructor TIntObj.Init(NewInt:Integer);
+begin
+	Int := NewInt;
+end;
+
+destructor TIntObj.Done;
+begin
+	TObject.Done;
+end;
+{************************  TFontItem    **************************}
+constructor TFontItem.Init(NewItem:TLogFont;NewType:Integer);
+begin
+	LogFont := NewItem;
+  FontType := NewType;
+  Sizes := New(PCollection,Init(10,10));
+end;
+
+destructor TFontItem.Done;
+begin
+	Dispose(Sizes,Done);
+end;
+{************************  TFontCollection  ************************}
+function TFontCollection.KeyOf(Item:Pointer):Pointer;
+var
+	Ptr :PChar;
+begin
+	Ptr := PFontItem(Item)^.LogFont.lfFaceName;
+	KeyOf := Ptr;
+end;
+
+function TFontCollection.Compare(Key1,Key2:Pointer):Integer;
+begin
+	Compare := StrIComp(PChar(Key1),PChar(Key2));
+end;
+
+function TFontCollection.GetCount:Integer;
+begin
+	GetCount := Count;
+end;
+{************************  TFonts             *********************}
+constructor TFonts.Init;
+begin
+	Faces := New(PFontCollection,Init(100,100));
+  Faces^.Duplicates := False;
+  LogPixlX := 0;
+  LogPixlY := 0;
+end;
+
+destructor TFonts.Done;
+begin
+	Dispose(Faces,Done);
+end;
+
+procedure TFonts.ReInit;
+begin
+	Dispose(Faces,Done);
+	Faces := New(PFontCollection,Init(100,100));
+  Faces^.Duplicates := False;
+  LogPixlX := 0;
+  LogPixlY := 0;
+end;
+
+function EnumerateFace(var LogFont: TLogFont; TextMetric: PTextMetric;
+  	FontType: Integer; Data: PChar): Integer; export;
+begin
+   Faces^.Insert(New(PFontItem,Init(LogFont,FontType)));
+   EnumerateFace := 1;
+end;
+
+function EnumerateSize(var LogFont: TLogFont; TextMetric: PTextMetric;
+  		FontType: Integer; Indx: PChar): Integer; export;
+ function DupS(Item:PIntObj):Boolean;far;
+  	begin
+   	DupS := (Item^.Int = LogFont.lfHeight);
+   end;
+var
+  Result :PIntObj;
+  FI:PFontItem;
+  Indxx :Integer;
+  Error:Integer;
+begin
+	Val(Indx,Indxx,Error);
+  FI := Faces^.At(Indxx);
+  Result := FI^.Sizes^.FirstThat(@DupS);
+  if Result = nil then Fi^.Sizes^.AtInsert(0,(New(PIntObj,Init(LogFont.lfHeight)))) ;
+	EnumerateSize := 1;
+end;
+
+procedure TFonts.Enumerate(TheDC:hDC);
+var
+  EnumProc: TFarProc;
+  Indx:Integer;
+  pIndx:PChar;
+  szIndx:Array[0..25] of Char;
+  FontItem :PFontItem;
+begin
+	pIndx := @szIndx;
+	StrCopy(szIndx,'');
+  EnumProc := MakeProcInstance(@EnumerateFace, HInstance);
+  EnumFonts(TheDC, nil, EnumProc,nil);
+  EnumProc := MakeProcInstance(@EnumerateSize, HInstance);
+  for Indx := 0 to Faces^.Count -1 do
+  	begin
+    Str(Indx,szIndx);
+    FontItem := Faces^.At(Indx);
+    EnumFonts(TheDC, FontItem^.LogFont.lfFaceName,
+    	EnumProc,pIndx);
+    end;
+  LogPixlX := GetDeviceCaps(TheDC,LogPixelsX);
+  LogPixlY := GetDeviceCaps(TheDC,LogPixelsY);
+end;
+
+function TFonts.At(Index:Integer):Pointer;
+begin
+	At := Faces^.At(Index);
+end;
+
+function TFonts.Count:Integer;
+begin
+	Count := Faces^.Count;
+end;
+
+function TFonts.LogPixX:Integer;
+begin
+	LogPixX := LogPixlX;
+end;
+
+function TFonts.LogPixY:Integer;
+begin
+	LogPixY := LogPixlY;
+end;
+{******************************************************************}
+end.

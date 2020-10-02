@@ -1,0 +1,70 @@
+#include "solid.h"
+
+void transform_object(struct solid_obj *obj_ptr)
+/*  Performs scaling, translation, rotation.  */
+{
+    struct facet *facet_ptr;
+    struct vertex *vertex_ptr;
+    int vertex_i, coord_index, facet_index;
+    float new_coord[3]; /* computed x, y, z coords */
+    float xa, ya, za; /* temporary variables */
+    struct vector normal; /* vector normal to facet */
+
+    /* perform scaling, then rotation, then translation
+        in that order, for each vertex in object */
+    for (vertex_ptr = obj_ptr->vertex_first, vertex_i =
+        0; vertex_i < defn_ptr[obj_ptr->obj_type]->
+        vertex_count; ++vertex_ptr, ++vertex_i) {
+        /* loop for each vertex in object */
+        /* scaling */
+        for (coord_index = 0; coord_index < 3;
+            ++coord_index) {
+            new_coord[coord_index] = vertex_ptr->coord
+                [coord_index] * obj_ptr->scale; 
+        }
+        /* rotation */
+        xa = cos(obj_ptr->YAW) * new_coord[0] -
+            sin(obj_ptr->YAW) * new_coord[2];
+        za = sin(obj_ptr->YAW) * new_coord[0] +
+            cos(obj_ptr->YAW) * new_coord[2];
+        new_coord[0] = cos(obj_ptr->ROLL) * xa +
+            sin(obj_ptr->ROLL) * new_coord[1];
+        ya = cos(obj_ptr->ROLL) * new_coord[1] -
+            sin(obj_ptr->ROLL) * xa;
+        new_coord[2] = cos(obj_ptr->PITCH) * za -
+            sin(obj_ptr->PITCH) * ya;
+        new_coord[1] = sin(obj_ptr->PITCH) * za +
+            cos(obj_ptr->PITCH) * ya;
+
+        /* translation; also insert new coordinates
+        into object */
+        for (coord_index = 0; coord_index < 3;
+            ++coord_index) {
+            new_coord[coord_index] += obj_ptr->
+                xlate[coord_index];
+            vertex_ptr->coord[coord_index] =
+                new_coord[coord_index];
+        }
+    }
+
+    /* perform visibility test and projection on each
+    facet in object */
+    for (facet_ptr = defn_ptr[obj_ptr->obj_type]->
+        facet_first, facet_index = 0; facet_index <
+        defn_ptr[obj_ptr->obj_type]->facet_count;
+        ++facet_index, facet_ptr = (struct facet *)
+        ((char *)facet_ptr + sizeof(struct facet) +
+        facet_ptr->vertex_count * sizeof(INDEX))) {
+        /* loop for each facet in object */
+        normal = normal_vector(obj_ptr, facet_ptr);
+        vertex_ptr = obj_ptr->vertex_first + facet_ptr
+            ->vertex_index[0];
+        obj_ptr->visible[facet_index] = (normal.x *
+            vertex_ptr->coord[0] + normal.y *
+            vertex_ptr->coord[0] + normal.z * (proj_z -
+            vertex_ptr->coord[0])) > 0.0;
+        display_facet(obj_ptr, facet_ptr, FALSE,
+            obj_ptr->visible[facet_index]);
+            /* projection without display */
+    }
+}

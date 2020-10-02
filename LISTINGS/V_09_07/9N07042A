@@ -1,0 +1,97 @@
+
+#include	<stdio.h>
+
+int		LineCount;		/* The number of
+					   lines printed
+					   on a page */
+int		PageCount = 1;		/* The current page 
+					   number */
+char		*Filename;		/* Input file name
+					 */
+
+void	header(void);
+void	endofline(void);
+int	padAmount(int tabcolumn);
+
+main(int argc, char **argv)
+	{
+	FILE		*fp;		/* Input file */
+	int		c;
+	int		i;
+	int		tabcolumn;	/* Column for tab
+					   stops */
+	unsigned	lineno;		/* Line # in file */
+
+	if	(argc != 2){
+		fprintf(stderr, "Use is: PR filename\n");
+		return;
+		}
+	Filename = argv[1];
+	fp = fopen(Filename, "r");
+	if	(fp == 0){
+		fprintf(stderr, "Couldn't open %s\n", 
+						Filename);
+		return;
+		}
+	header();
+	lineno = 1;
+	while	((c = getc(fp)) != EOF){
+		printf("%5d ", lineno);
+		lineno++;
+		tabcolumn = 0;
+		while	(c != '\n' &&
+			 c != '\f' &&
+			 c != EOF){
+			if	(c == '\t'){
+				i = padAmount(tabcolumn);
+				tabcolumn += i;
+				while	(i){
+					putchar(' ');
+					i--;
+					}
+				}
+			else	{
+				putchar(c);
+				tabcolumn++;
+				}
+			c = getc(fp);
+			}
+		if	(c == '\f')
+			LineCount = 1000;	/* Force an
+						   end of
+						   page */
+		endofline();
+		}
+	putchar('\f');			/* Finish the last
+					   page */
+	fclose(fp);
+	}
+
+int	padAmount(int tabcolumn)
+	{
+	int	i;
+
+	i = (tabcolumn + 8) & 7;	/* compute the 
+					   column within
+					   the tab */
+	return 8 - i;			/* spaces to pad */
+	}
+
+void	endofline(void)
+	{
+	LineCount++;
+	if	(LineCount < 60)	/* 60 lines per
+					   page */
+		putchar('\n');
+	else	{
+		putchar('\f');
+		header();
+		}
+	}
+
+void	header(void)
+	{
+	printf("%-16s  page %d\n\n\n", Filename, 
+					PageCount++);
+	LineCount = 3;
+	}

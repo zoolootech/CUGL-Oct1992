@@ -1,0 +1,106 @@
+
+;
+; extkeys.asm -- Function package to handle extended keycodes
+;                Written by Tom Wurzbach
+;
+
+    MODEL  small, C
+
+CODESEG
+    public  kbhit, getkey, getshift
+
+; ---> DoKeyboardInt
+;    INT 16, function 00h, 01h, 02h are keyboard read routines that do not
+; recognize different keys on enhanced (or 101-key) keyboards.  Functions 
+; 10h, 11h, and 12h do recognize these extended codes.  This routine check 
+; the keyboard bit at 0040:0096h before calling INT 16 to adjust the function 
+; number if the keyboard is enhanced.
+;
+;    This routine should be called with bh set to one of the following values,
+; depending on the desired function:
+;
+;    00h  Check if a key is pressed.
+;    01h  Read the next key from buffer, wait if no key is ready
+;    02h  Get the current shift state
+
+PROC      DoKeyboardInt         ; modifies ax
+    push    ds                   
+    mov     ax, 40h
+    mov     ds, ax
+    mov     ah, ds:96h
+    pop     ds
+    and     ah, 10h
+    or      ah, bh
+    xor     al, al
+    int     16h
+    ret
+ENDP
+
+; ---> kbhit
+; Returns 0 if no key is ready otherwise, the scan code of the next key 
+; in the keyboard buffer is returned.  No keys are removed from the buffer.
+
+PROC      kbhit
+    push    bp
+    mov     bp, sp
+    mov     bh, 01h
+    call    DoKeyboardInt
+    jnz     KeyHit
+    xor     ax, ax
+    jmp     SHORT KbRtn
+KeyHit:
+    mov     ax, 1
+KbRtn:
+    mov     sp, bp
+    pop     bp
+      ret  
+ENDP      kbhit   
+
+; ---> getkey 
+; Returns the scan code of the next key in the keyboard buffer and 
+; removes the key from the buffer.  Will wait until a key is pressed to
+; return.                                                         
+
+PROC      getkey
+    push    bp
+    mov     bp, sp
+    xor     bh, bh
+    call    DoKeyboardInt
+    mov     sp, bp
+    pop     bp
+    ret
+ENDP     getkey
+
+; ---> getshift
+; Returns the current shift state of the keyboard.  Shift state may be
+; determined as follows:
+; in AL
+;    bit 0    Right-Shift pressed
+;    bit 1    Left-Shift pressed
+;    bit 2    Ctrl pressed
+;    bit 3    Alt pressed
+;    bit 4    Scroll lock on
+;    bit 5    Num lock on
+;    bit 6    Caps lock on
+;    bit 7    Ins on
+;
+; Enhanced keyboards return further shift-state information in AH.
+;    bit 7: SysRq key pressed
+;    bit 6: Caps lock key pressed
+;    bit 5: Num lock pressed
+;    bit 4: Scroll lock pressed
+;    bit 3: Right-Alt pressed
+;    bit 2: Right-Ctrl pressed
+;    bit 1: Left-Alt pressed
+;    bit 0: Left-Ctrl pressed
+
+PROC     getshift
+    push   bp
+    mov    bp, sp
+    mov    bh, 02h
+    call   DoKeyboardInt
+    mov    sp, bp
+    pop    bp
+    ret
+ENDP     getshift
+END

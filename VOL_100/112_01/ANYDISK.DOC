@@ -1,0 +1,273 @@
+.so roff.mac
+.rm -5
+.cm Documentation for anydisk.c
+.cm Source:  anydisk.doc
+.he 'ANYDISK''July 27, 1982'
+.fo ''-#-''
+
+.section
+The authors
+
+.pp
+The original version of this program was written by
+Richard Damon.
+Robert Ward rewrote the program and called it DDNDISK.
+Edward K. Ream further modified DDNDISK to produce ANYDISK.
+Please send all reports of bugs to:
+
+	Edward K. Ream
+	1850 Summit Ave.  
+	Madison, WI 53705
+	(608) 231 - 2952
+
+
+.section
+The commands
+
+.pp
+This program allows the operator to examine and modify
+a CP/M disk.  
+The commands available are:
+
+.in +4
+.de point
+.br
+.ti -4
+.en
+.point
+Bn  Set current track and sector to point at block n and
+enter block mode.  
+.point
+Cn  Fill buffer with SIGNED value n.  
+.point
+Dn  Set current disk number to n (0--# of drives-1) and
+print disk information.  
+.point
+Ea n n ... n    Edit buffer starting from location a.
+.point
+Fn  Fill buffer with UNSIGNED value n.  
+.point
+H   Print help message.  
+.point
+I   Convert block to track and sector and enter sector mode.  
+.point
+M   Print the directory and the disk allocation map.  
+.point
+N   Go to next block or track/sector.  
+.point
+P   Print contents of buffer.
+.point
+R   Read sector or block into buffer (depending on mode).  
+.point
+Sn  Set current sector to n (0--# of sectors per track-1)
+and enter sector mode.  
+.point
+Tn  Set current track to n  (0--# of tracks  per disk-1)
+and enter sector mode.  
+.point
+W   Write sector or block from buffer (depending on mode).  
+.point
+X   Exit program.  
+.br
+.in -4
+
+Notes:
+.list
+.item
+Multiple commands may be specified on a line except
+for the X command which must be the only command on
+the line.  
+.item
+Commands may be in upper or lower case letters.  
+.item
+Spaces are ignored except in the E command where they
+are used as separaters for the numbers.  
+.endlist
+
+Typical commands:
+
+d0t0s1rp	read in the track 0 sector 1 of
+		disk 0 (drive A) and print it.  
+
+e1A 4F		set buffer location 1A to 4F and
+		set buffer location 1B to 20.  
+
+e0a 00w		set buffer location 0a to 0 and write
+		buffer.  Note no space after last data byte.  
+
+b0rp		print the entire first block.  
+
+b0irp		print the first sector of the first block.  
+
+
+.section
+The disk allocation map
+
+.pp
+The M command prints the directory in two sections.  
+Section 1 is a listing of each directory entry.  
+For instance, entry 15 in the directory would be listed as:
+
+	15 = DDNDISK C:0
+
+The equal sign means the entry is valid.  
+A star (*) would
+be printed instead of the equal sign if the entry were deleted.  
+The number following the colon is the extent number.  
+
+.pp
+The second section is a disk allocation map.  
+There is one entry in this map for every block on the disk.  
+If the block
+is not allocated to any file, the characters "..." appear.
+Otherwise, a number appears.  
+This number refers to the
+number of the directory entry which allocated the block.  
+Refer back to section 1 to see which file allocated the block.  
+
+
+.section
+The structure of a CP/M 2.x disk
+
+.pp
+Here is a brief description of the CP/M 2.x disk format.
+Several tracks are typically reserved for the bootstrap and
+a copy of CCP and BDOS.  
+The number of reserved tracks is
+determined by BIOS for each type of disk.  
+This number is
+called the track offset; it is printed by the 'D' command
+when a disk is selected.  
+
+.pp
+Most commands deal with the track offset automatically.  
+The only exception is the 'T' command.  
+When using the
+'T' command, you must add the offset yourself.  
+Thus, you can access ANY track with the 'T' command.  
+
+.pp
+Tracks following the reserved tracks store data.  
+To speed up disk access, CP/M does not store data in
+consecutive sectors.  
+The sector translate table converts
+from logically consecutive sectors to the order that those
+sectors are actually stored on the disk.  
+(This table is used only on CP/M 2.x versions.)
+
+.pp
+All commands deal with LOGICAL sector numbers.  
+This is what you almost always want.  
+Whenever a sector is printed,
+both the logical and physical sector numbers are shown.  
+Thus, if you can find any physical sector if you must.  
+
+.pp
+A block is the smallest unit of a disk which can be
+allocated to a file.  
+The size of a block is a multiple of 128 bytes.  
+The block size is determined by BIOS for each type of disk.  
+The block size is printed by the 'D' command.  
+
+.pp
+Several blocks are reserved at the beginning of the disk
+for the directory.  
+Again, the number of reserved blocks is 
+determined by BIOS for each type of disk.  
+This number is
+also printed by the 'D' command.  
+
+.pp
+The format of each entry of the directory is as follows.  
+Each entry describes one extent of a file.  
+
+.ne 8
+.nf
+byte   0    : file code : 0 if file exists, 0xe5 if deleted
+bytes  1- 8 : file name : file name (ascii)
+bytes  9-11 : file type : file type (ascii)
+byte   12   : file ext  : extent number (binary)
+bytes  13,14: unused
+bytes  15   : rec count : count of number of sectors in extent
+bytes  16-31: map       : list of blocks used by this extent
+.br
+.fi
+
+.pp
+Please note that byte 15 is NOT a reliable guide to the
+number of blocks allocated to a file.  
+The way to tell is
+simply to count the blocks in the map.  
+Block 0 is never
+allocated to any file and it signals the end of the map.  
+Remember that block numbers take either 1 or 2 bytes depending
+on whether there are less than 256 blocks or not.  
+
+
+.section
+Differences between DDNDISK and ANYDISK
+
+.bulletlist
+.bullet
+ANYDISK uses the CP/M 2.x BIOS select disk routine
+to get the characteristics of the disk dynamically.  
+Thus, different
+.ul
+kinds
+of disks may be used without
+recompiling the program.  
+
+.bullet
+ANYDISK will work even with hard disks.  
+Several arithmetic statements have been converted into
+loops in order to avoid overflow problems.  
+This also means that a single index variable can NOT be used.  
+Instead,  the current block, track and sector
+numbers are maintained separately.  
+
+.bullet
+The code that computes the disk map now needs lots
+less memory.  
+Only one disk block at a time is now loaded into memory.  
+
+.bullet
+The disk map now is more readable.  
+The format is useful
+even for hard disks.  
+Directory entries which have
+0xe5 for a file name are completely ignored.  
+
+.bullet
+The 'D' command now prints a summary of the characteristics
+of the selected disk.  
+
+.bullet
+The 'H' command is new.  
+It prints a help message.  
+
+.bullet
+The 'I' command is now useful for printing parts of a block.  
+For example, to print just the 5'th record of block 20 use:
+
+	b20i nnnn rp
+
+.bullet
+The 'W' command now tells BIOS that all writes are to
+the directory.  
+This forces BIOS to do the write at once.  
+
+.bullet
+You get a more informative prompt if you type a value
+which is out of range.  
+
+.bullet
+The ptmap routine contains two constants, M1COL and M2COL
+which control how many entries will be put on each line
+for the directory list and the disk allocation map.  
+I use fairly small values because my screen only has
+64 columns.  
+Choose the constants you like best.
+k allocation map.  
+I use fairly small values because my screen only has
+64 columns.  
+Choose the constants y

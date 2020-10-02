@@ -1,0 +1,289 @@
+dprintf Operating Instructions
+(C) August 30  1989  Arkin Asaf
+All rights reserved
+
+
+About dprintf
+
+A respectable number of C libraries nowadays offer, usually at extra
+cost, their source code. You can put your hands on listings of just
+about any type and usage: windowing, graphics and data-base, to name but
+few. That is, to name but one -- the library that comes bundled with
+your compiler. 
+
+It may happen that you will want to change features, not of a 3D-plot
+function, but of the more casual printf. Unless highly dedicated, want
+is all you can do about it. Correction: all you could do about it. 
+
+Presented in source code, dprintf is a clone of the printf function. 
+With minute effort you can modify and adapt it to suit your needs; You
+will find dprintf is mostly portable and expandable: it easily extends
+to accommodate newly devised formats; it can print to almost all output
+destinations; and, not less important, it follows the ANSI standard to
+the dot. 
+
+
+Define printf
+
+dprintf comes close in calling convention and operation to its
+originator, less one distinction: dprintf has a pointer-to-function as
+its first parameter. This pointer designates the function, resemblance
+to putchar(), which performs all output. Having th e function not
+preselected, dprintf enjoys unlimited choice of output destinations. 
+The pointer's definition and function prototypes follow:
+
+
+
+typedef  int (*dprintf_fp)(int);
+
+int   dprintf(dprintf_fp Func, const char *Format, ...);
+
+int  vdprintf(dprintf_fp Func, const char *Format, va_list Args);
+
+
+
+For those with amnesia and the unfamiliar with Standard C, a summarized
+description of all output formats, as defined in the ANSI standard and
+carried out by dprintf, appears in separate (see file "SYNOPSIS.DOC"). 
+
+
+Variations On dprintf
+
+Similar to printf, dprintf accepts a variable arguments list. It then
+passes vdprintf a pointer to this list, along with pointers to the
+output function and format string. Having so little to do, dprintf
+tends to be rather small, as short as four statemen ts long. Such
+shortness makes it an easy target for changes. 
+
+Intricate output destinations require a list of arguments to handle. 
+Since vdprintf accepts fixed arguments and is too long a function to
+exercise adaptability on, I advise that dprintf absorb all non-standard
+arguments, setting them for vdprintf's conven ience. To better clarify
+the point consider aprintf. This function allocates a memory block to
+store output in:
+
+
+
+char  *aprintf_base;
+
+char   aprintf_ofst;
+
+
+
+const char  *aprintf(const char *Format, ...)
+
+{
+
+  va_list  Args;
+
+
+
+  va_start(Args,Format);
+
+  aprintf_ofst=0;
+
+  aprintf_base=NULL;
+
+  vdprintf(aprintf_out,Format,Args);
+
+  aprintf_out('\0');
+
+  va_end(Args);
+
+  return  aprintf_base;
+
+}
+
+
+
+int  aprintf_out(int Char)
+
+{
+
+  aprintf_base=realloc(aprintf_base,aprintf_ofst+1);
+
+  if (aprintf_base==NULL)
+
+    return  EOF;
+
+  aprintf_base[aprintf_ofst++]=Char;
+
+  return  Char;
+
+}
+
+
+
+Still, vdprintf does not manage unaltered: Adding new formats is a
+recommended practice and you should attempt it often. Few suggestions
+being: binary and Roman numerals, file and path names, and printer
+control codes. In fact, dprintf insists you modify it prior to use: The
+pointer format is not covered by the ANSI standard, varying considerably
+between system architectures. It has been left for you to adapt %p to
+your system's taste. 
+
+
+The Workings Of vdprintf
+
+You may find this section and the following two somewhat hard to follow:
+They describe the internal working of vdprintf in a stepwise manner. It
+is best that you refer to the listing while reading. 
+
+As said earlier, vdprintf outputs characters by means of a function the
+programmer provides. Designated by a pointer, this function returns EOF
+upon output error. Rather than passing a pointer and return value
+through three levels of functions, a static p ointer (OutFunc) and
+longjmp buffer (dputc_buf -- for quick return) are defined. 
+Consequently, vdprintf's first actions involve assigning OutFunc a
+pointer and initializing dputc_buf. 
+
+That done, the printing process begins: vdprintf scans the format string
+a character at a time, further processing %'s and echoing all other
+characters to the output. 
+
+Following the % format sign come the flags -- zero or more from a set of
+five: -, +, space, 0 and #. Successive flags are parsed from the format
+string one by one: strchr() (see file "STRCHR.C") matches each potential
+flag against FlagsList, returning eit her NULL (not a flag) or a pointer
+to the flag in FlagsList. Simple pointer substraction and bit shifting
+then produce a bit mask, which ORs onto Flags. Later on vdprintf will
+AND Flags with Mask macros to establish whether certain flags have been
+mentioned or not. 
+
+All flags read, vdprintf proceeds to gather the width and precision
+parameters. The width reads first (zero assumed, if absent): either as
+a numeric, deduced from digits in the format string, or an int, consumed
+from the variable arguments list, if an * r eplaces the numerals. You
+must be careful not to start the width with zero, for it will be
+considered a flag. Differently, the precision may begin with zero,
+being separated from the width by a period and read much the same way. 
+Do take note that not spec ifying the precision value (zero assumed by
+default), and omitting the precision altogether, including period (minus
+one assumed), hold dissimilar meanings, e.g. "%5.s" implies a
+zero-length string, whereas "%5s" implies a string of five or more
+character s. 
+
+Last before the format letter comes the argument size: default, short
+(type h), long (l), or long double (L). The long size is applicable
+only for integers, the long double size for floating points. Default
+may be int, double or any specialized type, such as char for the %c
+format. The short type serves only to maintain some compatibility with
+scanf(), short arguments being automatically promoted to int and float
+arguments to double by the compiler. In effect, it is meaningless. 
+
+Finally, the format letter gets read. It determines what course of
+action be taken to generate the right output. Most formats execute by
+auxiliary functions (on which you will read in the next section),
+keeping vdprintf short, or else it may fail to compi le. An output
+error or incorrect format specification at any point and vdprintf
+returns EOF; if all goes well, vdprintf returns the number of characters
+successfully printed. 
+
+
+vdprintf's Auxiliary Functions
+
+Assisting vdprintf are five auxiliary functions: PrintDecimal,
+PrintRadix, PrintFloat, ToInteger and Print. The first three transform
+long ints, long unsigneds, and long doubles, respectively, into
+printable strings of digits: ToInteger transforms and Pri nt does the
+printing. This section discusses them all, except for PrintFloat. 
+
+PrintDecimal (%d or %i formats) produces signed decimals: The long int
+it receives dissociates into prefix and value, the prefix holding the
+sign. Once ToInteger stringizes the value, Print outputs both the
+prefix and it. 
+
+PrintRadix yields long unsigned decimals (%u format), octals (%o),
+hexadecimals (%x or %X) and pointers (%p). Their value is forever
+positive and so the prefix, obtained in the varient format (# flag
+present), denotes the value's type: nothing for decimal s, 0 for octals
+and 0x for hexadecimals. (Note that hexadecimal letters are in the same
+case as is the format letter.)
+
+As delivered to you, vdprintf's PrintRadix utters 8-digit hexadecimal
+(upper case letters) pointers, which @ prefixes in the varient format. 
+Various system architectures impose different pointer representation,
+both in memory and in writing. It may be ess ential that you modify not
+only PrintRadix, but also vdprintf's switch construct: It assumes
+pointers to remain intact, cast to long unsigneds. Not all systems
+guarantee this to hold true. 
+
+So numeric values can be printed, they must first convert into
+characters. ToInteger does just that. It turns long unsigneds into
+NULL-terminated strings of digits in a given radix. A numeral must have
+no less than precision number of digits; if necessary , zeros precede
+the value. ToInteger stores the string in a malloced memory block. 
+It's address returns by reference -- through formal parameter char
+**Buffer; by value ToInteger returns the string's length (terminating
+NULL excluded.)
+
+Print completes the auxiliary functions, printing the prefix and value
+in accord with Flags: normally, spaces are inserted before the prefix,
+right justifying it and the value within their field (remember the width
+parameter -- it sets the field); the 0 f lag states that zeros come
+between the prefix and value to fill the field whole; the - flag appends
+spaces at the end, left justifying the prefix and value. Regardless of
+the style used, no more than Maximum number of characters are printed
+(ignoring nega tive maximums). Finally, OutCnt rises by the total
+number of characters printed. 
+
+
+Floating Around
+
+A complex function like PrintFloat deserves a section all of its own:
+This one describes PrintFloat and the problem associated with it. 
+
+PrintFloat starts with the prefix: negative values have a - prefix;
+positive values have either nothing (default), a space (space flag
+present) or a + prefix (plus flag present, space flag present or not). 
+
+At distance from the prefix resides the exponent. All formats but %f
+require it. The exponent results from dividing and multiplying the
+floating point number by ten, until its value rests between zero and one
+-- it totals all divisions minus all multiplic ations. The %g format
+forces vdprintf to choose between standard (%f) and engineering (%e)
+formats, whichever is shorter: If the exponent lies between -3 and
+precision (inclusive), standard format governs -- the exponent is
+cleared after it has been deduc ted from the precision; Otherwise, it's
+engineering. Either way, the precision loses one digit off its end. 
+
+Here comes the tricky part. vdprintf must split a floating point number
+into integer and fraction parts. The integer rounding takes place by
+casting the floating point to int and back to float. Twice an integer
+is created. The second time, the part of the fraction to be printed is
+moved left of the decimal point, and again cast to int and back. We now
+have the integer and fraction parts stringized. 
+
+The integer part prints first. If the %g but not varient format,
+trailing zeros are removed from the fraction. It may happen that no
+fraction remains, as if a zero precision. Only if the fraction follows
+or the # flag appears, does a period come after the integer. Unrelated,
+the exponent follows. An e, in the same case as is the format letter,
+precedes the exponent, which always contains a sign and at least two
+digits. 
+
+Having printed a floating point number, we look back and notice that to
+do it a long double was cast to long int and back. On some systems, too
+long floating numbers may fail to convert properly, if at all. They may
+even raise an exception. The solution t o this problem is not
+complicated, neither perfect: Use the floor function to obtain the
+integer part of a floating point. This requires the floor math function
+(Standard C library), parts of PrintFloat changed, and a new function --
+ToFloat (see file "DP RINTF-F.C"), the floats' equivalent of ToInteger. 
+There is a catch, though: floor acts only on doubles, long doubles are
+not catered for. 
+
+Depending on the system you use and your demands of it, either version
+of PrintFloat or both should work. If none complies, feel free to
+explore your math library, seeking functions that floor long doubles. 
+Hopefully, most readers will encounter no such d ifficulties. 
+
+
+Conclusion
+
+I have a tendency to accompany the code I write with ample examples. 
+With your excuse, I will deviate from my inclination just this one time. 
+I will present no examples to prove dprintf works -- any program that
+finds use for printf can do that. And CUJ is full of such programs. 
+
+

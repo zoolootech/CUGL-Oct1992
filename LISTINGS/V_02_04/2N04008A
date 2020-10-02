@@ -1,0 +1,193 @@
+/*
+ *  COM.C Copyright (C) 1990 by Mark R. Nelson
+ *
+ * This module contains a complete interface to a multiport RS-232 board.
+ * It is presently configured for the Stargate Plus 4 board.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <dos.h>
+#include <conio.h>
+#include "com.h"
+
+void interrupt far interrupt_service_routine( void );
+static BOARD board;
+
+/*
+ * This routine opens a multiport board up.  It initializes the data
+ * structure associated with the board, mostly from parameters passed
+ * by the caller.  It needs to make a DOS call with getvect to get
+ * the old interrupt vector for the board, then another call to
+ * setvect to connect our interrupt_service_routine to the vector.
+ */
+BOARD *board_open( unsigned int address, unsigned char int_number )
+{
+    unsigned char temp_port;
+
+    board.status_address = address;
+    board.irq_mask = (char) 1 << (int_number % 8 );
+    board.int_number = int_number;
+    board.port_count = 0;
+    board.old_vector = getvect( int_number );
+    setvect( int_number, interrupt_service_routine );
+/*
+ * These two lines instruct the 8259 interrupt controller to start
+ * accepting interrupts from the multiport board.
+ */
+    temp_port = (char) inportb( 0x21 );
+    outportb( 0x21, ~board.irq_mask & temp_port );
+/*
+ * Return a pointer to the structure.
+ */
+    return( &board );
+}
+
+/*
+ * This routine is called to set up a data structure and open a port
+ * on a board that should have already been opened.
+ */
+
+PORT *port_open( BOARD *board, unsigned int address, unsigned char match )
+{
+    PORT *port;
+
+    if ((port = malloc( sizeof( PORT ))) == NULL)
+   return( NULL );
+    port->head = 0;
+    port->tail = 0;
+    port->match = match;
+    port->address = address;
+    board->ports[ board->port_count++ ] = port;
+    return(port);
+}
+
+/*
+ * This routine sets up the transmission parameters for the UART.  See
+ * the data sheet for details on what is going on here.  Finally, it
+ * enables interrupts so the port can start receiving.
+ */
+void port_set( PORT *port, long speed, char parity, int data, int stopbits )
+{
+    unsigned char temp_port;
+/*
+ * First write the new baud rate to the UART.
+ */
+    outportb( port->address + 3, 0x80 );
+    outportb( port->address, (char)(115200L / speed ) & 0xff );
+    outportb( port->address + 1, (char)(115200L /  speed ) >> 8 );
+/*
+ * Set up line control register.
+ */
+    if ( parity== 'E' )
+   temp_port = 0x8;        /* Set bit 3 on for even parity */
+    else if ( parity == 'O' )
+   temp_port = 0x18;
+    else
+   temp_port = 0;
+
+    if ( stopbits == 2 )
+   temp_port |= 0x4;
+
+    if ( data == 6 )
+   temp_port |= 0x1;
+    else if ( data == 7 )
+   temp_port |= 0x2;
+    else if ( data == 8 )
+   temp_port |= 0x3;
+
+    outportb( port->address + 3, temp_port );
+/*
+ * Turn on OUT2, RTS & DTR.  OUT2 is necessary on the PC for
+ * interrupts to take effect.
+ */
+    outportb( port->address + 4, 0xb );
+/*
+ * Then enable receiver interrupts.
+ */
+    outportb( port->address + 1, 0x1 );
+}
+
+/*
+ * This routine closes a board by disabling interrupts for that line
+ * and restoring the old interrupt vector.  It also closes any ports
+ * that were left open.
+ */
+void board_close( BOARD *board )
+{
+    unsigned char temp_port;
+    unsigned int i;
+
+    for ( i = 0 ; i < board->port_count ; i++ )
+   port_close( board->ports[ i ] );
+    temp_port = (unsigned char) inportb( 0x21 );
+    outportb( 0x21, board->irq_mask | temp_port);
+    setvect( board->int_number, board->old_vector );
+}
+
+/*
+ * This routine closes a port.  All this means is disabling receiver
+ * interrupts, then freeing up the structure.  Note that this routine
+ * should probably not be called by the user, it should be left up
+ * to board_close() to close all the ports.
+ */
+void port_close( PORT *port )
+{
+    outportb( port->address + 1, 0x0 );
+    free( port );
+}
+
+/*
+ * port_putc() is used to output a single character through the given
+ * port.  This is done by just wainting for the transmit holding register
+ * to be empty, then writing the character to the UART.
+ */
+void port_putc( PORT *port, unsigned char c )
+{
+    while( (inportb(port->address+5) & 0x20) == 0 )
+   ;
+    outportb(port->address,c);
+}
+
+/*
+ * port_getc() checks to see if there are any characters in the port's
+ * input buffer.  If there are, the oldest one is pulled out and
+ * returned, otherwise an error code is returned.  Note that the code
+ * is simplified by having a byte index and a 256 byte buffer.
+ */
+int port_getc(PORT *port)
+{
+    if ( port->head == port->tail )
+   return( -1 );
+    else
+   return( port->buffer[ port->tail++ ] );
+}
+
+/*
+ * The interrupt service routine has to read in the status register,
+ * then figure out which port(s) have characters to be read.
+ * The characters are read in, and stuffed into the buffers.
+ */
+void interrupt far interrupt_service_routine()
+{
+    int i;
+    unsigned char status_reg;
+    PORT *port;
+
+    status_reg = (unsigned char) inportb( board.status_address );
+    for ( i = 0 ; i < board.port_count ; i++ )
+    {
+ if ( board.ports[i]->match & status_reg ) {
+   port=board.ports[ i ];
+   port->buffer[ port->head ] = (unsigned char) inportb(port->address);
+   if ((port->head + 1 ) != port->tail)
+     port->head++;
+ }
+    }
+/*
+ * This line sends the EOI signal to the interrupt controller, letting it
+ * know that we are done.
+ */
+    outportb(0x20,0x20);
+}
+
+

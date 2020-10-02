@@ -1,0 +1,444 @@
+                           F I G U R E   1
+
+
+
+                no data value          integer     character pointer
+                  returned             returned        returned
+
+status       fdelete    sdelete         fclear          accept
+returned     fpost      spend           fcreate         gblock
+             pcreate    spost           finquiry        pend
+             pextend    tcreate         fpend           qaccept
+             post       tdelete         qinquiry        qpend
+             qcreate    tpriority       screate
+             qecreate   tresume         sinquiry
+             qjam       tsuspend        tinquiry
+             qpost      waitc
+             rblock
+
+no status    lock       tdelay          getc            ------
+returned     putc       tslice          gtime
+             stime      unlock
+                           F I G U R E   1 0
+
+
+
+####################################################
+# NAME
+#       sc_fpend  -  pend on event flag group
+#
+# SYNOPSIS
+#       int sc_fpend(efgid,timeout,flags,andor,status)
+#               int efgid       event flag group id number
+#               int timeout     timeout value (ticks)
+#               int flags       event flags mask
+#               int andor       and/or indicator
+#               int *status     return status ptr
+#
+# DESCRIPTION
+#       The sc_fpend call pends for one or more events
+#       on the specified event flag group, and returns
+#       the event flag group that readied the caller.
+#       If the andor indicator is AND, all specified
+#       event flags must have a value of one simul-
+#       taneously.  If the andor indicator is OR, any
+#       of the specified event flags ready the task.
+#
+# RETURNS
+#       event flag group
+#
+# RETURN CODES
+#       RET_OK          successful return
+#       ER_TMO          timeout
+#       ER_ID           event flag group id error
+#       ER_DEL          event flag group is deleted
+####################################################
+
+
+        set     VRTX,0          # set VRTX trap number
+        set     FCODE,0x19      # set VRTX function code
+
+
+        text
+        global  sc_fpend
+sc_fpend:
+        mov.l   %d2,-(%sp)      # save registers
+        mov.l   %d3,-(%sp)      
+        mov.l   %d4,-(%sp)
+
+        mov.l   (16,%sp),%d1    # put event flag group id into d1
+        mov.l   (20,%sp),%d2    # put timeout into d2
+        mov.l   (24,%sp),%d3    # put event flags mask into d3
+        mov.l   (28,%sp),%d4    # put and/or indicator into d4
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (32,%sp),%a0    # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+        mov.l   %d2,%d0         # return event flag group value
+
+        mov.l   (%sp)+,%d4      # restore registers
+        mov.l   (%sp)+,%d3
+        mov.l   (%sp)+,%d2
+        rts
+                           F I G U R E   1 1
+
+
+
+####################################################
+# NAME
+#       sc_pend  -  pend for message from mailbox
+#
+# SYNOPSIS
+#       char *sc_pend(boxadr,timeout,status)
+#               char *boxadr    mailbox address
+#               int timeout     timeout value
+#               int *status     return status ptr
+#
+# DESCRIPTION
+#       The sc_pend call obtains a 32-bit nonzero
+#       message from the specified mailbox.
+#
+# RETURNS
+#       message
+#
+# RETURN CODES
+#       RET_OK          successful return
+#       ER_TMO          timeout occurred
+####################################################
+
+
+        set     VRTX,0          # set VRTX trap number
+        set     FCODE,0x09      # set VRTX function code
+
+
+        text
+        global  sc_pend
+sc_pend:
+        mov.l   (4,%sp),%a0     # put mailbox address into a0
+        mov.l   (8,%sp),%d1     # put timeout value into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (12,%sp),%a0    # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+        mov.l   %d1,%a0         # return message
+
+        rts
+                           F I G U R E   1 2
+
+
+
+####################################################
+# NAME
+#       sc_putc  -  put character
+#
+# SYNOPSIS
+#       sc_putc(c)
+#               int c           character
+#
+# DESCRIPTION
+#       The sc_putc call specifies the next character
+#       to transmit to the supported i/o device.
+#
+####################################################
+
+
+        set     VRTX,0          # set VRTX trap number
+        set     FCODE,0x0e      # set VRTX function code
+
+
+        text
+        global  sc_putc
+sc_putc:
+        mov.l   (4,%sp),%d1     # put message into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+
+        rts
+                           F I G U R E   1 3
+
+
+
+####################################################
+# NAME
+#       sc_getc  -  get character
+#
+# SYNOPSIS
+#       int sc_getc()
+#
+# DESCRIPTION
+#       The sc_getc call obtains the next character
+#       from the supported i/o device.
+#
+# RETURNS
+#       next character
+####################################################
+
+
+        set     VRTX,0          # set VRTX trap number
+        set     FCODE,0x0d      # set VRTX function code
+
+
+        text
+        global  sc_getc
+sc_getc:
+        mov.l   &FCODE,%d0      # set function code
+        trap    &VRTX           # call VRTX
+        
+        clr.l   %d0             
+        mov.b   %d1,%d0         # return received char
+        
+        rts
+                           F I G U R E   2
+
+
+
+        /*******************************/
+        /* TEST FUNCTION RETURN VALUES */
+        /*******************************/
+main()
+{
+        void f_noret();         /* no return value */
+        int f_int();            /* integer return */
+        char *f_charpt();       /* char pointer return */
+        register int intval;    
+        register char *ptrval;
+
+
+                /* store junk */
+        intval = 1;                     mov.l   &1,%d2
+        ptrval = (char *)5000;          mov.l   &5000,%a2
+
+                /* call "procedure" */
+        f_noret();                      jsr     f_noret
+
+                /* call int function */
+        intval = f_int();               jsr     f_int
+                                        mov.l   %d0,%d2
+
+                /* call char ptr function */
+        ptrval = f_charpt();            jsr     f_charpt
+                                        mov.l   %a0,%a2
+}                                       rts
+                           F I G U R E   3
+
+
+
+        /**************************/
+        /* TEST PARAMETER PASSING */
+        /**************************/
+main()
+{
+        void f_test();          /* test function */
+        int status;             /* status return */
+        register int intval;
+        register char *chptr;
+
+
+        f_test(intval, chptr, &status); mov.l   &status,(%sp)
+                                        mov.l   %a2,-(%sp)
+                                        mov.l   %d2,-(%sp)
+                                        jsr     f_test
+                                        add.l   &12,%sp
+}                                       rts
+
+
+
+void f_test(p1, p2, stat)
+        int p1;
+        char *p2;
+        int *stat;
+{
+        *stat = 17;                     mov.l   (12,%sp),%a0
+                                        mov.l   &17,(%a0)
+}                                       rts
+                           F I G U R E   4
+
+
+
+#  status returned, no data returned
+#
+#  C INTERFACE:
+#       void syscall();
+#       int intval, status;
+#
+#       syscall(intval, &status);
+#
+#  ASSEMBLY INTERFACE:
+#       INPUT:  d0      function code
+#               d1      integer input parameter
+#       OUTPUT: d0      status code
+
+
+        mov.l   (4,%sp),%d1     # put input parameter into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (8,%sp),%a0     # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+
+        rts
+                           F I G U R E   5
+
+
+
+#  status returned, integer data value returned
+#
+#  C INTERFACE:
+#       int syscall();
+#       int intval1, intval2, status;
+#       int dataval;
+#
+#       dataval = syscall(intval1, intval2, &status);
+#
+#  ASSEMBLY INTERFACE:
+#       INPUT:  d0      function code
+#               d1      integer input parameter
+#               d2      integer input parameter
+#       OUTPUT: d0      status code
+#               d2      integer result
+
+
+        mov.l   %d2,-(%sp)      # save register
+
+        mov.l   (8,%sp),%d1     # put input parameter1 into d1
+        mov.l   (12,%sp),%d2    # put input parameter2 into d2
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (16,%sp),%a0    # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+        mov.l   %d2,%d0         # return integer data value
+
+        mov.l   (%sp)+,%d2      # restore register
+        rts
+                           F I G U R E   6
+
+
+
+#  status returned, character pointer data value returned
+#
+#  C INTERFACE:
+#       char *syscall();
+#       char *adrval;
+#       int intval, status;
+#       char *dataval;
+#
+#       dataval = syscall(adrval, intval, &status);
+#
+#  ASSEMBLY INTERFACE:
+#       INPUT:  d0      function code
+#               d1      integer input parameter
+#               a0      char pointer input parameter
+#       OUTPUT: d0      status code
+#               d1      char pointer result
+
+
+        mov.l   (4,%sp),%a0     # put address parameter into a0
+        mov.l   (8,%sp),%d1     # put integer parameter into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (12,%sp),%a0    # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+        mov.l   %d1,%a0         # return message
+
+        rts
+                           F I G U R E   7
+
+
+
+#  no status returned, no data value returned
+#
+#  C INTERFACE:
+#       void syscall();
+#       int intval;
+#
+#       syscall(intval);
+#
+#  ASSEMBLY INTERFACE:
+#       INPUT:  d0      function code
+#               d1      integer input parameter
+#       OUTPUT: d0      status code (always indicates success)
+
+
+        mov.l   (4,%sp),%d1     # put integer parameter into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+
+        rts
+                           F I G U R E   8
+
+
+
+#  no status returned, integer data value returned
+#
+#  C INTERFACE:
+#       int syscall();
+#       int dataval;
+#
+#       dataval = syscall();
+#
+#  ASSEMBLY INTERFACE:
+#       INPUT:  d0      function code
+#       OUTPUT: d0      status code (always indicates success)
+#               d1      integer result
+
+
+        mov.l   &FCODE,%d0      # set function code
+        trap    &VRTX           # call VRTX
+        
+        mov.l   %d1,%d0         # return integer result
+        
+        rts
+                           F I G U R E   9
+
+
+
+####################################################
+# NAME
+#       sc_post  -  post message to mailbox
+#
+# SYNOPSIS
+#       sc_post(boxadr,msg,status)
+#               char *boxadr    mailbox address
+#               char *msgadr    message
+#               int *status     return status ptr
+#
+# DESCRIPTION
+#       The sc_post call posts a 32-bit nonzero
+#       message to the specified mailbox.
+#
+# RETURN CODES
+#       RET_OK          successful return
+#       ER_MIU          mailbox in use
+#       ER_ZMW          zero message
+####################################################
+
+
+        set     VRTX,0          # set VRTX trap number
+        set     FCODE,0x08      # set VRTX function code
+
+
+        text
+        global  sc_post
+sc_post:
+        mov.l   (4,%sp),%a0     # put mailbox address into a0
+        mov.l   (8,%sp),%d1     # put message into d1
+        mov.l   &FCODE,%d0      # put function code into d0
+
+        trap    &VRTX           # call VRTX
+        
+        mov.l   (12,%sp),%a0    # place return status code into
+        mov.l   %d0,(%a0)       #       desired address
+
+        rts
+

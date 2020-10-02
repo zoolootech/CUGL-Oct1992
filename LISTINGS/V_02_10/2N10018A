@@ -1,0 +1,185 @@
+	TITLE	SPINLOCK - Spinlock Package for MP-Aware C Programs.
+
+;***	SPINLOCK - Spinlock Package for MP-Aware C Programs.
+;
+;   FUNCTIONAL DESCRIPTION.
+;	This module is assembled to create an OBJ file that can be linked
+;	with a large model C-language program to provide MP-aware spinlock
+;	support.
+;
+;   MODIFICATION HISTORY.
+;	S. E. Jones	91/04/05.	Original.
+;
+;   NOTICE: This code is hereby delivered to the public domain.
+;
+;   BUILD ENVIRONMENT.
+;	MASM 5.10, no special switches.
+
+	include spinlock.inc		; spinlock macros.
+
+DefProc MACRO	rtn			; macro used to define procedures.
+	PUBLIC	rtn
+rtn	PROC	FAR
+	ENDM
+
+EndProc MACRO	rtn			; macro used to end procedures.
+	ret
+rtn	ENDP
+	ENDM
+
+SPINLOCK SEGMENT PARA PUBLIC 'CODE'
+
+;***	_AllocateSpinLock - Initialize Storage Area as Spinlock Object.
+;
+;   FUNCTIONAL DESCRIPTION.
+;	This routine is called by large-model C routines to initialize
+;	a word of storage as a spinlock object.  The lock is set to the
+;	released state.  A return code is architected, even though it
+;	is not used in this particular package.  If the package is
+;	changed to support spinlocks that are managed purely inside
+;	the private part of this package, then it might be possible
+;	to run out of handles to spinlocks.
+;
+;   ENTRY.
+;	[bp+6,bp+8]  - FWA, word of storage to format as spinlock object.
+;
+;   EXIT.
+;	AX	- 0 if success, else nonzero if failure.
+;
+;   USES.
+;	none.
+
+	ASSUME	CS:SPINLOCK, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc _AllocateSpinLock
+	push	bp
+	mov	bp, sp
+	push	si
+	push	ds
+	lds	si, [bp+6]		; (DS:SI) = FWA, storage.
+	AllocateSpinLock <[si]>         ; initialize the lock.
+	sub	ax, ax			; (AX) = 0, meaning success.
+	pop	ds
+	pop	si
+	pop	bp
+EndProc _AllocateSpinLock
+
+;***	_DeallocateSpinLock - Release Spinlock Object to System.
+;
+;   FUNCTIONAL DESCRIPTION.
+;	This routine is called by large-model C routines to release
+;	a word of storage used as a spinlock object.  The lock is
+;	released, although this operation is superfluous in this
+;	particular implementation.  Other implementations of this
+;	package may actually require this routine to deallocate a
+;	handle.
+;
+;   ENTRY.
+;	[bp+6,bp+8]  - FWA, spinlock to deallocate.
+;
+;   EXIT.
+;	AX	- 0 if success, else nonzero if failure.
+;
+;   USES.
+;	none.
+
+	ASSUME	CS:SPINLOCK, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc _DeallocateSpinLock
+	push	bp
+	mov	bp, sp
+	push	si
+	push	ds
+	lds	si, [bp+6]		; (DS:SI) = FWA, storage.
+	DeallocateSpinLock <[si]>	; deallocate the lock.
+	sub	ax, ax			; (AX) = 0, meaning success.
+	pop	ds
+	pop	si
+	pop	bp
+EndProc _DeallocateSpinLock
+
+;***	_AcquireSpinLock - Acquire Spinlock for Exclusive Access.
+;
+;   FUNCTIONAL DESCRIPTION.
+;	This routine is called by large-model C routines to acquire,
+;	or gain control of, a registered spinlock.  This routine works
+;	by calling the AcquireSpinLock macro, which repeatedly issues
+;	an XCHG instruction on the lock with a nonzero value until a
+;	zero value is returned.  Because Intel architecture guarantees
+;	that XCHG will issue a LOCK across the bus, other processors
+;	cannot interleave their XCHG cycles with ours.
+;
+;	This routine disables interrupts so that ISRs can also use locks.
+;	If you don't need disabled interrupts, you should remove the CLI
+;	instruction at the start of this routine, and also remove the STI
+;	instruction at the end of the _ReleaseSpinLock routine.
+;
+;	A return status code is provided because in some implementations,
+;	a spinlock's handle may be invalid.
+;
+;   ENTRY.
+;	[bp+6,bp+8]  - FWA, spinlock object.
+;
+;   EXIT.
+;	AX	- 0 if success, else nonzero if failure.
+;
+;   USES.
+;	none.
+
+	ASSUME	CS:SPINLOCK, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc _AcquireSpinLock
+	push	bp
+	mov	bp, sp
+	push	si
+	push	ds
+	lds	si, [bp+6]		; (DS:SI) = FWA, storage.
+	cli				; DISABLE INTERRUPTS.
+	AcquireSpinLock <[si]>		; acquire the lock.
+	sub	ax, ax			; (AX) = 0, meaning success.
+	pop	ds
+	pop	si
+	pop	bp
+EndProc _AcquireSpinLock
+
+;***	_ReleaseSpinLock - Release Spinlock to Other Processors.
+;
+;   FUNCTIONAL DESCRIPTION.
+;	This routine is called by large-model C routines to release
+;	control of a previously-acquired spinlock.  This routine works
+;	by calling the ReleaseSpinLock macro, which simply stores a
+;	zero in the lock in a single bus cycle.  Because the store
+;	doesn't cause a read/modify/write cycle that could be interrupted,
+;	we're safe.
+;
+;	This routine disables interrupts so that ISRs can also use locks.
+;	If you don't need disabled interrupts, you should remove the STI
+;	instruction at the end of this routine, and also remove the CLI
+;	instruction at the beginning of the _AcquireSpinLock routine.
+;
+;   ENTRY.
+;	[bp+6,bp+8]  - FWA, spinlock object.
+;
+;   EXIT.
+;	AX	- 0 if success, else nonzero if failure.
+;
+;   USES.
+;	none.
+
+	ASSUME	CS:SPINLOCK, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc _ReleaseSpinLock
+	push	bp
+	mov	bp, sp
+	push	si
+	push	ds
+	lds	si, [bp+6]		; (DS:SI) = FWA, storage.
+	ReleaseSpinLock <[si]>		; release the lock.
+	sti				; ENABLE INTERRUPTS.
+	sub	ax, ax			; (AX) = 0, meaning success.
+	pop	ds
+	pop	si
+	pop	bp
+EndProc _ReleaseSpinLock
+
+SPINLOCK ENDS
+
+	END
+
+Figure 2.  Spinlock Package for MP-Aware C Programs.

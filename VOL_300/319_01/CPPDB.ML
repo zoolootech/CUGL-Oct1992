@@ -1,0 +1,16 @@
+cppdb.obj+
+glbdb.obj+
+tokdb.obj+
+dirdb.obj+
+defdb.obj+
+mstdb.obj+
+sysdb.obj+
+memdb.obj+
+strdb.obj+
+utldb.obj+
+prdb.obj+
+\sherlock\msc\msll.obj+
+\sherlock\msc\prffar.obj,
+cppdb
+nul.map
+c:\lib\msc\;

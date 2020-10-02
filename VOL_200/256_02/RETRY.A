@@ -1,0 +1,56 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     RETRY.A    Set how many times MS-DOS should
+;	----------                 retry a disk operation which fails
+;	                           because of a file-sharing violation.
+;
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int RETRY(num, wait, &_carryf)
+;	-----           int num,  /* number of retries */
+;	                    wait; /* wait time between retries */
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC RETRY_
+
+RETRY_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the number of retries
+	mov	cx,[bp+6]	; the wait time
+	mov	ah,44h	; the Function No.
+	mov	al,0bh
+	int	21h
+	jc	RETRY_ERROR
+	xor	ax,ax	; prepare for normal return
+	jmp	RETRY_QUIT
+RETRY_ERROR:
+	mov	si,[bp+8]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+RETRY_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

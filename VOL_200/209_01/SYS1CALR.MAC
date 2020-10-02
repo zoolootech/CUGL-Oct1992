@@ -1,0 +1,50 @@
+TITLE SYS1CALR.MAC  VERS:- 01.00  DATE:- 09/26/86  TIME:- 09:39:42 PM
+;*
+;* Description: 
+;* 	call to address given as the parameter, such as a system address
+;*		outside the C program.
+;* 	Usage:		.
+;*			.
+;*		C program code
+;*			.
+;*		sys1call(address to call)	eg, address = TINIT for
+;*			.					SYSIO load
+;*			.
+;*
+;*
+;* 	To compile:
+;*   	    m80  sys1calr/r
+;*
+;* By J.A. Rupley, Tucson, Arizona
+;* Standard z80 code
+;*
+
+bdos	equ	5
+
+	.z80
+
+sys1call::		;IMPORTANT-- declare entry point with "::"
+
+	add	hl,sp	;carry out administrative function for eco C
+	push	hl	;ie, put OLD stack address below return address
+			;note: hl = offset from current sp to old sp
+			;  parameter space, etc is taken into account
+
+	ld	ix,4	;set index register to parameter address
+	add	ix,sp
+
+	ld	l,(ix+0)	;move address from parm to hl reg
+	ld	h,(ix+1)
+
+	ld	(calladdr),hl	;stuff call address into proper place
+
+	ld	c,9		;setup for print of string$ -- not used except
+	ld	de,string	;  when address = BDOS, as test
+	call	0000		;default is warm boot
+calladdr	equ	$-2
+
+	jp	$RTNV##	;return to C
+
+string:	db	0dh,0ah,0dh,0ah,"executing call from sys1call()",0dh,0ah,0dh,0ah,"$"
+	end
+

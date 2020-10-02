@@ -1,0 +1,88 @@
+Listing 3
+
+/*****************************************************/
+/* tstcombo.c                                        */
+/* -- Exercise the LpfnSubclassComboEdit() routine.  */
+/*****************************************************/
+
+#include <windows.h>
+#include "comboed.h"
+
+FARPROC lpfnEdit;   /* Original EditItem wind. proc. */
+FARPROC lpfnFilter; /* Subclass for above. */
+
+/* Subclasser for ComboBox's EditItem.  Don't forget */
+/* to export in .def file! */
+LONG    FAR PASCAL  EditSubclasser(HWND, WORD, WORD,
+                      DWORD);
+
+VOID
+TestComboEdit(HWND hwndCombo)
+/*****************************************************/
+/* -- Install a subclasser for the given ComboBox to */
+/*    demonstrate the LpfnSubclassComboEdit()        */
+/*    routine.                                       */
+/* -- hwndCombo : ComboBox window handle.            */
+/*****************************************************/
+    {
+    /* Create a procedure instance of the subclasser. */
+    lpfnFilter = MakeProcInstance(
+      (FARPROC)EditSubclasser,
+      (HANDLE)GetWindowWord(hwndCombo, GWW_HINSTANCE));
+    if (lpfnFilter == NULL)
+        return; /* Failure. */
+
+    /* Attempt to install the subclasser. */
+    lpfnEdit =
+      LpfnSubclassComboEdit(lpfnFilter, hwndCombo);
+    if (lpfnEdit == NULL)
+        FreeProcInstance(lpfnFilter); /* Failure. */
+    }
+
+LONG FAR PASCAL
+EditSubclasser(HWND hwnd, WORD wMessage, WORD wParam,
+  DWORD lwParam)
+/*****************************************************/
+/* -- Window proc to subclass the EditItem of a      */
+/*    ComboBox.                                      */
+/* -- Display a string with double-clicked.          */
+/* -- Free our proecudure instance handle when done. */
+/*****************************************************/
+    {
+    BOOL    fHandled;   /* Handled the message? */
+
+    switch (wMessage)
+        {
+    default:
+        fHandled = FALSE;
+        break;
+
+    case WM_LBUTTONDBLCLK:
+        SetWindowText(hwnd, "Left double click");
+        fHandled = TRUE;
+        break;
+
+    case WM_RBUTTONDBLCLK:
+        SetWindowText(hwnd, "Right double click");
+        fHandled = TRUE;
+        break;
+
+    case WM_DESTROY:
+        /* Free the procedure instance and restore */
+        /* the origial window proc. */
+        FreeProcInstance(lpfnFilter);
+        SetWindowLong(hwnd, GWL_WNDPROC,
+          (LONG)lpfnEdit);
+        fHandled = FALSE;
+        break;
+        }
+
+    if (fHandled)
+        return 0L;
+
+    /* Pass this off to the EditItem's original */
+    /* Window Procedure. */
+    return CallWindowProc(lpfnEdit, hwnd, wMessage,
+      wParam, lwParam);
+    }
+

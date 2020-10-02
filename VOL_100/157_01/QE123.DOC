@@ -1,0 +1,266 @@
+DOCUMENTATION FOR EDITOR QE AND QED Version 1.23
+
+DATE:     29 APRIL 1986
+VERSION:  1.23
+AUTHORS:  Nigel Gilbert and James Haefner
+
+	This report documents changes made in the screen editor 
+QE for BDS C (tm) (version 1.50a) and QED for DeSmet C (tm) 
+(version 2.41).  I assume the reader is familiar with 
+previous documentation for the editor 'e' and the 
+documentation file QE/D.DOC for version 1.0 of the QE and 
+QED editors.
+
+CHANGES COMMON TO QE AND QED
+
+	The following changes apply to both the CP/M and MSDOS 
+versions.
+
+	1.	WORD WRAP.  Automatic word wrapping has been added.  When 
+text input reaches a prescribed column, the editor will break 
+the current line between words, insert a carriage return at the 
+end, and continue to permit input on the next line.  The column 
+for wrapping is set in the editing context screen (^QKR).  In 
+addition, there are two methods for reformatting existing text 
+to fit within a specified column setting.  First, a "quick" 
+single paragraph reform function has been added to reformat a 
+paragraph from the current line on which the cursor lies to the 
+end of the paragraph.  Since "hard" (sensu WordStar) carriage 
+returns are appended to each line, the end of a paragraph is 
+the line above (a) a blank line (no text), (b) a line that 
+begins with white space, or (c) the end of the file.  The 
+commands for this method are ^QP (for "prettify paragraph"). 
+
+	The second method to reform text is via the "block" commands, 
+where an option has been added to permit a defined block to be 
+reformed to fit within a specified right margin.  The
+commands for this method are: ^KBR, followed by the definition 
+of the text block.  The second method will not reform across 
+paragraghs (i.e., concatenate text of several paragraphs), if 
+the paragraphs are defined by separating empty lines of text.  
+"Paragraphs" separated only by leading white space on the first 
+line of succeeding paragraphs will be converted into a single 
+paragraph. 
+
+	Reformatting may be turned off in two ways.  First, the 
+header file, QE.H, contains a "#define WWRAP (YES)" 
+statement that will permit or prohibit compilation of the 
+relevant code.  Second, the editing context screen (via 
+^QK) permits setting of the right margin.  If the right 
+margin is 255 (current value of the maximum line length), 
+reforming is effectively turned off, as any attempts to 
+input text beyond this column results in a truncated line, 
+as in the original 'e'.
+
+	New functions for word wrapping have been added to QE2 
+and QE6, with minor additions to QE1, QE, and QE4.  QE6 
+contains "reform()" which does most of the work; QE2 
+contains "char *firstwhite()", which returns the address of 
+the first non-white character from the right-hand end of 
+the current line.  The latter function is used both during 
+block reforming and reforming that occurs when inserting 
+text.
+
+	2.	VERSION DOCUMENTATION.  Unadulterated CP/M, as we 
+all know, does not record the date and time of file 
+formation or alteration.  I have added code that minimizes 
+the effort required to update a commented line at the 
+beginning of the file indicating the version number, 
+current date, and current time.  If no version 
+documentation line exists, one is added.  If this is the 
+case, the user is prompted for the set of comment 
+delimiters in which to enclose the line.  Thus, for a file 
+to be used as input to the ROFF4 formatter we have this 
+line at the top of the file:
+
+..  VERSION 0003  (DATE: 13/10/86)  (TIME: 22:09)  ..
+
+	The code has been structured such that, if a clock on 
+CP/M systems is available, the user can insert code to 
+determine the date and time with no user input.  Most MSDOS 
+systems seem to have clocks (even if they have no battery 
+backup), so for those systems, date and time are determined 
+via DOS calls and no user input is required.  The version 
+number is incremented automatically.
+
+	CP/M users with no clock (like myself) must provide the 
+necessary information, which is a pain, but I have 
+attempted to make it as easy as possible.  The date and 
+time are stored as five bytes in the CP/M zero page at 
+location NOWLOC, which is currently set to 50 hex.  In both 
+of my systems, this location is not overwritten by normal 
+program execution.  In fact, one of the BIOSes does not 
+even zero these locations on a physical reset.  In any 
+case, the appropriate values may need to be set for 
+different systems, but if 5 contiguous safe locations exist 
+anywhere in memory (including high memory, above BDOS), 
+then the date and time should persist through exit and 
+re-entry to the editor.
+
+	No user input is required in QED on MSDOS systems, once the 
+initial version comment line has been inserted.  On CP/M 
+systems without clocks, only the current date and time strings 
+must be edited on the status line during a file save operation.  
+Depending on the time period since the last power down or 
+system reset and the last alteration of the file, this can 
+involve as little as changing the single character on the 
+status line that is the last digit of minutes.  If you wish to 
+update only the version number and leave the date and time as 
+they are, then pressing <CR> twice (for date and for time) will 
+leave these unchanged.  In general, typing a carriage return 
+will leave the requested information (i.e., the date or time) 
+unchanged.  The editing possibilities for the entry are 
+identical to string searching; in particular, backspacing, 
+altering a character, then typing ^L will alter the character 
+and replay the remainder of the entry.  
+
+	Inclusion of this code is controlled by "#define VRSNNUM 
+(YES)" and "#define VRSNDATE (YES)" statements.  Thus, 
+users not wishing this feature may exclude it.  (Check 
+these settings in QE.H before compiling.)  In addition, 
+version update on a file may be frustrated within the 
+editor via the editing context screen (^QKV).  If you 
+forget to turn off version updating globally via ^QK, you 
+can still prevent version updating by typing '~' at the 
+prompt for a left comment symbol (no previous version 
+comment line) or at the prompt for the current date.
+
+	This facility seems to be relatively useful, especially in 
+CP/M, but the user should be prepared to suffer some 
+embarrassment upon showing to friends listings of difficult 
+programs that have endured many editing-compile cycles and, 
+thus, have large version numbers.  You will see some of these in 
+the source code of QE.
+
+	All of the code for version documentation is in the new 
+files QE11 and QED11.
+
+	3.  RV UTILITY.  I also include a short utility to report the 
+version number for a set of CP/M files.  The command line 
+syntax is: 
+
+	rv [-cd] ambigfilename
+
+where -c means compare the version numbers of the files on 
+the current drive with those of the same names on drive 
+'d'.  "Ambigfilename" is a set of ambiguous filenames 
+according to the convention of "wildexp()", which is 
+required.  E.g., to list on the console the version 
+comments of all the QE text files and compare with those on 
+drive B, do this:
+
+	A>rv -cb QE*.* !QE*.CRL !QE*.COM
+
+	This utility has obvious applications to maintaining 
+backups of current versions.  Remembering which CRL and COM 
+files to backup is the responsibility of your own personal RAM.
+
+	4.	EXPERT MODE.  The verbose prompts for various command 
+options (e.g., block movement) can be replaced with a terse 
+list of letter options on the statusline that does not 
+overwrite the displayed text.  This is the current default 
+condition when the editor is loaded (change this default in 
+QED.C).  It can be toggled on and off on the command line (-E), 
+or in the "editing context screen" (^QKE). 
+ 
+	5.	SCROLLING.  Speed of scrolling has been increased.
+
+	6.  LINE UNDELETE.  A line deleted via ^\ or a partial 
+lined deleted from the current cursor to the end of the 
+line using ^QY is stored in a buffer.  This buffer can be 
+inserted below any other line using ^^.  This permits 
+an easier method of moving single lines without defining a 
+"move" block; it is also a more flexible "undo" mechanism.  
+I thank Professor Solve Hulberg of Stockholm for suggesting 
+this improvement.
+
+	7.	DISPLAY OPTIONS.  (a) Since ^^ is now used for 
+inserting a deleted line, onscreen help is displayed with a 
+slightly more verbose command sequence.  The toggle ^QO (for 
+"onscreen") will do it during text insertion.  Help can 
+also be turned on from the "editing context screen".  (b) 
+Cursor movement speed and text display speed can be 
+increased by turning off the display of the current line 
+and column on the status line using ^QL or in the 
+"editing context screen". 
+
+	8.  BUG FIXES.  
+		(a)  Delete to end of line (^QY) did not erase the screen 
+			 properly when the screen had been scrolled horizontally 
+			 for long lines.  
+		(b)  Under certain circumstances, the current edited line was 
+			 lost after a "save" and a "return" command.  
+
+
+CHANGES SPECIFIC TO QED (MSDOS VERSION):
+
+	1.  QUICK BACKUP.  ^QB copies the file currently being edited to 
+a specified default directory.  This directory is set in the editing 
+context screen (via ^QK); the current default directory is: B:\.  
+This feature is valuable for those using RAMDISKS to make frequent 
+hard backups of the file.
+
+	2.  IBM-PC VIDEO DRIVER. QEDIBMPC.C contains the code to 
+permit QED to run on an IBM-PC without using a terminal driver 
+such as ANSI.SYS.  This code uses software interrupts 10 hex, 
+but does not write directly to the video memory.  Consequently, 
+this PC version of QED does not rewrite the screen as quickly 
+as Tearle's GED, but has the advantage that it will not 
+interfere with other programs also attempting to control the 
+screen (e.g., certain multitasking PCDOS enhancements, 
+multiuser operating systems like XENIX, or the much hoped-for ADOS 
+for the 80386).  Avoiding direct use of the video memory should 
+also permit porting QED to other MSDOS machines using 
+non-IBM-compatible memory-mapped video (e.g., DEC Rainbow, 
+HP150, future IBM PCs ???, etc.).  Linking will also 
+require the file QEDPCIO.O which is a short version of IBM-PC 
+video drivers supplied by C-Ware.
+
+	3.  SPLITTING FILES.  A major limitation of 'e' and all of 
+its derivatives of which I am aware is that the structure of 
+locations of line numbers must remain in memory and is not 
+swapped to disk as is the actual text located at each of the 
+line numbers.  As a consequence, file length is limited by the 
+amount of memory available to store the line number addresses.  
+In my MSDOS system using DeSmet C (64K data area only) there is 
+space for approximately 11750 lines.  For most programming (the 
+original purpose of 'e'), this is not a serious problem, but 
+occasionally data files or large assembly langauage programs 
+will exceed this limit.  
+
+	In Version 1.23 of QED, when this line limit is 
+approached, the user is queried to determine if he or she wishes 
+to split the file at its current line.  If yes, the user is 
+prompted for a filename, the lines are written to the file, 
+then deleted from the current file being edited, and the new 
+"first" page of the second segment of the original file is 
+displayed.  Either "pip" or "copy" will concatenate the pieces 
+back together, if desired.  With this code, I have successfully 
+edited a contrived 360K file of about 15000 lines of 8086 
+assembly language code. 
+
+	4.  INVISIBLE STRING REPLACEMENT.  The default mode of 
+unqueried string replacement (^QA...W, where dots are the 
+strings) is NOT to show the changes as they are being made.  
+This increases the speed of replacements considerably.  You can 
+revert to the old way using the V (verbose) option: ^QA...WV).  
+Of course, if you request to be queried, each occurrence of the 
+search string is displayed. 
+
+	5.  NO RV.C.  Although QED version 1.23 automatically updates 
+the version number and date and time when a file is saved, I 
+have not provided an MSDOS version of RV (the Report Version), 
+as I did for QE (CP/M). 
+
+	6.  SHORT DOCUMENTATION.  For those not wishing to glean the 
+operation of qed from e.doc, qe/d.doc, and this documentation, I 
+have included a short description of how to use QED version 1.23 
+on the file QEDPC.DOC.  The name refers to the PC version, but 
+it is relevant for other versions of QED as well.
+
+	7.  CONTROL Z.  Files are not assumed to terminate with a 
+control-Z (0x1a) as the last bytes, as required by CP/M and 
+MSDOS version 1.x.  Control-Z is not written to files saved by 
+QED ver. 1.23.  This change is in response to apparent 
+problems with "include" files having ^Z in MASM.
+

@@ -1,0 +1,288 @@
+/*
+    Header:     FileSrch
+    Version:    1.00    03-Mar-1990
+
+    Language:   ANSI C with MS-DOS extensions
+    Environ:    MS-DOS
+
+    Purpose:    This module will search subdirectories for files.
+
+    Written by: Scott Robert Ladd
+*/
+
+#if defined(__TURBOC__)
+    #include "dir.h"
+#else
+    #include "direct.h"
+#endif
+
+#include "dos.h"
+#include "stddef.h"
+#include "stdlib.h"
+#include "string.h"
+#include "filesrch.h"
+
+#if defined(M_I86SM) || defined(M_I86MM) || defined(__TINY__) ||
+    defined(__SMALL__) || defined(__MEDIUM__) || defined(SPTR)
+    #define SMALL_DATA_PTRS
+#endif
+
+#define MAX_SPEC 128
+
+/* global data */
+
+static char * OrigSpec;
+static char   SearchAttr;
+static void (* FileHandler)(char * dir, FILE_DATA * fd);
+
+static union  REGS  Regs;
+static struct SREGS SegRegs;
+
+static unsigned OldDTA_Seg;
+static unsigned OldDTA_Off;
+
+/* local function prototypes */
+
+static void TreeFindWork(char * dir_spec);
+static void SetDTA(void * new_dta);
+static void ResetDTA(void);
+
+/* actual program code! */
+
+void TreeFind(char * spec,
+              char attr,
+              char * dir,
+              void (* handler)(char * dir, FILE_DATA * fd))
+    {
+    char * start_dir;
+    char * orig_dir;
+
+    if (spec != NULL)
+        OrigSpec = strdup(spec);
+    else
+        OrigSpec = "*.*";
+
+    SearchAttr = attr;
+    FileHandler = handler;
+
+    if (dir != NULL)
+        {
+        orig_dir = malloc(MAX_SPEC);
+        getcwd(orig_dir,MAX_SPEC);
+        start_dir = strdup(dir);
+        }
+    else
+        {
+        orig_dir = NULL;
+        start_dir = malloc(MAX_SPEC);
+        getcwd(start_dir,MAX_SPEC);
+        }
+
+    TreeFindWork(start_dir);
+
+    if (orig_dir != NULL)
+        {
+        chdir(orig_dir);
+        free(orig_dir);
+        }
+
+    free(start_dir);
+    }
+
+static void TreeFindWork(char * dir_spec)
+    {
+    typedef struct dir_entry
+        {
+        char * direct;
+        struct dir_entry * next;
+        }
+        DIR_ENTRY;
+
+    DIR_ENTRY * first_dir, * temp_dir, * cur_dir;
+    char * dir_buf, * work_dir;
+    FILE_DATA file;
+    int res;
+
+    work_dir = malloc(MAX_SPEC);
+
+    first_dir = malloc(sizeof(DIR_ENTRY));
+    cur_dir = first_dir;
+    cur_dir->next = NULL;
+
+    chdir(dir_spec);
+    getcwd(work_dir,64);
+
+    res = FindFirst("*.*",(char)0xFF,&file);
+
+    while (!res)
+        {
+        if (WildMatch(file.name, OrigSpec))
+            {
+            if ((SearchAttr == 0) || (file.attrib & SearchAttr))
+                {
+                FileHandler(work_dir,&file);
+                }
+            }
+
+        if (((file.attrib & 0x10) == 0x10) && (file.name[0] != '.'))
+            {
+            cur_dir->direct = strdup(file.name);
+            cur_dir->next   = malloc(sizeof(DIR_ENTRY));
+            cur_dir         = cur_dir->next;
+            cur_dir->next   = NULL;
+            }
+
+        res = FindNext(&file);
+        }
+
+    dir_buf = malloc(MAX_SPEC);
+    cur_dir = first_dir;
+
+    while (cur_dir->next != NULL)
+        {
+        chdir(work_dir);
+        chdir(cur_dir->direct);
+
+        getcwd(dir_buf,128);
+        TreeFindWork(dir_buf);
+
+        temp_dir = cur_dir;
+        cur_dir  = cur_dir->next;
+
+        free(temp_dir->direct);
+        free(temp_dir);
+        }
+    }
+
+int WildMatch(char * name, char * tmpl)
+    {
+    strupr(name);
+    strupr(tmpl);
+
+    while ((*name && *name != '.') || (*tmpl && *tmpl != '.'))
+        {
+        if ((*name != *tmpl) && (*tmpl != '?'))
+            {
+            if (*tmpl != '*')
+                {
+                return 0;
+                }
+            else
+                {
+                while (*name && *name != '.')
+                    name++;
+                while (*tmpl && *tmpl != '.')
+                    tmpl++;
+                break;
+                }
+            }
+        else
+            {
+            name++;
+            tmpl++;
+            }
+        }
+
+    if (*name == '.')
+        name++;
+
+    if (*tmpl == '.')
+        tmpl++;
+
+    while (*name || *tmpl)
+        {
+        if ((*name != *tmpl) && (*tmpl != '?'))
+            {
+            if (*tmpl != '*')
+                return 0;
+            else
+                return 1;
+            }
+        else
+            {
+            name++;
+            tmpl++;
+            }
+        }
+
+    return 1;
+    }
+
+int FindFirst(char * spec, char attrib, FILE_DATA * fd)
+    {
+    int res;
+
+    SetDTA(fd);
+
+    Regs.h.ah = 0x4E;
+    Regs.x.cx = (unsigned)attrib;
+
+    #if defined(SMALL_DATA_PTRS)
+        Regs.x.dx = (unsigned)spec;
+        intdos(&Regs,&Regs);
+    #else
+        segread(&SegRegs);
+        SegRegs.ds  = FP_SEG(spec);
+        Regs.x.dx = FP_OFF(spec);
+        intdosx(&Regs,&Regs,&SegRegs);
+    #endif
+
+    #if !defined(LATTICE)
+        res = Regs.x.cflag;
+    #endif
+
+    ResetDTA();
+
+    return res;
+    }
+
+int FindNext(FILE_DATA * fd)
+    {
+    int res;
+
+    SetDTA(fd);
+
+    Regs.h.ah = 0x4F;
+
+    #if defined(LATTICE)
+        res = intdos(&Regs,&Regs);
+    #else
+        intdos(&Regs,&Regs);
+        res = Regs.x.cflag;
+    #endif
+
+    ResetDTA();
+
+    return res;
+    }
+
+static void SetDTA(void * new_dta)
+    {
+    Regs.h.ah = 0x2F;
+    intdosx(&Regs,&Regs,&SegRegs);
+
+    OldDTA_Seg = SegRegs.es;
+    OldDTA_Off = Regs.x.bx;
+
+    Regs.h.ah = 0x1A;
+
+    #ifdef SMALL_DATA_PTRS
+        Regs.x.dx = (unsigned)(new_dta);
+        intdos(&Regs,&Regs);
+    #else
+        SegRegs.ds  = FP_SEG(new_dta);
+        Regs.x.dx = FP_OFF(new_dta);
+        intdosx(&Regs,&Regs,&SegRegs);
+    #endif
+    }
+
+static void ResetDTA(void)
+    {
+    segread(&SegRegs);
+
+    Regs.h.ah = 0x1A;
+    SegRegs.ds  = OldDTA_Seg;
+    Regs.x.dx = OldDTA_Off;
+
+    intdosx(&Regs,&Regs,&SegRegs);
+    }

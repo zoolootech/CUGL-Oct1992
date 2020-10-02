@@ -1,0 +1,76 @@
+;-------------------------------------------------------------------
+; TSR version of the NMI rebooter (it even works on DOS 1.0)
+;-------------------------------------------------------------------
+; Tony Ingenoso
+; 1323 SE 17th #274
+; Ft. Lauderdale, FL 33316
+;-------------------------------------------------------------------
+bios    segment at 0FFFFH	; Dummy segment where the BIOS lives
+        assume  cs:bios		;
+        org     0		;
+boot    label   far             ; Jumping here reboots the PC
+bios    ends
+
+cseg	segment para public 'CODE'
+	assume	cs:cseg,ds:cseg,es:nothing,ss:cseg
+	org	100H
+start	label	near
+;
+; Display the logo
+;
+	mov	ah, 09H			; Display string
+	mov	dx, offset logo		;
+	int	21H			;
+;
+; Relocate the trapper routine to a safe spot up in the PSP to save space.
+; We move it on top of the default FCB's since we're not going to use them.
+;
+	cld				;
+	mov	si, offset NMItrapper	; Location of trapper code
+	mov	di, 005CH		; Location of first FCB
+	mov	cx, TRAPPER_LEN		; # of bytes to move
+	rep	movsb			; 
+;
+; Grab the NMI vector
+;
+	mov	ax, 2502H		; Set vector
+	mov	dx, 005CH		; DS:DX-->NMI trapper routine
+	int	21H			;
+;
+; Should we free the environment?
+;
+	mov	ax, 3000H		; Get version
+	int	21H			;
+	cmp	al, 0			; Is it 1.X?
+	je	GoResident		; 1.X doesn't have environments
+;
+; Free the space used by the environment.
+;
+	mov	es, word ptr cs:[2CH]	; PSP[2CH]-->environment
+	mov	ah, 49H			; Free memory block
+	int	21H			;
+;
+; Compute ending address and stay resident
+;
+GoResident:
+	mov	dx, (5CH + TRAPPER_LEN + 1)
+	int	27H			; 1.0 compatible TSR
+
+;----------------------------------------------
+; NMI trapper routine (gets moved up into PSP)
+;----------------------------------------------
+NMItrapper proc far
+        mov     ax, 0040H               ; Set BIOS reset flag
+        mov     ds, ax                  ;
+        mov     word ptr ds:[72H],1234H ; WARM
+        jmp     boot                    ; JMP FFFF:0000
+TRAPPER_LEN EQU $-NMItrapper
+NMItrapper endp
+
+;----------------------------------------------
+;                 Messages
+;----------------------------------------------
+logo    db      'TSRBOOT V1.00, Reboot on NMI',13,10
+        db      'Tony Ingenoso, 1992',13,10,'$'
+cseg	ends
+	end	start

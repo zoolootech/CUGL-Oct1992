@@ -1,0 +1,53 @@
+/*********** EXCEPT.H COPYRIGHT 1990 GREGORY COLVIN ************
+This program may be distributed free with this copyright notice.
+***************************************************************/
+#include <stdlib.h>
+#include <errno.h>
+#include <assert.h>
+#include <signal.h>
+#include <setjmp.h>
+
+typedef struct x_trap {
+    struct x_trap *next;
+    jmp_buf context;
+} X_TRAP;
+
+typedef enum {
+    X_ERRNO=-1, X_ASSERT=-2, X_SIGNAL=-3, X_SYSTEM=-4, X_USER=-5
+} XCEPTION;
+
+extern X_TRAP *X_Trap;
+extern XCEPTION X_Error;
+extern volatile sig_atomic_t X_Signal;
+
+extern void X_TrapError( void );
+extern void X_HandleSignal( int sig );
+extern void X_ReturnSignal( int sig );
+
+#define BEGIN_TRY                                   \
+{ X_TRAP trap;                                      \
+  trap.next = X_Trap; X_Trap = &trap; X_Signal = 0; \
+  TRY: if (!(X_Error = setjmp(trap.context)))
+
+#define FAIL(error) \
+  if (X_Error =(error)) X_TrapError(); else
+
+#define FAIL_TRY else
+
+#define RETRY if (X_Error) goto TRY
+
+#define END_TRY               \
+  if (X_Signal && !X_Error)   \
+    FAIL(X_SIGNAL);           \
+  X_Trap = X_Trap->next;      \
+  FAIL(X_Error);              \
+}
+
+#ifdef XDEBUG
+  extern char *X_Assert;
+  #undef assert
+  #define assert(x) \
+    ((x)? (void)0: (X_Assert=#x,X_Error=X_ASSERT,X_TrapError()))
+
+#endif
+

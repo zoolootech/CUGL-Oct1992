@@ -1,0 +1,55 @@
+Listing 1
+
+/*
+ * This program demonstrates the behavior of a flawed imple-
+ * mentation of strrchr when it tries to search a string
+ * that begins at the start of a memory segment.  This
+ * program has been compiled and tested with Microsoft C 5.1
+ * using the compact, large and huge memory models.
+ */
+
+#include <dos.h>
+#include <stdio.h>
+#include <string.h>
+
+void trace(const char *p)
+    {
+    printf("  %p -> %s\n", p, p == NULL ? "NULL" : (char *)p);
+    }
+
+char *strrchr(const char *s, int c)
+    {
+    const char *t;
+
+    for (t = s + strlen(s); trace(t), t >= s; --t)
+        if (*t == (char)c)
+            return (char *)t;
+    return NULL;
+    }
+
+void main(void)
+    {
+    char c;
+    char *p = "abcdefghijklmnopqrs";
+    char *q;
+    unsigned int segment, offset;
+
+    printf("original string...\n");
+    trace(p);
+    segment = FP_SEG(p);
+    offset = FP_OFF(p);
+    if (offset != 0)
+        {
+        segment += (offset + 15) >> 4;
+        FP_SEG(p) = segment;
+        FP_OFF(p) = 0;
+        }
+    printf("sub-string to be searched...\n");
+    trace(p);
+    printf("character to be found? ");
+    scanf("%c", &c);
+    printf("calling strrchr...\n");
+    q = strrchr(p, c);
+    printf("value returned by strrchr...\n");
+    trace(q);
+    }

@@ -1,0 +1,95 @@
+/* ----------------------------------------------------
+ *  LISTING 5
+ *
+ *  Filename:           dos.c
+ *  Summary:            Implementation-specific code
+ *                      (DOS) for BFILE module.
+ *  Author:             T.W. Nelson
+ *  Compile options:    
+ *  Version:            1.00
+ *  Date:               07-Sep-1991
+ *  Notes:
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ * ------------------------------------------------- */
+
+#include <errno.h>
+#include "bfile.h"
+
+#pragma inline      //use inline assembly
+
+//Intersegment memory-move function.......
+void move_mem( bufp_t *dest,    //to destination
+               bufp_t *src,     //from source
+               size_t nbytes )  //#bytes to move
+{
+    asm push ds
+    asm push es
+    asm lds si,src
+    asm les di,dest
+    asm mov cx,nbytes
+    asm cld
+    asm shr cx,1        //convert to word count
+    asm rep movsw
+    asm jnc exit        //done if no carry
+    asm movsb           //move odd byte
+exit:
+    asm pop es
+    asm pop ds
+}
+
+//Read a file into a far buffer. Returns
+//# bytes read, or sets 'errno' and returns -1
+//on error........
+int read_file( int fd,          //file handle
+               bufp_t *buf,     //destination buffer
+               size_t nbytes )  //#bytes to read
+{
+    asm push ds
+    asm mov ah,03fh     //DOS read file
+    asm mov bx,fd       //file handle
+    asm mov cx,nbytes   //xfer count
+    asm lds dx,buf      //destination
+    asm int 21h
+    asm pop ds
+    asm jnc exit        //read OK
+    errno = EBADF;      //assume bad handle
+    asm cmp ax,6        //invalid handle?
+    asm je error        //yes
+    errno = EACCES;     //no, permission denied
+error:
+    asm mov ax,-1       //return -1 on error
+exit:
+
+    return _AX;
+}
+
+//Write a file from a far buffer. Returns
+//# bytes written, or sets 'errno' and returns -1
+//on error........
+int write_file( int fd,         //file handle
+                bufp_t *buf,    //source buffer
+                size_t nbytes ) //#bytes to write
+{
+    asm push ds
+    asm mov ah,40h      //DOS write file
+    asm mov bx,fd       //file handle
+    asm mov cx,nbytes   //xfer count
+    asm lds dx,buf      //source
+    asm int 21h
+    asm pop ds
+    asm jnc exit        //read OK
+    errno = EBADF;      //assume bad handle
+    asm cmp ax,6        //invalid handle?
+    asm je error        //yes
+    errno = EACCES;     //no, permission denied
+error:
+    asm mov ax,-1       //return -1 on error
+exit:
+
+    return _AX;
+}
+
+/* ---- End of File -------------------------------- */

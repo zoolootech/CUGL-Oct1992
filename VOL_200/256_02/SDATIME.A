@@ -1,0 +1,55 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     SDATIME.A     Set Date and Time
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int SDATIME(handle, time, date, &_carryf)
+;	-----           int handle,  /* the file handle */
+;	                    time, date;
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC SDATIME_
+
+SDATIME_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the file handle
+	mov	cx,[bp+6]	; the time
+	mov	dx,[bp+8]	; the date
+	mov	al,1
+	mov	ah,57h	; the Function No.
+	int	21h
+	jc	SDATIME_ERROR
+	xor	ax,ax	; prepare for normal return
+	jmp	SDATIME_QUIT
+SDATIME_ERROR:
+	mov	si,[bp+10]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+SDATIME_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

@@ -1,0 +1,84 @@
+#*****************************************************************************
+#
+#		COMPILER AND LINK SPECIFIED SOURCE FILES
+#				(comp)
+#
+#			Copyright (C) 1987 J. Manzai
+#			All Rights Reserved
+#
+#	Date Created: 	March 28, 1987 @(#) comp Version 1.0
+#
+#	Modifications:	16-Jan-88	Created a new library for the AIMS
+#					Application and changed this script 
+#					to link with this new library of object
+#					modules.
+#
+#			23-Feb-88	Added test to look for the -O option
+#					on the command line.
+#
+#			20-Mar-88	Added code to control storage of
+#					compilation errors for EMACS development
+#					environment.
+#
+#	This shell script eases the compiling and linking of source code.
+#	Especially the linking is easier when need to link several libraries.
+#
+#	This shell script should be used in conjunction with an Emacs start-up
+#	file ".emacsrc".
+#******************************************************************************
+
+#	tput clear
+
+CFLAGS="-Ms"
+LFLAGS="-laims -ld -lx -lct -lm"
+
+# Test command line for -O option...
+
+if [ "$1" = "-O" -o "$1" = "-o" ];then
+	CFLAGS=`echo "$CFLAGS -O"`
+	shift
+fi
+
+# Test command line for -g option...
+
+if [ "$1" = "-g" ]; then
+	CFLAGS=`echo "$CFLAGS -g"`
+	shift
+fi
+
+if [ -r $1.c ]; then			# Source file readable ?
+	if [ -r $1 ]; then		# Object file readable(exists)?
+		rm -f $1		# Remove object and binary
+		rm -f $1.o
+	fi
+	echo "compiling with $CFLAGS: $1.c"
+	rm -f $1.e			# Remove previous error file
+	cc -c ${CFLAGS} $1.c 2> $1.e	# Compile it...
+	if [ $? -ne "O" ]; then		# Error in compilation ?
+		head -10 $1.e > temp$$	# Get first 10 lines of errors
+		mv temp$$ $1.e
+		cat $1.e		# Send it to the screen
+		exit 1
+	else
+		rm -f $1.e			# Remove any error file
+		echo "linking with $LFLAGS: $1.o"
+		cc $1.o $LFLAGS -o$1 2> $1.e 	# Link it, errors to error file
+		if [ $? -ne "O" ]; then		# Error in linkage ?
+			head -10 $1.e > temp$$	# Get 1st 10 errors
+			mv temp$$ $1.e
+			cat $1.e		# Send errors to screen
+			exit 1
+		else 
+			rm -f $1.e
+			size $1			# Show its size
+			exit 0
+		fi
+	fi
+else
+	echo "Usage:comp filename"
+	exit 1
+fi
+
+			
+
+

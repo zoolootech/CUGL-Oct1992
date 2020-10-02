@@ -1,0 +1,85 @@
+/*  Push.C - This program, when used with Pop.C, provides
+            a mechanism by which the current working disk
+            and path may be saved in a memory stack and
+            restored later by Pop.C.
+
+            Warning: This software uses undocumented
+                     features of MS-DOS
+
+    Copyright Michael Klos 1990, All rights reserved.
+
+    Compiles with Microsoft Quick C, Large or Huge Model
+*/
+
+#ifdef   Debug
+#include <stdio.h>         /*  For debug only   */
+#endif
+
+#include <stdlib.h>
+#include <direct.h>
+#include <dos.h>
+#include "Push_Pop.h"
+
+void    main(void)
+{
+word    allocation_mode;
+word    path_buffer;
+
+            /*  Get and save the current memory
+                allocation strategy. */
+    allocation_mode = _dos_getmemmode();
+
+            /*  Change the strategy to get a block 
+                from the end of memory. */
+    _dos_setmemmode(_allocate_last);
+
+    if (_dos_allocmem((_MAX_PATH+15)/16, &path_buffer)) {
+       _dos_setmemmode(allocation_mode);    /*  Restore */
+       exit(1);
+       }
+                       /*  Restore strategy.  */
+   _dos_setmemmode(allocation_mode);
+
+#ifdef Debug
+    printf("Segment allocated for path is: %4X\n", path_buffer);
+#endif
+
+    FP_OFF(mem) = 0;
+    FP_SEG(mem) = path_buffer - 1;
+
+/*  Assign ownership of this memory block to push/pop by
+    assigning a block owner that MS-DOS cannot assign and
+    which pop can identify later */
+    
+    mem->block[1] = low(Signature);
+    mem->block[2] = high(Signature);
+
+    /* Get the current working directory. */
+    getcwd(&mem->block[16], _MAX_PATH);
+
+#ifdef Debug
+    printf("Current directory is: %s\n", &mem->block[16]);
+#endif
+    exit(0);    /*  Report success                  */
+}
+
+int     _dos_getmemmode(void)
+{
+union REGS registers;
+
+    /* WARNING: UNDOCUMENTED MS-DOS FUNCTION   */
+    /* Get the current memory allocation strategy. */
+    registers.x.ax = 0x5800;
+    return intdos(&registers, &registers);
+}
+
+void    _dos_setmemmode(int strategy)
+{
+union REGS registers;
+
+    /* WARNING: UNDOCUMENTED MS-DOS FUNCTION   */
+    /* Set a new memory allocation strategy.  */
+    registers.x.ax = 0x5800;
+    registers.h.bl = (unsigned char) strategy;
+    intdos(&registers, &registers);
+}

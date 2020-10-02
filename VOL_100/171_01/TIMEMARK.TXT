@@ -1,0 +1,298 @@
+/*****************************************************************************/
+
+This file contains (4) source code files which are to be extracted and
+made into individual files.  Their names are "gtest.c", "gtime.c", "times.c",
+and "sysint.asm".  Using the Personal Editor, use Alt-B to mark the begin-
+ning and end of a file.  Then hit escape and enter for example "edit gtest.c"
+or "edit c:gtest.c"  Since this is a new file no text will appear until you
+hit escape to return to the text entry mode and hit Alt-Z.  The marked
+portion will now load.	Hit enter and put "save" on the command line.  Now
+do a "quit".  You will now return to the main file.  Now do an Alt-U to remove
+the marked area.  Repeat the marking, naming and saving out for each of the
+files.	Next use your Lattice-C compiler to obtain a ".obj" file for the
+".c" source files and the Macro Assembler to obtain a ".obj" file for the
+".asm" source.  Finally, enter "Link c+gtest+gtime+times+sysint".  I called
+the final executable file "Timemark".  We thank Ed Keating who is the C-Sig
+co-ordinator for the Northern Illinois IBM-PC User's Group" for the writing
+of these routines.  I made this single file put-together for the convenience
+of only having to download one file from this BBS.
+						     ^^^ Dick Stone ^^^
+
+/*****************************************************************************/
+/*
+ * .title gtest.c---Timestamp program for testing Lattice C
+ */
+#include <stdio.h>
+main(argc,argv)
+int argc;
+char *argv[];
+{
+	looptest(); /* perform simple loop test */
+	addints();  /* add integers test */
+	fptest();   /* floating point test */
+	strings();  /* string concatenation */
+	tables();   /* table lookup test */
+
+	printf("End benchmarks\n");
+}
+/*
+ * this is a routine to print the timestamped differences to standard output
+ */
+printimes(t1,t2)
+int t1[8],t2[8];	/* timestamp buffers */
+{
+	long d,tdiff(); /* for time difference calculations */
+	char tsbuf[20]; /* used to format time info */
+	char *ftime();	/* formats a timestamp into a buffer */
+
+	printf("Time started was %s\n",ftime(t1,tsbuf));
+	printf("Time ended   was %s\n",ftime(t2,tsbuf));
+	d = tdiff(t1,t2);
+	printf("The difference in times in Milliseconds is %ld\n",d);
+
+} /* end of printimes*/
+looptest()	/* basic loop test */
+{
+	int i,t1[8],t2[8];	  /* timestamp buffers */
+
+	gtime(t1);	/* get time one. */
+	for(i =0; i < 10000; i++);
+	gtime(t2);
+	printf("\nSimple loop test\n");
+	printimes(t1,t2);
+}
+addints()	/* add integers test */
+{
+
+	int i,t1[8],t2[8];	  /* timestamp buffers */
+	printf("\nAdding integers loop to 32767\n");
+	gtime(t1);
+	i = 0;
+	while(i < 32767) i++;
+	gtime(t2);
+	printimes(t1,t2);
+}
+fptest()	/* floating point test */
+{
+	int i,t1[8],t2[8];	  /* timestamp buffers */
+	double	a,b,c;
+
+	printf("\nFloating point benchmark\n");
+	gtime(t1);
+	a = 0; b = 1234.56; c = 78.9;
+	for(i = 0; i < 10000; i++) {
+	 a=b*c;
+	 a=b/c;
+	}
+	gtime(t2);
+	printimes(t1,t2);
+}
+strings()
+{
+	int i,t1[8],t2[8];	  /* timestamp buffers */
+	char *pa,*pb,*pc;
+	static char sa[] = "This is a string";
+	static char sb[] = "This is a longer string with lots of words in it";
+	char sc[100];
+
+	printf("\nString concatenation benchmark\n");
+	gtime(t1);
+	for(i = 0; i < 10000; i++) {
+	 pc = &sc[0];
+	 pa = &sa[0];
+	 pb = &sb[0];
+	 while(*pc++ = *pa++); /* copy up to first null */
+	 pc--;	 /* back up over trailing null */
+	 while(*pc++ = *pb++);	 /* add in the second string */
+	}
+	gtime(t2);
+	printimes(t1,t2);
+}
+tables()	/* table lookup tests */
+{
+	int i,j,t1[8],t2[8];	    /* timestamp buffers */
+	static int data[25] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+		11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+		21, 22, 23, 24, 25 };
+	int array[25];
+
+	printf("\nTable lookup\n");
+	gtime(t1);
+	for(i = 0; i < 1000; i++)
+	 for(j = 0; j < 25; j++) array[j] = data[j];
+	gtime(t2);
+	printimes(t1,t2);
+}      /*  End of gtest.c  */
+/*****************************************************************************/
+/*
+;
+;      .title gtime.c
+;
+; Index gtime -- get system time into raw 8 word format
+;
+; Usage
+;	gtime(buffer);
+;
+; In
+;	int  buffer[8]; 	; 8 word buffer for timestamp
+;
+; Out
+;	int  buffer[8]; 	; 8 word buffer will contain timestamp
+;
+; Description
+;	This routine will get the system time and date and return it
+;	in the 8 word buffer provided.
+;	The buffer contains year (1980-2099), month 1-12, day 1-32
+;	hour(0 - 23) minute (0-59) second (0-59) , milliseconds (0 - 999)
+;	and the timer resolution in milliseconds.( On pc = 055)
+;
+; status
+;	returns pointer to start of timerstruct.
+;
+; bugs
+;	Uses Sysint to talk to Pcdos
+;
+; Updates
+;	 date		vers	who	Description
+;	 27-aug-83	0001	EJK	Initial coding
+;
+;-
+*/
+#include <stdio.h>
+struct dosstruct {
+       char al,ah;
+       char bl,bh;
+       char cl,ch;
+       char dl,dh;
+       };
+struct dosregs {
+	int ax,bx,cx,dx;
+	};	/* used for casting */
+struct timerbuf {
+	int year,month,day,hour,minute,second,millisec,timres;
+	};
+#define TIMEFUNCTION 0x2c	 /* time subfunction */
+#define DATEFUNCTION 0x2a	/* date subfunction */
+#define DOSINT 0x21		/* dos interrupt code */
+#define TIMRES 055		/* milliseconds resolution */
+
+struct timerbuf *gtime(timbuf)
+struct timerbuf *timbuf;
+{
+	struct dosstruct dosiobuf;
+	struct dosstruct *in = &dosiobuf;
+	struct dosstruct *out= &dosiobuf;
+/* first, get the date. with system function 2a to dos */
+	in->ah = DATEFUNCTION;
+	sysint(DOSINT,in,out); /* do it! */
+	timbuf->year = ((struct dosregs *)out)->cx;	/* cast for 16bit */
+	timbuf->month = out->dh;
+	timbuf->day = out->dl;
+/* now, the time */
+	in->ah = TIMEFUNCTION;
+	sysint(DOSINT,in,out);
+	timbuf->hour = out->ch;
+	timbuf->minute = out->cl;
+	timbuf->second = out->dh;
+	timbuf->millisec = out->dl * 10;	/* make into milliseconds */
+	timbuf->timres = TIMRES;
+	return(timbuf); /* return pointer to his struct */
+}   /* end of gtime */
+/*****************************************************************************/
+/* .title   times.c
+ * tdiff -- return the time difference between a start time and an end time
+ * long tdiff(start,end )
+ * where: start and end are 8 word timestamp buffers
+ */
+long tdiff(t1,t2)
+int t1[8],t2[8];	/* timestamp buffers */
+{
+	long d; /* work variable */
+	d = t2[3] - t1[3];
+	d = d*60 + t2[4] - t1[4];
+	d = d*60 + t2[5] - t1[5];
+	d = d*1000 + t2[6] - t1[6];
+	return(d);
+}
+/*
+ * ftime -- formats a timestamp into a buffer in the form
+ * hh:mm:ss.msc 	( null terminated )
+ * returns a pointer to the start of the buffer
+ */
+char *ftime(t1,buf)
+int t1[];	/* timestamp */
+char *buf;	/* buffer */
+{
+       sprintf(buf,"%2.2d:%2.2d:%2.2d.%3.3d\0",t1[3],t1[4],t1[5],t1[6]);
+       return(buf);	/* return pointer to start */
+}      /* end of times.c */
+/*****************************************************************************/
+; page 66,132
+;+
+;	.title sysint.asm
+; index  system interrupt call function   sysint()
+;
+; Usage
+;	sysint(inum,&inreg,&outreg);
+;
+; in
+;	int	inum;		; interrupt number to execute
+;	int	inreg[4];	; input registers ax,bx,cx,dx
+;
+; out
+;	int	outreg[4];	; registers returned ax,bx,cx,dx
+;
+; Description
+;	This is a system interface call to allow system intrinsic functions
+;      to be called from C. Parameters are passed via the register values
+;      stored in inreg for input to the system call and returned in the
+;      outreg struct. The default values for the segment registers are the
+;      same as C routines.
+;
+; status
+;	ax register is returned as status
+;
+; bugs
+;	low level internal routine must be modified to be ported.
+;
+; Updates
+;
+;	date		vers	who	description
+;	15-aug-83	0001	EJK	Added documemtation
+;-
+pgroup	group	prog
+prog	segment byte	public 'prog'
+	assume	cs:pgroup
+	public	sysint
+
+sysint	proc	near
+	push bp 	;save bp
+	mov bp,sp	;sp->bp
+	mov ax,[bp]+4	;get int#
+	mov cs:itm+1,al ;set int#
+	mov si,[bp]+6	;in struc
+	mov ax,[si]	;set ax
+	mov bx,[si]+2	;set bx
+	mov cx,[si]+4	;set cx
+	mov dx,[si]+6	;set dx
+	push bp 	;save bp2
+itm	equ  this byte	; 'this byte' is a keyword.
+	int 16		;interrupt
+	pop bp		;restore bp2
+	mov si,[bp]+8	;out struc
+	mov [si],ax	;ret ax
+	mov [si]+2,bx	;ret bx
+	mov [si]+4,cx	;ret cx
+	mov [si]+6,dx	;ret dx
+	pop bp		;restore bp
+	ret		;return
+sysint	endp
+prog	ends
+	end
+/*****************************************************************************/
+
+	ret		;return
+sysint	endp
+prog	ends
+	end
+/**********************                                                                                                                                

@@ -1,0 +1,240 @@
+                                Letter: A Letter Processor
+
+
+Raison d'Etre
+
+  I don't know about everyone else, but I write about ten to twenty one page
+  letters a week.
+
+  Although I have several word processors (Microsoft Word, WordStar, and
+  Unix's nroff, plus a MacIntosh just to hit the high spots), none are
+  adequate for what should be a very simple task, namely writing a letter!
+  This is not a design fault in them; rather it is one of the drawbacks of
+  applying general purpose tools to a specific problem.
+
+  I have several requirements for a letter formatting program. They are:
+
+  o  The body of the letter must be vertically centered on the page.
+
+  o  The address should be extracted and redirected to a file for later
+     printing on an envelope or label.
+
+  o  Itegral parts of a letter (such as dates, salutations, etc.) should be
+     supported by the program.
+
+  
+  All of the above mentioned processors (even nroff!) gagged at this list.
+  After making do with various kludges, I finally took a day off and wrote
+  letter, which seems an adequate solution to the problem.
+
+What Letter Does
+
+  Letter is a very specific program, but it excels at formatting one page
+  documents, especially letters. It automatically performs vertical centering
+  and supports enough rudimentary text processing features to allow
+  considerable format flexibility. It dates a letter, supports address
+  redirection, and provides a shorthand for filling in the closing salutation
+  (or whatever the 'Sincerely yours' stuff is called!). It will justify,
+  center, underline, and doublestrike just like a real word processor.
+
+  It will not number the page, format two page letters, or do anything
+  fancier than the above list. It is very precisely defined to do one thing
+  (and only one thing) fairly well.
+
+Using Letter
+
+  Letter is distributed as the following files:
+
+  letter.c     The actual  letter formatting/printing  program.  The  current
+               version has been tested using the Wizard C compiler and MS-DOS
+               3.1. The  only nonportable function that I can think of is the
+               one that gets the date from the operating system.
+  letter.exe   Executable version of same.
+  address.c    Address printing program
+  address.exe  Executable version.
+
+
+                                            1
+
+
+
+                                Letter: A Letter Processor
+
+
+  example?.ltr Some example letters.
+  letter.doc   This file.
+  
+  Letter is invoked with the name of an input document. Output is printed on
+  the terminal unless the command line switch '-p' is placed before the
+  filename, in which case output is sent to the printer. The input document
+  contains text and letter commands, which take the form of two character
+  mnemonics preceded by a '.' (in the style of WordStar or nroff, etc.). The
+  format of the document is straight ASCII text, and it can be created by any
+  editor.
+
+  All commands must begin in the leftmost column. The general form of a
+  command is:
+
+       blah blah blah blah
+       .rm 75
+       more blah more blah
+       
+  which in this case sets the right margin to 75 spaces.
+
+  In general, letter operates by processing an input file a line at a time. A
+  line can either be a command or text. Assuming it;s text, letter adds it a
+  word at a time to the current print line (assuming fill mode is enabled).
+  When the line threatens to grow larger than the current page width, it is
+  justified (if justification is enabled) and stored in a page array.
+  Paragraphs are ended by almost any of the commands or a blank line. After
+  all lines have been read, letter calculates the length and prints the
+  letter properly centered on the page.
+
+  Here's a list of all letter commands. Wherever <xx> is given, a number may
+  be specified. The number can be absolute, eg: '5', '30', or it can be
+  relative to a current value, eg: '+5', '-3'. Some commands require one of
+  'on' or 'off' be given, and some accept text. Hopefully, the context and
+  explanation of the command will make the situation sufficiently clear.
+  Don't worry about the expression 'line break' for now.
+
+  ..           Comment. The  rest of  this line  is ignored.  This line might
+               contain notes to yourself regarding the letter. No line break.
+  .in <xx>     Indent. This sets the number of spaces between the left margin
+               and the  first character printed. If a relative value is given
+               (eg: '.in  +5') then the new indent is set relative to the old
+               indent. Defaults to 0. Causes a line break.
+  .po <xx>     Page offset.  The number of characters to skip before printing
+               the first  character. Similar  to '.in'  above. Default  is 5,
+               causes a line break.
+  .ju on|off   Justification. Enables/disables  right  justification  between
+               the current  left and right margins. Defaults to off, causes a
+               line break.
+  .rm <xx>     Right margin.  Same idea  as '.in' but for the obvious differ-
+               ence. Default is 65, causes a line break.
+
+
+
+                                            2
+
+
+
+                                Letter: A Letter Processor
+
+
+  .ti <xx>     Temporary indent.  Sets the  indent for  the next  line  only.
+               Handy for  bullet lists  and paragraph  indentation. Causes  a
+               line break, no default.
+  .br          Break. Causes a line break.
+  .as          Address start.  Marks the  beginning of the address and begins
+               redirection to  the file 'address'. Fill and justification are
+               automatically disabled. Causes a line break.
+  .ae          Address end.  Marks the end of the address and closes the file
+               'address'. Fill  and justification  are restored to the values
+               they had prior to address redirection. Causes a line break.
+  .sp <xx>     Space. Leaves  <xx> blank lines. If <xx> is omitted, one blank
+               line is left. Causes a line break.
+  .dt          Date. Prints  the current  system date  in the form 'Wednesday
+               November 6, 1999' right justified. Causes a line break.
+  .sg <text>   Signature. Inserts  'Sincerely yours,',  two blank  lines  and
+               <text>. Causes a line break.
+  .ce <xx>     Center. Centers  the following  <xx> lines between the current
+               left and right margins.
+  .rj <xx>     Right justify. Right justifies the following <xx> lines at the
+               current right margin.
+  .fi on|off   Fill. Invokes/suppresses  the rearranging  of input lines into
+               lines of  text as  close to the current margin width as possi-
+               ble. Default is on, causes a line break.
+  
+  The are also three special characters that can be inserted anywhere within
+  the text of a letter.
+
+  ^  Begin/end doublestrike.
+
+  _  Begin/end underlining.
+
+  ~  Replaced with a single space after any line justification has been
+     performed ('hard space').
+
+  
+  Letter is (hopefully) distributed with several example letters that demon-
+  strate all these commands at work. Hopefully, reading and printing them
+  will answer most questions. By default, the output will be sent to the
+  screen. Output can be sent to the current 'LPT1:" device by the command
+  line:
+
+       letter -p example1.ltr
+       
+       
+Address
+
+  Address is a simple program to print the file 'address' centered on a stan-
+  dard envelope. Do I need to say anything more?
+
+Technical Details & Weaknesses
+
+
+
+                                            3
+
+
+
+                                Letter: A Letter Processor
+
+
+  Letter is written in C. This version has been written using the Wizard C
+  compiler and MS-DOS 3.1, but the code should be easily portable to any
+  other C compiler. There are no esoteric tricks or witticisms contained
+  therein. The function which returns the current system date is fairly
+  compiler specific, but still commonly available.
+
+  Letter has been quickly written (eight hours). It seems satisfactory for my
+  purposes and I don't have any more time to play with it! I know of the fol-
+  lowing shortcomings.
+
+  o  The justification algorithm is not especially bright. Should sentences
+     contain a high proportion of lengthy words, it might not look too
+     pretty. If an unbroken word is entered that is wider than the current
+     margins, it might hang up! Realistically, there should be no problems,
+     however.
+
+  o  Tabs are not tolerated. Use '~'s, which will be replaced with spaces.
+
+  o  Speaking of '~'s (and '^'s and '_'s), there is currently no way to print
+     them as text in your document. Sorry!
+
+  o  Underline and boldface are performed by printing a character and
+     backspacing; if your printer doesn't backspace, don't use them! If
+     you're printer supports auto underlining and backspace, read the
+     sections of code near the beginning of the program regarding printer
+     controls.
+
+  
+Last Words
+
+  Letter was written by Jon Simkins of Softfocus. It is freely tossed into
+  the public domain for good or ill. I would appreciate it if no money is
+  charged for it (beyond any nominal media charges) and that the original
+  credits are left intact.
+
+  If you find any real show stoppers in it, I can be contacted at:
+
+       SoftFocus
+       1343 Stanbury Dr.,
+       Oakville, Ontario, Canada
+       L6L 2J5
+       (416)825-0903
+       
+       Compuserve  76566, 1172
+
+
+
+
+
+
+
+
+
+                                            4
+
+
+

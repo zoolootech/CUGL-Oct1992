@@ -1,0 +1,29 @@
+#include <dos.h>
+
+/* Copy bytes from NEAR buffer to HUGE array - using FAR pointers */
+/* Split up copy operation where it crosses segment boundary */
+
+void hmemcopy(char huge *to, char *from, unsigned long count) {
+    unsigned int offset, k, n;
+    char huge *toend;
+    char far *d;
+    char *s;    
+
+    toend = to + count - 1;           /* last byte destination */
+    while (FP_SEG(to) != FP_SEG(toend)){   /* will it cross boundary ? */
+        offset = FP_OFF(to);	      /* calculate how much left in segment */
+        if (offset == 0) {            /* special case - do in two pieces */
+            n = 32768;                /* copy first half */
+            d = to; s = from;
+            for (k = 0; k < n; k++) *d++ = *s++;
+            to += n; from += n; count -= n; offset += n;
+        }
+        n = 65535U - (offset - 1);    /* avoid arithmetic problems */
+        d = to; s = from;	      /* copy up to end of segment */
+        for (k = 0; k < n; k++) *d++ = *s++;
+        to += n; from += n; count -= n;
+    }
+    d = to; s = from; n = (unsigned int) count;	/* now do last piece */
+    for (k = 0; k < n; k++) *d++ = *s++;
+}
+

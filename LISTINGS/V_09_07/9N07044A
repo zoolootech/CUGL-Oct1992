@@ -1,0 +1,108 @@
+include	file;
+include	command;
+
+main:	entry	() =
+	{
+	fp:		stream;		// Input file
+	c:		int;
+	i:		int;
+	tabcolumn:	int;		// Column for tabs
+	lineno:		unsigned;	// Line # in file
+
+	if	(ArgumentCount != 1){
+		stderr printf("Use is: PR filename\n");
+		return;
+		}
+	Printer newFile(getNextArgument());
+	i = fp open(Printer.filename, AR_READ);
+	if	(i != 0){
+		stderr printf("Couldn't open %s\n", 
+					Printer.filename);
+		return;
+		}
+	Printer header();
+	lineno = 1;
+	while	((c = fp getc()) != EOF){
+		printf("%5d ", lineno);
+		lineno++;
+		tabcolumn = 0;
+		while	(c != '\n' &&
+			 c != '\f' &&
+			 c != EOF){
+			if	(c == '\t'){
+				i = padAmount(tabcolumn);
+				tabcolumn += i;
+				while	(i){
+					stdout putc(' ');
+					i--;
+					}
+				}
+			else	{
+				stdout putc(c);
+				tabcolumn++;
+				}
+			c = fp getc();
+			}
+		if	(c == '\f')
+			Printer.lineCount = 1000;
+						/* Force an
+						   end of
+						   page */
+		Printer endofline();
+		}
+	stdout putc('\f');			/* Finish
+						   the last
+						   page */
+	fp close();
+	}
+
+padAmount:	(tabcolumn: int) int =
+	{
+	i:	int;
+
+	i = (tabcolumn + 8) & 7;	/* compute the
+					   column within
+					   the tab */
+	return 8 - i;			/* spaces to pad */
+	}
+
+Printer:	{
+
+private:
+
+pageCount:	int;			/* The current page
+					   number */
+
+public:
+
+lineCount:	int;			/* The current
+					   number of lines
+					   printed
+					   on a page */
+filename:	* char;			// Input file name
+
+newFile:	(f: * char) =
+	{
+	filename = f;
+	pageCount = 1;
+	}
+
+endofline:	() =
+	{
+	lineCount++;
+	if	(lineCount < 60)	// 60 lines per page
+		stdout putc('\n');
+	else	{
+		stdout putc('\f');
+		header();
+		}
+	}
+
+header:	() =
+	{
+	printf("%-16s  page %d\n\n\n", filename, 
+					pageCount++);
+	lineCount = 3;
+	}
+
+};

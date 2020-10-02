@@ -1,0 +1,13 @@
+#  makefile for sample OS/2 device driver
+
+midic.sys: mididrv.obj midic.obj
+        link /nod /noi /map mididrv+midic,midic.sys,midic,doscalls+slibce,midic.def ;
+
+
+mididrv.obj: mididrv.asm
+        masm -Mx -t -N -l mididrv.asm;
+
+midic.obj: midic.c midic.h
+        cl -c -Asnw -Gs -G2 -Zl -Zp -Ox -Fc midic.c
+
+

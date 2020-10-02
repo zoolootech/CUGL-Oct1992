@@ -1,0 +1,74 @@
+
+#include <stdio.h>
+
+#define POLY 0x8408
+#define START_CRC 0xffff
+
+unsigned short crc16(data_p, length, start_crc)
+char *data_p;
+unsigned short length;
+unsigned int start_crc;
+{
+        unsigned char i;
+        unsigned int data;
+        unsigned short crc;
+
+        crc = start_crc;
+
+        if (length == 0)
+                return(~crc);
+
+        do
+                {
+                for (i = 0, data = (unsigned int)0xff & *data_p++;
+                          i<8;
+                          i++, data >>= 1)
+                         {
+                         if (( crc & 0x0001) ^ (data & 0x0001))
+                                crc = (crc >>1) ^ POLY;
+                         else
+                                crc >>= i;
+                         }
+                } while (--length);
+
+        data = crc;
+        crc = (crc << 8)  |  (data >> 8 & 0xFF);
+        return(crc);
+}
+
+main (argc, argv)
+int argc;
+char *argv[];
+
+{
+        unsigned char string[40];
+        unsigned short crc;
+        int len;
+
+        string[0] =  'T';
+
+
+        crc = crc16(string,1,START_CRC);
+
+        printf(" The crc of 'T' is 0x%X.\n",crc);
+
+        string[1] = (crc >> 8) & 0xFF;
+        string[2] = crc & 0xFF;
+
+        crc = crc16(string,3,START_CRC);
+
+        printf("The crc of 'T' and its CRC is 0x%X\n",crc);
+
+        strcpy(string,"THE,QUICK,BROWN,FOX,0123456789");
+        len = strlen(string);
+
+        crc = crc16(string,len,START_CRC);
+
+printf("The crc of '%s' is 0x%X\n",string,crc);
+
+string[len++] = (crc >> 8) & 0xFF;
+string[len++] = crc & 0xFF;
+
+crc = crc16(string,len,START_CRC);
+printf("The crc of '%.*s' and its CRC is 0x%X\n",len-2,string,crc);
+}

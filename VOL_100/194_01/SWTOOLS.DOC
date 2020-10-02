@@ -1,0 +1,169 @@
+[SWTOOLS.DOC of JUGPDS Vol.17]
+
+                         Software Tools in BDS C
+
+                              June 2, 1985
+
+                   Hakuou KATAYOSE (JUG-CP/M No.179)
+                    49-114 Kawauchi-Sanjuunin-machi, 
+                       Sendai, Miyagi 980, Japan
+                           Phone: 0222-61-3219
+  
+
+1. Introduction
+     Here  is  yet  another  version  of  Software  Tools  (Kernighan & 
+Plauger) in C (mostly in BDS C).  The original source programs in Ratfor 
+have been translated into C. Also included are some utilities to compile 
+and to demonstrate the application of the tools.
+
+2.  Programs from Software Tools
+    I have implemented almost every program in  Software Tools except
+for those in Chapter 6 "EDITING" and  Chapter 9 "A RATFOR-FORTRAN 
+TRANSLATOR".
+
+------------------------------------------------------------------------
+Program Name           Description (Page of the original K&P book)
+------------------------------------------------------------------------
+COUNT              (charcount +  linecount + wordcount) (p12,13,15)
+DETAB/ENTAB        Handling of TAB (p20,37)
+OVERSTRIK          Overstrike of a line (p40)
+COMPRESS/EXPAND    Compression and expansion of a text (p44,48)
+CRYPT0,CRYPT1      Encrypt of a text file. Note that a encrypt file may
+		   contain EOF marks; 0X01A(control-Z).  CRYPT1 is to
+		   handle a binary file, it lacks the pipe and I/O
+		   redirection facilities of CRYPT0. I would recommend
+		   CRYPT1 as the more reliable. 
+TRANSLIT           Character transliteration (p56)  
+COMPARE            Comparison of two files (p70,73)
+CONCAT0,COMCAT1    Concatenation of text files (p78)
+ARCHIVE            File archiver (p88)		
+MSORT,SORT         Sorting of a text file. MSORT can handle up to about
+		   2000 lines or 30k bytes. SORT is for sorting with
+		   merge.
+UNIQUE             Stripping adjacent duplicate lines (p125)   
+KWIC/UNROT         Keyword in context index (p128,131)
+FRQNCY		   Word frequency list for a document file (p126) 
+FIND/CHANGE	   Find (grep) and change patterns in text (p139,156)
+FORMAT		   Text formatter (p234)
+MACRO		   Expand macros with arguments (p270)
+------------------------------------------------------------------------
+
+     To compile and link the source programs described  above, you will
+need  to include some header files (DEF.H, STDIO.H) and the  function 
+libraries DEFF3.CRL and PAT.CRL.  [The source for all four is included
+in JUGPDS Vol.17]
+
+
+3. Some Notes on Translating Software Tools from Ratfor to C
+     Since  Ratfor  is  a  preprocessor for  Fortran,   the  parameters 
+(arguments) for FUNCTIONs and SUBROUTINEs  are referenced by address -- 
+pointers in the C language.  You cannot pass arguments by value unless
+you make appropriate changes to the C functions.
+
+     The  next  point to watch is the difference of arrays.  Fortran 
+arrays start with element 1; C start at 0.  If you declare A(50), you 
+have the Ratfor array A(1)-A(50),  but A[0]-A[4] in C.  This difference
+is important when you specify  the limits for a loop counter.  
+Fortran-77  gives  greater  compatibility  because it allows  you  to 
+declare A(0:49).
+     Also note that the elements of multi-dimensional arrays are stored
+in different orders -- by column in Fortran, by row in C.
+
+		Fortran ... A(1,1),A(2,1),A(3,1),...
+		C       ... A[0][0],A[0][1],A[0][2],...
+
+So you have to exchange column and row for a two-dimensional array, if 
+you want to use C pointers.
+
+4. How to Use @D
+     This  program is an application of FRQNCY.C.  The general form  to 
+evoke the program is:
+
+	@D {u/} {d:} {file}{.ext}
+
+where u/: user no., ? means all user numbers,
+      d:  Disk drive name (A-P)
+
+     The simplest form  '@D',  is  almost the same as DIR command -- 4
+filenames per row -- except that it also gives user number and filesize.
+Like DIR, it recognizes the CP/M wild card ('* and '?') for file and 
+extension names.  The filenames are sorted into alphabetical order.
+
+     The  command  '@D ?/' lists all files for all  users.   @D  does 
+not mask the filename bits.  If a file has been marked SYS or $R/O, the 
+first  character of file extension will appeared in Kana [provided your
+CRT hardware or BIOS does not automatically mask the highest bit.  M.H.]
+
+5. How to Use DOCTOR
+     Compile and link DOCTOR.C with the following commands:
+		CC DOCTOR
+		L2 DOCTOR DISPLAY
+
+[This has been done. 
+*** WARNING:  This tool writes directly to the disk.  Practice with a
+    garbage disk first! *** Y.M.]
+
+     DOCTOR.COM signs on with the following prompt: 
+		Disk:=
+Enter the letter for the drive you want to edit.  DOCTOR will  then 
+display the first part of  logical sector 0,  the disk directory on
+the CRT.
+
+Commands:
+[D]	Dd	specify Drive d (d is A-P)
+[T]	T#	move to Track # (#is a decimal number)
+[S]	S#	move to Sector #
+[B]	B#	move to Block #
+[E]	E	Exit from DOCTOR
+[C]	C	fill current sector with 00H
+[I]	I	fill current sector with E5H
+[L]	L	exchange of Logical and Physical sector
+[+] or [;]	increment sector # (either '+' or ';' is OK)
+[-] or [=]	decrement sector #
+[>] or [.]	increment track #
+[<] or [,]	decrement track #
+[[] or [{]	increment block #
+[]] or [}]	decrement Block #
+[A] or [H]	edit sector using ANK [A] or HEX [H]
+
+     		A edit command moves the cursor to the home position 
+		of the sector display.  You can either move the cursor
+		-- with the WordStar cursor controls shown below --
+		or modify the byte under the cursor by entering the 
+		new value.
+
+		           ^W
+			    I	
+                      ^S -- ¥ -- ^D
+			    I
+	                   ^X
+
+[ESC]		End edit. [ESC] [X] aborts the edit without saving the 
+		changes to disk.  
+[Q]		Quick. As currently define (16 +-signs), this command
+		increments the sector number 16 times.
+
+------------------------------------------------------------------------
+NOTES 
+     The [ESC] and cursor movement keys can be redefined in the source 
+program.  The  cursor addressing sequences must also be customized for
+your terminal.
+
+[ Disk Editors comments:
+  The submitted disk contained only the source code.  I have prepared 
+and tested the .COM files with Kohjinsha's Micro Decision and BDC C 
+Ver 1.50a.  The one's for SORT.C and MACRO.C don't seem to work 
+properly.  I am not sure whether this is due to bugs in the source or
+the compiler. (The contributor used BDS C Ver 1.50.)  Please let us 
+know if you locate the source of the problem.
+  No attempt has been made to optimize the objective code for either
+speed or size.  I have also abbreviated some of the .COM filenames
+to save typing and to simulate UNIX-like environment. 
+
+COMPRESS ---> CMPRS, EXPAND ---> EXPND, TRANSLIT ---> TR,
+COMPARE ---> CMP, CONCAT0 ---> CAT0, CONCAT1 ---> CAT1, MACRO ---> M4.
+
+     Maynard Hogg (JUG-CP/M No.99) volunteered to improve this documen-
+tation.  Thank you Maynard.  Y.M.]
+
+

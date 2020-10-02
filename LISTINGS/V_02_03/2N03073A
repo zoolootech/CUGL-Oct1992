@@ -1,0 +1,85 @@
+/*
+Pop.C   This program, when used with Push.C, provides a
+        mechanism by  which the current working disk and
+        path may be saved in a memory stack and restored
+        later.
+
+Warning: This software uses undocumented features of MS-DOS
+
+        Copyright Michael Klos 1990, All rights reserved.
+        Compiles with Microsoft Quick C, Large or Huge Model
+*/
+
+#ifdef Debug
+#include <stdio.h>         /*  For debug only  */
+#endif
+
+#include <stdlib.h>
+#include <direct.h>
+#include <dos.h>
+#include "Push_Pop.h"
+
+void    main(void)
+{
+word    path_buffer;
+byte    owner[2];
+word    drives;
+
+    /*  Allocate a memory block so that pop has a point in
+        the chain to the top of memory to begin searching
+        for the saved path.     */
+
+    if (_dos_allocmem(1, &path_buffer))
+    exit(1);
+
+    /*  Point back to the memory control block (MCB)
+        for the block just allocated.   */
+
+    path_buffer -= 1;
+    FP_OFF(mem)  = 0;
+    FP_SEG(mem)  = path_buffer;
+
+    /*  Save the current process owner number.  This is
+        used later to  release the memory block containing
+        the saved path; if it is found. */
+
+    owner[0] = mem->block[1];
+    owner[1] = mem->block[2];
+
+            /*  Do until the end of the memory
+                control block chain is found.        */
+    for (;mem->block[0] == chain_of_MCB;)
+    {
+
+    /*  Point to the next memory control block by
+        adding the size of the current memory control
+        block to our current segment and adding 1 for
+        the memory control block header.             */
+
+     path_buffer += (mem->block[4] << 8) + mem->block[3] + 1;
+     FP_SEG(mem) = path_buffer;
+
+       /*  Check the memory control block owner with our
+           signature, if they match then pop the path...*/
+
+     if (mem->block[2] == high(Signature) &
+             mem->block[1] == low(Signature))
+     {
+      /*  Make this process the owner of the block so that
+          MS-DOS releases it when this process terminates. */
+
+       mem->block[1] = owner[0];
+       mem->block[2] = owner[1];
+
+#ifdef Debug
+       printf("Saved directory is:%s", &mem->block[16]);
+#endif
+                    /*  Set the default disk drive.  */
+       _dos_setdrive(mem->block[16]-0x40,&drives);
+
+                  /*  Set the default path and exit */
+       exit(chdir(&mem->block[16]) ? 1 : 0);
+     }
+    }
+    exit(1);       /*  No saved path was found         */
+}

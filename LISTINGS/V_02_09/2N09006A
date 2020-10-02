@@ -1,0 +1,161 @@
+
+/* test from to show use of MultiLine Edit Controls using */
+/* RETURN and TAB  */
+#include "windows.h"
+#include "mledit.h"
+
+HANDLE hInst=NULL;
+HWND hDlgModeless=NULL;
+
+/* functions */
+BOOL InitApplication(HANDLE hInstance);
+BOOL InitInstance(HANDLE hInstance, int nCmdShow);
+long FAR PASCAL MainWndProc( HWND hWnd, unsigned message, WORD wParam, LONG lParam);
+BOOL FAR PASCAL TestDlg ( HWND hDlg, unsigned message, WORD wParam, LONG lParam);
+BOOL InitMLE(HWND hDialogWnd, int EditId);
+long FAR PASCAL EditWndProc(HWND hWnd, unsigned message, WORD wParam, LONG lParam);
+/* test code to demonstrate the Multiline edit control code */
+int PASCAL WinMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
+HANDLE hInstance;                            /* current instance             */
+HANDLE hPrevInstance;                        /* previous instance            */
+LPSTR lpCmdLine;                             /* command line                 */
+int nCmdShow;                                /* show-window type (open/icon) */
+{
+    MSG msg;                                 /* message                      */
+
+
+    if (!hPrevInstance)                  /* Other instances of app running? */
+    {
+                if (!InitApplication(hInstance)) /* Initialize shared things */
+                    return (FALSE);              /* Exits if unable to initialize     */
+        }
+    /* Perform initializations that apply to a specific instance */
+
+    if (!InitInstance(hInstance, nCmdShow))
+        return (FALSE);
+
+    /* Acquire and dispatch messages until a WM_QUIT message is received. */
+
+    while (GetMessage(&msg,        /* message structure                      */
+            NULL,                  /* handle of window receiving the message */
+            NULL,                  /* lowest message to examine              */
+            NULL))                 /* highest message to examine             */
+        {
+                if (!hDlgModeless || !IsDialogMessage(hDlgModeless, &msg))
+                {
+                        TranslateMessage(&msg);    /* Translates virtual key codes           */
+                        DispatchMessage(&msg);     /* Dispatches message to window           */
+                }
+    }
+
+    return (msg.wParam);           /* Returns the value from PostQuitMessage */
+}
+
+BOOL InitApplication(hInstance)
+HANDLE hInstance;                              /* current instance           */
+{
+    WNDCLASS  wc;
+
+    /* Fill in window class structure with parameters that describe the       */
+    /* main window.                                                           */
+
+    wc.style = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;                    /* Class style(s).                    */
+    wc.lpfnWndProc = MainWndProc;       /* Function to retrieve messages for  */
+                                        /* windows of this class.             */
+    wc.cbClsExtra = 0;                  /* No per-class extra data.           */
+    wc.cbWndExtra = 0;                  /* No per-window extra data.          */
+    wc.hInstance = hInstance;           /* Application that owns the class.   */
+    wc.hIcon = NULL;
+    wc.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = GetStockObject(WHITE_BRUSH); 
+    wc.lpszMenuName =  NULL;   /* Name of menu resource in .RC file. */
+    wc.lpszClassName = "AppClass"; /* Name used in call to CreateWindow. */
+        if (!RegisterClass(&wc))
+                return(FALSE);
+        return(TRUE);
+}
+
+
+BOOL InitInstance(hInstance, nCmdShow)
+    HANDLE          hInstance;          /* Current instance identifier.       */
+    int             nCmdShow;           /* Param for first ShowWindow() call. */
+{
+        HWND hMainWnd;
+
+    /* Save the instance handle in static variable, which will be used in  */
+    /* many subsequence calls from this application to Windows.            */
+
+    hInst = hInstance;
+        
+        hMainWnd = CreateWindow(
+            "AppClass",                /* See RegisterClass() call.          */
+                "Test",                                         /* Text for window title bar.         */
+                WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,            /* Window style.                      */
+                        CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+            NULL,                           /* Overlapped windows have no parent. */
+            NULL,                           /* Use the window class menu.         */
+            hInstance,                      /* This instance owns this window.    */
+            NULL                            /* Pointer not needed.                */
+        );
+
+    /* If window could not be created, return "failure" */
+
+    if (!hMainWnd)
+        return (FALSE);
+
+    /* Make the window visible; update its client area; and return "success" */
+
+    ShowWindow(hMainWnd, nCmdShow);  /* Show the window                        */
+    UpdateWindow(hMainWnd);          /* Sends WM_PAINT message                 */
+
+/* make another modeless dialog box to show the Multiline edit control in */
+        hDlgModeless = CreateDialog(hInst, "MLEditBox", hMainWnd, MakeProcInstance(TestDlg, hInst));
+
+    return (TRUE);
+
+}
+
+/* main wnd proc - does nothing at all!!! except process WM_DESTROY */
+long FAR PASCAL MainWndProc( HWND hWnd, unsigned message, WORD wParam, LONG lParam)
+{
+        switch(message)
+        {
+                case WM_DESTROY:
+                        PostQuitMessage(0);
+                        return(0);
+                        break;
+        }
+        return DefWindowProc ( hWnd, message, wParam, lParam);
+}
+
+/* dialog box WndProc - only sets up the ML Edit */
+BOOL FAR PASCAL TestDlg ( HWND hDlg, unsigned message, WORD wParam, LONG lParam)
+{
+        switch(message)
+        {
+                case WM_INITDIALOG:
+        /* call InitMLE for each Multiline edit control within your dialog box */
+                        InitMLE(hDlg, IDC_MLEDIT);      /* setup the edit control */
+                                /* set focus to it */
+                        SetFocus(GetDlgItem(hDlg, IDC_MLEDIT));
+                        return(FALSE);  /* cause we set focus */
+                        break;
+                
+                case WM_COMMAND:
+                        switch(wParam)
+                        {
+                                case IDOK:
+                                        PostMessage(GetParent(hDlg), WM_CLOSE, 0, 0L);  /* and therefore for parent */
+                                        DestroyWindow(hDlg);    /* done for dialog box */
+                                        hDlgModeless = NULL;
+                                        return(TRUE);
+                                        break;
+
+                                default:
+                                        return(FALSE);
+                        }
+        }
+
+        return(FALSE);          /* no message processed */
+}
+

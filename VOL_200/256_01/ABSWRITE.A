@@ -1,0 +1,56 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     ABSWRITE.A
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which uses
+;	-------         the carry flag being set on return from the 
+;	                function if an error has occurred.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int ABSWRITE(drv, DTA, sectors, first_sector, &_carryf)
+;	-----           char drv, *DTA;
+;	                int sectors, first_sector;
+;	                char *_carryf;
+;
+;	NOTES:          The drive number must be of the form A = 0, B = 1.....
+;	-----           and the Disk Transfer Address (DTA) is a buffer of
+;	                sufficient size to hold the No of sectors written.
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC ABSWRITE_
+
+ABSWRITE_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	al,byte [bp+4]	; get the drive code
+	mov	bx,[bp+6]	; get the DTA address
+	mov	cx,[bp+8]	; No. of sectors to read
+	mov	dx,[bp+10]	; the starting sector No.
+	int	26h
+	jc	ABSWRITE_ERROR
+	jmp	ABSWRITE_QUIT
+ABSWRITE_ERROR:
+	mov	si,[bp+12]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+ABSWRITE_QUIT:
+	popf		; necessary because the call pushes the flags
+	    		; when it is first called
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

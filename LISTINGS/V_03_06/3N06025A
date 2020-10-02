@@ -1,0 +1,80 @@
+/******************************************************************
+ Inter.c    Intercepting dll functions demonstration.
+	    (c) Timothy Adams  1992
+ Windows    SDK V. 3.0 and 3.1
+ Microsoft  C	V. v6.0
+ Windows	V. 3.0 and 3.1
+
+******************************************************************/
+#define _WINDOWS
+#include <windows.h>
+
+VOID FAR PASCAL Patch(HWND hWndList);
+VOID FAR PASCAL UnPatch(VOID);
+int PASCAL WinMain(HANDLE, HANDLE, LPSTR, int);
+BOOL FAR PASCAL InterDlgProc(HWND hDlg,WORD message,WORD wParam,LONG lParam);
+
+/*Intercept Dlg Box Defines*/
+#define IDD_INTER      100
+#define IDL_INTER      101
+
+HANDLE	hInst;
+HWND	hWndInter;
+
+int PASCAL WinMain(hInstance, hPrevInstance, lpCmdLine, nCmdShow)
+HANDLE	 hInstance;
+HANDLE	 hPrevInstance;
+LPSTR	 lpCmdLine;
+int	 nCmdShow;
+{
+ FARPROC  lpfnInter;
+ MSG  msg;
+
+ hInst=hInstance;
+ if (hPrevInstance)
+     return 0;
+ lpfnInter=MakeProcInstance(InterDlgProc,hInst);   /*Open the Dialog Box*/
+ hWndInter=CreateDialog(hInst,MAKEINTRESOURCE(IDD_INTER),NULL,lpfnInter);
+
+ Patch(GetDlgItem(hWndInter,IDL_INTER));	/*Patch WinExec Function*/
+ while (GetMessage(&msg,NULL,NULL, NULL))
+      {
+      if (IsDialogMessage(hWndInter,&msg))
+	  continue;
+      TranslateMessage(&msg);
+      DispatchMessage(&msg);
+      }
+ FreeProcInstance(lpfnInter);
+ UnPatch();	     /*UnPatch WinExec Function*/
+ return (msg.wParam);
+}
+
+
+BOOL FAR PASCAL InterDlgProc(HWND hDlg,WORD message,WORD wParam,LONG lParam)
+{
+ int nWidth,nHeight;
+ RECT rc;
+
+ switch (message)
+     {
+     case WM_INITDIALOG:
+	 /*Center Window*/
+	 nWidth=GetSystemMetrics(SM_CXSCREEN);
+	 nHeight=GetSystemMetrics(SM_CYSCREEN);
+	 GetClientRect(hDlg,&rc);
+	 SetWindowPos (hDlg,NULL,
+		       nWidth/2-rc.right/2,
+		       nHeight/2-rc.bottom/2,
+		       0,0,SWP_NOSIZE);
+	 return TRUE;
+     case WM_COMMAND:
+	 switch (wParam)
+	     {
+	     case IDCANCEL:
+		 DestroyWindow(hDlg);
+		 PostQuitMessage(0);
+		 return TRUE;
+	     }
+    }
+  return FALSE;
+}

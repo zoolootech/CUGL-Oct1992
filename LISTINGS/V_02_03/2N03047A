@@ -1,0 +1,532 @@
+
+;-------------------------------------------------------------------
+; BEZ.ASM -- Logic to quickly compute the points along a bezier curve.
+;
+;      Assembly :  TASM BEZ;
+;
+;      Should be linked with Turbo-C V2.0 small memory model.
+;
+; Author : Bob Zigon
+; Date   : July 23, 1989
+;-------------------------------------------------------------------
+
+;
+; NOTE : This code is assembled with the .287 directive to avoid the 
+;        generation of the unnecessary FWAITS on an AT or '386 class 
+;        machine. If this code is to be executed on an 8087, the
+;       .287 directive must be commented out.
+;
+        .287
+
+        dosseg
+        .model small
+
+;-------------------------------------------------------------------
+;                          EQUATES
+;-------------------------------------------------------------------
+MaxControl   equ 10               ; Max number of control points
+MaxDivisions equ 151              ; Max number of divisions for t
+
+;-------------------------------------------------------------------
+;                        VARIABLE DECLARATIONS
+;-------------------------------------------------------------------
+        .data
+        extrn _XvpMin:word,_XvpMax:word,_YvpMin:word,_YvpMax:word
+        extrn _XCpMin:qword,_XCpMax:qword,_YCpMin:qword,_YCpMax:qword
+        extrn _XCpScr:word,_YCpScr:word,_XCp:qword,_YCp:qword
+        extrn _XCurve:qword,_YCurve:qword
+
+K1        dq ?                      ; Coefficient for transforming X
+Q1        dq ?
+K2        dq ?                      ; Coefficient for transforming Y
+Q2        dq ?
+
+T         dq MaxControl dup (?)
+BCoef     dq MaxControl dup (?)     ; Double Prec array of Binomial Coefficients
+OneMinusT dq MaxControl dup (?)
+NumTerms  dw ?                      ; Number of terms in the summations
+
+        .code
+        public _Binomial, _BezierToScreen, _WToVConst
+        public XformWXtoScr, XformWYtoScr
+
+; -------------------------------------------------------------------
+; Binomial  -- This routine precomputes the table of binomial coefficients
+;              for a given number of control points.
+;
+;    The table of N coefficients is computed according to the
+; following recursive formula :
+;
+;         N       N-1       N-1
+;        C   =  C      +  C
+;         i       i         i-1
+; 
+; C Prototype :
+;
+;        void Binomial(short int NumControl)
+;
+; Input    : 4[BP] -- Number of control points > 1
+; Output   : The BCoef array is filled with the coefficients.
+; -------------------------------------------------------------------
+NumControl  equ  4[bp]
+
+_Binomial proc near
+      push bp
+      mov bp,sp
+      push si
+      push di                     ; Save in case Register Variables = ON
+
+      mov ax,NumControl
+      mov NumTerms,ax
+;
+; Begin by initializing the BCoef array to
+;
+;   1.0   0  0  0 .... 0
+;         <--- N-1 ---->
+;
+      fld1
+      fstp qword ptr BCoef        ; Store the 1.0
+      fwait
+      lea di,BCoef+8
+      mov cx,ax
+      dec cx
+      shl cx,1
+      shl cx,1
+      cld
+      xor ax,ax
+      push ds
+      pop es                      ; Init ES for the STOSW
+      rep stosw                   ; Now store lots of Zeros
+
+      mov ax,NumTerms
+      cmp ax,MaxControl           ; Number of control points > Number allocated?
+      jle Bi10
+         xor ax,ax
+         mov NumTerms,ax
+         jmp short Bi80
+;
+; Now begin the recursive generation of the BCoef array in situ.
+;
+; The equivalent C code is :
+;
+;    for (j = 1; j < NumTerms; j++)
+;    {
+;       Last = 0.0
+;       for (k = 0; k<=j; k++)
+;       {
+;          Temp     = BCoef[k]+Last
+;          Last     = BCoef[k]
+;          BCoef[k] = Temp
+;       }
+;    }
+;
+
+Bi10: mov ax,1                    ; AX is j
+Bi20: cmp ax,NumTerms
+      je Bi80
+         fldz                     ; Last is on the stack
+         xor bx,bx                ; BX is k
+         lea di,BCoef
+Bi30:    cmp bx,ax
+         ja Bi40
+            fld qword ptr [di]    ; Load BCoef[k]
+            fld st                ; Duplicate top of stack
+            fadd st,st(2)         ; Temp = BCoef[k]+Last
+            fxch                  ; Temp <-> BCoef[k]
+            fstp st(2)            ; Store BCoef[k] to Last and pop
+            fstp qword ptr [di]   ; Store Temp out to BCoef[k]
+            add di,8              ; Adv to next BCeof
+            inc bx
+            jmp Bi30
+Bi40:    fstp st                  ; Clean up the coprocessor stack
+         fwait
+         inc ax
+      jmp Bi20
+
+Bi80: pop di
+      pop si
+      mov sp,bp                   ; Pop of the local variables
+      pop bp                      ; Reset BP
+      ret
+_Binomial endp
+
+; -------------------------------------------------------------------
+; _BezierToScreen -- Compute the points along the Bezier curve and
+;                    transform them to screen coordinates.
+;
+; C Prototype :
+;
+;    void BezierToScreen(short int, short int, short int *, short int *)
+;
+; Input  :  4[BP] -- Number of divisions of the parameter
+;           6[BP] -- Number of Control Points
+;           8[bp] -- Ptr to X Screen Coordinates
+;          10[bp] -- Ptr to Y Screen Coordinates
+;
+; Output : The array of X and Y screen coordinates.
+; -------------------------------------------------------------------
+TDivisions   equ 4[bp]
+NP           equ 6[bp]
+XV           equ 8[bp]
+YV           equ 10[bp]
+
+_BezierToScreen proc near
+      local u:qword,du:qword
+      local XCurvePtr:word,YCurvePtr:word
+      local NumCurvePts:word=AutoSize
+      push bp
+      mov bp,sp
+      sub sp,AutoSize             ; Allocate some local variables
+      push si
+      push di                     ; Save in case Register Variables = ON
+
+      mov ax,NP
+      lea si,_XCp
+      lea di,_XCpScr
+      call XformWXtoScr           ; Convert XCp to screen coordinates
+
+      mov ax,NP
+      lea si,_YCp
+      lea di,_YCpScr
+      call XformWYtoScr           ; Convert YCp to screen coordinates
+;
+; Now, compute the coordinates of the curve.
+;
+      mov ax,word ptr TDivisions
+      inc ax
+      mov NumCurvePts,ax          ; Number of points on the curve
+
+      fld1
+      fidiv word ptr TDivisions
+      fstp du                     ; du = 1/TDivisions
+      fldz
+      fstp u                      ; u = 0.0
+      fwait
+      lea ax,_XCurve
+      mov XCurvePtr,ax
+      lea ax,_YCurve
+      mov YCurvePtr,ax
+
+;
+; Since the address of _XCp and _YCp doesn't change, why push them
+; on the stack every time you need to call Bezier. Push them
+; once here, and clean up on exit.
+;
+      lea ax,_YCp
+      push ax
+      lea ax,_XCp
+      push ax
+
+BS10: mov ax,NumCurvePts
+      or ax,ax                    ; EXIT when no more points to compute
+      jz BS20
+         mov ax, word ptr u+6
+         push ax
+         mov ax, word ptr u+4
+         push ax
+         mov ax, word ptr u+2
+         push ax
+         mov ax, word ptr u
+         push ax
+
+         call Bezier              ; Compute X(t) and Y(t)
+         add sp,2*4               ; Pop the t parameter
+
+         mov si,YCurvePtr
+         fstp qword ptr [si]      ; Save and pop Y(t)
+         add si,8
+         mov YCurvePtr,si
+
+         mov si,XCurvePtr
+         fstp qword ptr [si]      ; Save and pop X(t)
+         add si,8
+         mov XCurvePtr,si
+
+         fld u
+         fadd du
+         fstp u                   ; Increment u by du
+         fwait
+
+         dec NumCurvePts          ; 1 less point to consider
+      jmp short BS10
+
+
+BS20: add sp,2*2                  ; Pop address of _XCp and _YCp
+      mov ax,TDivisions
+      inc ax
+      lea si,_XCurve
+      mov di,XV
+      call XformWXtoScr           ; Convert X curve values to screen coordinates
+
+      mov ax,TDivisions
+      inc ax
+      lea si,_YCurve
+      mov di,YV
+      call XformWYtoScr           ; Convert Y curve values to screen coordinates
+
+      pop di
+      pop si
+      mov sp,bp                   ; Pop of the local variables
+      pop bp                      ; Reset BP
+      ret
+_BezierToScreen endp
+
+; -------------------------------------------------------------------
+; XformWXtoScr -- transform world X coordinates to X screen coordinates.
+;
+; Input  :  AX -- Number of points
+;           SI -- Ptr to Double Precision World X values
+;           DI -- Ptr to Word Screen X values
+;
+; Transform is :
+;
+;   X' = Q1 + K1*X
+;
+;   K1 = (XvpMax-XvpMin)/(XCpMax-XCpMin)
+;   Q1 = XvpMin - K1*XCpMin
+;
+; -------------------------------------------------------------------
+XformWXtoScr proc near
+      fld Q1
+      fld K1
+XFX10:
+      or ax,ax
+      jz XFX20                    ; Exit when AX = 0
+         fld st                   ; Dup the top of stack
+         fmul qword ptr [si]      ; X*K
+         add si,8
+         fadd st,st(2)            ; X*K+Q
+         fistp word ptr [di]      ; Store the Screen coordinate
+         add di,2
+         dec ax                   ; 1 less point to consider
+      jmp short XFX10
+
+XFX20:
+      fstp st
+      fstp st                     ; Clean up the stack
+      ret
+XformWXtoScr endp
+
+; -------------------------------------------------------------------
+; XformWYtoScr -- transform world Y coordinates to Y screen coordinates.
+;
+; Input  :  AX -- Number of points
+;           SI -- Ptr to Double Precision World Y values
+;           DI -- Ptr to Word Screen Y values
+;
+; Transform is :
+;
+;   Y' = Q2 - K2*Y
+;
+;   K2 = (YvpMax-YvpMin)/(YCpMax-YCpMin)
+;   Q2 = K2*YCpMax + YsMin
+;
+; Note : Since the screen values for Y start in the upper left hand
+;        corner instead of the lower left hand corner, this routine
+;        inverts the Y coordinate.
+; -------------------------------------------------------------------
+XformWYtoScr proc near
+      fld Q2
+      fld K2
+XFY10:
+      or ax,ax
+      jz XFY20                    ; Exit when AX = 0
+         fld st                   ; Dup the top of stack
+         fmul qword ptr [si]      ; Y*K
+         add si,8
+         fsubr st,st(2)           ; Q-Y*K
+         fistp word ptr [di]
+         add di,2
+         dec ax                   ; 1 less point to consider
+      jmp short XFY10
+
+XFY20:
+      fstp st
+      fstp st                     ; Clean up the stack
+      ret
+XformWYtoScr endp
+
+; -------------------------------------------------------------------
+; WToVConst -- Calculate the constants used to perform the window
+;              to viewport transformations in XformWXtoScr and
+;              XformWYtoScr.
+;
+; C Prototype :
+;
+;     void WToVConst(void);
+;
+; -------------------------------------------------------------------
+_WToVConst proc near
+     fild _XvpMax
+     fisub _XvpMin
+     fld _XCpMax
+     fsub _XCpMin
+     fdiv
+     fst K1                  ; K1 = (XvpMax-XvpMin)/(XCpMax-XCpMin)
+     fmul _XCpMin
+     fisubr _XvpMin
+     fstp Q1                 ; Q1 = XvpMin - K1*XCpMin
+
+     fild _YvpMax
+     fisub _YvpMin
+     fld _YCpMax
+     fsub _YCpMin
+     fdiv
+     fst K2                  ; K2 = (YvpMax-YvpMin)/(YCpMax-YCpMin)
+     fmul _YCpMax
+     fiadd _YvpMin
+     fstp Q2                 ; Q2 = K2*YcpMax + YvpMin
+     ret
+_WToVConst endp
+
+; -------------------------------------------------------------------
+; Bezier -- local subroutine used to compute the actual value of
+;              X(t) and Y(t).
+;
+; Input  :  4[BP] -- Double Precision value of t, the parameter
+;        : 12[BP] -- Ptr to X Control Points.
+;          14[bp] -- Ptr to Y Control Points.
+;
+; Output : ST(1) -- Double Precision X when the polynomial is
+;                      evaluated at t and the X Control Points.
+;          ST(0) -- Double Precision Y when the polynomial is
+;                      evaluated at t and the Y Control Points.
+; -------------------------------------------------------------------
+ParamT   equ qword ptr 4[bp]
+XCp      equ 12[bp]
+YCp      equ 14[bp]
+
+Bezier proc near
+      push bp
+      mov bp,sp
+
+      lea di,T
+      mov ax,NumTerms
+      mov bx,ax
+;
+; Compute the T array.
+;
+; 1   T   T**2   T**3   T**4    T**5 ....
+;
+      fld ParamT
+      fld1
+B10:     fst qword ptr [di]
+         dec ax
+         or ax,ax
+         jz B50                   ; EXIT when AX = 0
+         fmul st,st(1)
+         add di,8
+      jmp B10
+
+B50:  fstp st                     ; Clean up the stack
+      fstp st
+      lea di,OneMinusT
+;
+; Compute the OneMinusT array.
+;
+; 1   1-T   (1-T)**2   (1-T)**3   (1-T)**4    (1-T)**5 ....
+;
+      fld1
+      fld ParamT
+      fsub
+      fld1
+B60:     fst qword ptr [di]
+         dec bx
+         or bx,bx
+         jz B70                   ; EXIT when BX = 0
+         fmul st,st(1)
+         add di,8
+      jmp B60
+
+B70:  lea di,T
+      fst qword ptr [di]          ; Copy (1-T)**N to T**0
+      fstp st
+      fstp st
+;
+; Now multiply the T array by the OneMinusT array.
+;
+      add di,8
+      mov ax,NumTerms
+      sub ax,2
+      mov bl,8
+      mul bl
+      lea si,OneMinusT
+      add si,ax                   ; SI points to (1-T)**(N-1)
+
+      mov ax,NumTerms
+      sub ax,2
+
+B80:  or ax,ax
+      jz B90
+         fld qword ptr [si]      ; Get element from 1-T
+         fmul qword ptr [di]     ; Multiply by T**i
+         fstp qword ptr [di]     ; Save product back to T
+         sub si,8
+         add di,8
+         dec ax
+      jmp B80
+
+;
+; Now form the term by term product of the T array and the BCoef array.
+;
+B90:  lea si,T
+      lea di,BCoef
+      mov ax,NumTerms
+
+B100: or ax,ax
+      jz B120
+         fld qword ptr [si]       ; Get a T element
+         fmul qword ptr [di]      ; Multiply by a binomial coefficient
+         fstp qword ptr [si]
+         add si,8
+         add di,8
+         dec ax
+      jmp B100
+
+;
+; Now that the T array has the product of the T array, the OneMinusT array,
+;   and the Binomial coefficients, form the dot product of the T array
+;   with the XCp array to produce X(t).
+;
+B120: lea si,T
+      mov di,XCp
+      mov ax,NumTerms
+      fldz
+
+B200: or ax,ax
+      jz B210
+         fld qword ptr [si]       ; Load a term from T
+         fmul qword ptr [di]      ; Multiply by an XCp
+         faddp                    ; Accumulate in stack top
+         add si,8
+         add di,8
+         dec ax
+      jmp B200
+
+B210:
+;
+;   Now form the dot product of the T array with the YCp array to
+;   produce Y(t).
+;
+      lea si,T
+      mov di,YCp
+      mov ax,NumTerms
+      fldz
+
+B220: or ax,ax
+      jz B230
+         fld qword ptr [si]       ; Load a term from T
+         fmul qword ptr [di]      ; Multiply by an YCp
+         faddp                    ; Accumulate in stack top
+         add si,8
+         add di,8
+         dec ax
+      jmp B220
+
+B230:
+      mov sp,bp                   ; Pop of the local variables
+      pop bp                      ; Reset BP
+      ret
+Bezier endp
+       end
+

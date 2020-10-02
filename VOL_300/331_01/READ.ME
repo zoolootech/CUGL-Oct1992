@@ -1,0 +1,439 @@
+.ce
+                             The SE Editor
+
+.fi
+.rm 76
+
+This file announces the release of yet another of the derivatives of the 'e'
+editor.  The highlights of this version are:
+
+1) Utilizes up to 500 kb of RAM for text storage, while functioning with as
+little a 6kb of allocatable memory. 2) The efficiency of the virtual disc
+system has been doubled by adding a stale page directory.  The speed of disc
+reads has been improved. 3) An embedded runoff function will reformat
+internal text per dot commands. 4) A text push stack has been added for
+pushing and popping lines. 5) The undo capability has been extended to
+include redo. 6) The program supports free cursor movement. 7) Numerous
+enhancements to the command and display structure have been made, while
+retaining Wordstar [1] compatibility where feasible and reasonable.  Many of
+the enhancements are cosmetic, not affecting the command structure, but
+improving the visibility or convenience of use.
+
+The starting point for this system was the GED version, CUG 199.  The
+contributors to that version were G.  Nigel Gilbert, James W.  Haefner, and
+Mel Tearle.  Several small errors have been corrected.  The new version
+compiles under Microsoft 4.00.  This compiler allows selective use of far
+pointers, opening up the possibilities of the large memory model without its
+usual inefficiency.  Some effort has been made to otherwise maintain
+compatibility with the DeSmet starting point, but the thoroughness of the
+compatibility has not been tested.
+
+The architecture remains that of the earlier versions.  It is a good
+architecture, providing a solid foundation for further enhancements and
+additions.  Due to the ancestry of the program, the architecture is oriented
+to the needs of a slow remote terminal.  In the interest of portability,
+that design philosophy has been retained, even though some shortcuts could
+have been taken with the direct access to the video RAM in the PC's.  The
+shortcuts would compromise the portability of the program.
+
+There are preprocessor directives in the header file which can be changed to
+remove all occurrences of the near and far keywords, making the code
+compatible with compilers which do not support mixed memory models.  Most
+users will not find the capabilities of the program running under the small
+memory model overly restrictive.  The virtual memory system is effective in
+masking the shortcomings of a small RAM.
+
+A tidying up operation has been performed, including the addition of many
+comments.  The new code, now in its third compiler port, should be mostly
+vanilla.  An attempt has been made to further segregate those functions
+which are system dependent (IBM PC, MSDOS) to simplify rework for a port to
+a different system.  The strategy in porting the system to an entirely
+different environment is to replace the system interface routines
+altogether.
+
+The program is configured for editing a 2.4 megabyte english dictionary
+consisting of 10000 lines of 253 characters each.  The maximum file size
+will be less for 80-character lines.  The maximum number of lines in a file
+is 16383.
+
+The line limit may be less for small memory systems, but remains adequate
+for most work in any plausible system. 1000 line files can be edited with
+only 8 kb of allocatable RAM.  A line pointer array is kept in RAM, so all
+line jumps are instantaneous if the text is in RAM, or just the disc access
+time (without searching) if all the document won't fit in RAM.  The virtual
+memory system keeps the most recently used pages in RAM, as they are the
+most likely to be used or viewed again.  Global string searches have little
+effect on the established page priorities.  They normally search all pages
+and are given special consideration so that they do not upset the virtual
+memory priorities established by earlier editing and display functions.
+
+Earlier versions unconditionally wrote a page back to disc if the RAM slot
+was needed for another use.  This version does not do a disc write if the
+virtual memory page is unchanged since being rolled in from disc.  In a
+further refinement, the line pointer array and text pages are allocated
+beginning from opposite ends of memory, so that they do not collide until
+RAM is exhausted.  Collision was immediate in the earlier versions,
+resulting in unnecessary disc thrashing during the initial read.  If enough
+RAM is available the new version will not create a temporary disc file at
+all.
+
+Tree directories are supported.  An error in earlier versions which made
+filespecs of the form ..\filespec unusable has been corrected.  The
+temporary disc file normally goes in the default directory of the default
+drive.  The -D invocation option can be used to place the temporary file on
+any drive.  In browsing through the files on floppy discs from a hard disc
+system, nothing is written to the floppy disc unless directed there from the
+keyboard.  Archived files can be studied with little risk of accidental
+modification.
+
+The program updates the screen before the data base, making it seem faster
+than it is in some cases.  In the case of line deletions or insertions, all
+the line pointer array beyond the modified point is moved.  The processing
+delay is seen if a second key is entered during the move.  The delay becomes
+noticeable and objectionable at about 5000 lines on a 5 MHz PC.  The delay
+is not objectionable (and rarely seen) with 16000 line documents on an 80286
+or faster system.
+
+On a 5 MHz PC the primary file is read at the rate of 5200 characters per
+second from fixed disc; at 3000 characters per second from floppies.  The
+string search operation proceeds at 30,000 characters per second if the
+material is in RAM.  The search rate exceeds 200,000 characters per second
+on more recent systems.
+
+Learning to use any word processor effectively represents a significant
+investment in time.  For that reason I have tried to adopt or retain the
+Wordstar keyboard layout for the frequent and habitual keystrokes.  But in
+the more complex and less frequent functions, and when there is is ample
+visual prompting or feedback, significant deviations have been made.
+
+Some editing programs trap the cursor within the portion of the screen
+containing text for reasons which are surely without merit.  The package has
+been modified to allow free cursor movement.  The horizontal domain of the
+cursor lies between columns 1 and 255.  The ^D, right arrow, and ^] (end of
+line) cursor positioning commands will move the cursor past the right end of
+the line.  Doing so creates temporary spaces at the end of the line, but
+they are removed before the line is stored.  Editing is performed as though
+each line had spaces all the way to the right.  Free cursor movement is a
+great convenience in editing C code because the cursor will stay at a fixed
+indentation level when moved vertically.
+
+The -S option restores the earlier mode.  In this mode the cursor is trapped
+within those regions already containing text (or trailing spaces).  In this
+mode it is unnecessary to strip trailing blanks before lines are stored, and
+they are not.  That is what the mode used for.  But otherwise, the first
+time a file passes through SE without the -S option it may shrink in size
+without any editing activity.  The thing lost is trailing whitespace.
+
+The GED version had a full undo capability, but I quickly discovered that
+after undoing more than two lines I had always forgotten what I had changed
+and why.  The changes I saw occurring on the screen in time reversal didn't
+make any sense.  To overcome that problem I modified the undo algorithm to
+be reversible and with that there is redo.  The same algorithm and the same
+code is used for both.  The complete algorithm is surprisingly compact.  By
+moving back and forth along the edit trail it is usually possible to
+recognize the correct restoration point many lines back.  Undo is nice, but
+it is redo that makes it work.
+
+As each line is undone or redone it appears in reverse field on the screen.
+The cursor follows the undone and redone lines about the document.  So long
+as the undo capacity of the program is not exceeded (it runs 50 to 100
+lines, depending on the activity), the restored program is guaranteed to be
+identical with the original.  There are no restrictions on the complexity of
+the undo steps, and no restrictions on changing changed lines.
+
+When the undo mode is entered with ^- (ctrl-minus), the program
+automatically locks out all editing commands.  That is necessary because as
+soon as any change is made the redo capability from that point forward is
+lost.  When in the undo/redo mode, which is prompted, the + key (not
+ctrl-plus) becomes the redo key.  The lockout makes it safe to browse
+backward and forward on the edit trail.  The global search and replace
+operations can be undone.  The insertion of disc file with ^KR can also be
+undone.  All editing operations can be undone.
+
+Although the stack operations have some restrictions, they are nevertheless
+a useful and heavily used operation.  They provide an easy way of moving a
+line of code, of transposing lines, and of duplicating lines.  Pushing
+several lines then popping them elsewhere is a convenient way to move a
+small block.
+
+The text stack shares a data base with the undo function, so the undo and
+pop operations have some conflict.  Pops can be undone, but if the editing
+operation which did the push is undone then the associated pop will find the
+stack empty.  The ^O and ^P stack operations pop the lines pushed with ^Y.
+^O pops a copy of the line; ^P is the conventional pop.  The cursor must be
+in column 1 for a ^Y push to occur.  The stack will hold 100 lines.
+
+A few editing operations other than ^Y (such as line concatenation) affect
+the stack also and can result in unexpected items on the stack.  Don't do
+too much editing if items are to be popped from the stack.
+
+The ^J linejump command has several prompted options.  It will jump to the
+line last changed.  That is a good way to return to the point of editing
+after browsing elsewhere.  It is also at times a good way of jogging the
+memory, even to the extent of determining if anything at all has been
+changed.
+
+Up to three lines can be marked with the ^JS (set mark) option.  A
+subsequent ^JM (jump to mark) will return to that point.  If the cursor is
+already on a marked line, then a second ^JM moves it to the line marked
+before that one.  If a fourth line is marked then the oldest marked line
+becomes unmarked.  If the cursor is on the oldest marked line then it moves
+to the newest marked line.  A ^JJ will jump to the last jump.  The most
+common form is ^Jn, where n is a line number.  All jumps are instantaneous,
+regardless of the document size.  No searching is involved.  The marked
+lines are not modified; it is the line number which is stored.  The list of
+line numbers is automatically adjusted if lines are inserted or deleted
+before that point.
+
+The other means of maneuvering about a large document is with the string
+search.  With a 30,000 to 200,000+ character per second search rate the
+technique becomes more attractive than when using the slower commercial
+packages.  The F3 and F4 keys can be used to rock back and forth between two
+widely separated occurrences of a word, making intercomparison of the two
+areas easy.  Search keys are remembered until changed, regardless of other
+activities.  The Wordstar ^QF,^QA, and ^L commands have also been retained
+for compatibility.
+
+All search and search/replace operations wrap at beginning and end of file.
+In a forward search the first possible match begins at the character
+immediately to the right of the cursor.  The last possible match is at the
+initial cursor position, but only after the search as proceeded to the last
+line, restarted at the first line, and finally returning to the initial
+position.  Complementary rules apply to backward searches.
+
+For moving a few pages from the current line the easiest way is with the ^R
+and ^C keys, which are the same as the PgUp and PgDn dedicated keys.  With
+dense text the screen refresh time is 350 milliseconds on a 5 MHz PC.  This
+time is near the minimum achievable with the hardware.  The program avoids a
+complete screen rewrite whenever possible by using the faster scroll
+function.
+
+The most common use of the F6 "center window" command is when a few of the
+displayed lines extend offscreen to the right.  If the cursor is already
+near the right of the screen, and if the line ends are not too far offscreen
+to the right, it will move the window right just far enough to view the last
+portion of the lines.
+
+A -p option has been added to allow the importation of Wordstar document
+mode files.  This option is probably useful with word processors from some
+other manufacturers also.  The only function performed by the -p option is
+to zero the high order bit of each ASCII character in the primary file as it
+is read.  Some editing will be required after the conversion, but the input
+is at least legible.  SE does not create any hidden control characters for
+the disc output.  The only format control function is the dot commands,
+which are edited like any other text.
+
+SE will read and display something for any possible disc file format, even
+binary files.  The binary capability has no value, but the text in the files
+from any other word processor can at least be seen.  The read operation is
+terminated by an end of file character, however, and some packages do
+include binary or graphic data, which might contain an internal end of file
+byte.
+
+SE is capable of producing files with ASCII codes in the range 0x80 to 0xFF.
+These codes, which include the graphic symbols, are entered by holding down
+the Alt key and entering the 3-digit decimal code on the numeric keypad (The
+translation is performed by BIOS, and works for all programs).  A method is
+also provided of entering codes 0 through 0x1F, although the use of the
+control codes in text is not encouraged.
+
+Input files are automatically detabbed in this version.  The tab key is a
+cursor positioning command.  Its use does not alter the text.  Earlier
+versions of the program had the capability editing files with tabs, and of
+retaining the tabs.  The only advantage to that is that it saves disc space,
+while complicating the manual interaction.  A capability of entabbing the
+output file at the time it is written would be a useful enhancement, because
+it is a simple form of file compression for sparse data.
+
+A consideration in the command changes has been that there should be only
+one program mode.  The problem with multiple modes is that, assuming
+independence, there are 2^n states to remember.  I am convinced by
+experience that I cannot handle more than n=0.  The natural language editing
+is performed in the same mode as the editing of computer programs.
+
+Now it is true that the keyboard designers had in mind that the character
+replace mode should be the primary mode, so they provided an insert key for
+inserting characters.  That seems to make sense, but it really doesn't.  The
+prime mode is the insert mode, and the insert key is used to leave it.  Most
+will prefer it that way, but the rules are easily inverted if the other way
+is more familiar.
+
+An attempt has been made to structure the error messages and prompts so that
+a new user will eventually be led into the nooks and crannies of the
+features, while at the same time not cluttering up the screen with all the
+possibilities at the top level.  The F1 help key shows the basic commands.
+A different help display is shown in the paragraphing mode.
+
+The backspace key is a destructive backspace.  The left arrow and the ^S
+keys are for moving the cursor left.  The backspace key is for correcting
+typing mistakes.  The usage is not the same as that of Wordstar, but the
+destructive backspace is nearly a universal standard elsewhere.
+
+The method chosen for paragraph reforming is familiar yet unusual.  A runoff
+program has been embedded in the program.  Its functions are conventional
+except that it operates directly on the memory image and, unless otherwise
+requested, leaves the dot commands in.  Thus it is the master file which is
+reformatted, after which editing of it can resume.  This technique provides
+a flexibility and power not readily achievable by other means.  It also has
+the advantage of not embedding hidden control characters in the text.  Both
+the command and the effect of the command can be seen at the same time.
+
+The runoff function is used in more than one way.  First of all, if the
+master file is being reformed then the dot commands should be restricted to
+those which are reversible by automated means.  Those which are reversible
+are flagged in the help display for the ^QP reform function.  A function
+such as changing the right margin is reversible by simply changing the dot
+command argument back to its original value and reforming.  A function such
+as creating a header line with page number is not automatically reversible,
+because the command creates new lines which must be removed manually if they
+are not wanted.
+
+So if the objective is to actually produce a hard copy, the full set of dot
+commands are used and the result written to a temporary print file with the
+^KW command.  The F9 key is used to exit the program without changing the
+master file.  The same method is useful for seeing what the final will look
+like on paper, but without the need of actually making a hard copy.  The
+screen will become a direct image of the result.  The restricted set of dot
+commands reversibly tidy up the material for further editing.  They make the
+material easier to read, and easier to enter because the paragraphs can be
+ragged.  Dot command defaults are provided, so that simple paragraph
+reforming can be accomplished without the use of any dot commands.
+
+The program does not distinguish between document files and non-document
+files.  Document files will usually contain dot commands, but that is not
+required.  It also makes no difference whether the right end of a line is
+terminated by a carriage return or by some other cursor positioning command.
+The program does not use carriage returns or line feeds internally.  All
+strings are internally null terminated, and no memory is retained of the
+method of line termination.  If the line looks terminated on the screen then
+that is the way that it is.
+
+
+
+.ce
+                                Future work
+
+No spelling correction capability is bundled with the package, but that
+probably would not be a good idea anyway, as it would needlessly complicate
+the code maintenance problem.  See CUG 217 and 218 for spelling correction.
+Hyphenation is closely related to spelling correction, and is also not
+bundled with the editing function.
+
+It is not clear at this point that it would be a good idea to build the
+quirks of the individual printer manufacturers into a general purpose
+editing program.  For printers of the complexity of the laser printers a
+fully developed runoff program is a major program in its own right.  The
+same is true of phototypesetting.  The output of SE is nevertheless usable
+for these purposes with a suitably rich set of dot commands and a
+post-processor.  To that end, SE ignores dot commands that it does not
+recognize.  Thus with a capability of true proportional spacing the screen
+image would not be quite the same as the printer output, but it would
+nevertheless be close enough to prevent most command and editing blunders.
+
+Another feature which would be nice at some time in the future is a
+configuration disc file.  This file should be an ordinary text file so than
+an arcane configuration mode is not needed to change it.  It should contain
+all the invocation options and the keyboard translation table.  The
+possibility of finding any one keyboard layout to which everyone agrees is
+remote, so the file should contain a key translation table.
+
+There is a need for new natural language commands.  A means of pushing and
+popping whole sentences without regard for line boundaries would be useful,
+for example.  There are not many convenient and portable keys left for the
+natural language functions.  A mode change which is good for one command
+only is one possible way of extending the command structure.  A separate
+program mode would not be a good way, because computer programs contain
+natural language comments.  I have found on other systems that the escape
+commands with one or two letter command name are not so inconvenient as it
+might seem.  Remember that a control key counts as perhaps 1.5 keystrokes
+rather than 1.  That is to be compared to the 2 or 3 keystrokes for an
+escape command.  The visible feedback provided by the command line also
+gives it an advantage for functions where the visibility is relevant.  The
+same feedback would be distracting when it is not relevant.  The ALT and ESC
+keys are available for the natural language extensions.
+
+Another extension needed by the program is a true macro capability.  The
+stream editors from the Unix environment illustrate the power of the
+technique.  The utility of push stacks is well established as a method of
+implementing automatic procedures, suggesting that the text stack capability
+of the program be extended to include macros.  The first step would then be
+to expand the stack capability to include items of type word, type line, and
+type column.  The type word and type column items would displace
+horizontally when popped; the type line would displace vertically.  Any item
+which can be deleted as an entity is a candidate for a stack item.
+
+The next essential element is a cursor trapping capability when in the macro
+mode.  The popped item would appear in reverses field with the cursor
+somewhere within it.  The macro-driven cursor positioning commands, mostly
+in the form of generalized string searches, would be limited to that region.
+A macro step would fail when the string is not found, causing the alternate
+macro path to be taken.  Two stacks are probably needed, with a simple way
+of toggling between them.  Problems as complex as alphabetizing a list and
+conditional block replacement based on elaborate rules can be accomplished
+with this technique.
+
+In order that the macros be alterable in the same way as any text,
+equivalents of the control character commands would have to be provided in
+readable form so that the macro is composed of visible characters which can
+be edited without complication.
+
+
+
+
+.ce
+                              Getting started
+
+The file keys.doc contains the operating instructions.  The program compiles
+under the Microsoft 4.00 compiler.  The batch proceedures use a \obj
+subdirectory to avoid cluttering the main directory.  The build.bat
+procedure will reconstruct all the object files (not included).  The one
+assembly language file is included in both source and object form for those
+without an assmebler.  The link edited and executable result is in se.exe
+(included).  Edit a program with the minimum command line SE FILESPEC.
+
+The program has been used on systems ranging from a 5 Mhz PC clone to a 25
+MHz 80386.  It should run on most any system supporting DOS 2.0 or later.
+You will want to reconfigure the video parameters in ged.h for a color
+monitor, but the program is usable as-is on almost any system.  The timed
+delays are independent of CPU speed.  The program does make direct access to
+the video memory, but that usually does not cause compatibility problems.
+The 80386 may virtualize these direct accesses on the more advanced systems,
+but it still works.
+
+
+
+.nf
+The main files are:
+
+ged.h     header file
+se.c      top level
+edit.c    basic editing operations
+search.c  string search
+roff.c    paragraphing
+block.c   block operations
+ged1.c    disc directory, options
+hist.c    undo, push/pop
+paint.c   screen output
+ged10.c   disc library functions
+ged5.c    open and close files
+ged7.c    low level terminal i/o, help display
+store.c   store lines
+swap.c    virtual memory
+term.c    (terminal) low level screen and keyboard interface
+
+
+
+Gary Osborn
+Electro Chemical Devices, inc
+23665 Via Del Rio
+Yorba Linda CA 92686
+
+June 1990
+
+
+
+[1] WordStar is a trademark of Wordstar International, 33 San Pablo Ave, San
+Rafael, CA 94903.
+
+
+

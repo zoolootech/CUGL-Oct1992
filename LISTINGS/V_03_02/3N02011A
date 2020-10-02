@@ -1,0 +1,58 @@
+// challoc.c - implementation of "chunk" memory allocator.
+
+#include "challoc.h"
+#include <assert.h>
+#include <stddef.h>
+
+// Don't change without changing operator new
+// if/else statements as well!
+ChunkRoot   ChunkAllocated::Roots
+    [ChunkRoot::NUMBER_OF_BINS] =
+    {
+    2,      4,      8,      16,
+    32,     64,     128,    256,
+    512,    1024
+    };
+
+ChunkRoot::ChunkRoot(size_t ElementSize_)
+    : Root(NULL), FreeList(NULL),
+      ElementSize(ElementSize_),
+      ElementsPerChunk(CHUNK_SIZE/ElementSize_)
+    {
+    }
+
+// ~ChunkRoot - Free linked list of chunks
+ChunkRoot::~ChunkRoot()
+    {
+    ChunkRootLink     *Next, *Current = Root;
+    while(Current)
+        {
+        Next    = Current->Next;
+        free((void *)Current);
+        Current = Next;
+        }
+    }
+
+
+
+void    ChunkRoot::AddChunk()
+    {
+    size_t  Size = ElementSize * ElementsPerChunk
+            + offsetof(ChunkRootLink, LDAlign);
+    ChunkRootLink   *MallocResult = (ChunkRootLink *)
+                                malloc(Size);
+    assert(MallocResult != NULL);
+    MallocResult->Next    = Root;
+    Root            = MallocResult;
+
+    char    *BytePointer    = (char *)MallocResult->Chunk();
+    for(int i = 1; i < ElementsPerChunk; ++i)
+        {
+        ((ChunkAllocated *)BytePointer)->Next   =
+                    (ChunkAllocated*)(BytePointer+ElementSize);
+        BytePointer += ElementSize;
+        }
+    ((ChunkAllocated *)BytePointer)->Next   = FreeList;
+    FreeList    = (ChunkAllocated *)MallocResult->Chunk();
+    }
+

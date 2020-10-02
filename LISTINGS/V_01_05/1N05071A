@@ -1,0 +1,534 @@
+TITLE inttran.asm (C) 1989, Mark C. Peterson
+SUBTTL All rights reserved.
+;
+;  Code may be used in any program provided the
+;    author is credited either during program 
+;    execution or in the documentation.  Source
+;    code may be distributed only in combination 
+;    with public domain or shareware source code.
+;    Source code may be modified provided the
+;    copyright notice and this message is left 
+;    unchanged and all modifications are clearly 
+;    documented.
+;
+;    I would appreciate a copy of any work which 
+;    incorporates this code.
+;
+;    Mark C. Peterson
+;    253 West St., H
+;    Plantsville, CT 06579
+;    (203) 276-9474
+;
+;  References:
+;     The VNR Concise Encyclopedia of Mathematics
+;        by W. Gellert, H. Hustner, M. Hellwich, 
+;        and H. Kastner; Van Nostrand Reinhold Co.,
+;        1975.
+;
+;     80386/80286 Assembly Language Programming
+;        by William H. Murray, III and Chris H. 
+;        Pappas; Osborne McGraw-Hill, 1986.
+;        
+;
+;
+
+.model medium, c
+
+
+.data
+
+PUBLIC TrigLimit, TrigOverflow, Ln2Fg16
+
+PiFg13         dw       6487h
+InvPiFg33      dd       0a2f9836eh
+InvPiFg16      dw       517ch
+Ln2Fg16        dw       0b172h
+TrigOverflow   dw       0
+TrigLimit      dd       0
+one            dw       ?
+expSign        dw       ?
+a              dw       ?
+SinNeg         dw       ?
+CosNeg         dw       ?
+
+
+TaylorTerm  MACRO
+LOCAL Ratio
+   add   Factorial, one
+   jnc   SHORT Ratio
+
+   rcr   Factorial, 1
+   shr   Num, 1
+   shr   one, 1
+
+Ratio:
+   mul   Num
+   div   Factorial
+ENDM
+
+
+
+Term        equ      <ax>
+Num         equ      <bx>
+Factorial   equ      <cx>
+Sin         equ      <si>
+Cos         equ      <di>
+e           equ      <si>
+Inve        equ      <di>
+
+
+.code
+         
+SinCos086   PROC     uses si di, LoNum:WORD, HiNum:WORD, \
+                                SinAddr:WORD, CosAddr:WORD
+   mov   ax, LoNum 
+   mov   dx, HiNum
+   
+   xor   cx, cx
+   mov   SinNeg, cx
+   mov   CosNeg, cx
+   mov   a, cx
+   or    dx, dx
+   jns   AnglePositive
+   
+   not   ax
+   not   dx
+   add   ax, 1
+   adc   dx, cx
+   mov   SinNeg, 1
+      
+AnglePositive:
+   mov   si, ax
+   mov   di, dx
+   mul   WORD PTR InvPiFg33
+   mov   bx, dx
+   mov   ax, di
+   mul   WORD PTR InvPiFg33
+   add   bx, ax
+   adc   cx, dx
+   mov   ax, si
+   mul   WORD PTR InvPiFg33 + 2
+   add   bx, ax
+   adc   cx, dx
+   mov   ax, di
+   mul   WORD PTR InvPiFg33 + 2
+   add   ax, cx
+   adc   dx, 0
+
+   and   dx, 3
+   mov   a, dx
+
+   mov   Num, ax
+   mov   Factorial, WORD PTR InvPiFg33 + 2
+   mov   one, Factorial
+   mov   Cos, Factorial   ; Cos = 1
+   mov   Sin, Num         ; Sin = Num
+      
+LoopIntSinCos:
+   TaylorTerm          ; Term = Num * (x/2) * (x/3) * (x/4) * . . .
+   sub   Cos, Term     ; Cos = 1 - Num*(x/2) + (x**4)/4! - . . .
+   cmp   Term, WORD PTR TrigLimit
+   jbe   SHORT ExitIntSinCos
+
+   TaylorTerm
+   sub   Sin, Term     ; Sin = Num - Num*(x/2)*(x/3) + (x**5)/5! - . . .
+   cmp   Term, WORD PTR TrigLimit
+   jbe   SHORT ExitIntSinCos
+      
+   TaylorTerm
+   add   Cos, Term
+   cmp   Term, WORD PTR TrigLimit
+   jbe   SHORT ExitIntSinCos
+      
+   TaylorTerm          ; Term = Num * (x/2) * (x/3) * . . .
+   add   Sin, Term
+   cmp   Term, WORD PTR TrigLimit
+   jnbe  LoopIntSinCos
+      
+ExitIntSinCos:
+   xor   ax, ax
+   mov   cx, ax
+   cmp   Cos, WORD PTR InvPiFg33 + 2
+   jb    CosDivide     ; Cos < 1.0
+      
+   inc   cx            ; Cos == 1.0
+   jmp   StoreCos
+      
+CosDivide:
+   mov   dx, Cos
+   div   WORD PTR InvPiFg33 + 2
+      
+StoreCos:
+   mov   Cos, ax       ; cx:Cos
+
+   xor   ax, ax
+   mov   bx, ax
+   cmp   Sin, WORD PTR InvPiFg33 + 2
+   jb    SinDivide     ; Sin < 1.0
+   
+   inc   bx            ; Sin == 1.0
+   jmp   StoreSin
+      
+SinDivide:
+   mov   dx, Sin
+   div   WORD PTR InvPiFg33 + 2
+      
+StoreSin:
+   mov   Sin, ax       ; bx:Sin
+
+   test  a, 1
+   jz    ChkNegCos
+
+   xchg  cx, bx
+   xchg  Sin, Cos
+   mov   ax, SinNeg
+   xchg  ax, CosNeg
+   mov   CosNeg, ax
+
+ChkNegCos:
+   mov   ax, a
+   shr   al, 1
+   rcl   ah, 1
+   xor   ah, al
+   jz    ChkNegSin
+
+   xor   CosNeg, 1
+
+ChkNegSin:
+   test  a, 2
+   jz    CorrectQuad
+
+   xor   SinNeg, 1
+
+CorrectQuad:
+
+   cmp   CosNeg, 1
+   jne   CosPolarized
+
+   not   Cos
+   not   cx 
+   add   Cos, 1
+   adc   cx, 0
+
+CosPolarized:     
+   mov   dx, bx
+   mov   bx, CosAddr
+   mov   WORD PTR [bx], Cos
+   mov   WORD PTR [bx+2], cx
+
+   cmp   SinNeg, 1
+   jne   SinPolarized
+
+   not   Sin
+   not   dx
+   add   Sin, 1
+   adc   dx, 0
+
+SinPolarized:
+   mov   bx, SinAddr
+   mov   WORD PTR [bx], Sin
+   mov   WORD PTR [bx+2], dx
+   ret
+SinCos086      ENDP
+      
+      
+      
+_e2x   PROC
+   mov   expSign, 0
+   or    dx, dx
+   jns   CalcExp
+      
+   mov   expSign, 1
+   not   ax
+   not   dx
+   add   ax, 1
+   adc   dx, 0
+   
+CalcExp:
+   div   Ln2Fg16
+   mov   a, ax
+   mov   Num, dx       ; 0 <= Num < Ln(2)
+      
+   xor   Factorial, Factorial
+   stc
+   rcr   Factorial, 1
+   mov   one, Factorial
+   mov   e, Num
+   mov   Term, Num
+   shr   Num, 1
+      
+Loop_e2x:
+   TaylorTerm
+   add   e, Term       ; e = x + x*x/2 + (x**3)/3! + . . .
+   cmp   Term, WORD PTR TrigLimit
+   jnbe  SHORT Loop_e2x
+      
+ExitIntSinhCosh:
+   stc
+   rcr   e, 1          ; e = e + 1, fg 15
+   ret                 ; return e**x * (2**15), 1 < e**x < 2
+_e2x   ENDP
+      
+      
+      
+Exp086    PROC     uses si di, LoNum:WORD, HiNum:WORD
+   mov   ax, LoNum 
+   mov   dx, HiNum
+   
+   call  _e2x
+      
+   cmp   a, 16
+   jae   Overflow
+      
+   cmp   expSign, 0
+   jnz   NegNumber
+      
+   mov   ax, e
+   mov   dx, ax
+   inc   a
+   mov   cx, 16
+   sub   cx, a
+   shr   dx, cl
+   mov   cx, a
+   shl   ax, cl
+   jmp   ExitExp086
+      
+Overflow:
+   xor   ax, ax
+   xor   dx, dx
+   mov   TrigOverflow, 1
+   jmp   ExitExp086
+      
+NegNumber:
+   cmp   e, 8000h
+   jne   DivideE
+      
+   mov   ax, e
+   dec   a
+   jmp   ShiftE
+      
+DivideE:
+   xor   ax, ax
+   mov   dx, ax
+   stc
+   rcr   dx, 1
+   div   e
+      
+ShiftE:
+   xor   dx, dx
+   mov   cx, a
+   shr   ax, cl
+      
+ExitExp086:
+   ret
+Exp086    ENDP
+
+
+
+SinhCosh086    PROC     uses si di, LoNum:WORD, HiNum:WORD, \
+                                   SinhAddr:WORD, CoshAddr:WORD
+   mov   ax, LoNum
+   mov   dx, HiNum
+
+   call  _e2x
+
+   cmp   e, 8000h
+   jne   InvertE        ; e > 1
+
+   mov   dx, 1
+   xor   ax, ax
+   cmp   a, 0
+   jne   Shiftone
+
+   mov   e, ax
+   mov   cx, ax
+   jmp   ChkSinhSign
+
+Shiftone:
+   mov   cx, a
+   shl   dx, cl
+   dec   cx
+   shr   e, cl
+   shr   dx, 1
+   shr   e, 1
+   mov   cx, dx
+   sub   ax, e
+   sbb   dx, 0
+   xchg  ax, e
+   xchg  dx, cx
+   jmp   ChkSinhSign
+
+InvertE:
+   xor   ax, ax         ; calc 1/e
+   mov   dx, 8000h
+   div   e
+
+   mov   Inve, ax
+
+ShiftE:
+   mov   cx, a
+   shr   Inve, cl
+   inc   cl
+   mov   dx, e
+   shl   e, cl
+   neg   cl
+   add   cl, 16
+   shr   dx, cl
+   mov   cx, dx         ; cx:e == e**Exp
+
+   mov   ax, e          ; dx:e == e**Exp
+   add   ax, Inve
+   adc   dx, 0
+   shr   dx, 1
+   rcr   ax, 1          ; cosh(Num) = (e**Exp + 1/e**Exp) / 2
+
+   sub   e, Inve
+   sbb   cx, 0
+   sar   cx, 1
+   rcr   e, 1
+
+ChkSinhSign:
+   or    HiNum, 0
+   jns   StoreHyperbolics
+
+   not   e
+   not   cx
+   add   e, 1
+   adc   cx, 0
+
+StoreHyperbolics:
+   mov   bx, CoshAddr
+   mov   WORD PTR [bx], ax
+   mov   WORD PTR [bx+2], dx
+
+   mov   bx, SinhAddr
+   mov   WORD PTR [bx], e
+   mov   WORD PTR [bx+2], cx
+
+   ret
+SinhCosh086    ENDP
+
+
+
+Numerator   equ      <bx>
+Denominator equ      <di>
+Counter     equ      <si>
+
+Log086   PROC     uses si di, LoNum:WORD, HiNum:WORD, \
+                               Fudge:WORD
+LOCAL Exp:WORD, Accum:WORD, LoAns:WORD, HiAns:WORD
+      xor   bx, bx
+      mov   Accum, bx
+      mov   LoAns, bx
+      mov   HiAns, bx
+      mov   cx, Fudge
+      mov   ax, LoNum
+      mov   dx, HiNum
+
+      or    dx, dx
+      js    Overflow
+      jnz   ShiftUp
+
+      or    ax, ax
+      jnz   ShiftUp      
+
+   Overflow:
+      mov   TrigOverflow, 1
+      jmp   ExitLog086
+
+   ShiftUp:
+      inc   cx          ; cx = Exp
+      shl   ax, 1
+      rcl   dx, 1
+      or    dx, dx
+      jns   ShiftUp
+
+      neg   cx
+      add   cx, 31
+      mov   Exp, cx
+      mov   di, dx      ; dx = x, 1 <= x < 2, fg 15
+      add   di, 8000h
+      rcr   di, 1       ; di = x + 1, fg 14
+
+      shl   ax, 1
+      rcl   dx, 1
+      push  ax
+      push  dx
+
+      mov   ax, dx
+      mul   dx
+      mov   Numerator, dx  ; Numerator = (x - 1)**2, fg 16
+                           ; 0 <= cx < 1
+
+      mov   ax, di
+      mul   di
+      mov   si, dx       ; Save (x + 1)**2, fg 12
+      pop   dx
+      pop   ax
+      shr   dx, 1
+      rcr   ax, 1
+      div   di
+      mov   LoAns, ax
+      push  ax               ; Rem = (x-1)/(x+1), fg 17
+      mov   Denominator, si  ; Denominator = (x + 1)**2, fg 12
+                             ; 1 <= Denominator < 8
+      mov   Counter, 3
+      mov   cl, 3
+      mov   ch, 13
+
+   LogLoop:
+      pop   ax             ; ax = Rem, fg 13+cl
+      mul   Numerator      ; dx:ax = Rem * (x-1)**2, fg 29+cl
+      shr   dx, 1
+      rcr   ax, 1
+      div   Denominator
+      push  ax             ; Rem = [Rem*(x-1)**2]/(x+1)**2, fg 17+cl
+      xor   dx, dx
+      div   Counter        ; ax = Rem / Counter, fg 17+cl
+      mov   dx, ax
+      shr   ax, cl                  ; ax = Rem / Counter, fg 17
+      cmp   ax, WORD PTR TrigLimit
+      jbe   SHORT MultExp
+
+      xchg  cl, ch
+      shl   dx, cl
+      add   Accum, dx
+      adc   LoAns, ax
+      adc   HiAns, 0
+      inc   Counter
+      inc   Counter
+      xchg  cl, ch
+      add   cl, 3
+      sub   ch, 3
+      jmp   LogLoop
+
+   MultExp:
+      pop   cx             ; Discard Rem
+      mov   cx, Exp
+      mov   ax, Ln2Fg16
+      or    cx, cx
+      js    SubFromAns
+
+      mul   cx             ; cx = Exp * Lg2Fg16, fg 16
+      add   LoAns, ax
+      adc   HiAns, dx
+      jmp   ExitLog086
+
+   SubFromAns:
+      neg   cx
+      mul   cx
+      sub   LoAns, ax
+      sbb   HiAns, dx
+
+   ExitLog086:
+      ; r = (x-1)/(x+1)
+      ; Ans = 2 * (r + r**3/3 + r**5/5 + 
+      ; . . .) + (Exp * Ln2Fg16), fg 16
+      mov   ax, LoAns
+      mov   dx, HiAns
+      ret
+Log086   ENDP
+
+
+END
+

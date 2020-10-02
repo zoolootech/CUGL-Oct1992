@@ -1,0 +1,213 @@
+
+Figure 7. DLGSAMPLE.C - Source file
+-----------------------------------
+/*
+ * DLGSAMPL.C
+ */
+#define LINT_ARGS
+.
+#include <stdio.h>
+#include <windows.h>
+#include "dlgsampl.h"
+.
+HANDLE    hInst;
+.
+long FAR PASCAL MainFormWndProc(HWND, unsigned, WORD,
+                                 LONG);
+BOOL FAR PASCAL SQLPrimerDlg(HWND, unsigned, WORD,
+                              LONG);
+.
+/*
+ * WinMain()
+ */
+int PASCAL WinMain(hInstance, hPrevInstance, CmdLine,
+                                   CmdShow)
+    HANDLE hInstance,hPrevInstance;
+    LPSTR CmdLine;
+    int CmdShow;
+    {
+    WNDCLASS WndClass;
+    HWND hWnd;
+    MSG msg;
+.
+    hInst=hInstance;
+.
+    /*
+     * Register Main Form Window Class
+     */
+    if (!hPrevInstance){
+       WNDCLASS WndClass;
+       WndClass.lpszClassName = (LPSTR)"dlgsampl1";
+       WndClass.hInstance     = hInstance;
+       WndClass.lpfnWndProc   = MainFormWndProc;
+       WndClass.style         = CS_HREDRAW | CS_VREDRAW;
+       WndClass.hbrBackground = GetStockObject(WHITE_BRUSH);
+       WndClass.hIcon         = NULL;
+       WndClass.lpszMenuName  = "MAINMENU";
+       WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+       WndClass.cbClsExtra    = NULL;
+       WndClass.cbWndExtra    = NULL;
+       if (!RegisterClass(&WndClass))
+          return(NULL);
+       }
+.
+    /*
+     * Create MainForm Window
+     */
+    hWnd = CreateWindow("dlgsampl1",
+                        "SQL Primer",
+                        WS_OVERLAPPEDWINDOW,
+                        0,
+                        0,
+                        CW_USEDEFAULT,
+                        0,
+                        NULL,
+                        NULL,
+                        hInstance,
+                        NULL);
+    if (!hWnd)
+      return (NULL);
+    /*
+     * Message Loop
+     */
+    while (GetMessage (&msg,NULL,0,0)){
+       TranslateMessage (&msg) ;
+       DispatchMessage (&msg) ;
+       }
+    return (msg.wParam);
+    }
+/*
+ * MainFormWndProc()
+ */
+long FAR PASCAL MainFormWndProc(hWnd, message, wParam,
+                                  lParam)
+  HWND hWnd;
+  unsigned message;
+  WORD wParam;
+  LONG lParam;
+  {
+  switch (message){
+     case WM_CREATE:
+          ShowWindow(hWnd,SW_SHOWNORMAL);
+          UpdateWindow(hWnd);
+          break;
+     case WM_COMMAND:
+          switch(wParam){
+             case IDM_SQLPRIMER:
+                  DoDialog(hInst,hWnd,"SQLPRIMER",
+                            SQLPrimerDlg);
+                  break;
+             case IDM_EXIT:
+                  DestroyWindow(hWnd);
+                  break;
+             }
+          break;
+     case WM_DESTROY:
+          PostQuitMessage(0);
+          break;
+     default:return(DefWindowProc(hWnd,message,wParam,
+                                   lParam));
+     }
+  return (NULL);
+  }
+/*
+ * DoDialog
+ */
+int DoDialog(HANDLE hInst,HWND hWnd,char *Res,FARPROC
+                lpProc){
+   FARPROC lpfn;
+   BOOL ret;
+   lpfn = MakeProcInstance(lpProc, hInst);
+   ret = DialogBox(hInst,Res, hWnd, lpfn);
+   FreeProcInstance(lpfn);
+   return(ret);
+   }
+/*
+ * SQLPrimerDlg()
+ */
+BOOL FAR PASCAL SQLPrimerDlg(HWND hDlg,
+                             unsigned message,
+                             WORD wParam,
+                             LONG lParam){
+  static char buf[10];
+  switch (message){
+     case WM_INITDIALOG:
+          SendMessage(GetDlgItem(hDlg,ID_COMBO1),
+                      CB_ADDSTRING,
+                      0,
+                      (LONG)(LPSTR)"DML-Data Manipulation Language");
+          SendMessage(GetDlgItem(hDlg,ID_COMBO1),
+                      CB_ADDSTRING,
+                      0,
+                      (LONG)(LPSTR)"DDL-Data Definition Language");
+          SendMessage(GetDlgItem(hDlg,ID_COMBO1),
+                      CB_ADDSTRING,
+                      0,
+                      (LONG)(LPSTR)"DCL-Data Control Language");
+          return(FALSE);
+     case WM_COMMAND:
+          switch(wParam){
+             case ID_COMBO1:
+                  if (HIWORD(lParam)==CBN_SELCHANGE){
+                     GetDlgItemText(hDlg,ID_COMBO1,(LPSTR)buf,4);
+                     SendMessage(hDlg,WM_COMMAND,ID_POPULATE,0L);
+                     }
+                  return(FALSE);
+             case ID_POPULATE:
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                              LB_RESETCONTENT,
+                              0,
+                              0L);
+                  if (!strnicmp(buf,"DML",3)){
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Delete");
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Insert");
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Update");
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Select");
+                     break;
+                     }
+                  if (!strnicmp(buf,"DDL",3)){
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Create");
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Drop");
+                     break;
+                     }
+                  if (!strnicmp(buf,"DCL",3)){
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Grant");
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),
+                                 LB_ADDSTRING,
+                                 0,
+                                 (LONG)(LPSTR)"Revoke");
+                     break;
+                     }
+                  break;
+             case ID_OK:
+                  EndDialog(hDlg,TRUE);
+                  break;
+             default:return(FALSE);
+             }
+          break;
+     default:return(FALSE);
+     }
+  return(TRUE);
+  }
+

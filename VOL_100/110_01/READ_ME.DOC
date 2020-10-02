@@ -1,0 +1,155 @@
+17 June 81
+
+			Documentation for
+			C User's Group
+			Transmittal Disk
+
+Robert Pasky
+36 Wiswall Rd.
+Newton Centre, MA 02159
+	(617) 449-4600 x240	work (7-3 e.d.t.)
+	(617) 964-3641		home
+
+Files contained on disk:
+
+1.	symbug.c	- converts "clink" .SYM output file to "vbug" format.
+2.	symbug.com	- object file for same.
+3.	prolog.c	- EPROM programmer utility.
+4.	prolog.com	- object file for same.
+5.	chargen.c	- character generator utility
+6.	chargen.com	- object file for same.
+7.	charset		- character descriptions for chargen program.
+8.	bin2hex.c	- binary to hex-ascii format converter.
+9.	bin2hex.com	- object file for same.
+10.	printf.c	- _spr function modified for leading 0's.
+11.	getc.c		- getc function modified for proper eof.
+12.	disk.doc	- this file.
+
+
+1. & 2. symbug
+
+	This program was intended to convert the .SYM file produced by
+CLINK (and MAC) to a format compatible with VBUG, a symbolic debugger
+which I had previously written.
+
+	Although it may not be of immediate use to others as written, it
+is a simple example of a file sorting routine.
+
+3. & 4. prolog
+
+	A modification of Leor Zolman's earlier TELNET program, this
+transmits hex-ascii files from disk to a PRO-LOG(tm) EPROM programmer
+and verifies the contents of an EPROM against a hex-ascii file.
+
+	This program should be easily modified for other PROM programmers,
+although I don't have any specific information on any of them.
+
+	You should note that I am using memory-mapped i/o for the serial
+interface -- remove #define MMREFIO ... for inp/outp instead of peek/poke.
+
+	Secondly, the masks and default values for PROM addresses assumes
+a 16k bit (2k byte) EPROM (2516, 2716 types). If you normally use other
+sizes, you will want to change the masks and defaults. If you program PROMS
+of 256 bytes or less, the program must be changed to send 2 digits
+instead of 3 for the starting and ending addresses to the PRO-LOG.
+You might add a "menu" allowing the user to select various size PROMs
+and change the masks and defaults accordingly.
+
+	One thing this program doesn't do that perhaps it should is
+verifying the sumcheck bytes in the hex-ascii file. I'm assuming that
+if the disk file can be read sucessfully the sumcheck is probably correct.
+
+5. & 6. chargen
+
+	This program was written when I purchased an Imsai VIO video
+interface board. I decided I wanted to modify the character set which
+was contained in three 2708 PROMs in an awkward to edit format.
+
+	The screen displays a large box within which a 7x10 matrix of
+squares can be individually turned on or off. In this way a large-scale
+version of the character can be constructed, edited and then stored.
+
+	When the entire character set is completed, the data are
+converted to the format required by the VIO logic and stored as a disk
+file. The disk file is a binary image of the three EPROMS used for
+upper case (0-0x7f), lower case (0x80-0xff) and descenders, respectively.
+
+	If you will be using the "prolog" program, above, or something
+similar, you will need a hex-ascii version of this file. And so was
+born the "bin2hex" program.
+
+7. charset
+
+	This file is the output of the "chargen" program. It can be
+used as a basis for creating your own character set.
+
+	Use the 'g' function of "chargen" to get this file into memory,
+then the 'o' function to unformat it for editing. Finally, don't forget
+to re-format the data using the 'p' function before writing it back to
+disk with 'f'. If you do forget and save the unformatted file and then
+quit the program, most of it can be recovered. Get the file but don't
+unformat it (no 'o'), the end of the data (i.e., characters somewhere
+above 0x80) may be missing.
+
+
+8. & 9. bin2hex
+
+	This is a simple program to convert a binary file (e.g. .COM files)
+to a hex-ascii file.
+
+	It takes as input any file and produces a .HEX type file of the
+same name. The user may specify any starting address, and all data are
+assumed to be contiguous. The program produces blocks of 32 bytes of data
+each, with a proper sumcheck byte at the end of the block.  The final
+block contains a zero count and zero address as required by most hex
+loaders, including the LOAD.COM program of CP/M.
+
+	Since the program cannot assume that a 0x1a byte means an
+end-of-file, it may produce some extraneous data at the end of the
+hex file. However, if you have set NSECTS to a number greater than 1
+(as I have), the standard "getc" function may produce a lot more
+garbage than necessary. The modification to "getc" supplied on this disk
+attempts to minimize the problem. An alternative, of course, is to leave
+NSECTS at 1.
+
+10. printf
+
+	The _spr() function modified to optionally print leading zeros.
+To specify leading 0's, use a leading 0 in the field length. See K&R,
+section 7.3.
+
+For example,
+		num = 123;
+		printf ("\nleading zeros %05d", num);
+		printf ("\nno zeros %4d", num);
+		printf ("\nleft justified %-04d", num);
+		printf ("\nleft justified %-4d", num);
+	will print:
+		leading zeros 00123
+		no zeros   123
+		left justified 00123
+		left justified 123
+
+	This is often used when printing hex or octal addresses, for
+instance, to print a "split octal notation" address, use:
+		address = 512+10;
+		printf ("%03o.%03o",address);
+	to get:
+		002.012
+11. getc
+
+	The getc() function modified to calculate "nleft" from the
+actual number of sectors read. This change is useful only if "NSECTS"
+is greater than 1, and you wish to read binary files as, for example,
+the "bin2hex" program does.
+
+	The problem is that if you have set NSECTS to 8, for example,
+and the file has 9 sectors, the "getc" function (if you call it repeatedly
+without checking for the eof character, 0x1a) will hand you 16 sectors
+worth of data, the last 7 of which are leftovers from the previous 8
+sectors.
+
+	This modification will minimize the problem by returning the
+ERROR flag after the last (9th in this example) sector has been read.
+
+

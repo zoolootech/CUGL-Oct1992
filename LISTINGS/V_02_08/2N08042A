@@ -1,0 +1,248 @@
+
+COMMENT ~
+-----------------------------------------------------------
+                         LISTING 1
+
+   EXTND16.ASM
+This is a Terminate & Stay Resident program which when
+installed will intercept INT 16h calls and insure that
+function calls zero and one are changed to functions 10h
+and 11h.
+
+The TSR consumes about 380 bytes when installed.
+
+To create an executable, assemble & link this module and
+convert the .EXE to a .COM with exe2bin.
+
+Author:  David Burki
+-----------------------------------------------------------
+END OF COMMENT ~
+
+
+
+;             ----------  EQUATES  ----------
+ENV_OFFSET      equ     02ch
+GET_KEY         equ      0
+CHK_FOR_KEY     equ      1
+X_STUFF_KEY     equ     5
+X_GET_KEY       equ     10h
+X_CHK_FOR_KEY   equ     11h
+
+
+
+;               ----------  CODE  ----------
+cseg segment byte public 'code'
+
+; --- com file setup
+        org     100h
+
+assume cs:cseg, ds:nothing, es:nothing
+
+entry:
+        jmp     initialize
+
+; --- storage for the int 16h vector that's intercepted
+orig_16_vect    dd      ?
+
+
+
+
+;--------------------------------------------------------
+; PRE_16()
+;   This function gets to look at the INT 16h function call
+;   and change function calls 0 & 1 to 10h & 11h so that
+;   DOS can't destroy keycodes when it checks the status of
+;   the BIOS kbd buffer.
+;
+; Caution:  Some programs (CED for example) will not
+; correctly interpert the keycodes returned from the
+; extended keypad keys.  Strange characters appear when
+; these keys are pressed.
+;--------------------------------------------------------
+pre_16 proc far
+; --- save the flags we received & interrupts off
+        pushf
+        sti
+
+; --- if function is greater than 1 (status req) don't do
+;     anything - just jump to the original vector
+        cmp     ah,1
+        ja      go_orig_16
+
+; --- otherwise, make function 0 into 10h & 1 into 11h
+        or      ah,10h
+
+; --- restore callers flags & pass on to original vector
+go_orig_16:
+        popf
+        jmp     orig_16_vect
+pre_16 endp
+
+; --- anything after this label is init code & will be
+;     thrown away after installing
+end_resident label byte
+
+
+assume cs:cseg, ds:cseg, es:cseg
+
+;--------------------------------------------------------
+; FREE_ENVIRONMENT()
+;   Release this program's copy of the DOS environment in
+;   order to make this TSR as small as possible.
+;
+; Freeing the environment makes it impossible for utilities
+; like MAPMEM to determine what program owns the memory
+; allocated to this resident process.
+;
+; Destroys:
+;       AX
+;--------------------------------------------------------
+free_environment proc near
+        push    es
+        push    si
+        xor     ax,ax
+
+; --- get environment segment from the PSP
+        mov     si,ENV_OFFSET
+
+; --- move segment addr of environment into AX & at same
+;     time move the zero that's in AX into the PSP pointer
+;     to the environment
+        xchg    ax,[si]
+        or      ax,ax
+        jz      environment_exit
+        mov     es,ax
+        mov     ah,49h
+        int     21h
+environment_exit:
+        pop     si
+        pop     es
+        ret
+free_environment endp
+
+
+;--------------------------------------------------------
+; CK_BIOS_SUPPORT
+;   Check the BIOS to see if enhanced functions are
+;   available by attempting to use one of the enhanced
+;   functions - function 5, add keycode to BIOS keyboard
+;   buffer.
+; Returns:
+;   Carry clear - BIOS supports enhanced functions
+;   Carry set   - BIOS does not support enhanced
+;                 functions
+;--------------------------------------------------------
+ck_bios_support proc near
+; --- flush the BIOS kbd buffer
+        mov     ah,CHK_FOR_KEY
+        int     16h
+        jz      buf_is_empty
+        mov     ah,GET_KEY
+        int     16h
+        jmp     ck_bios_support
+
+; --- once the buffer is empty, attempt to add a keycode
+;     to the buffer
+buf_is_empty:
+        mov     ah,X_STUFF_KEY
+        mov     cx,0ffffh
+        int     16h
+
+; --- if AL comes back non-zero add keycode failed
+        or      al,al
+        jnz     no_support
+
+; --- just to make sure, see if the keycode at the head
+;     of the BIOS kbd buffer is the one we added
+        mov     ah,X_CHK_FOR_KEY
+        int     16h
+
+; --- is the buffer empty?
+        jz      no_support
+
+; --- no, remove the keycode we stuffed with an extended
+;     get-key function call
+        mov     ah,X_GET_KEY
+        int     16h
+
+; --- is it the same keycode
+        cmp     ax,0ffffh
+        je      yes_support
+
+; --- exit indicating no support
+no_support:
+        stc
+        jmp     ck_bios_exit
+
+; --- exit indicating support
+yes_support:
+        clc
+
+ck_bios_exit:
+        ret
+ck_bios_support endp
+
+
+no_install_msg  db      'BIOS does not support extended '
+                db      'keyboard functions.',0dh,0ah,'$'
+
+install_msg     db      'Installing extended BIOS keyboard'
+                db      ' function support.',0dh,0ah,'$'
+
+;--------------------------------------------------------
+; INITIALIZE()
+;   Check that enhanced BIOS keyboard support is
+;   available and install only if it is.
+;--------------------------------------------------------
+initialize proc near
+        call    free_environment
+        call    ck_bios_support
+
+; --- if extended BIOS kbd support not available don't
+;     install
+        jc      no_install
+
+; --- display the install message
+        mov     dx,offset install_msg
+        mov     ah,9
+        int     21h
+
+; --- get the current INT 16h vector & sace it in a code
+;     segment variable
+        mov     ax,3516h
+        int     21h
+        mov     word ptr orig_16_vect,bx
+        mov     word ptr orig_16_vect+2,es
+
+; --- put pre_16() in the vector table
+        mov     dx,offset pre_16
+        mov     ax,2516h
+        int     21h
+
+; --- calculate the length of the resident portion in
+;     bytes and round up to next paragraph
+        mov     dx,offset end_resident
+        add     dx,15
+
+; --- convert bytes to paragraphs
+        mov     cl,4
+        shr     dx,cl
+
+; --- terminate & stay resident, DX has the size of
+;     resident portion in paragraphs
+        mov     ah,31h
+        int     21h
+
+; --- display the non-installation message & terminate
+;     the process without staying resident
+no_install:
+        mov     dx,offset no_install_msg
+        mov     ah,9
+        int     21h
+        mov     ax,4c01h
+        int     21h
+initialize endp
+
+cseg ends
+
+end entry

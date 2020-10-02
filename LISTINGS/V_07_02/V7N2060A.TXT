@@ -1,0 +1,58 @@
+PAGE
+PAGE 64, 132
+TITLE Start up code for Turbo-C based Device Driver -- R.D.Allen, 9/4/87
+; Copyright 1987, 1988 PARS Service Partnership
+
+;Declare Segments & Groups. Define Device Driver Header
+DGROUP	GROUP	_TEXT, _DATA, _CVTSEG, _SCNSEG, _BSS, _TAIL
+
+ASSUME	CS:_TEXT, DS:NOTHING
+_TEXT	SEGMENT BYTE PUBLIC 'CODE'	; All code goes in this segment
+
+	PUBLIC	_header
+	PUBLIC	DGROUP@
+	PUBLIC	_abort
+	PUBLIC	_setDGROUP
+
+	EXTRN	_strategy:NEAR
+	EXTRN	_dosio:NEAR
+
+; ************************
+; DEVICE HEADER: Must be first thing in the binary file. Always!
+; ************************
+
+_header	DW	-1						; Chain Pointer -1, only device in driver
+		DW	-1
+		DW	1100100000000000b		; IOCTL word, simple character device
+		DW	DGROUP:_strategy
+		DW	DGROUP:_dosio
+		DB	"COMX    "				; Name of driver is COMX
+
+DGROUP@			dw ?				; Turbo-C library requires this set to DS
+
+_setDGROUP:
+		MOV		CS:DGROUP@, DS		; TINY model library wants this 
+									; Called during (df_) INIT. Falls into ret
+
+_abort:	RET							; Hope this is never called!
+
+_TEXT	ENDS
+_DATA	SEGMENT BYTE PUBLIC 'DATA'	; Main data segment for driver
+_DATA	ENDS
+									; Additional segments desired by the
+									; compilier.
+_CVTSEG SEGMENT WORD PUBLIC 'DATA'
+	PUBLIC	__RealCvtVector
+__RealCvtVector	dw ?
+_CVTSEG ENDS
+
+_SCNSEG SEGMENT WORD PUBLIC 'DATA'
+_SCNSEG ENDS
+
+_BSS	SEGMENT WORD PUBLIC 'BSS'
+_BSS	ENDS
+
+_TAIL	SEGMENT WORD PUBLIC 'TAIL'	; Data area for initialization code
+_TAIL	ENDS						; All can be thrown away
+
+		END

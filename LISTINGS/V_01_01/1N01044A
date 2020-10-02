@@ -1,0 +1,184 @@
+        PAGE ,132
+
+;  Figure 7
+;
+;  Misc. serial I/O status functions
+
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros, e.g.
+                                        ;MASM /Dmemodel=LARGE /Dlang=C
+
+; Offsets from the port base address for various registers
+MCR             equ     4               ;modem control register
+MSR             equ     6               ;modem status register
+
+;bit masks for Modem Control Register
+MCR_DTR         equ     1               ;DTR bit
+MCR_RTS         equ     2               ;RTS bit
+
+;bit masks for Modem Status Register
+MSR_CTS         equ     10h
+MSR_DSR         equ     20h
+MSR_RING        equ     40h
+MSR_RLSD        equ     80h
+
+        .CONST
+
+_gpa_tbl        equ     THIS WORD
+        dw      3f8h                    ;serial port 1
+        dw      2f8h                    ;serial port 2
+        dw      3e8h                    ;serial port 3
+        dw      2e8h                    ;serial port 4
+
+        .CODE
+
+;
+;  Local function to return a port address
+;
+;  Call with port number (0, 1, 2, or 3) in DX
+;  Returns actual port address in DX or 0 if invalid input
+;
+
+_get_port_adr:
+        push    DS
+        push    BX
+        cmp     DX,4                    ;In range (0-3)?
+        jnc     _gpa_bad                ;No, return an error
+        shl     DX,1                    ;Make it an index
+        mov     BX,DX
+        mov     DX,_gpa_tbl[bx] 
+_gpa_ex:
+        pop     BX
+        pop     DS
+        or      DX,DX                   ;Set E flag if error
+        ret
+_gpa_bad:
+        mov     DX,0
+        jmp     _gpa_ex
+
+;
+;  Procedure to set/reset DTR
+;  Call with port number (0-3) and state (0=False,  Anything else=True)
+;
+
+setdtr  PROC    USES BX DX, port:WORD, state:WORD
+        mov     DX,port                 ;Get port number
+        call    _get_port_adr           ;Valid?
+        je      sdxt                    ;No, exit
+        add     DX,MCR
+        in      AL,DX
+        mov     BX,state
+        or      BX,BX                   ;Set?
+        jnz     sd1
+        and     AL,NOT MCR_DTR
+        jmp     sd2
+sd1:
+        or      AL,MCR_DTR
+sd2:
+        out     DX,AL
+sdxt:
+        ret
+setdtr  ENDP
+
+;
+;  Procedure to set/reset RTS
+;  Call with port number (0-3) and state (0=False,  Anything else=True)
+;
+
+setrts  PROC    USES BX DX, port:WORD, state:WORD
+        mov     DX,port                 ;Get port number
+        call    _get_port_adr           ;Valid?
+        je      srxt                    ;No, exit
+        add     DX,MCR
+        in      AL,dx
+        mov     BX,state
+        or      BX,BX                   ;Set?
+        jnz     sr1
+        and     AL,NOT MCR_RTS
+        jmp     sr2
+sr1:
+        or      AL,MCR_RTS
+sr2:
+        out     DX,AL
+srxt:
+        ret
+setrts  ENDP
+
+;
+;  Function to return DCD
+;  Call with port number (0-3)
+;
+
+chkdcd  PROC    USES DX, port:WORD
+        mov     DX,port                 ;Get port number
+        call    _get_port_adr           ;Valid?
+        je      dcdbad                  ;No, exit
+        add     DX,MSR
+        in      AL,DX
+        and     AX,MSR_RLSD
+dcdex:
+        ret
+dcdbad:
+        xor     AX,AX
+        jmp     dcdex
+chkdcd  ENDP
+
+;
+;  Function to return DSR
+;  Call with port number (0-3)
+;
+
+chkdsr  PROC    USES DX, port:WORD
+        mov     DX,port                 ;get port number
+        call    _get_port_adr           ;Valid?
+        je      dsrbad                  ;No, exit
+        add     DX,MSR
+        in      AL,DX
+        and     AX,MSR_DSR
+dsrex:
+        ret
+dsrbad:
+        xor     AX,AX
+        jmp     dsrex
+chkdsr  ENDP
+
+;
+;  Function to return CTS
+;  Call with port number (0-3)
+;
+
+chkcts  PROC    USES DX, port:WORD
+        mov     DX,port                 ;Get port number
+        call   _get_port_adr            ;Valid?
+        je      ctsbad                  ;No, exit
+        add     DX,MSR
+        in      AL,DX
+        and     AX,MSR_CTS
+ctsex:
+        ret
+ctsbad:
+        xor     AX,AX
+        jmp     ctsex
+chkcts  ENDP
+
+;
+;  Function to return ring indicator
+;  Call with port number (0-3)
+;
+
+chkring PROC    USES DX, port:WORD
+        mov     DX,port                 ;Get port number
+        call    _get_port_adr           ;Valid?
+        je      ribad                   ;No, exit
+        add     DX,MSR
+        in      AL,DX
+        and     AX,MSR_RING
+riex:
+        ret
+ribad:
+        xor     AX,AX
+        jmp     riex
+chkring ENDP
+
+        end

@@ -1,0 +1,121 @@
+
+               Listing 1, Initialization Interface
+               -----------------------------------
+
+/*
+**  INIT.C
+**  Initialization Interface Module
+**  for the Non-Intrusive Monitor
+**  (to be linked into the TSR)
+**
+**  Written in MicroSoft C version 6.00
+**  Build String:
+**    cl demo.c init.c
+**
+**  Written By:  John R. Naleszkiewicz
+**        Date:  March 15, 1991
+**     Version:  1.00
+*/
+
+#include <stdio.h>
+#include <dos.h>
+#include <process.h>
+
+
+/* the interrupt vector number used to gain entry into TSR */
+#define  INT_VECTOR    0x68
+
+/* The entry point function's prototype statement */
+void _interrupt far TSR_entry( unsigned _es, unsigned _ds,
+                               unsigned _di, unsigned _si,
+                               unsigned _bp, unsigned _sp,
+                               unsigned _bx, unsigned _dx,
+                               unsigned _cx, unsigned _ax,
+                               unsigned _ip, unsigned _cs,
+                               unsigned flags );
+
+/* place to save the old interrupt vector */
+void     (_interrupt _far *oldVector)(void);
+
+/* The variable declarations to be monitored */
+extern int      every_tick;
+extern int      every_sec;
+extern int      every_3_sec;
+extern long     long_every_10_sec;
+extern char     alphabet;
+extern char     * special_string;
+
+/* This structure defines which variables are monitored */
+static struct Variable_Struct {
+  char far * name;           /*  Far Pointer to Variable Name  */
+  unsigned char type;        /*  Variable Type  */
+  unsigned char indirect;    /*  Indirection Count  */
+  unsigned short ind_flag;   /*  Indirection Type Flag  */
+  void far * var;            /*  Far Pointer to Variable  */
+}  element[] = {
+  "every_tick",        2, 0, 0, &every_tick,
+  "every_sec",         2, 0, 0, &every_sec,
+  "every_3_sec",       2, 0, 0, &every_3_sec,
+  "long_every_10_sec", 3, 0, 0, &long_every_10_sec,
+  "alphabet",          0, 0, 0, &alphabet,
+  "special_string",    1, 1, 0, &special_string,
+};
+
+
+/* NOTICE: the register order is different for Turbo C */
+
+void _interrupt far TSR_entry( unsigned _es, unsigned _ds,
+                               unsigned _di, unsigned _si,
+                               unsigned _bp, unsigned _sp,
+                               unsigned _bx, unsigned _dx,
+                               unsigned _cx, unsigned _ax,
+                               unsigned _ip, unsigned _cs,
+                               unsigned flags )
+{
+  if( oldVector != NULL )
+    oldVector();  /* invoke the old vector first */
+
+  /* Function 0, Data Block Format ID Number */
+  if( _ax == 0 )
+    _ax = 01;
+
+  /* Function 1, Number of Variables being Monitored */
+  else if( _ax == 1 )
+    _ax = (sizeof(element) / sizeof(struct Variable_Struct));
+
+  /* Function 2, Address of the Variable_Struct Array */
+  else if( _ax = 2 ) {
+    _ax = ((long) &element & 0xffff);
+    _dx = ((long) &element >> 16) & 0xffff;
+  }
+}
+
+
+static int hooked = 0;
+
+void entry_hook()
+{
+  if( !hooked ) {
+    /* Get the old interrupt vector */
+    oldVector = _dos_getvect( INT_VECTOR );  
+
+    /* Set the interrupt vector to the new function */
+    _dos_setvect( INT_VECTOR, TSR_entry );
+
+    /* Set the Hooked Flag */
+    hooked = 1;
+  }
+}
+
+void entry_unhook()
+{
+  if( hooked ) {
+    /* Restore the old interrupt vector before quiting */
+    _dos_setvect( INT_VECTOR, oldVector );
+
+    /* Reset the Hooked Flag */
+    hooked = 0;
+  }
+}
+
+

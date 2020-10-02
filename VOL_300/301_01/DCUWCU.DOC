@@ -1,0 +1,347 @@
+
+
+
+              DCUWCU - A Simple Application Environment 
+
+                           Mark A. Johnson
+
+
+
+
+     1.  Introduction
+
+     I have used a mouse in computer user interfaces since 1981 
+     and feel it is the best and most convenient way to inform a 
+     computer program what you would like it to do.  I wanted to 
+     use a mouse in a number of programs for the PC and looked 
+     into a few application environments, such as Microsoft 
+     Windows and Digital Research GEM, but was disappointed to 
+     see how much complexity had to be mastered.  Most of the 
+     programs I had in mind needed only a mouse controlled 
+     cursor, a simple menu structure, and editable forms.  The 
+     resource construction sets, complex window management, and 
+     other overheads needed to write a simple application led me 
+     to write my own simple application environment based on 
+     Turbo C graphics routines and a public domain mouse 
+     interface.  My goal was to build a easy-to-use environment 
+     that provides a mouse-driven cursor, stacked pop-up menus, 
+     and forms that contain editable fields and a variety of 
+     selectable buttons.  The environment would keep track of 
+     what the user was doing, inform the application as needed, 
+     and clean up after itself.  An additional goal was to make 
+     it easy to port the environment to other machines that have 
+     a mouse, bitmap graphics, console I/O, and a simple timer.  
+     I have the same DCUWCU environment on my PC compatible and 
+     Atari ST, allowing me to easily move applications between 
+     systems.  
+
+     2.  Operation
+
+     A typical application begins with a blank screen, or 
+     suitable greeting, showing an arrow shaped cursor controlled
+     by the mouse.  Pressing the right mouse button displays a 
+     set of stacked pop-up menus.  While holding the right mouse 
+     button down, the user selects an item from the front-most 
+     menu or selects another menu and releases the right mouse 
+     button.  If a menu item was selected, then the application 
+     acts on the selection.  If another menu was selected, it is 
+     brought to the front of the menu stack ready for another 
+     round of menu item selection.  Pressing the left mouse 
+     button or the keyboard usually causes an application 
+     specific action.  Often such actions result in a form 
+     appearing on the screen to be filled out by the user.  When 
+     processing a form, all mouse and keyboard events are handled
+     by the environment.  Keyboard input is directed to the 
+     current editable field, denoted by the special input cursor.
+     A TAB moves the input cursor to the next editable field.  An
+     ESC (cancel) or ENTER (accept) ends form processing, 
+     returning data and control back to the application.  Some 
+
+
+
+
+
+
+
+
+
+
+
+                                - 2 -
+
+
+
+     forms may contain small text labels, called form buttons, 
+     that are selected (or de-selected) by moving the cursor over
+     them and pressing the left mouse button.  There are three 
+     types of buttons: plain, radio, and exit.  A plain button is
+     a simple on/off switch.  A radio button is a one-of-many 
+     switch, much like the buttons on a car radio.  An exit 
+     button is like the plain button, but selecting it will cause
+     form processing to end.  
+
+     The application environment also works equally well when no 
+     mouse is present by using the cursor keys to simulate mouse 
+     motion and the function keys F1 and F2 to simulate the left 
+     and right mouse buttons.  It takes one press of F2 to 
+     simulate depressing the right mouse button and another press
+     of F2 to release it.  A single press of the F1 button 
+     simulates the left mouse button.  
+
+     3.  Application Interface
+
+     An effort was made to keep the interface between application
+     and environment as simple as possible: strings are used to 
+     define forms and menus, pointers to variables are used to 
+     store values collected by forms, and calls to functions 
+     inform the application of user events such as menu selection
+     or mouse button clicks.  
+
+     The application environment follows (and is named after) 
+     what is called "The Hollywood Principle," or "don't call us,
+     we'll call you." An application developer supplies four 
+     critical routines that are called when the application 
+     environment detects various user interface events.  
+
+          start(argc, argv, envp) int argc; char **argv, **envp;
+     This is the initialization routine called immediately after 
+     the graphics interface is initialized but before the 
+     environment is completely started.  It is passed the same 
+     arguments that are normally passed to a C main() routine.  
+     The start() routine usually initializes the application and 
+     creates the menu stack using repeated calls to add_menu().  
+
+          menu(m, i)
+     The menu() routine is called whenever a menu selection is 
+     made.  The application environment supports a stack of 
+     pop-up menus.  Any number of menus can be supported, 
+     although usually only two or three are active at any one 
+     time to minimize interface complexity (see menu_state() 
+     below).  The m argument identifies which menu was selected.
+     When the menu was first declareed (see add_menu()), the 
+     application provides a value that identifies the menu.  This
+     same identifer value is passed back to the application when 
+     a menu is selected.  The i argument specifies which menu 
+
+
+
+
+
+
+
+
+
+
+
+                                - 3 -
+
+
+
+     item was selected with a value of 1 meaning the first item, 
+     etc.  
+
+          button(b, x, y)
+     The button() routine is called when a user mouse button is 
+     pressed.  The right mouse button is reserved for menu 
+     manipulation, all others are passed to the application.  The
+     b argument is the button number (usually 1) and the x and y 
+     arguments are the mouse coordinates when the button was 
+     pressed.  
+
+          keyboard(key)
+     The keyboard() routine is called whenever a console key is 
+     struck.  The character typed by the user is contained in the
+     single argument.  
+
+          timer(t)
+     The (optional) timer() routine is called whenever a 
+     application requested timer expires.  When the timer is 
+     requested, a value identifying the timer is passed to the 
+     application environment.  The same identifer value is passed
+     back to the application in the t argument when the timer 
+     expires.  
+
+     4.  Environment Interface
+
+     There are some basic routines provided by the application 
+     environment that an application can call for control and 
+     service.  
+
+          finish()
+     The finish() routine is called whenever the application is 
+     done and the program must exit.  
+
+          add_menu(m, mdef) char *mdef;
+     The add_menu() routine adds a menu to the current set of 
+     pop-up menus maintained by the environment.  An application 
+     typically initializes all its menus from the start() 
+     routine.  The m argument is remembered by the environment 
+     and passed back to the application when a menu selection is 
+     made.  The mdef argument is a string that defines the menu.
+     For example, add_menu(1, "Main:About|Help|Quit") defines a 
+     menu identified as menu 1, titled Main, and with three 
+     items: About, Help, and Quit.  
+
+          menu_state(m, on)
+     The menu_state() routine allows the application to activate 
+     or de-activate a particular menu.  The m argument refers to 
+     the menu defined with a previous add_menu() call.  The on 
+     argument should be set to 1 to activate or 0 to deactivate 
+     the menu.  
+
+
+
+
+
+
+
+
+
+
+
+                                - 4 -
+
+
+
+
+          menu_item(m, i, str) char *str;
+     The menu_item() routine is used to change the name of a 
+     particular menu item.  For example, suppose a drawing 
+     program can turn a grid on and off.  The application might 
+     have a menu item called "Grid" when no grid is shown and 
+     change it to "No Grid" using menu_item() when the grid is 
+     shown.  
+
+          mouse_state(on)
+     The mouse_state() routine will activate or deactivate the 
+     mouse driven cursor.  The on variable should be set to 1 to 
+     show the mouse and 0 to hide it.  
+
+          mouse_shape(type, bits, hotx, hoty) char *bits;
+     The application can control the shape of the cursor with the
+     mouse_shape() routine.  There are two built in forms: arrow 
+     and cross.  A type value of 0 and 1 specify arrow and cross,
+     respectively.  A type value of 3 allows the user to specify 
+     a custom designed mouse cursor.  The bits argument is a 
+     pointer to an eight byte character array containing the 
+     mouse bitmap (8 x 8 bits).  The hotx and hoty arguments 
+     specify which bit in the bitmap is considered the hotspot of
+     the cursor.  For example, the cross form has a hotspot of 
+     hotx=hoty=3, which is the center of the 8 x 8 bitmap.  
+
+          add_timer(t, wait) long wait;
+     Many applications, especially games, require some sense of 
+     the passage of time.  Using the add_timer() routine, the 
+     application can arrange for the timer() routine to be called
+     after some time has elapsed.  The application's timer() 
+     routine can do such things as blank the screen if no 
+     activity has taken place for many minutes or move sprite's 
+     around the screen after a few tenths of a second.  The t 
+     argument identifies a particular timer and is passed back to
+     the application when the timer expires.  The wait argument 
+     specifies the needed delay in milliseconds (e.g.  wait=1000L
+     is a delay of one second).  
+
+          form(def, argptr1, ...) char *def;
+     The form() routine displays a form on the screen, collects 
+     data from the user, and deposits it in the variables pointed
+     to by the argptr parameters.  this routine is somewhat 
+     similar to scanf().  The form definition string defines a 
+     number of fields.  Let's look at an example form definition.
+
+     "  Name: %15s |Number: %5d |%[male|female] %[over 55]|   %{ok}"
+
+     This form definition would result in the following being 
+     displayed in the middle of the screen surrounded by a 
+     rectangle.  
+
+
+
+
+
+
+
+
+
+
+
+                                - 5 -
+
+
+
+
+                         Name: _______________
+                       Number: _____
+                       [male|female] [over 55]
+                          {ok}
+
+     Most of the text in the definition string is used as titles.
+     A "|" signifies the beginning of a new line in the form.  A 
+     data field begins with a "%" and is associated with a 
+     particular variable.  There are five types of data fields.  
+     (For the examples that follow, assume the following 
+     declarations occur before the call to form(): char c, 
+     buf[11]; int x;).  
+
+           Field     Example     Argument  Values        
+          ------------------------------------------
+           text   %10s           &buf[0]  string    
+           number %5d            &x       integer   
+           button %[abc]         &c       0 or 1    
+           radio  %[abc:def:ghi] &c       0, 1, ... 
+           exit   %{ok}          &c       0 or 1    
+
+     If a character pointer fdef points at the string described 
+     above, the following code fragment is a correct use of the 
+     form() routine.  
+
+          char name[16], m_or_f = 0, over_55 = 1, ok = 0;
+          int number;
+          if (form(fdef, name, &number, &m_or_f, &over_55, &ok)) {
+          	/* do stuff with name, number, etc. */
+          }
+
+     After filling out the form, if the user selects the {ok} 
+     button or hits ENTER, the form() routine returns a non-zero 
+     value and the data data values collected by the form and 
+     stored in the variables name, number, m_or_f, and over_55 
+     are processed further by the body of the if statement.  If 
+     the user struck the ESC key while filling out the form, then
+     form() would return zero and the processing would not take 
+     place.  
+
+     5.  Conclusion
+
+     I have used the "Hollywood Principle" design model for a 
+     number of projects and have found it to shorten development 
+     time and result in a robust application.  The mouse is a 
+     unique and powerful user interface device, and when coupled 
+     with pop-up windows and forms, provides the user a clean, 
+     uncluttered operation.  I would like to acknowledge the 
+     designers of the many mouse-based user interfaces I have 
+     used in the past, such as the Apple Macintosh, Microsoft 
+
+
+
+
+
+
+
+
+
+
+
+                                - 6 -
+
+
+
+     Windows, DR/Atari GEM, but most significantly the Xerox Mesa
+     Development System, for the inspiration in building this 
+     simple application environment.  
+
+
+
+                                   Mark A. Johnson
+                                   5315 Holmes Place
+                                   Boulder, CO 80303
+                                   303-442-1812

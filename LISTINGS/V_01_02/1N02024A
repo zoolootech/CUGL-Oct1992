@@ -1,0 +1,151 @@
+#include	<math.h>
+#include	<stdio.h>
+
+void	swap( int *pa, int *pb);
+
+#define	MAX_X	3179
+#define	MAX_Y	1949
+
+/******************************************************************
+*	lj_line - draw a line on the laser printer's internal page
+*
+*	Parameters:
+*       x1 (in) - starting x coordinate in dots
+*		y1 (in) - starting y coordinate in dots
+*		x2 (in) - ending x coordinate in dots
+*		y2 (in) - ending y coordiante in dots
+*
+*	Notes:
+*		If you may be varying the plotting dimensions (either by
+*		changing the output resolution or by changing the page
+*		orientation), make MAX_X and MAX_Y into global variables
+*		equal to the appropriate dimensions.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim (619) 669-6970
+**********************************************************************/
+
+void	lj_line(int x1, int y1, int x2, int y2)
+{
+	int		d, dx, dy;
+	int		Aincr, Bincr, xincr, yincr;
+	int		x,y;
+
+	/* uses modified Bresenham's algorithm */
+
+	/* clip if line totally off plotting area */
+	if (((x1 < 0) && (x2 < 0)) ||
+		((y1 < 0) && (y2 < 0)) ||
+		((x1 > MAX_X) && (x2 > MAX_X)) ||
+		((y1 > MAX_Y) && (y2 > MAX_Y))) return;
+
+	/* test for vertical line */
+	if (x1 == x2)
+	{
+		if (y1 > y2) 		/* force y1 < y2 */
+
+		{
+			swap(&x1, &x2);
+			swap(&y1, &y2);
+		}
+		/* plot vertical line */
+		fprintf(stdprn, "\033*p%dx%dY", x1, y1);	/* position to top of line */
+		fprintf(stdprn, "\033*c1a%dB", y2 - y1);	/* width = 1, height = line height */
+		fprintf(stdprn, "\033*c0P");	/* print the line */
+		return;
+	}
+
+	/* test for horizontal line */
+	if (y1 == y2)
+	{
+		if (x1 > x2)	/* force x1 < x2 */
+		{
+			swap (&x1, &x2);
+			swap (&y1, &y2);
+		}
+		/* plot horizontal line */
+		fprintf(stdprn, "\033*p%dx%dY", x1, y1);	/* position to top of line */
+		fprintf(stdprn, "\033*c%da1B", x2 - x1);	/* width = line, height = 1 */
+		fprintf(stdprn, "\033*c0P");	/* print the line */
+		return;
+	}
+
+	/* Here's where Bresenham's algorithm really starts */
+
+	if (abs(x2 - x1) > abs(y2 - y1))
+	{
+		if (x1 > x2)	/* force x1 < x2 */
+		{
+			swap (&x1, &x2);
+			swap (&y1, &y2);
+		}
+		if (y2 > y1) yincr = 1;
+		else yincr = -1;
+
+		dx = x2 - x1;
+		dy = abs(y2 - y1);
+		d = 2 * dy - dx;
+
+		Aincr = 2 * (dy - dx);
+		Bincr = 2 * dy;
+
+		x = x1;
+		y = y1;
+
+		set_pixel(x, y);
+
+		for (x = x1 + 1; x <= x2; x++)
+		{
+			if (d >= 0)
+			{
+				y += yincr;
+				d += Aincr;
+			}
+			else d += Bincr;
+			set_pixel(x, y);
+		}
+	}
+	else
+	{
+		if (y1 > y2)	/* force y1 < y2 */
+		{
+			swap (&x1, &x2);
+			swap (&y1, &y2);
+		}
+
+		if (x2 > x1) xincr = 1;
+		else xincr = -1;
+
+		dx = abs(x2 - x1);
+		dy = y2 - y1;
+		d = 2 * dx - dy;
+
+		Aincr = 2 * (dx - dy);
+		Bincr = 2 * dx;
+
+		x = x1;
+		y = y1;
+
+		set_pixel(x, y);
+
+		for (y = y1 + 1; y <= y2; y++)
+		{
+			if (d >= 0)
+			{
+				x += xincr;
+				d += Aincr;
+			}
+			else d += Bincr;
+			set_pixel(x, y);
+		}
+	}
+}
+
+void	swap( int *pa, int *pb)
+{
+	int		t;
+
+	t = * pa;
+	*pa = *pb;
+	*pb = t;
+}

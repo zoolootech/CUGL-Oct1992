@@ -1,0 +1,114 @@
+/*
+**  Figure 1 - Validate, determine, or change disk drives
+*/
+
+#include <dos.h>
+#include <stdlib.h>
+
+typedef enum {ERROR = -1, FALSE, TRUE} LOGICAL;
+#define SUCCESS 0
+
+#ifdef __ZTC__
+ #define readisk(d,n,s,b) dos_abs_disk_read(d,n,s,b)
+#elif defined(__TURBOC__)
+ #define readisk(d,n,s,b) absread(d,n,s,b)
+#else /* MSC or others */
+int readisk(int drv, int num, int start, char *buf)
+{
+        union REGS regs;
+        struct SREGS sregs;
+
+        regs.h.al = (char)drv;
+        regs.x.cx = num;
+        regs.x.dx = start;
+        segread(&sregs);              /* To work in any memory model */
+        sregs.ds  = FP_SEG((char far *)buf);
+        regs.x.bx = FP_OFF((char far *)buf);
+        intdosx(&regs, &regs, &sregs);
+        if (regs.x.cflag)
+                return ERROR;
+        else    return SUCCESS;
+}
+#endif
+
+/*********************************************************************/
+/*                                                                   */
+/*  drvalid()                                                        */
+/*                                                                   */
+/*  Verifies whether a disk drive is mounted in the system without   */
+/*  triggering the DOS critical error handler.                       */
+/*                                                                   */
+/*  Arguments: 1 - target drive (0 = A;, 1 = B:, etc.)               */
+/*                                                                   */
+/*  Returns:   TRUE  - drive is valid                                */
+/*             FALSE - drive is invalid                              */
+/*             ERROR - no buffer space availabl                      */
+/*                                                                   */
+/*  Side effects: none                                               */
+/*                                                                   */
+/*********************************************************************/
+
+int drvalid(int drive)
+{
+        int status;
+        char *buf;
+
+        buf = (char *)malloc(4096);    /* Since we really don't know */
+        if (!buf)
+                return ERROR;
+        status = readisk(drive, 1, 0, buf);
+        free(buf);
+        return(!status);
+}
+
+/*********************************************************************/
+/*                                                                   */
+/*  getdrv()                                                         */
+/*                                                                   */
+/*  Just as getcwd() returns the default directory, getdrv() returns */
+/*  the drive letter of the current drive.                           */
+/*                                                                   */
+/*  Arguments: None.                                                 */
+/*                                                                   */
+/*  Returns:   Current drive (0 = A:, 1 = B:, etc.)                  */
+/*                                                                   */
+/*  Side effects: none                                               */
+/*                                                                   */
+/*********************************************************************/
+
+int getdrv(void)
+{
+        union REGS regs;
+
+        regs.h.ah = 0x19;
+        intdos(&regs, &regs);
+        return (regs.h.al);
+}
+
+/*********************************************************************/
+/*                                                                   */
+/*  chdrv()                                                          */
+/*                                                                   */
+/*  Like chdir(), except changes drives rather than directories.     */
+/*                                                                   */
+/*  Arguments: 1 - target drive (0 = A:, 1 = B:, etc.)               */
+/*                                                                   */
+/*  Returns: SUCCESS or ERROR                                        */
+/*                                                                   */
+/*  Side effects: none                                               */
+/*                                                                   */
+/*********************************************************************/
+
+int chdrv(int drive)
+{
+        union REGS regs;
+
+        if (!drvalid(drive))
+                return ERROR;
+        regs.h.ah = 0x0e;
+        regs.h.dl = (char)drive;
+        intdos(&regs, &regs);
+        return SUCCESS;
+}
+
+

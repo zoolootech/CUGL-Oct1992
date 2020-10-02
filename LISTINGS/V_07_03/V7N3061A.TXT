@@ -1,0 +1,462 @@
+Listing1
+
+
+/* define WORD to be signed sixteen bit integer                         */
+#ifdef MEGAMAX
+#define WORD int
+#else
+#define WORD short
+#endif
+typedef struct 
+    {
+    WORD activation;        /* activation of neuron for feedforward     */
+    WORD errors;            /* sum of errors from feedback              */
+    } NEURON;
+
+#define NEURON_SIZE 4         /* sizeof(NEURON) for assembler           */ 
+#define O_ERROR 2             /* offset of neuron.errors for assembler  */ 
+#define ACTIVATION_SHIFT 7    /* units of 1/128: 2**-7                  */ 
+#define RATE_SHIFT       7    /* units of 1/128: 2**-7                  */
+
+
+Listing2
+
+
+typedef WORD SYNAPSE;
+#define MAX_SYNAPSE 32767
+#define SYNAPSE_SHIFT 10    /* units of 1/1024: 2**-10                  */
+
+typedef struct layer
+    {
+    struct layer *prev_layer;   /* pointer to previous layer, if any    */
+    int n_inputs;           /* number of input neurons                  */
+    NEURON *inputs;         /* same address as outputs of previous layer*/
+    SYNAPSE *synapses;      /* synapses[n_inputs][n_outputs]            */
+    SYNAPSE *history;       /* previous values for use in learning      */
+    char rate;              /* learning rate, larger values learn faster*/
+    char momentum;          /* learning momentum in powers of two, 0 to 7 */
+    int n_outputs;          /* number of output neurons                 */
+    NEURON *outputs;        /* same address as inputs of next layer     */
+    struct layer *next_layer;   /* pointer to next layer, if any        */
+    } LAYER;
+
+typedef struct 
+    {
+    LAYER *first_layer;
+    LAYER *last_layer;
+    } NETWORK;
+
+
+
+Listing3
+
+
+transfer(n_inputs, inputs, output, synapses)
+register int n_inputs;      /* number of input neurons                  */
+register NEURON *inputs;    /* vector of input neurons                  */
+NEURON *output;             /* output neuron                            */
+register SYNAPSE *synapses; /* vector of synapses on                    */
+    {
+    register long sum = 0;  /* for accumulating inputs                  */
+    long i;                 /* for intermediate                         */
+
+    /* feed input activation forward through synapses by accumulating
+    products */
+#ifndef MEGAMAX
+
+    while (--n_inputs >= 0)
+        sum += (long) * synapses++*(inputs++)->activation;
+
+#else                       /* use Megamax inline assembly for Motorola */
+    asm
+        {
+        bra test
+    loop:
+        ;
+        while (--n_inputs >= 0)
+            move.w(synapses) + , D0;
+        D0 = *synapses++muls(inputs), D0;
+        D0 *= input->activation addq.l#NEURON_SIZE, inputs;
+        input++add.l D0, sum;
+        sum += D0
+    test:
+        dbf n_inputs, loop
+        }
+#endif
+
+    /* limit activation overload with log if below -100 or above 100)   */
+    if (sum > 0)
+        {
+        sum += 1 << SYNAPSE_SHIFT - 1;  /* round sum                    */
+        sum >>= SYNAPSE_SHIFT;  /* shift sum back into range            */
+        if (sum > 100)      /* sum = 100 + log2(sum-100)                */
+            for (i = sum, sum = 100; (i >>= 1) >= 100; sum++)
+                ;
+        }
+    else if (sum < 0)
+        {
+        sum -= 1 << SYNAPSE_SHIFT - 1;  /* round sum                    */
+        sum >>= SYNAPSE_SHIFT;  /* shift sum back into range            */
+        if (sum < -100)     /* sum = -100 - log2(-sum-100)              */
+            for (i = -sum, sum = -100; (i >>= 1) >= 100; sum--)
+                ;
+        }
+    output->activation = sum;
+    }
+
+Listing4
+
+
+error(n_inputs, inputs, output, synapses, history, rate, momentum)
+register int n_inputs;      /* number of input neurons                  */
+register NEURON *inputs;    /* vector of input neurons                  */
+NEURON *output;             /* output neuron                            */
+register SYNAPSE *synapses; /* vector of synapses on output             */
+SYNAPSE *history;           /* vector of synapse history                */
+int rate;                   /* transfer learning rate                   */
+int momentum;               /* if true use synapse history              */
+    {
+    WORD error;             /* correction error for synapse             */
+    long weight;            /* synapse weight                           */
+    long feedback;          /* amount to feedback to previous layer     */
+    long delta;             /* amount to change synapse weight          */
+
+    /* amount of left shift to bring feedback and delta back into proper
+    range */
+#define FEEDBACK_SHIFT \
+        SYNAPSE_SHIFT+ACTIVATION_SHIFT+RATE_SHIFT-ACTIVATION_SHIFT
+            
+#define DELTA_SHIFT \
+        ACTIVATION_SHIFT+ACTIVATION_SHIFT+RATE_SHIFT-SYNAPSE_SHIFT
+    
+
+    /* get error, factor in derivative of log limit function if overload*/
+    error = output->errors;
+    if (output->activation > 100)
+        error = (error * 100) / output->activation;
+    else if (output->activation < -100)
+        error = (error * 100) / output->activation;
+    error *= rate;          /* error proportional to learning rate      */
+
+#ifndef MEGAMAX
+    while (--n_inputs >= 0) /* calculate new synapse weights:           */
+        {
+        weight = *synapses; /*   get weight from synapse                */
+        feedback = weight;  /*   feedback proportional to weight        */
+        feedback *= error;  /*   feedback proportional to error         */
+        feedback >>= FEEDBACK_SHIFT;    /*   shift feedback into range of
+                                        errors                          */
+        inputs->errors += feedback; /*   feedback to input errors       */
+        delta = inputs->activation; /*   delta proportional to input    */
+        inputs++;           /*   next input                             */
+        delta *= error;     /*   delta proportional to error            */
+        delta >>= DELTA_SHIFT;  /*   shift delta into range of weight   */
+        if (momentum)
+            {
+            delta += *history;  /*   add momentum to delta              */
+            *history++ = (SYNAPSE)delta;    /*   save delta for next
+                                                 feedback cycle         */
+            }
+        weight += delta;    /*   synapse weight corrected by delta      */
+        if (weight > MAX_SYNAPSE)
+            weight = MAX_SYNAPSE;   /*   limit weight in case of overflow */
+        else if (weight < -MAX_SYNAPSE)
+            weight = -MAX_SYNAPSE;  /*   limit weight in case of underflow */
+                                                                        */
+        *synapses++ = (SYNAPSE)weight;  /*   put new weight back in synapse*/
+        }
+#else                       /* use Megamax inline assembly for Motorola */
+    asm
+        {
+        move.w history(A6), A1;
+        A1 = history move.w momentum(A6), D2;
+        D2 = momentum move.w error(A6), D3;
+        D3 = error move.w#FEEDBACK_SHIFT, D4;
+        D4 = shift factorfor feedback move.w#DELTA_SHIFT, D5;
+            D5 = shift factorfor delta bra end; 
+    loop:; while (--n >= 0)
+            ;
+        get weight from synapse clr.l D0;
+        weight = 0L move.w(synapses), D0;
+        weight = *synapse;
+        feedback error to inputs move.w D0, D1;
+        feedback = weight muls D3, D1;
+        feedback *= error asr.l D4, D1;
+        feedback >>= FEEDBACK_SHIFT add.w D1, O_ERROR()(inputs);
+        inputs->errors += feedback;
+        delta proportional to input move.w(inputs), D1;
+        delta = inputs->activation adda.l#NEURON_SIZE, inputs;
+        inputs++;
+        delta proportional to error muls D3, D1;
+        delta *= error asr.l D5, D1;
+        delta >>= DELTA_SHIFT;
+        add momentum to delta cmp.w#0, D2;
+        if (0 != momentum)
+            beq.s mod;
+        add.w(A1), D1;
+        delta += *history move.w D1, (A1) + ;
+        *history++ = delta;
+        modify weight by delta ext.l D1;
+        (long)delta
+    mod:
+        add.l D1, D0;
+        weight += delta;
+        limit overflow or underflow cmp.w#MAX_SYNAPSE, D0;
+        if (MAX_SYNAPSE < weight)
+            blt.s low;
+        move.w#MAX_SYNAPSE, D0;
+        weight = MAX_SYNAPSE bra.s new;
+    low:
+        cmp.w# - MAX_SYNAPSE, D0;
+        else if (-MAX_SYNAPSE > weight)
+            bgt.s new;
+        move.w# - MAX_SYNAPSE, D0;
+        weight = -MAX_SYNAPSE;
+        put new weight back in synapse
+    new:
+        move.w D0, (synapses) + ;
+        *synapse++ = weight
+    end:
+        dbf n_inputs, loop
+        }
+#endif
+    }
+
+Listing5
+#include <stdio.h>
+#include "synapsys.h"
+
+#ifdef MEGAMAX
+long tickcount();
+#define TickCount() tickcount()
+#else                       /* MPW                                      */
+#include <events.h>
+#endif
+
+main()
+    {
+    char s[81];
+    int i, j, err, n_layer, n_neuron[2], rate, momentum;
+    long n, n_inp, n_out, t1, t2;
+    float tt, te, sse;
+    NETWORK *network;
+    NEURON *inputs, *outputs;
+
+    /* prompt for network to test                                       */
+    printf("enter number of iterations:\n");
+    gets(s), n = atoi(s);
+    printf("enter number of inputs:\n");
+    gets(s), n_inp = atoi(s);
+    n_neuron[0] = n_inp;
+    printf("enter number of outputs:\n");
+    gets(s), n_out = atoi(s);
+    n_neuron[1] = n_out;
+    printf("enter learning rate (0 to 128):\n");
+    gets(s), rate = atoi(s);
+    printf("enter momentum (0 or 1):\n");
+    gets(s), momentum = atoi(s);
+
+    /* create one layer network, randomize synapses                     */
+    network = new_network(1, n_neuron, &rate, &momentum);
+    if (!network)
+        printf("\nout of memory\n"), exit(0);
+    inputs = network->first_layer->inputs;
+    outputs = network->last_layer->outputs;
+    randomize(network, 127, 1L);
+
+    /* initialize input                                                 */
+    for (i = 1; i <= n_inp; i++)
+        inputs[i].activation = i * 100 / n_inp;
+
+    /* time network                                                     */
+    for (tt = te = i = 0; i < n; i++)
+        {
+        /* calculate outputs                                            */
+        t1 = TickCount();
+        feedforward(network);
+        t2 = TickCount();
+        tt += (float)(t2 - t1);
+
+        /* calculate errors, report mean squared error                  */
+        for (sse = 0, j = 0; j < n_out; j++, sse += err * err)
+            err = outputs[j].errors = j * 100 / n_out - outputs[j].activation;
+        printf("iteration %d  mse %f\n", i, sse / n_out);
+
+        /* correct synapse weights                                      */
+        t1 = TickCount();
+        feedback(network);
+        t2 = TickCount();
+        te += (float)(t2 - t1);
+        }
+
+    /* report results                                                   */
+    printf("feedforward: %7.2f transfers/sec\n",
+           (n * n_inp * n_out) / (tt / 60.));
+    printf("feedback:    %7.2f errors/sec\n",
+           (n * n_inp * n_out) / (te / 60.));
+    getchar();
+    }
+
+
+/* create a new network of n_layer synapse layers with
+     n_neuron[i] input neurons and
+     n_neuron[i+1] output neurons
+   for each layer of synapses
+
+   the learning rate for each layer is set to rate[i]
+   the presence of history synapses for each layer is controlled by
+momentum[i]
+   return pointer to network, or 0 if out of memory
+*/
+NETWORK *new_network(n_layer, n_neuron, rate, momentum)
+int n_layer, n_neuron[], rate[], momentum[];
+    {
+    NETWORK *network;
+    int i;
+    LAYER *layer, *prev_layer = 0;
+    char *calloc();
+
+    network = (NETWORK *)calloc(1, sizeof(NETWORK));
+    if (!network)
+        return 0;
+    for (i = 0; i < n_layer; i++, prev_layer = layer)
+        {
+        layer = (LAYER *)calloc(1, sizeof(LAYER));
+        if (!layer)
+            return 0;
+        layer->n_inputs = n_neuron[i];
+        layer->n_outputs = n_neuron[i + 1];
+        layer->rate = rate[i];
+        layer->momentum = momentum[i];
+        layer->inputs = (NEURON *)calloc(layer->n_inputs, sizeof(NEURON));
+        if (!layer->inputs)
+            return 0;
+        if (prev_layer)
+            {
+            layer->prev_layer = prev_layer;
+            layer->prev_layer->next_layer = layer;
+            layer->prev_layer->outputs = layer->inputs;
+            }
+        else
+            network->first_layer = layer;
+        layer->synapses = (SYNAPSE *)calloc(layer->n_inputs *
+                                            layer->n_outputs,
+                                            sizeof(SYNAPSE));
+        if (!layer->synapses)
+            return 0;
+        if (momentum[i])
+            {
+            layer->history = (SYNAPSE *)calloc(layer->n_inputs *
+                                               layer->n_outputs,
+                                               sizeof(SYNAPSE));
+            if (!layer->history)
+                return 0;
+            }
+        else
+            layer->history = 0;
+        }
+    layer->outputs = (NEURON *)calloc(layer->n_outputs, sizeof(NEURON));
+    if (!layer->outputs)
+        return 0;
+    network->last_layer = layer;
+    return network;
+    }
+
+
+/* feed activations forward through all layers of a network             */
+feedforward(network)
+NETWORK *network;
+    {
+    int n_inputs;
+    SYNAPSE *synapses;
+    NEURON *inputs, *output, *end_out;
+    LAYER *layer;
+
+    /* loop forward through all layers                                  */
+    for (layer = network->first_layer; layer; layer = layer->next_layer)
+        {
+        synapses = layer->synapses;
+        n_inputs = layer->n_inputs;
+        inputs = layer->inputs;
+        output = layer->outputs;
+        end_out = layer->n_outputs + output;
+
+        /* feed activations forward through this layer                  */
+        for (; output < end_out; output++, synapses += n_inputs)
+            transfer(n_inputs, inputs, output, synapses);
+        }
+    }
+
+
+/* feed errors back through all layers of a network                     */
+feedback(network)
+NETWORK *network;
+    {
+    int n_inputs, rate, momentum;
+    SYNAPSE *synapses, *history;
+    NEURON *inputs, *output, *end;
+    LAYER *layer;
+
+    /* loop back through all layers                                     */
+    for (layer = network->last_layer; layer; layer = layer->prev_layer)
+        {
+        /* clear out previous errors                                    */
+        n_inputs = layer->n_inputs;
+        inputs = layer->inputs;
+        while (--n_inputs >= 0)
+            (inputs++)->errors = 0;
+
+        /* feed errors back through this layer                          */
+        n_inputs = layer->n_inputs;
+        inputs = layer->inputs;
+        output = layer->outputs;
+        synapses = layer->synapses;
+        history = layer->history;
+        rate = layer->rate;
+        momentum = layer->momentum;
+        end = output + layer->n_outputs;
+        for (; output < end;
+             output++, synapses += n_inputs, history += n_inputs)
+            error(n_inputs, inputs, output, synapses, history, rate,
+                  momentum);
+        }
+    }
+
+
+/*
+        Good random number generator with period 4286449341.
+        Result is unsigned WORD with uniform 
+        distribution in range 0 to 65535.
+        Seeds must be unsigned WORD, with no side effects.
+        Quite fast if seeds are in registers.
+*/
+
+#define U2RAND(seed1,seed2) \
+(((seed1)*=65421,++(seed1))+((seed2)*=65521,++(seed2)))
+        
+
+
+
+/* add a signed pseudo-random value to all weights in a network         */
+randomize(network, max, seed)
+NETWORK *network;
+unsigned max;
+long seed;
+    {
+    register unsigned WORD seed1 = seed, seed2 = seed >> 16;
+    WORD div = 32768 / max;
+    register SYNAPSE *weight, *end;
+    LAYER *layer = network->first_layer;
+    do
+        {
+        weight = layer->synapses;
+        if (weight)
+            {
+            end = weight + layer->n_inputs * layer->n_outputs;
+            do
+                *weight++ += (WORD)((long)U2RAND(seed1, seed2) - 32768) / div;
+                while (weight < end);
+            }
+        } while (layer = layer->next_layer);
+    }
+

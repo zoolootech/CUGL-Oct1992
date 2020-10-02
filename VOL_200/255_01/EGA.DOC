@@ -1,0 +1,1551 @@
+
+                                                        DATE:   02/25/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              Graphics for the IBM's Enhance Graphic Adapter (EGA)
+
+
+                              Version 02/25/86
+
+
+                           for Microsoft C 3.00+
+
+                                   and
+
+                            Turbo Pascal 3.01A+
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+                                 IMPORTANT NOTICE
+
+
+        The Enhanced Graphic Adapter (EGA) graphic routines for Microsoft
+        3.0 and Turbo Pascal 3.01A was written and is maintained by:
+
+                               Kent Cedola
+                               2015 Meadow Lake Court
+                               Norfolk, Virginia  23518
+                               1-(804)-857-0613
+
+        Users of this software are encouraged to copy and distribute the
+        graphics library and demonstrations programs which are a part of
+        this package for non-commericial purposes.
+
+        No fee or other charges may be made in the distribution of these
+        programs without the written permission from Kent Cedola.
+
+        Any program written with this graphic library may be sold, as
+        long as the source code for the graphic library in not included.
+        If you wish to include the graphic library with the product,
+        please contact me for more information and written permission.
+
+        The date of release will be used in instead of a version.  When
+        requesting information, please included the date (version) of the
+        copy that you have and the amount of EGA memory.  Write the above
+        for the current release of the graphic library.
+
+        If you are satified with the EGA support for Turbo Pascal you are
+        asked to send a donation of $20.00 dollars.  All registered users
+        will be informed of any major improvements and/or programs
+        developments.
+
+                                FREE COPY OF TPEGA
+
+        If you send a diskette with a SASE, I will send you the current
+        copy of the library and programs for FREE! (360k or 1.2meg disk)
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+                                      GENERAL
+
+
+        This graphic software was written to provide the general public
+        a means for writing graphic program for the EGA without any run-
+        time fee!  The software is also design to give the programmer
+        the most flexibility, so most graphic routines can be changed or
+        deleted (saving space) from the final product.
+
+        Those with the standard EGA (only 64k of memory) may have some
+        problems with some of the graphic primitives as I have a 128k+
+        EGA.  I highly recommend adding extra memory to your EGA if
+        you plan to do alot of graphic programming.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+                                SPECIAL NOTICE
+
+
+        While trying to get as many graphic routines as possible in this
+        release I had to cut corners on the GPSHADE, GPFILL and GPFLOOD
+        graphic primitives.  The GPFILL should be used for simple objects
+        to be filled in and GPFLOOD for complex objects. Currently, GPFILL
+        calls GPFLOOD to do the fill, this will change in the future as I
+        will write a version of GPFILL that will execute two or three times
+        faster than GPFLOOD (GPFILL = Simple objects only).  GPSHADING has
+        a restriction for dimensions of 1,2,4 or 8 or both width and height.
+        Other dimensions can be used, but funny fills may happen (will be
+        fixed later).  The GPFLOOD routine is fast, and will fill in any
+        area no matter how complex (more complex more stack space), but I
+        will re-write it for higher speeds.
+
+        Both the GPBOX and GPBALL primitives only do solid colors and not
+        shades.  Both use special EGA full byte fill modes and are fast.
+        BPBOX and GPBALL do NOT set the clipping flag. (Later)
+
+        These primitives do work, but they can be better.  I will improve
+        the flexibility and speed of these routines in the future.
+
+        The following routines miss this release (are in the documentation)
+        will be included in a future release.
+
+                        GPSCROLL
+                        GPPOLY
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+                        List of Graphic Functions
+
+
+         Graphics Routines               Description
+        ----------------------------    ---------------------------------
+         GPPARMS;                        Setup graphic adapter parameters
+         GPINIT;                         Initialize graphic display
+         GPTERM;                         Terminate graphic display
+
+         GPCOLOR(b);                     Set current color
+         GPMERGE(b);                     Set current merge mode
+         GPSTYLE(array);                 Set pattern for drawing lines
+         GPSHADE(array);                 Set pattern for shading areas
+         GPRDCLR;                        Return the current color
+
+         GPPAL(p,v);                     Set a palette register
+         GPCPAL(p,v);                    Set a palette register using RGB
+         GPLDPAL(array);                 Load all palette registers
+         GPRDPAL(p);                     Read current palette setting
+
+         GPPLOT(X,Y);                    Plot a point at X,Y (sets new CP)
+         GPRDDOT(X,Y)                    Read pixel at coordinates (X,Y)
+         GPMOVE(X,Y);                    Set current graphic position (CP)
+         GPLINE(X,Y);                    Draw a line from (CP) to X,Y
+         GPPOLY(array,N);                Draw a N number of lines
+         GPRECT(X,Y);                    Draw a rectangle between CP and (X,Y)
+         GPCIR(R);                       Draw a circle at CP with R radius
+
+         GPWTROW(Array,N);               Write a row of pixels
+         GPWTCOL(Array,N);               Write a column of pixels
+         GPRDROW(Array,N);               Read a row of pixels
+         GPRDCOL(Array,N);               Read a column of pixels
+
+         GPBOX(X,Y);                     Draws a solid box with color/shading
+         GPBAL(R);                       Draws a solid circle with color/shading
+
+         GPSCROLL(Dir,I,N);              Scroll current viewport
+
+         GPVIEWPORT(X1,Y1,X2,Y2);        Set current viewport
+         GPWINDOW(X1,Y1,X2,Y2);          Set current window
+         GPCLIP1(X,Y);                   Clip point in current window
+         GPCLIP2(X1,Y1,X2,Y2);           Clip line in current window
+         GPSCALE(X,Y);                   Scale from world to device
+
+         GPFILL(Border);                 Simple object fill, color/shading
+         GPFLOOD(Border);                Complex object fill, color/shading
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+                        List of Global Variables
+
+
+         Global Variable                 Description
+        ----------------------------    ---------------------------------
+         GDTYPE:        Integer;         3 = CG, 4 = Mono, 5 = Color
+         GDOTHER:                        Internal Use Only
+         GDMEMORY:      Integer;         Amount of memory, 64 -> 256
+         GDMAXCOL:      Integer;         Maximum column (639 for EGA)
+         GDMAXROW:      Integer;         Maximum row (199/349 for EGA)
+         GDMAXPAL:      Integer;         Maximum palettes (4/16 for EGA)
+         GDMAXCLR:      Integer;         Maximum colors (63 for EGA)
+
+         GDCOLOR:       Integer;         Current color for drawing
+         GDMERGE:                        Internal Use Only
+         GDSTYLE:                        Internal Use Only
+         GDSHADE:                        Internal Use Only
+         GDSHADE1:                       Internal Use Only
+         GDASPC1:       Integer;         Aspect for circles (3 for EGA)
+         GDASPC2:       Integer;         Aspect for circles (4 for EGA)
+         GDCUR_X:       Integer;         Current X coordinate
+         GDCUR_Y:       Integer;         Current Y coordinate
+
+         GDGSEG:                         Internal Use Only
+         GDGSADR:                        Internal Use Only
+
+         GDWD_X1:       Integer;         Window coordinate (low)
+         GDWD_X2:       Integer;         Window coordinate (high)
+         GDWD_X3:       Integer;         Window coordinate (delta+1)
+         GDWD_Y1:       Integer;         Window coordinate (low)
+         GDWD_Y2:       Integer;         Window coordinate (high)
+         GDWD_Y3:       Integer;         Window coordinate (delta+1)
+
+         GDVW_X1:       Integer;         Viewport coordinate (low)
+         GDVW_X2:       Integer;         Viewport coordinate (high)
+         GDVW_X3:       Integer;         Viewport coordinate (delta+1)
+         GDVW_Y1:       Integer;         Viewport coordinate (low)
+         GDVW_Y2:       Integer;         Viewport coordinate (high)
+         GDVW_Y3:       Integer;         Viewport coordinate (delta+1)
+
+         GDC_FLG:       Integer;         Last plot clipping status
+         GDS_FLG:       Integer;         Color/Shade or Color/Style flag
+         GDW_FLG:       Integer;         Enable/Disable World coordinates
+
+         GDCURX1:       Integer;         World current X coordinate
+         GDCURY1:       Integer;         World current Y coordinate
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPPARMS -- Setup current graphic adapter parameters
+
+        SYNOPSIS:
+
+                P: procedure GPPARMS;
+
+                C: void GPPARMS();
+
+        DESCRIPTION:
+
+                This procedure will initialize various global variables
+            on the status of the current graphic adapter.  If only needs
+            to be executed once in the life of a program.
+
+        RETURNS:
+
+            GDTYPE = 0, no ega, monochrome adapter (text mode) { maybe }
+                   = 1, no ega, old color graphic adapter (CG) { maybe }
+                   = 2, EGA with old color graphic monitor (320x200x16)
+                   = 3, EGA with old color graphic monitor (640x200x16)
+                   = 4, EGA with monochrome monitor (640x350x4)
+                   = 5, EGA with new Enhanced Color Display (640x350x16)
+                   = 6, ?
+
+        CAUTIONS:
+
+            This procedure MUST be performed before any other primitive.
+                           ----
+        EXAMPLE:
+
+            P: GPPARMS;                    { Determine the type of Adapter }
+
+               if GDTYPE <> 4 and GDTYPE <> 5 then   { 4 = mono, 5 = color }
+                 begin
+                 writeln('Must have IBM Enhanced Graphic Display!');
+                 halt(1);
+                 end;
+
+            C: GPPARMS();
+
+               if (GDTYPE != 5)
+                 {
+                 fprintf(stderr,'Must have EGA color display!\n');
+                 exit(1);
+                 };
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPINIT -- Initialize the Enhanced Graphic Adapter
+
+        SYNOPSIS:
+
+                P: PROCEDURE GPINIT;
+
+                C: GPINIT();
+
+        DESCRIPTION:
+
+                This procedure will place the EGA in color or mono
+            graphic mode depending on hardware connected to the EGA.
+            This routine can be repeated to reset graphic state. If
+            you are using the standard color monitor with the EGA,
+            will setup in 640x200 (16 colors) mode, else 640x350.
+
+        CAUTIONS:
+
+                The procedure 'GPPARMS' must be used to determine if
+            an EGA is available. The EGA must be placed in graphic mode
+            before executing the other graphic routines (not including
+            'GPPARMS').
+
+        EXAMPLE:
+
+            P: GPPARMS;                 { Determine the type of Adapter }
+
+               if GDTYPE <> 4 and GDTYPE <> 5 then
+                 begin
+                 write('Must have IBM Enhanced Graphic Display!');
+                 halt;
+                 end
+               else
+                 begin
+                 GPInit;                 { Initialize the EGA           }
+                 end;
+
+            C: GPPARMS();
+
+               if (GDTYPE != 4)
+                 {
+                 fprintf(stderr,'Must have EGA monochrome display!\n');
+                 exit(1);
+                 }
+               else
+                 {
+                 GPINIT();
+                 };
+
+        SEE ALSO:
+
+            GPPARMS and GPTERM.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPTERM -- Terminate graphic mode and return to text
+
+        SYNOPSIS:
+
+                P: procedure GPTERM;
+
+                C: void GPTERM;
+
+        DESCRIPTION:
+
+                This procedure will return the EGA back to text mode.
+                Mode 3 for color EGA and mode 7 for monochrome monitors.
+
+        CAUTIONS:
+
+                Should not be performed on a non EGA computer.
+
+        EXAMPLES:
+
+            P: GPTERM;
+
+            C: GPTERM();
+
+        SEE ALSO:
+
+            GPPARMS and GPINIT.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPCOLOR -- Set the current color
+
+        SYNOPSIS:
+
+                P: procedure GPCOLOR(Value: Integer);
+
+                C: void GPCOLOR(Value)
+                     int Value;
+
+        DESCRIPTION:
+
+                Set the color to be used by the other ploting routines
+            (GPPLOT, GPLINE, GPRECT, etc...).  The primitive GPRDCLR can
+            can be used to read the current color. The global GDMAXPAL will
+            contain the highest color value allowed.   Setting the color
+            will set the style/shading flag to zero, this will cause all
+            drawing and filling primitives to use the current color and
+            not the current style/shading.  Use the Turbo Pascal function
+            TEXTCOLOR for text coloring.
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);             { Set color to Green     }
+               GPMOVE(50,50);              { Draw a green rectangle }
+               GPRECT(100,100);
+
+            C: color = GPRDCLR;            /* Save the current color */
+
+               GPCOLOR(Red);               /* Define a new color     */
+
+               GPMOVE(X1,Y1);              /* Draw a red line        */
+               GPLINE(X2,Y2);
+
+               GPCOLOR(color);             /* Restore color          */
+
+        SEE ALSO:
+
+            GPRDCLR, GPSTYLE, GPSHADE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPMERGE -- Set the placement of graphic data
+
+        SYNOPSIS:
+
+                P: procedure GPMERGE(Value: Integer);
+
+                C: void GPMERGE(Value)
+                     int Value;
+
+                               Merge modes, 0 - Store (default)
+                                            1 - AND
+                                            2 - OR
+                                            3 - XOR
+
+        DESCRIPTION:
+
+                Specify the method which data is placed in the graphic
+            memory.  The various merge modes are performed with hardware
+            on the EGA.  Almost all graphic routines will be effected by
+            setting the merge value, but not all.
+
+        CAUTIONS:
+
+                Setting non-zero merge mode can slow down some graphic
+           primitives. (e.g., GPFLOOD).
+
+        EXAMPLE:
+
+            P: GPMERGE(3);                    { Set merge mode to XOR }
+               GPCOLOR(Green);                { Set color to Green    }
+               GPMOVE(50,50);                 { XOR green box         }
+               GPBOX(100,100);
+               GPMERGE(0);                    { Return merge mode to default }
+
+        SEE ALSO:
+
+            GPFILL and GPFLOOD.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPSTYLE -- Set the current line style
+
+        SYNOPSIS:
+
+                P: procedure GPSTYLE(var Style);
+
+                C: void GPSTYLE(Style)
+                     unsigned char Style[];
+
+        DESCRIPTION:
+
+                Set the line style for the line drawing primitives.  The
+            parameter is an array of color bytes with the first byte con-
+            taining the length.  The style/shading flag will be set to
+            non-zero to flag the line routines to use the current line style
+            and not the current color setting.
+
+        EXAMPLE:
+
+            C: unsigned char Style[] =     /* Set line style to GGBB  */
+                 {4,Green,Green,Blue,Blue};
+
+               GPSTYLE(Style);             /* Define the line style   */
+
+               GPMOVE(X1,Y1);
+               GPLINE(X2,Y2);              /* Draw line using style   */
+
+               GPCOLOR(color);             /* Set color               */
+
+               GPLINE(X3,Y3);              /* Draw green line         */
+
+               GPS_FLG := -1;              /* Goback to style setting */
+
+               GPLINE(X4,Y4);              /* Draw line using style   */
+
+        SEE ALSO:
+
+            GPCOLOR.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPSHADE -- Set the current fill/flood shading
+
+        SYNOPSIS:
+
+                P: procedure GPSHADE(var Style);
+
+                C: void GPSHADE(Style)
+                     unsigned char Style[];
+
+        DESCRIPTION:
+
+                Set the shading matrix for fill/flooding primitives.  The
+            parameter is an array of color bytes with the first byte con-
+            taining the width and the second containing the height.  The
+            style/shading flag (GDS_FLG) will be set to a non-zero value.
+
+        CAUTIONS:
+
+            Although any dimension from 1 to 255 can be used, the current
+            version of GPFILL and GPFLOOD only works correctly with shade
+            of dimensions of 1,2,4 or 8 (x and y can be different).  This
+            restriction will be removed in the future.
+
+        EXAMPLE:
+
+            C: unsigned char Shade[] =     /* Set fill shade to GBGB  */
+                 {2,2,Green,Blue,Blue,Green};    /* 2 by 2 array */
+
+               GPSHADE(Shade);             /* Define the shading      */
+
+               GPMOVE(X1,Y1);
+               GPFLOOD(color);             /* Flood area with border
+                                              defined by color        */
+
+        SEE ALSO:
+
+            GPCOLOR, GPSTYLE, GPFILL and GPFLOOD.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPRDCLR -- Read the current color
+
+        SYNOPSIS:
+
+                P: function GPRDCLR: Integer;
+
+                C: int GPRDCLR();
+
+        DESCRIPTION:
+
+                Return the current color setting.  Use to save the current
+            color setting.
+
+        RETURN:
+
+                The current color setting.
+
+        EXAMPLE:
+
+            C: color = GPRDCLR;            /* Save the current color */
+
+               GPCOLOR(Red);               /* Define a red line      */
+
+               GPMOVE(X1,Y1);
+               GPLINE(X2,Y2);              /* Draw a red line        */
+
+               GPCOLOR(color);             /* Restore color          */
+
+        SEE ALSO:
+
+            GPCOLOR.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPPAL -- Set a palette register
+
+        SYNOPSIS:
+
+                P: procedure GPPAL(Palette, Color: Integer);
+
+                C: void GPPAL(Palette, Color)
+                     int Palette, Color;
+
+        DESCRIPTION:
+
+                Set a palette to a given color value.  The maximum range
+            of the palette variable is contained in GDMAXPAL. The max
+            range of the color variable in contained in GDMAXCLR. These
+            two global variables are set by the routine 'GPPARMS'.   If
+            -1 is the palette value then the border is set to the given
+            color.
+
+        CAUTIONS:
+
+                Setting the border color is not recommended for the EGA.
+
+        EXAMPLE:
+
+            P: GPPAL(5,20);                { Set palette 5 to color 20  }
+
+        SEE ALSO:
+
+            GPCPAL and GPRDPAL.
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPCPAL -- Set a palette register using R,G,B
+
+        SYNOPSIS:
+
+                P: procedure GPCPAL(Palette, R, G, B: Integer);
+
+                C: void GPCPAL(Palette, R, G, B)
+                     int Palette, R, G, B;
+
+        DESCRIPTION:
+
+                Set a palette to a given color using the RGB values.
+            The max value of each primary color can be determine by the
+            (cube root of (GDMAXCLR+1) - 1).  If -1 is the palette value
+            then the border is set to the given color.
+
+        CAUTIONS:
+
+                Setting the border color is not recommended for the EGA.
+
+        EXAMPLE:
+
+            P: GPCPAL(5,2,1,0);            { Set palette 5 to RGB(2,1,0)}
+
+        SEE ALSO:
+
+            GPPAL and GPRDPAL.
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPLDPAL -- Set all the palette registers
+
+        SYNOPSIS:
+
+                P: procedure GPLDPAL(var Palettes : Bytes);
+
+                P: void GPLDPAL(Palettes)
+                     unsigned char Palettes[];
+
+        DESCRIPTION:
+
+                Load all the palette registers from a given array.  The
+            number of palettes can be determine by GDMAXPAL + 2.  The
+            border color is located in GDMAXPAL + 2.
+
+        CAUTIONS:
+
+                Setting the border color is not recommended for the EGA.
+
+        EXAMPLE:
+
+            P: pals: array [0..16] of byte; { pals[0] > pals[15] colors }
+                                            { pals[16] border color     }
+
+               for i := 0 to 15 do          { Reset to default colors   }
+                 begin
+                 if i < 8 then
+                   pals[i] := i
+                 else
+                   pals[i] := 48 + i;
+
+               pals[16] := 0;               { Keep border Black         }
+
+               GPLDPAL(pals);               { Set palettes and border   }
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPRDPAL -- Set a palette register
+
+        SYNOPSIS:
+
+                P: function GPRDPAL(Palette: Integer): Integer;
+
+                C: int GPRDPAL(Palette)
+                     int Palette;
+
+        DESCRIPTION:
+
+                Read the setting of the specified palette register.  If
+            an EGA save area has not be defined then this function will
+            return -1 instead of a palette color.  Use the program
+            'KCSETPAL' to define a save area.
+
+        RETURN:
+
+                Palette color or -1 if can be found. (run KCSETPAL).
+
+        EXAMPLE:
+
+            C: current_color = GPRDPAL(5)  /* Read palette 5  */
+
+               if (current_color == -1)    /* Recover on null */
+                 current_color = 5;
+
+        SEE ALSO:
+
+            GPPAL.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPPLOT -- Plot a pixel at the given corrdinate
+
+        SYNOPSIS:
+
+                P: procedure GPPLOT(x,y: Integer);
+
+                C: void GPPLOT(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Plot a point at the given coordinates using the current
+            color and merge values.  The upper left corner is (0,0) on
+            the graphic screen.  The specifed (X,Y) coordinate becomes
+            the new current position (CP).  Automatic clipping is
+            preformed.
+
+        RETURN:
+
+            GDC_FLG = 0 if point is in the current viewport.
+                      2 if point out of current viewport (not plotted)
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPPLOT(5,5);             { Plot a Green pixels at (5,5)  }
+               GPLINE(9,9);             { Draw line from (5,5) to (9,9) }
+
+        SEE ALSO:
+
+            GPCOLOR, GPMERGE and GPMOVE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPRDDOT -- Read the pixel at the given corrdinate
+
+        SYNOPSIS:
+
+                P: function GPRDDOT(x,y: Integer): Integer;
+
+                C: int GPRDDOT(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Read the pixel at the given coordinates.
+
+        CAUTIONS:
+
+                The global variable GDMEMORY is used to determine the
+            number of planes to read (two for 64k, and four 128k+)
+
+        EXAMPLE:
+
+            P: color: Integer;
+
+               color := GPRDDOT(5,4)    { Read color at (5,4)           }
+
+        SEE ALSO:
+
+            GPPARMS.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPMOVE -- Move graphic cursor to new position
+
+        SYNOPSIS:
+
+                P: procedure GPMOVE(x,y: Integer);
+
+                C: void GPMOVE(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Set the graphic cursor to the specified position to be
+            the new current position (CP).
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPMOVE(5,5);             { Set CP to (5,5)               }
+               GPLINE(9,9);             { Draw line from (5,5) to (9,9) }
+
+        SEE ALSO:
+
+            GPPLOT and GPLINE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPLINE -- Draw a line from CP to (X,Y)
+
+        SYNOPSIS:
+
+                P: procedure GPLINE(x,y: Integer);
+
+                C: void GPLINE(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Draw a line from the current position (CP) to the given
+            coordinate using the current merge, color or line style values.
+            Automatic line clipping is performed in the current viewport.
+
+        RETURN:
+
+            GDC_FLG = 0 if line is in the current viewport.
+                      1 if line was clipped, but still plotted (part of)
+                      2 if line out of current viewport (not plotted)
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPMOVE(5,5);             { Set CP to (5,5)               }
+               GPLINE(9,9);             { Draw line from (5,5) to (9,9) }
+
+        SEE ALSO:
+
+            GPCOLOR, GPMERGE, GPSTYLE and GPMOVE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPPOLY -- Connect an array of points
+
+        SYNOPSIS:
+
+                P: procedure GPPOLY(var points; N: Integer);
+
+                C: void GPLINE(points,n)
+                     int points[]
+                     int n;
+
+        DESCRIPTION:
+
+                Starting from the CP, connect each point with a line.
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPMOVE(5,5);             { Set CP to (5,5)               }
+               GPPOLY(car,50);          { Draw a car                    }
+
+        SEE ALSO:
+
+            GPLINE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPRECT -- Draw a rectangle
+
+        SYNOPSIS:
+
+                P: procedure GPRECT(x,y: Integer);
+
+                C: void GPRECT(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Draws a rectangle with CP and given x,y coordinates.
+            The X,Y coordinates becomes the new CP.
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPMOVE(5,5);             { Set CP to (5,5)               }
+               GPRECT(10,10);           { Draw a rectangle              }
+
+        SEE ALSO:
+
+            CPCOLOR, GPMOVE and GPLINE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPCIR -- Draw a circle around the CP
+
+        SYNOPSIS:
+
+                P: procedure GPCIR(radius: Integer);
+
+                C: void GPCIR(radius)
+                     int radius;
+
+        DESCRIPTION:
+
+                Starting from the CP, draw a circle with the given radius
+            around it clipping in the current viewport.
+
+        RETURN:
+
+            GDC_FLG = 0 if circle is in the current viewport.
+                      1 if circle was clipped, but still plotted (part of)
+                      2 if circle out of current viewport (not plotted)
+
+        CAUTIONS:
+
+            The current line style can not be used only the color value.
+
+        EXAMPLE:
+
+            P: GPCOLOR(Green);          { Set color to Green            }
+               GPMOVE(100,100);         { Set CP to (5,5)               }
+               GPCIR(50);               { Draw a circle                 }
+
+        SEE ALSO:
+
+            GPMOVE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPWTROW -- Write a row of pixels
+
+        SYNOPSIS:
+
+                P: procedure GPWTROW(var Pixels: Byte; N: Integer);
+
+                C: void GPWTROW(Pixels,N)
+                     unsigned char Pixels[];
+                     int N;
+
+        DESCRIPTION:
+
+                Write a row of pixels from the current position (CP), N
+            pixels wide using the specifed byte array of colors.
+
+        CAUTIONS:
+
+                If the row of pixels leave the edge of the screen, the
+            rest will appear on the other side. (Can be a plus).
+
+        EXAMPLE:
+
+            P: Pixels: array [0.63] of byte;
+
+               GPMOVE(5,5);
+               GPWTROW(Pixels,64);
+
+        SEE ALSO:
+
+            GPMOVE, and GPWTCOL.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPWTCOL -- Write a column of pixels
+
+        SYNOPSIS:
+
+                P: procedure GPWTCOL(var Pixels: Byte; N: Integer);
+
+                C: void GPWTCOL(Pixels,N)
+                     unsigned char Pixels[];
+                     int N;
+
+        DESCRIPTION:
+
+                Write a column of pixels from the current position (CP),
+            N pixels high using the specifed byte array of colors.
+
+        CAUTIONS:
+
+                If the column of pixels leave the edge of the screen,
+            the rest will appear on the other side. (Can be a plus).
+
+        EXAMPLE:
+
+            P: Pixels: array [0.63] of byte;
+
+               GPMOVE(5,5);
+               GPWTROW(Pixels,64);
+
+        SEE ALSO:
+
+            GPMOVE, and GPWTROW.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPBOX -- Fills in specified box with current color
+
+        SYNOPSIS:
+
+                P: procedure GPBOX(x,y: Integer);
+
+                C: void GPBOX(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Fills the specified area (box shaped) using the current
+            color and merge value.  Normally used to clear the screen or
+            reverse an area using merge XOR setting.  The CP and the
+            specified X,Y coordinates are used as the corners of the box.
+
+        RETURN:
+
+            GDC_FLG = 0 if box is in the current viewport.
+                      1 if box was clipped, but still plotted (part of)
+                      2 if box out of current viewport (not plotted)
+
+        EXAMPLE:
+
+            P: GPCOLOR(Black);
+               GPMOVE(0,0);
+               GPBOX(GDMAXCOL,GDMAXROW); { Clear Screen }
+
+            C: GPCOLOR(GDMAXCLR)            /* Load 0x0F to reverse bits */
+               GPMERGE(3);                  /* Set merge mode to XOR     */
+               GPMOVE(50,50);
+               GPBOX(100,100);              /* Reverse bits in this box  */
+
+        SEE ALSO:
+
+            GPCOLOR, GPMERGE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPBALL -- Fills in specified circle with color/shade
+
+        SYNOPSIS:
+
+                P: procedure GPBALL(Radius: Integer);
+
+                C: void GPBALL(Radius)
+                     int Radius;
+
+        DESCRIPTION:
+
+                Fills the specified area (ball shaped) using the current
+            color and merge value.
+
+        RETURN:
+
+            GDC_FLG = 0 if ball is in the current viewport.
+                      1 if ball was clipped, but still plotted (part of)
+                      2 if ball out of current viewport (not plotted)
+
+        EXAMPLE:
+
+            P: GPCOLOR(Blue);
+               GPMOVE(100,100)
+               GPBALL(50);
+
+        SEE ALSO:
+
+            GPCIR, GPCOLOR and GPSHADE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPSCROLL -- Scroll the current viewport
+
+        SYNOPSIS:
+
+                P: procedure GPSCROLL(Dir, N: Integer);
+
+                C: void GPSCROLL(Dir, N)
+                     int  Dir, N;
+
+        DESCRIPTION:
+
+                Scroll the viewport in the specified direction by N
+            lines.  The viewport to be scrolled must be a byte boundary.
+            (x coordinate only).  The direction code is defined as:
+
+                            0    4   12
+                            1    5   13
+                            3    7   15
+
+        EXAMPLE:
+
+            P: GPVIEWPORT(48,50,95,100);
+
+               GPSCROLL(4,1);   { Scroll the viewport up by one line }
+
+        SEE ALSO:
+
+            GPVIEWPORT.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPVIEWPORT -- Specified an area to plot graphic commands
+
+        SYNOPSIS:
+
+                P: procedure GPVIEWPORT(x1,y1,x2,y2: Integer);
+
+                C: void GPVIEWPORT(x1,y1,x2,y2)
+                     int x1,y1; /* lower left corner of viewport  */
+                     int x2,y2; /* upper right corner of viewport */
+
+        DESCRIPTION:
+
+                Specify an area on the screen to perform graphic function.
+            The viewport parameters are in Graphic Device Units (GDU). The
+            IBM's Enhance Graphic Adapter is 640x350 GDUs.  The 'GPINIT'
+            function will perform viewport(0,0,639,349).  This function is
+            simular to the Turbo's GraphWindow or BASIC's Viewport.  The
+            basic graphic primitives are clipped using the current viewport.
+
+        EXAMPLE:
+
+            GPVIEWPORT(50,50,600,300); { Define viewport }
+                                                 |
+                .-----------------------.        |
+                |(0,0)                  |        |
+                |   .---------------.   |        |
+                |   |(50,50)        |   |        |
+                |   |               <------------+
+                |   |               |   |
+                |   |      (600,300)|   |
+                |   `---------------'   |<--- Default Viewport
+                |              (639,349)|
+                `-----------------------'
+
+        SEE ALSO:
+
+            GPPLOT, GPLINE, GPCIR and GPWINDOW.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPWINDOW -- specified a set coordinates
+
+        SYNOPSIS:
+
+                procedure GPWindow(x1,y1,x2,y2: Integer);
+
+                int  x1,y1;     lower left corner of window
+                int  x2,y2;     upper right corner of window
+
+        DESCRIPTION:
+
+                Specify a new set of coordinates for the current viewport.
+            The coordinates are signed integers (-32768 <--> +32767).  It
+            is simular to the BASIC's Window function.  The graphic
+            primitives GPSCALE, GPCLIP1 and GPCLIP2 can be used for scaling
+            and clipping using the current window.  See the file WORLD.P
+            for function that support the world coordinate system.
+
+        RETURNS:
+
+            None.
+
+        CAUTIONS:
+
+                If the viewport and window coordinates are different then
+            an extra scaling process is perform on graphic functions.  No
+            checks are performed on input parameters.
+
+        EXAMPLE:
+
+            GPViewport(50,50,600,300);    { Define viewport }
+            GPWindow(-100,-100,100,100); { Define a new set of corrdinates }
+                                                 |
+                .-----------------------.        |
+                |(0,0)                  |        |
+                |   .---------------.   |        |
+                |   |(-100,-100)    |   |        |
+                |   |               <------------+
+                |   |               |   |
+                |   |      (100,100)|   |
+                |   `---------------'   |<--- Default Viewport
+                |              (639,349)|
+                `-----------------------'
+
+        SEE ALSO:
+
+            GPVIEWPORT, and GPSCALE.
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPCLIP1 -- Clip a point within the current viewport
+
+        SYNOPSIS:
+
+                P: function GPCLIP1(var x,y: Integer): Integer;
+
+                C: int GPCLIP1(x,y)
+                     int x,y;
+
+        DESCRIPTION:
+
+                Perform point clipping on the specifed point and return
+            a zero (0) if the point is in the current viewport, else non-
+            zero response.
+
+        RETURN:
+
+                Zero, if inside viewport, else non-zero if outside.
+
+        EXAMPLE:
+
+            C: GPVIEWPORT(50,50,100,100);       /* Set current viewport */
+
+               void PtAbs(x,y)                  /* Define WORLD routine */
+                 int x,y;
+               {
+                 if (GPCLIP1(x,y) == 0)         /* Do boundary check    */
+                   {
+                   GPSCALE(x,y);                /* If inside viewport
+                   GPPLOT(x,y);                      scale and plot     */
+                   }
+               }
+
+        SEE ALSO:
+
+            GPVIEWPORT, GPCLIP2, and GPSCALE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPCLIP2 -- Clip a line within the current viewport
+
+        SYNOPSIS:
+
+                P: function GPCLIP2(var x1,y1,x2,y2: Integer): Integer;
+
+                C: int GPCLIP2(x1,y1,x2,y2)
+                     int *x1,*y1,*x2,*y2;
+
+        DESCRIPTION:
+
+                Perform point clipping on the specifed line and return
+            a zero (0) if the line is completly in the current viewport
+            or an one (1) if line clipping was performed or two (2) if
+            totally outside of the viewport.
+
+        RETURN:
+
+                Returns zero (0) is the line is completly in the viewport
+            (no clipping performed).  One (1) if the line was clip and the
+            x1,y1,x2,y2 value now contain the clipped line.  Two (2) if
+            the line is outside of the viewport.
+
+        EXAMPLE:
+
+            C: GPVIEWPORT(50,50,100,100);       /* Set current viewport */
+
+               if (GPCLIP2(x1,y1,x2,y2) != 2)   /* Do boundary check    */
+                 {
+                 GPSCALE(x1,y1);                /* If inside viewport
+                 GPMOVE(x1,y1);                      scale and draw     */
+                 GPSCALE(x2,y2);
+                 GPLINE(x2,y2);
+                 }
+               }
+
+        SEE ALSO:
+
+            GPVIEWPORT, GPCLIP1, and GPSCALE.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPSCALE -- Scale a world coordinate to viewport
+
+        SYNOPSIS:
+
+                P: procedure GPSCALE(var x,y: Integer);
+
+                C: void GPSCALE(x,y)
+                     int *x,*y;
+
+        DESCRIPTION:
+
+                Scale the specifed point from world coordinates to the
+            Device coordinates in the current viewport.
+
+        RETURN:
+
+                Changes the X,Y coordinate to real (hardware) coordinates.
+
+        EXAMPLE:
+
+            C: GPWINDOW(0,0,1000,1000);         /* Set world coordinates */
+               GPVIEWPORT(50,50,100,100);       /* Set current viewport  */
+
+               if (GPCLIP2(x1,y1,x2,y2) != 2)   /* Do boundary check     */
+                 {
+                 GPSCALE(x1,y1);                /* If inside viewport
+                 GPMOVE(x1,y1);                      scale and draw      */
+                 GPSCALE(x2,y2);
+                 GPLINE(x2,y2);
+                 }
+               }
+
+        SEE ALSO:
+
+            GPWINDOW, GPVIEWPORT, GPCLIP1, and GPGLIP2.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPFILL -- Fill the specified area with color/shading
+
+        SYNOPSIS:
+
+                P: procedure GPFILL(Border_Color: Integer);
+
+                C: void GPFILL(Border_Color)
+                     unsigned integer Border_Color;
+
+        DESCRIPTION:
+
+                Fill in an area starting at the CP to the border given.
+            The current color or current shading will be used depending
+            on the setting of the GDS_FLG variable.  The routine is for
+            simple areas only, which makes it much faster than GPFLOOD.
+            If the area is too complex for GPFILL, parts of the area will
+            not be filled in (but it will work).  GPFILL will not fill
+            pass the current viewport setting.
+
+        CAUTIONS:
+
+            Although any dimension from 1 to 255 can be used, the current
+            version of GPFILL and GPFLOOD only works correctly with shade
+            of dimensions of 1,2,4 or 8 (x and y can be different).  This
+            restriction will be removed in the future.
+
+        EXAMPLE:
+
+            C: unsigned char Shade[] =     /* Set fill shade to GBGB  */
+                 {2,2,Green,Blue,Blue,Green};    /* 2 by 2 array */
+
+               GPSHADE(Shade);             /* Define the shading      */
+
+               GPMOVE(X1,Y1);
+               GPFILL(color);              /* Flood area with border
+                                              defined by color        */
+
+        SEE ALSO:
+
+            GPCOLOR, GPSHADE, GPFLOOD and GPVIEWPORT.
+
+
+                                                        DATE:   02/03/86
+                                                        SYSTEM: KC-TPEGA
+
+
+
+        NAME:
+
+                GPFLOOD -- Flood the specified area with color/shading
+
+        SYNOPSIS:
+
+                P: procedure GPFLOOD(Border_Color: Integer);
+
+                C: void GPFLOOD(Border_Color)
+                     unsigned integer Border_Color;
+
+        DESCRIPTION:
+
+                Flood in an area starting at the CP to the border given.
+            The current color or current shading will be used depending
+            on the setting of the GDS_FLG variable.  The routine is for
+            all complex areas, which makes it much slower than GPFILL.
+            If the area is simple, try GPFILL, if it does not fill it all
+            then go back to GPFLOOD.  GPFLOOD will not flood pass the
+            current viewport setting.
+
+        CAUTIONS:
+
+            Although any dimension from 1 to 255 can be used, the current
+            version of GPFLOOD only works correctly with shade of
+            dimensions of 1,2,4 or 8 (x and y can be different).  This
+            restriction will be removed in the future.
+
+        EXAMPLE:
+
+            C: unsigned char Shade[] =     /* Set fill shade to GBGB  */
+                 {2,2,Green,Blue,Blue,Green};    /* 2 by 2 array */
+
+               GPSHADE(Shade);             /* Define the shading      */
+
+               GPMOVE(X1,Y1);
+               GPFLOOD(color);             /* Flood area with border
+                                              defined by color        */
+
+        SEE ALSO:
+
+            GPCOLOR, GPSHADE, GPFILL, and GPVIEWPORT.
+
+
+

@@ -1,0 +1,109 @@
+
+
+
+/*      HEADER:	    CUG0000;
+	TITLE:      Mouse Event Queue Test Driver;
+
+	FILENAME:   TESTQ.C;
+
+	COMPILER:   TURBO C V. 1.5+ Small Memory Model;
+
+	REQUIRES:   TESTQ.PRJ, MOUSEQ.H, MOUSEQ.OBJ, TC_MOUSE.H,
+		    TC_MOUSE.LIB, DEBUG.H, DEBUG.OBJ, HANDLER.OBJ;
+
+	VERSION:    1.0;
+	DATE:       12/31/89;
+	AUTHOR:     Michael Kelly;
+
+*/
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <conio.h>
+#include <dos.h>
+#include "tc_mouse.h"
+#include "mouseq.h"
+
+extern void far handler(void);  /* the mouse event handler */
+
+#define DEBUG
+
+#include "debug.h"
+
+
+#define write_char(c)  { video_buf = MK_FP(segg,ofset); *video_buf = (c); }
+
+
+unsigned int far *crt_address;
+unsigned int segg,ofset;
+unsigned char far *video_buf;
+
+void main(void)
+{
+    int buttons = 0;
+    int result = 0;
+    unsigned int qsize = 256;
+
+    crt_address = MK_FP(0x40,0x63);
+
+    /*
+     *  x and y mouse coordinate conversion to text mode
+     *  row and column mouse cursor location assumes Ega or Cga
+     *  text mode 2 or 3
+     *
+     *  source must be modified for other video configurations
+     */
+    if(*crt_address == 0x03D4)
+	segg = 0xB800;
+    else
+	err_exit("  Program requires Ega or Cga Monitor");
+
+    clrscr();
+
+
+    result = mouse_reset(&buttons); /* INT 33h FUNCTION 00h */
+    if(! result)
+	err_exit("    No mouse detected in System!");
+
+    /*
+     *  attempt to create EVENT queue with qsize links
+     */
+    if(! set_que(qsize))
+	err_exit("  Mouse Event Queue Set Up Failure");
+
+    printf(
+	"\n\tDrag Left Mouse Button  ...  or  ..."
+	"   Press Right Button to Quit\n"
+    );
+
+
+    mouse_show();   /* INT 33h FUNTION 01h */
+
+    /*
+     *  INT 33h FUNTION 0Ch -- Register mouse EVENT handler
+     *
+     *  0x1f is EVENT mask (all EVENT bits set)
+     */
+    mouse_set_eventhandler(0x1f, handler);
+
+    while(! (head->buttonbits & RIGHT_BUTTON))  {
+	if(head->valid)  {
+	    /*
+	     *  xcoord and ycoord are in pixels
+	     *  ofset calc assumes 640 x 200 (cga or ega text modes 2 & 3)
+	     *  you may have to alter for mono
+	     */
+	    ofset = ((head->ycoord >> 3) * 160) + ((head->xcoord >> 3) << 1);
+	    if(head->buttonbits & LEFT_BUTTON)
+		write_char('è');
+	    head->valid = 0;
+            head = head->next;
+	}
+    }
+
+    mouse_hide();           /* INT 33h FUNCTION 02h */
+    mouse_reset(&buttons);  /* INT 33h FUNCTION 00h */
+    free_que();             /* destroy the EVENT queue */
+    clrscr();
+}
+

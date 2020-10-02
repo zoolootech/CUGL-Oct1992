@@ -1,0 +1,156 @@
+
+Listing 4
+
+; Procedure DoEnviron
+; Purpose Convert a string to an environment variable
+; Input   String in "string"
+; Output  String in "WHAT" environment variable;
+;       AX has 0 for success, nonzero for failure
+
+DoEnviron PROC
+     call GetEnv    ; Get environment size, length, address
+     mov  dx,ax     ; Save size and length
+     mov  bx,cx
+
+; Find "WHAT="
+
+     sub  di,di     ;Point to start
+     sub  al,al     ;Search for zero
+     mov  si, OFFSET what     ; Point source at "WHAT="
+
+
+                           11
+
+
+
+findwh:   repne     scasb     ; Search
+     cmp  BYTE PTR es:[di],)  ; If double null, end of environment         
+     je   gotend
+     jcxz noroom              ; Error if not found
+     push di                  ; Save
+     push cx
+     mov  si,OFFSET what      ;Load address and length of "what"
+     mov  cx, lwhat           ; for comparison
+     repe cmpsb               ; Compare
+     mov  si,di               ; Make copy
+     pop  cx                  ; Restore
+     pop  di
+     jnz  findwh
+
+; Find end of "WHAT" variable
+
+     xchg      di,si
+     repne     scasb          ; Find end of environment variable
+     xchg      si,di          ; Point source to next variable
+
+; Calculate characters left to write
+     
+     mov  cx,bx               ; Load total characters
+     sub  cx,si               ; Subtract finished to get left
+
+; Move everything back to overwrite "WHAT="
+
+movenv:   push ds             : Save DS 
+     mov  ax,es               ; Copy to ES
+     mov  ds,ax
+     rep  movsb               ; Copy
+     mov  BYTE PTR es:[di],0  ; Put null at end in case of error
+     pop  ds   ; Restore
+
+; Check environment space
+
+gotend:   mov  al,actual      ; Load length of string
+     sub  ah,ah               ; Clear top
+     add  ax,lwhat            ; Add length of name
+     add  ax,di               ; Add position to get final length
+     cmp  ax,dx               ; Is it longer than environment?
+     jge  noroom              ; Yes? Quit
+
+: Put WHAT= at end
+
+     mov  si,OFFSET what      ; Load address and length of what
+     mov  cx,lwhat
+     rep  movsb
+
+; Put new string at end
+
+     mov  si,OFFSET string    ; Load address and length of string
+     mov  cl,actual
+     rep  movsb
+     mov  WORD PTR es:[di],0  ; Put double null at end
+
+
+                           12
+
+
+
+     sub  ax,ax               ; Return 0 for success
+     ret
+
+noroom:   inc  ax             ; Return nonzero for fail
+     ret
+DoEnviron ENDP
+
+; Procedure GetEnv
+; Purpose   Find and measure the environment
+; Input     None
+; Output    Segment of environment in ES, size in AX, length in CX
+
+GetEnv    PROC
+     mov  dx,es:10h ; Load segment of COMMAND.COM 
+     mov  es,dx     ; into ES
+     mov  ax,es:2Ch ; Load COMMAND.Com's environment
+     or   ax,ax     ; Is it 0?
+     jnz  secondry  ; No? This is a secondary command
+                    ; and we have its environment in AX
+     dec  dx        ; Yes? This is original COMMAND.COM
+     mov  es,dx     ; so point ES to paragraph before PSP
+     add  dx,es:03  ; Offset of environment is 3 bytes in
+     add  dx,2      ; Adjust it back to PSP
+     mov  ax,dx     ; Put it in AX
+secondry:
+
+; Note:
+; CodeView cannot debug the previous section of code, because the PSP
+; addresses checked by the code are those passed from DOS to CodeView,
+; not addresses passed from DOS to the program.  To debug with CodeView,
+; find the actual address of the environment:
+
+;    S 500:0 L FFFF "COMSPEC="
+
+; When you find the actual address, hard code it into your program:          
+
+;    mov  ax,110Ch  ; Debug line
+
+; Comment the line out for final assembly after debugging.
+
+     mov  si,ax     ; Save a copy
+     sub  dx,dx     ; Clear DX for multiply
+     dec  ax        ; Get paragraph before environment
+     mov  es,ax     ; Load into DS
+     mov  ax,es:03  ; Size in paragraphs is at byte 4
+     mov  cx, 16    ; Multiply by 16
+     mul  cx
+     mov  es,si     ; Restore environment address
+     sub  di,di     ; Point to start
+     mov  cx,ax     ; Load maximum count (size of 
+     mov  bx,ax     : environment) and save a copy
+     sub  ax,ax     : Search for double null
+null2:    repne     scasb     ; Look for null
+     jz   noerr     ; If not out of space, continue
+     sub  ax,ax     ; else error (return 0)
+
+
+                           13
+
+
+
+     jmp  error2
+noerr:    cmp  BYTE PTR es: [di],0 ; Is it double null?
+     jne  null2     ; No? Look again
+     mov  cx,di     ; Yes? Save length in CX
+     mov  ax,bx     ; Reload size to AX
+
+     ret
+GetEnv    ENDP 
+

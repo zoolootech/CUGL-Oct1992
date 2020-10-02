@@ -1,0 +1,676 @@
+.pl 61
+.po 4
+..
+.. this article was prepared for the C/Unix Programmer's Notebook
+.. Copyright 1984 Pyramid Systems, Inc.
+..
+.. by A. Skjellum
+..
+.he "C/Unix Programmer's Notebook"   for September, 1984 DDJ. 
+
+
+                               Introduction
+
+.. okay
+	Past  columns have been devoted to topics about C and Unix as  they 
+
+exist in the real world.   In this column,  I depart from this precedent by 
+
+discussing  some  proposals for increasing the power and flexibility of  C.  
+
+We  work in an evolving field where change  is  inevitable.   Consequently, 
+
+many languages go through regular upgrades and improvements (eg Fortran IV, 
+
+Fortran  66,  and Fortran 77).   C has been more immune than other  popular 
+
+languages.   The  lack  of upgrades is probably due mainly to C's  lack  of 
+
+intrinsic functions,  but clearly points to the basic elegance and power of 
+
+C.  
+
+.. okay 
+	I  am  aware of only a few upgrades beyond the language  definition 
+
+specified in The C Programming Language (K&R).  These are enumerated  types 
+
+and structure assignment.  Both of these features were introduced with Unix 
+
+version 7 and are detailed in Unix v7 documentation.   Structure assignment 
+
+is  useful  in what follows,  but type enumeration will not  be  mentioned.  
+
+Therefore, while we base our definition on the Unix 7 version of C, this is 
+
+not  likely  to  confuse those who have access only to  The  C  Programming 
+
+Language.
+
+.. okay
+	Purists  may argue that I have no business recommending changes  or 
+
+upgrades  to  C.   Others  may argue that many of the  suggestions  can  be 
+
+implemented via compiler preprocessors or by function calls and need not be 
+
+part  of  the  language.   (This  second point is discussed  later  in  the 
+
+column.)  In order to head off the critisism that I am 'tampering' with the 
+
+C language, I offer my recommendations as a new language grammar based on C 
+
+but  called 'X.' The letter X was chosen to denote language  extensibility, 
+
+which is the main point of the following proposals.
+
+                          Language Extensibility
+
+.. okay
+	Most  languages allow user defined functions,  subroutines and many 
+
+newer languages allow user defined data types.   Extensible languages  like 
+
+Forth  and APL allow functions,  operators,  and data types  to be added to 
+
+the programming environment in a way that makes them equivalent in  stature 
+
+to  predefined  operations.   While  C retains  tremendous  flexibility  by 
+
+excluding  intrinsic functions,  it does not allow user defined types to be 
+
+treated  as easily as ints,  longs or  floats.   Specifically,  one  cannot 
+
+extend  the definitions of operators such as addition or multiplication  to 
+
+new  data types created with typedef.   This means that function calls must 
+
+be used,  which while a completely viable approach,  lacks elegance.   This 
+
+concept is illustrated in the following example.
+
+
+.. okay
+	As part of a program,  I need to define a data type called  COMPLEX 
+
+which  will  function like Fortran's complex data type.  This data type  is 
+
+used  for  handling  complex  numbers of the form A + iB  where  i  is  the 
+
+imaginary  unit and A and B are real numbers.  This might be done with  the 
+
+following definition:
+
+.cp 6
+		typedef struct  /* complex number type definition */
+		{
+			double _creal;	/* real part */
+			double _cimag;  /* imaginary part */
+
+		} COMPLEX;
+
+.. okay
+	I  will work with several variables of type COMPLEX (eg  alpha  and 
+
+beta) which are defined as follows:
+
+		COMPLEX alpha, beta;   /* alpha and beta are complex #'s */
+
+Up  to this point,  we have treated the complex data type  equivalently  to 
+
+built-in types.  We can also work with pointers to or arrays of COMPLEX, so 
+
+there  is  no  deficiency along these  lines.   However,  to  assign,  add, 
+
+multiply, or subtract these COMPLEX variables, subroutines would have to be 
+
+invented.  Subroutines for two representative operations are illustrated in 
+
+Figure I.
+
+.pa
+                      ---------- FIGURE I. ----------
+
+	Assignment:  alpha = A + iB; /* pseudo code */
+
+	Function:	
+		calling sequence    (K&R C):     cassign(&alpha,A,B);
+		calling sequence    (Unix 7 C):  alpha = cassign(A,B);
+
+		function definition (K&R C):
+
+			cassign(comp,a,b)
+			COMPLEX *comp;
+			double a,b;
+			{
+				comp->_creal = a;
+				comp->_cimag = b;
+			}
+
+		function definition (Unix 7 C):
+
+			COMPLEX cassign(a,b)
+			double a,b;
+			{
+				COMPLEX temp;   /* temporary variable */
+
+				temp._creal = a;
+				temp._cimag = b;
+				return(temp);   /* return structure */
+			}
+
+
+
+	Addition:  gamma = alpha + beta; /* pseudo code */
+
+	Function:	
+		calling sequence    (K&R C):     cadd(&gamma,&alpha,&beta);
+		calling sequence    (Unix 7 C):  gamma = cadd(alpha,beta);
+
+		function definition (K&R C):
+
+			cadd(gamma,alpha,beta)
+			COMPLEX *gamma;	/* destination */
+			COMPLEX *alpha; /* addend */
+			COMPLEX *beta;  /* augend */
+			{
+				gamma->_creal = alpha->_creal + beta->_creal;
+				gamma->_cimag = alpha->_cimag + beta->_cimag; 
+			}
+
+.cp 10
+		function definition (Unix 7 C):
+
+			COMPLEX cadd(alpha,beta)
+			COMPLEX alpha,beta; /* addend, augend */
+			{
+				COMPLEX temp; /* temporary */
+
+				temp._creal = alpha._creal + beta._creal;
+				temp._cimag = alpha._cimag + beta._cimag;
+
+				return(temp);
+			}
+
+
+                    ---------- END FIGURE I. ----------
+
+
+.. okay
+	The pseudo code presented with the subroutines in Figure I.  is the 
+
+most convenient way to specify the operations desired.   If the data  types 
+
+had been intrinsic, we could have used similar real C statements in lieu of 
+
+subroutines.   To utilize '+', '*' or other operators with the COMPLEX data 
+
+type  we must introduce a mechanism for defining these operations.
+
+                                 Operators
+
+.. okay
+	How  could  we  specify new operations?  For example how  would  we 
+
+define  addition  for  the  complex  data  type?   The  following  type  of 
+
+definition could be used to extend addition to the COMPLEX type: 
+
+		COMPLEX oper `+`(alpha,beta)	/* X grammar */
+		COMPLEX alpha,beta;
+		{
+			COMPLEX __temp; /* temporary */
+			__temp._creal = alpha._creal + beta._creal;
+			__temp._cimag = alpha._cimag + beta._cimag;
+
+			return(__temp); /* return result */ 
+		}
+
+The  keyword oper is new:  oper indicates that the following definition  is 
+
+for  an operator.   The return keyword used in function calls also  appears 
+
+with a similar meaning.      Since COMPLEX preceeds oper,  this defines  an 
+
+operation  over  the  COMPLEX data type.   Since there  are  two  arguments 
+
+(alpha,  beta), the operator is binary.  Finally, note that the '+' sign is 
+
+enclosed  in graven accents.   Quoting by graven accents is chosen as a way 
+
+to distinguish operator names.   We will see that quotation will not always 
+
+be needed.
+
+.. okay
+	To  use  this  new operator (and assuming that '='  had  also  been 
+
+defined,) the following statement could be used:
+
+		gamma = alpha + beta;	/* add complex numbers */
+
+Note  that  we  have  omitted the graven accents.   Since the  '+'  can  be 
+
+distinguished from keywords or identifiers in this context, quoting  is not 
+
+required.  The  operator definition specified above gives the X compiler  a 
+
+means to evaluate the addition request specified in the example  statement.  
+
+The  parser would break this statement down until it could pass an argument 
+
+garnered from the left and right of the addition operator,  much as it does 
+
+with  intrinsic  operators  and data types.   Whether  this  results  in  a 
+
+subroutine   call   or  in-line  code  would  depend  on   the   compiler's 
+
+implementation.
+
+                             More on Operators
+
+.. okay
+	Operators  turn out to be a very powerful and useful  concept.   We 
+
+needn't  limit  ourselves to defining standard operations  for  new  types.  
+
+There  is nothing to stop the definition of arbitrary operators.   A  crude 
+
+facility  already  exists  for  this in C  via  the  parameterized  #define    
+
+statement.  However, the above facility is more general and more consistent 
+
+with the syntax of C than the preprocessor #define approach.   To encompass 
+
+the  generation of inline code as provided by #define,  we would also offer 
+
+the inline adjective, which could be used as follows:
+
+		COMPLEX inline oper `-`(alpha,beta) /* subtraction inline */
+		...
+
+This  keyword  would  instruct the compiler to  generate  inline  code  (as 
+
+opposed to a subroutine call) whenever possible.   It's use is analogous to 
+
+the use of the register adjective:  the compiler complies when feasible and 
+
+silently ignores the request when it cannot comply.
+
+.. okay
+	In  some  cases,  C definitions can be shortened when no  ambiguity 
+
+exists  (eg 'unsigned' instead of  'unsigned  int').   Therefore,  'inline' 
+
+would  replace 'inline oper' in actual  practice.   Furthermore,  operators 
+
+would by default work on and return integers, as functions do by default.
+
+                         Other Users for Operators
+
+.. okay
+	In  my view,  operators would be used not only to  define  existing 
+
+operations  over new data types,  but also for specifying other  operations 
+
+over  new  as  well  as existing data types.   These  new  operators  would 
+
+normally  have alphanumeric names and would thus require quoting in  graven 
+
+accents  when  they  appear in expressions.   For example,  we  define  the 
+
+operation of NAND (negated and) for integers as follows (no graven  accents 
+
+are required in the definition but are required in the below invocation): 
+
+		int oper nand(a,b)
+		int a,b;
+		{
+			return(~(a & b));
+		}
+
+To use this in an actual expression we would have to quote the nand:
+
+		c = a `nand` b;
+
+                            Operator Hierarchy
+
+.. okay
+	C already has a built-in hierarchy for known operations.   The most 
+
+reasonable  approach is to give user-defined operators the lowest priority.  
+
+This might require more parentheses, but seems logical.  
+
+                           Pointers to Operators
+
+.. okay
+	C  provides  the facility to use pointers to functions.   It  could 
+
+potentially  prove  useful  to  have pointers  to  operators  as  well.   A 
+
+function's  address is specified by its name without trailing  parentheses.  
+
+Unfortunately,  operator  names  are  used  in this  way  to  indicate  the 
+
+operation they represent.   In order to remove the ambiguity in  requesting 
+
+the pointer, the operator name could be parenthesized (eg (+) or (`nand`)).  
+
+.. okay
+	Using  pointers  to operators implies that defined operations  must 
+
+have  subroutines associated with them.   Thus truly inline operators could 
+
+have no pointers associated with them.
+
+                   Dichotomy of Operators and Functions
+
+.. okay
+	Functions and operators are almost the same  thing.   However,  the 
+
+compiler  must  know if an operator is binary  or  unary.   Therefore,  its 
+
+definition must be available before use.  On the other hand, arguments to C 
+
+functions  are not checked for number or type.    Therefore,  we choose  to 
+
+keep operators and functions separate, although there is nothing to prevent 
+
+operators using function calls.
+
+.. okay
+	In  order to avoid lexical conflicts,  operator and function  names 
+
+would  have  to be different.   This is also desirable from  a  programming 
+
+viewpoint, in order to avoid confusion and errors.
+
+                              Other Proposals
+
+.. okay
+	With the addition of operators,  the X grammar provides a much more 
+
+consistent  programming environment than standard C.   However,  there  are 
+
+some  other  points  with deserve consideration.   The first  of  these  is 
+
+providing  a  means  to  handle  subroutines  with  a  variable  number  of 
+
+arguments.  This is considered first.
+
+	Since  C makes no assumptions about its function library,  the user 
+
+is free to write his own,  should the standard functions prove  inadequate.  
+
+However,  the user cannot properly handle functions with variable number of 
+
+arguments,  as must be done by printf(),  scanf() and their relatives.   We 
+
+solve  this  problem by introducing a typing adjective called vec which  is 
+
+short  for vector.   This adjective is used to indicate the the  number  of 
+
+arguments  to  the  function is  variable.   For  example,  the  ficticious 
+
+function  my_printf()  which  allows  variable arguments  (and  returns  an 
+
+integer) would be defined as follows:
+
+		vec int my_printf(argcnt,argvec)
+		int argcnt;
+		char *argvec[];
+		{
+			/* code goes here */
+		}
+
+.. okay
+A  function declared with vec always has  two  arguments:  argcnt,  argvec.  
+
+These variables are analogous to main()'s (argc,argv) pair.   Before use, a 
+
+definition of the form:
+
+		vec my_printf();
+
+would  be  included  in each file where  my_printf()  is  referenced.  This 
+
+definition  causes  command line arguments to be  processed  normally:  the 
+
+rightmost argument is pushed (placed on the stack) first,  and the leftmost 
+
+last when code is generated.   However, the two additional arguments argcnt 
+
+and  argvec  are  also stacked.   The argvec variable points to  the  stack 
+
+location where the first real argument is located.  Since normal stacks are 
+
+push-down,  this should provide the arguments in the correct order.  argcnt 
+
+contains  the  number of arguments plus one to account  for  argvec.   This 
+
+makes it completely analogous to argc.   argvec always contains an address, 
+
+but this is not very useful if no arguments were specified in the  function 
+
+call.
+
+.. okay
+	To  illustrate  the  stacking mechanism,  imagine  that  we  invoke 
+
+my_printf() as follows:
+
+		my_printf(arg1,arg2,arg3,arg4,arg5);
+
+For  this  specific call,  the stacking arrangment (excluding  any  special 
+
+register saves) would look as specified in Figure II.   Note that argcnt is 
+
+six (five arguments) for this case, as described above.
+
+.pa
+                     ---------- Figure II. ----------
+
+            Memory Layout for a variable argument function call 
+
+                            -------------------
+                            |   Low memory    |
+                            -------------------
+                            |       ...       |
+                            -------------------
+                            |   argcnt = 6    |
+                            -------------------
+                            |   argvec = ADDR |
+                            -------------------
+                      ADDR: |      arg1       |
+                            -------------------
+                            |      arg2       |
+                            -------------------
+                            |      arg3       |
+                            -------------------
+                            |      arg4       |
+                            -------------------
+                            |      arg5       |
+                            -------------------
+                            |       ...       |
+                            -------------------
+                            |   High memory   |
+                            -------------------
+      
+                   ---------- End Figure II. ----------
+
+
+.. okay
+	It might be worthwhile to have variable argument calls, even if the 
+
+function were not declared as using this calling convention. To allow this, 
+
+we  introduce  the  ellispis (...) concept into the  argument  string.   If 
+
+my_printf()  were  not declared as vec,  we could force  variable  argument 
+
+format as follows:
+
+		my_printf(arg1,arg2,arg3,arg4,arg5...);
+
+Always  including  the  ellipsis mark for this variety  of  call  seems  to 
+
+improve  readability,  but  is not required in order that compatibility  is 
+
+kept with current C usage.
+
+                              Fixed Arguments
+
+.. okay 
+	The  argvec variable always points to the first variable  specified 
+
+on  the  command  line.   However,  the  function  definition  could  still 
+
+explicitly  declare  a  finite number of arguments which  it  may  wish  to 
+
+examine more directly.   For example,  if the first argument of my_printf() 
+
+were a control string, we could declare my_printf() as follows:
+
+		vec int my_printf(argcnt,argvec,control_string);
+		int argcnt;
+		char **argvec;
+		char *control_string;
+
+Notice that contents of control_string would be meaningless if argcnt  were 
+
+less than two.  
+
+.. okay
+	 One final note about variable argument control is that it enhances 
+
+a  function's  ability  to  detect  incorrect  input.   With  reference  to 
+
+printf(),  Kernighan and Ritchie state:  "A warning:  printf uses its first 
+
+argument to decide how many arguments follow and what their types are.   It 
+
+will  get confused,  if there are not enough arguments or if they  are  the 
+
+wrong  type."  If implemented with the vec arrangement,  printf() could  at 
+
+least  know if it has been given the right number of arguments.   It  still 
+
+would not know if they were of the correct types.
+
+                     Variable length automatic arrays
+
+.. okay
+	Another  element  of  the  X  grammar is  the  ability  to  declare 
+
+automatic arrays which possess variable length.   Since stack displacements 
+
+are  computed at each entry to a block,  this only forces a  computed  size 
+
+allocation.   At worst, a memory allocation mechanism must be tied into the 
+
+compiler.   This  latter restriction can be serious if C is used in a  very 
+
+low  level environment,  such as in operating system development.   So that 
+
+the use of this feature can be seen readily,  we require the use of the var 
+
+adjective  in conjunction with such definitions.   For  most  purposes,  it 
+
+offers  a  welcome enhancement.   Where it is inappropriate,  this  feature 
+
+should be disabled via a compiler switch. 
+
+	As  a general example,  we declare a variable length array  in  the 
+
+following routine:
+
+                /* declare an array of integers one larger than argument */
+		array_test(length)
+		int length;
+		{
+			var int test[length+1]; /* declare array */
+			...
+		}
+
+                          A new looping structure
+
+.. okay
+	Many  loops  are  unconditional  with breaks  generated  only  from 
+
+within.   Therefore  it  is often useful to have an  unconditional  looping 
+
+command.   This  avoids  a  lot of  'while(1)'  sequences.  This  could  be 
+
+implemented as follows:
+
+.cp 7
+		loop
+		{
+			... code ...
+		}
+
+replaces
+
+		while(1)
+		{
+			... code ...
+		}
+
+
+                    Preprocessors and related comments
+
+.. okay
+	Preprocessors  could be used to implement several of the X features 
+
+mentioned above.   The statements and expressions would be expanded by  the 
+
+preprocessor  into  standard function calls.   The preprocessor would  also 
+
+provide  subroutines from definitions,  as needed.   New data  types  could 
+
+certainly be handled in this way.  However, changes to the C parser must be 
+
+made  in order to handle the vec and var features.   Trivial additions such 
+
+as loop can be handled with the existing C preprocessor.
+ 
+.. okay
+	Some programmers may argue that no additions are needed since  most 
+
+of  the features outlined above can all be achieved through function calls.  
+
+In my view, the X grammar makes C more (and not less) consistent because it 
+
+allows both intrinsic and user-defined types to be handled in similarly. It 
+
+also allows greater portability by defining a means through which  variable 
+
+argument functions can be handled uniformly.  In summation, it turns C into 
+
+an extensible language while adding only a few new keywords.
+
+                                Conclusion
+
+.. okay
+	In  this column,  I have suggested an enhanced C grammar which  was 
+
+denoted  X to indicate extensibility.   It is the (Unix 7) C language  with 
+
+enhancements   designed  to  allow  the  incorporation  of   user-specified 
+
+operators into programs.  This should provide  more flexible and consistent 
+
+reference to user-defined data types.   Also mentioned were variable length 
+
+automatic  arrays  (var)  and a mechanism for  allowing  variable  argument 
+
+functions (vec).   Finally, the use of preprocessors for implementing these 
+
+ideas was mentioned.
+
+	I  look forward to any other ideas about X or enhanced C which  may 
+
+be forthcoming from our readers.
+
+  

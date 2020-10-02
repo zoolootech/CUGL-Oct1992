@@ -1,0 +1,119 @@
+bitmap.c
+#include <windows.h>
+#include "bitmap.h"
+
+static HANDLE hInst;
+
+BOOL FAR PASCAL AboutDlgProc (HWND hDlg, WORD message, WORD wParam, LONG lParam)
+	{
+	HDC hdcFrame, hdcMem;
+	HWND hwndFrame;
+	HBITMAP hbmpOld, hbmpBitmap;
+	RECT rect;
+
+	switch (message)
+		{
+		case WM_PAINT:
+			hwndFrame = GetDlgItem (hDlg, ID_BLACKFRAME);
+			hdcFrame = GetDC (hwndFrame);
+			GetClientRect (hwndFrame, &rect);
+
+			hdcMem = CreateCompatibleDC (hdcFrame);
+			hbmpBitmap = LoadBitmap (hInst, szBitmap);
+			hbmpOld = SelectObject (hdcMem, hbmpBitmap);
+
+			BitBlt (hdcFrame, 0, 0, rect.right, rect.bottom, hdcMem, 0, 0, SRCCOPY);
+			ReleaseDC (hwndFrame, hdcFrame);
+
+			hwndFrame = GetDlgItem (hDlg, ID_GRAYFRAME);
+			hdcFrame = GetDC (hwndFrame);
+
+			BitBlt (hdcFrame, 0, 0, rect.right, rect.bottom, hdcMem, 0, 0, SRCCOPY);
+			ReleaseDC (hwndFrame, hdcFrame);
+
+			hwndFrame = GetDlgItem (hDlg, ID_WHITEFRAME);
+			hdcFrame = GetDC (hwndFrame);
+
+			BitBlt (hdcFrame, 0, 0, rect.right, rect.bottom, hdcMem, 0, 0, SRCCOPY);
+			ReleaseDC (hwndFrame, hdcFrame);
+
+			SelectObject (hdcMem, hbmpOld);
+			DeleteObject (hbmpBitmap);
+			DeleteDC (hdcMem);
+			break;
+		case WM_COMMAND:
+			switch (wParam)
+				{
+				case IDOK:
+					EndDialog (hDlg, 0);
+					return TRUE;
+				}
+			break;
+		}
+	return FALSE;
+	}
+
+int PASCAL WinMain (HANDLE hInstance, HANDLE hPrevInstance, LPSTR lpszCmdParam, int nCmdShow)
+	{
+	HWND hwnd;
+	MSG msg;
+	WNDCLASS wndclass;
+
+	if (!hPrevInstance)
+		{
+		wndclass.style = CS_HREDRAW | CS_VREDRAW;
+		wndclass.lpfnWndProc = WndProc;
+		wndclass.cbClsExtra = 0;
+		wndclass.cbWndExtra = 0;
+		wndclass.hInstance = hInstance;
+		wndclass.hIcon = LoadIcon (hInstance, szAppIcon);
+		wndclass.hCursor = LoadCursor (NULL, IDC_ARROW);
+		wndclass.hbrBackground = GetStockObject (WHITE_BRUSH);
+		wndclass.lpszMenuName = NULL;
+		wndclass.lpszClassName = szAppName;
+		RegisterClass (&wndclass);
+		}
+	hInst = hInstance;
+	hwnd = CreateWindow (szAppName, szAppName, WS_BORDER | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, CW_USEDEFAULT, CW_USEDEFAULT, 300, 75, NULL, NULL, hInstance, NULL);
+	ShowWindow (hwnd, SW_SHOWMINIMIZED);
+	UpdateWindow (hwnd);
+
+	while (GetMessage (&msg, NULL, 0, 0))
+		{
+		TranslateMessage (&msg);
+		DispatchMessage (&msg);
+		}
+	return msg.wParam;
+	}
+
+long FAR PASCAL WndProc (HWND hwnd, WORD message, WORD wParam, LONG lParam)
+	{
+	FARPROC lpfnDlgProc;
+	HMENU hMenu;
+
+	switch (message)
+		{
+		case WM_CREATE:
+			hMenu = GetSystemMenu (hwnd, FALSE);
+			AppendMenu (hMenu, MF_SEPARATOR, 0, NULL);
+			AppendMenu (hMenu, MF_STRING, IDM_ABOUT, szSysAbout);
+			return 0;
+		case WM_SYSCOMMAND:
+			switch (wParam)
+				{
+				case IDM_ABOUT:
+					lpfnDlgProc = MakeProcInstance (AboutDlgProc, hInst);
+					DialogBox (hInst, szAppAbout, hwnd, lpfnDlgProc);
+					FreeProcInstance (lpfnDlgProc);
+					return 0;
+				}
+			break;
+		case WM_DESTROY:
+			PostQuitMessage (0);
+			return 0;
+		default:
+			return DefWindowProc (hwnd, message, wParam, lParam);
+		}
+	return DefWindowProc (hwnd, message, wParam, lParam);
+	}
+

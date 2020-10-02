@@ -1,0 +1,162 @@
+             Keeping a Library of C Subroutines in Source Code Form
+
+                               Phillip L. Emerson
+                                   June, 1986
+
+                It is usual that a C program consists of quite a
+           number of subroutines, some quite small, and a main program
+           that oversees the general course of the operations.
+           For that reason, C programming commonly involves the use of
+           subroutine libraries.  There are standard libraries for
+           input and output, and several other kinds of operations,
+           that ordinarily come with the compiler when one purchases
+           a C programming package.  However, a programmer typically
+           goes beyond these libraries and develops many other small
+           subroutines for his own special applications.  The usual
+           way of implementing a library of subroutines is in
+           connection with a linker or linking loader and an assembler
+           that produces relocatable object code.
+                For some purposes, it is more convenient to maintain
+           a library in source-code form.  CLINK is a preprocessor
+           program designed to link source-code subroutines from a
+           library file, as needed by some new program file.
+
+                                 How CLINK Works
+
+                CLINK gets the name of an input program file from the
+           keyboard.  It then reads an index file, extracted (on some
+           previous run) from the library file.  It then goes through
+           the program file to see which, if any, of the library
+           subroutines are called, and at the same time putting out
+           the linked version of the program file with routines from
+           the library following the original program.  The output
+           file can then be compiled and/or assembled as usual with
+           the C programming procedure.
+
+                The user prepares the library file in ordinary C
+           source-code form, with some minor restrictions mentioned
+           below.  The index file is created automatically by CLINK
+           itself, and requires no attention from the user.
+           Typically, the index file is only about a tenth as long as
+           the library file, so CLINK tries to read the index file
+           first.  If the index file does not exist, then the library
+           file itself is used in a first pass to build the network of
+           interconnecting library-routine calls.  This network is
+           then put out into a newly created index file, to be used on
+           later runs.  After the first run, then, the use of the
+           index file reduces the processing essentially from two
+           passes to one pass through the library file.  For speedy
+           lookup of function names, CLINK uses two hash-code tables
+           which it creates in memory.  The first of these contains the
+           index-file information, and the second contains the names of
+           target functions called in the input program file.  After
+           both of these tables have been constructed (at the point
+           when the end of the input program file is reached), then
+           the second of them is expanded, using the first, to include
+           all ramifications of each function call.  Protection is
+           built in against cycling in this linkage process in cases of
+           recursive self calls and recursive reciprocal calls.  The
+           pass through the library file then begins, and any function
+           whose name is on the list (the second hash table) is put
+           out into the output file.
+
+                The command sequence for running CLINK is to type a
+           command line beginning with "CLINK" and containing at least
+           the name of the input program file, and optionally the
+           names of the library file, the index file, and the output
+           file.  There are some defaults, and the main ones are
+           USRLIB.B for the library file and LIBKEY.B for the index
+           file.  These defaults assume the CP/M file name structure,
+           so may require modifications with other operating systems.
+           Some of the defaults are illustrated by the example
+
+                >CLINK B:PROG5
+
+           which is equivalent to
+
+                >CLINK B:PROG5.B B:USRLIB.B B:LIBKEY.B B:PROG5.C
+
+           The default scheme was designed to make things convenient
+           on my system.  The full set of rules is rather lengthy, but
+           one can get the hang of it easily because CLINK pauses
+           after the command line is typed, and displays the four
+           complete file names that it has filled in.  One has a
+           chance then to abort before any files are opened, or
+           proceed.
+
+                If no file names at all are included on the command
+           line, then the procedure is somewhat different.  CLINK will
+           then ask for the appropriate file names at the stages when
+           they are needed.  There are no default substitutions, and
+           the names will be used, just as typed in.  This procedure
+           also provides for two other options.  The first is to have
+           CLINK scan more than one input program file for library
+           calls.  The second is to include or not include any subset
+           of the program files in the output file.  This is the
+           only way to handle multiple-file compilations.
+
+                                The Library File
+
+                Since CLINK selects a subset of the functions in the
+           library, there are some obvious constraints on the use of
+           declarations outside of function definitions in the library
+           file.  The main kind of external declaration that may not
+           appear at all in the library file is that in which function
+           types are declared separately from their definitions. For
+           example, in the library file,
+
+                int strlen() ;
+
+           will cause trouble if it appears externally to the
+           definition of any function, but the type declaration along
+           with the definition is admissible, as in the example
+
+                int strlen(s) char *s {char *p; p = s;
+                  while(*p) p++ ; return(p-s) ; }
+
+           This int declaration is handled properly, because CLINK looks
+           back and includes everything preceding a function
+           definition, following any preceding definition, if that
+           function is included.
+
+                As CLINK inserts library functions into the output
+           file,  comments, blank lines, and extra spaces are stripped
+           out.  Tabs are not affected, so they may be used if one
+           wants to keep indentations intact.  CLINK does not check
+           generally for syntax errors in the library file.
+           Therefore, it is a good idea to try compiling the library
+           file by itself, after any extensive changes are made in it.
+           Also, an old library index file should be deleted after
+           changes in the library file, to cause CLINK to generate a
+           new one.  CLINK does check for unbalanced apostrophes,
+           quotation marks, and comment delimiters, in the library
+           file.  It gives a report if it finds discrepancies.  Also,
+           it tries to detect discrepancies between the library file
+           and index file, in case an obsolete index file is used with
+           a new version of the library file.
+
+                Generally, the operation of CLINK does not depend on
+           the order in which the functions are defined in the library
+           file.  Library routines may call others in the library that
+           are defined earlier or later.  Routines may call themselves
+           recursively, and different routines may call each other
+           reciprocally.  One ordinarily does not have these freedoms
+           with the library facilities associated with the linkage of
+           relocatable object-code routines.  Commonly, a linker
+           program restrictively assumes a pure tree structure of the
+           intercalls among library routines.  CLINK does not.
+           Alphabetical order of entry of the subroutines in the CLINK
+           library file is as good as any other, and it can help the
+           programmer to find things in a listing of the file.
+
+                CLINK is particularly handy for implementations of C
+           on systems restricted in memory and disk space.  Even with
+           larger systems, however, it provides a more flexible and
+           systematic way of maintaining and using a library of
+           subroutines.  As one might expect, execution time of the
+           linkage operation is somewhat slower than with object-
+           code libraries.  I find source-code linking advantageous
+           mainly for my own user applications, where the library of
+           subroutines continues to change and grow rather rapidly.
+
+

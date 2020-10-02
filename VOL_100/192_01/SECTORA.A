@@ -1,0 +1,59 @@
+          DSEG
+GETMSG    DB     '** Error reading diskette! ',13,10,0
+PUTMSG    DB     '** Error writing diskette! ',13,10,0
+          CSEG
+          PUBLIC GETSECT_,PUTSECT_,PRINTF_,EXIT_
+; GETSECT - READS A SECTOR FROM DISKETTE.  CALL SEQUENCE IS:
+;     getsect(buf,drv,sect) where 
+;       buf = buffer address of 512 bytes where data will be placed
+;       drv = DOS drive number
+;       sect = logical sector number
+;
+GETSECT_: PUSH   BP
+          MOV    BP,SP
+          MOV    CX,1       ; READ 1 SECTOR
+          MOV    BX,[BP+4]  ; BUFFER ADDRESS
+          MOV    AX,[BP+6]  ; DRIVE NUMBER
+          MOV    DX,[BP+8]  ; SECTOR NUMBER
+          INT    25H        ; DO THE READ
+          POP    AX         ; RESTORE STACK DUE TO FLAGS
+          JNC    GETOK      ; CHECK FOR READ ERROR
+          MOV    AX,OFFSET GETMSG
+          PUSH   AX
+          CALL   PRINTF_
+          POP    AX
+          CALL   EXIT_
+          JNC    GETOK      ; CHECK FOR READ ERROR
+          MOV    AX,OFFSET GETMSG
+          PUSH   AX
+          CALL   PRINTF_
+          POP    AX
+          CALL   EXIT_
+GETOK:    POP    BP
+          RET
+;
+; PUTSECT - WRITES A SECTOR TO DISKETTE.  CALL SEQUENCE IS:
+;     putsect(buf,drv,sect) where 
+;       buf = buffer address of 512 bytes to be written
+;       drv = DOS drive number
+;       sect = logical sector number
+;
+PUTSECT_: PUSH   BP
+          MOV    BP,SP
+          MOV    CX,1       ; WRITE 1 SECTOR
+          MOV    BX,[BP+4]  ; BUFFER ADDRESS
+          MOV    AX,[BP+6]  ; DRIVE NUMBER
+          MOV    DX,[BP+8]  ; SECTOR NUMBER
+          INT    26H        ; DO THE WRITE
+          POP    AX         ; RESTORE STACK DUE TO FLAGS
+          JNC    PUTOK      ; CHECK FOR READ ERROR
+          MOV    AX,OFFSET PUTMSG
+          PUSH   AX
+          CALL   PRINTF_
+          POP    AX
+          CALL   EXIT_
+PUTOK:    POP    BP
+          RET
+          END
+
+

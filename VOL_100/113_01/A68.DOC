@@ -1,0 +1,1315 @@
+/*
+	HEADER:		CUG113;
+	TITLE:		6800 Cross-Assembler (BDS C Version);
+	FILENAME:	A68.DOC;
+	VERSION:	2.6;
+	DATE:		07/22/1985;
+
+	DESCRIPTION:	"This program lets you use your CP/M-80-based computer
+			to assemble code for the Motorola 6800, 6801, 6802,
+			6803, 6808, and 68701 microprocessors.  The program is
+			written in BDS C for the best possible performance on
+			8-bit machines.  All assembler features are supported
+			except relocation, linkage, listing control, and
+			macros.";
+
+	KEYWORDS:	Software Development, Assemblers, Cross-Assemblers,
+			Motorola, MC6800, MC6801;
+
+	SEE-ALSO:	CUG149, 6801 Cross-Assembler (Portable);
+
+	SYSTEM:		CP/M-80;
+	COMPILERS:	BDS C;
+
+	WARNINGS:	"This package is specifically tailored to CP/M-80
+			machines and the rather non-standard, but high-
+			performance BDS C compiler.  For other environments,
+			use the portable version of this package on CUG149.";
+
+	AUTHORS:	William C. Colley III;
+*/
+        6800 Cross-assembler  Rev. 2.6                          Page 1
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                              6800 Cross-assembler
+
+
+                                    Rev. 2.6
+
+
+               Copyright (c) 1980,83,84,85 William C. Colley, III
+
+
+
+                           The Manual Such As It Is.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 2
+
+
+        Index
+
+
+        1    Format of Cross-assembler Commands....................... 3
+
+             1.1  Command Strings..................................... 3
+             1.2  Options............................................. 3
+             1.3  Examples............................................ 3
+
+        2    Format of Cross-assembler Source Files................... 5
+
+             2.1   Statements......................................... 5
+             2.2   Symbols............................................ 5
+             2.3   Numeric Constants.................................. 6
+             2.4   Strings............................................ 6
+
+        3    Expression Evaluation.................................... 8
+
+        4    6800/6801 Instructions................................... 9
+
+             4.1  No Argument Group................................... 9
+             4.2  One Argument Group.................................. 9
+             4.3  Two Argument Group..................................10
+             4.4  Branch Group........................................10
+             4.5  Jump Group..........................................11
+             4.6  Stack Group.........................................11
+             4.7  Pointer Group.......................................11
+             4.8  On Direct-page Addressing...........................11
+
+        5    Pseudo-operations........................................13
+
+             5.1  END.................................................13
+             5.2  EQU.................................................13
+             5.3  FCB.................................................13
+             5.4  FCC.................................................13
+             5.5  FDB.................................................13
+             5.6  RMB.................................................14
+             5.7  Conditional Assembly................................14
+             5.8  ORG.................................................15
+             5.9  SET.................................................15
+             5.10 CPU.................................................15
+
+        6    Error Messages...........................................16
+
+        7    Assembler Abort Conditions...............................18
+
+        8    Compiling the Assembler..................................19
+
+        9    Final Comments...........................................21
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 3
+
+
+        1    Format of Cross-assembler Commands
+
+        1.1  Command Strings
+
+             To run the cross-assembler, type the following command line:
+
+                  A>a68 filename options
+
+                  filename: The   name  of  the  source  input  file   is 
+                            filename.68h,    the    list   can   go    to 
+                            filename.prn,  and  the  hex file can  go  to 
+                            filename.hex.
+
+                  options:  See next section.
+
+        1.2  Options
+
+             The  source file comes from the currently logged disk  drive 
+             unless  it  is redirected by putting the string "sd" in  the 
+             options  field.   s  specifies the source file and  d  is  a 
+             device code from the following list:
+
+                  a, b, c, d     Disk drives.
+                  -              The currently logged in disk drive.
+
+             Lines  of  input containing errors will always be output  to 
+             the console device.  If the full listing is desired, it must 
+             be  called  for by putting the string "ld"  in  the  options 
+             field.   l specifies list file and d is a device code as per 
+             the source file, or one of the following:
+
+                  x              Console device.
+                  y              List device.
+
+             The hex file will not be output unless called for as per the 
+             list file.
+
+             Options  must  be run together into a single string with  no 
+             embedded blanks.
+
+        1.3  Examples
+
+                  A>a68 barf          source -- a:barf.68h
+                                      list   -- none.
+                                      hex    -- none.
+
+                  A>a68 barf sblxha   source -- b:barf.68h
+                                      list   -- con:
+                                      hex    -- a:barf.hex
+
+                  A>a68 barf ly       source -- a:barf.68h
+                                      list   -- lst:
+                                      hex    -- none.
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 4
+
+
+                  A>b:a68 barf sbh-   source -- b:barf.68h
+                                      list   -- none.
+                                      hex    -- a:barf.hex
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 5
+
+
+        2    Format of Cross-assembler Source Files
+
+             Lines  of  source  input are terminated  with  CR/LF  pairs.  
+             Internally,  the character before the LF is discarded, so if 
+             the  CR is missing,  the last character of the line will  be 
+             eaten up.   The internal line buffer will hold a 120 charac-
+             ter  line.   This  may be changed by altering  the  "#define 
+             LINLEN  120"  statement in a68.h and recompiling the  cross-
+             assembler.  Excess characters in the line are thrown out.
+
+             Lower  case  letters are converted to upper case in  as  few 
+             places as possible.  They are:
+
+                  1)   In opcodes,
+
+                  2)   In checking for keywords such as NOT, and
+
+                  3)   In command strings.
+
+             This means that "not",  "NOT",  "Not", etc. are all possible 
+             spellings of the bitwise logical inversion  operator.   This 
+             also  means  that  "foo" and "FOO"  are  different  symbols.  
+             Watch  this  if you start encountering U errors  of  symbols 
+             that you "know" you defined.
+
+        2.1  Statements
+
+             Source files input to the Cross-assembler consist of  state-
+             ments of the form:
+
+                  [label] [opcode] [arguments] [;comments.]
+
+             Labels are recognized by their beginning in column 1.  If it 
+             doesn't begin there,  it is assumed to be an opcode.  Labels 
+             are  assigned  the current program counter value unless  the 
+             line's opcode is "EQU" or "SET".
+
+             Opcodes  may  be either processor instruction  mnemonics  or 
+             pseudo-ops.
+
+             The  arguments  following the opcode will vary with the  op-
+             code.   In  the case of opcodes such as "NOP",  they may  be 
+             absent entirely.
+
+             Lines terminate with either a CR/LF pair or a semicolon that 
+             is not embedded in a quoted string.   Anything after a semi-
+             colon  is ignored by the assembler,  but will appear in  the 
+             listing.   Note  that a semicolon in column 1 will make  the 
+             entire line a comment.
+
+        2.2  Symbols
+
+             Symbols may be of any length,  but only the first 8  charac-
+             ters  are significant.   This may be changed by changing the 
+             "#define  SYMLEN 8" statement in a68.h and  recompiling  the 
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 6
+
+
+             assembler.  Note that this increases the storage required by 
+             the  symbol  table  as  each entry in the  symbol  table  is 
+             SYMLEN+2  bytes  in length.   The following  characters  are 
+             legal in a symbol:
+
+                    A-Z  a-z  !  &  .  :  ?  [  \  ]  ^  _  `
+                                 {  |  }  ~  0-9
+
+             Note that symbols may not begin with 0-9 as this would  make 
+             them impossible to distinguish from Intel format numbers.
+
+             A  special  symbol * is always equal to the address  of  the 
+             first byte of code generated by a given line.
+
+        2.3  Numeric Constants
+
+             Numbers begin with 0-9, %, @, or $.  %, @, and $ are leading 
+             base designators for binary,  octal, and hexadecimal respec-
+             tively.   If the number begins with 0-9, the assembler looks 
+             for one of the trailing base designators B,  O,  Q, D, or H.  
+             If the number does not end with one of these,  it is assumed 
+             to be decimal.  B is the base designator for binary, O and Q 
+             are for octal,  D is for decimal,  and H is for hexidecimal.  
+             Trailing  base designators and the hex digits A-F can be  in 
+             either  upper  or lower case.   Note that hex  numbers  that 
+             start  with A-F and are specified with the designator H must 
+             have  a leading zero added to keep them from being  mistaken 
+             for symbols.  For example:
+
+                  $ff80 and 0ff80h         evaluate to ff80 hex.
+                  128 and 128d             evaluate to 80 hex.
+                  @035, 35o, and 35q       evaluate to 1d hex.
+                  %0111000 and 0111000b    evaluate to 39 hex.
+
+             A character constant is a string composed of zero,  one,  or 
+             two ASCII characters,  delimited by either single or  double 
+             quotes  ('  or  ").   Note that single quotes  only  balance 
+             single quotes, and double quotes only balance double quotes.  
+             Thus a character constant of 22 hex can be specified by '"'.  
+             For example:
+
+                  "ab"           evaluates to 6162 hex.
+                  ""             evaluates to 0000 hex.
+                  "'"            evaluates to 0027 hex.
+                  'A'            evaluates to 0041 hex.
+
+             Note that in the two-character character constant, the left-
+             hand  character will appear in the upper-order byte and  the 
+             right-hand character will appear in the lower-order byte.
+
+        2.4  Strings
+
+             Strings  are formed in the same way as  character  constants 
+             except  that  they may be of any length up to and  including 
+             255 characters.   The first character will be placed in  the 
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 7
+
+
+             lowest-order memory byte.   A line-feed character may not be 
+             embedded  in  a  string as it terminates the line  and  will 
+             yield a quote imbalance error.   Note that strings are  only 
+             valid in the arguement field of an "FCC" pseudo-op.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 8
+
+
+        3    Expression Evaluation
+
+             The  following  operators are allowed in  expressions.   The 
+             operators are listed in order of precedence.
+
+                  Unary Plus, Unary Minus
+
+                  *, /, MOD, SHL, SHR
+
+                  +, -
+
+                  >, >=, <, <=, <>, =
+                       (These can also be written as GT,  GE, LT, LE, NE, 
+                       EQ.)
+
+                  NOT       (1's complement)
+
+                  AND       (Bitwise logical AND)
+
+                  OR, XOR   (Bitwise logical OR and Exclusive OR)
+
+                  HIGH, LOW
+
+             Parentheses  are  used to change the  order  of  precedence.  
+             During evaluation of an expression,  as soon as a new opera-
+             tor is encountered that has precedence less than or equal to 
+             the last operator encountered,  all operations up to the new 
+             operator are performed.   That is,  subexpressions involving 
+             operators of higher precedence are computed first.
+
+             All operators except +, -, *, /, =, <>, >=, <=, >, < must be 
+             separated from their operands by at least one space or tab.
+
+             The  "HIGH mumble" is equivalent to "mumble SHR 8" and  "LOW 
+             mumble" is equivalent to "mumble AND $ff".
+
+             The relational operators (=,  >,  etc.) evaluate to $ffff if 
+             the relationship is true, 0 if it is false.
+
+             Expressions are terminated by commas,  semicolons,  or CR/LF 
+             pairs.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 9
+
+
+        4    6800/6801 Instructions
+
+             The  instructions of the 6800 and 6801 microprocessors  fall 
+             into  several  catagories.   Each requires a certain set  of 
+             arguments and disallows all other arguments.   Arguments may 
+             be specified in any order and are separated by commas except 
+             for the register specifiers A,  B,  and X which may be  fol-
+             lowed by spaces or tabs.   In addition,  the register speci-
+             fiers  A  and  B can be attached to the end  of  the  opcode 
+             mnemonic with no intervening separator character.  The imme-
+             diate  addressing mode is specified by prefixing an  expres-
+             sion  with a # sign.   Blanks may be used freely  throughout 
+             the  argument field (except within symbols or operators such 
+             as NOT) to enhance the readability of the source code.   The 
+             basic syntax is as follows:
+
+                  [label]   LDA  A,X,expression ;The A X and expression
+                                                ;can be mixed up in any
+                                                ;order.
+                  [label]   LDAA X,expression   ;Here, the A register
+                                                ;specifier is attached
+                                                ;to the opcode.
+
+        4.1  No Argument Group
+
+             This group contains the following opcodes:
+                   
+                  ABA       ABX *     ASLD *    CBA       CLC
+                  CLI       CLV       DAA       DES       DEX
+                  INS       INX       LSLD *    LSRD *    MUL *
+                  NOP       PSHX *    PULX *    RTI       RTS
+                  SBA       SEC       SEI       SEV       SWI
+                  TAB       TAP       TBA       TPA       TSX
+                  TXS       WAI
+
+                  * = 6801 only
+
+             These opcodes permit no arguments.
+
+        4.2  One Argument Group
+
+             This group contains the following opcodes:
+
+                  ASL       ASR       CLR       COM       DEC
+                  INC       LSL *     LSR       NEG       ROL
+                  ROR       TST
+
+                  * = synonym for ASL
+
+             This group requires one argument from the following list:
+
+                  1)   A
+
+                  2)   B
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 10
+
+
+                  3)   X
+                       X,expression
+                       X expression
+                       expression,X
+
+                  4)   expression
+
+        4.3  Two Argument Group
+
+             This group contains the following opcodes:
+
+                  ADC       ADD       BIT       CMP       EOR
+                  LDA       ORA       SBC       SUB
+
+             This  group requires an argument from each of the  following 
+             lists:
+
+                  List 1:
+
+                       1)   A
+
+                       2)   B
+
+                  List 2:
+
+                       1)   X
+                            X expression
+                            X,expression
+                            expression,X
+
+                       2)   expression
+
+                       3)   #expression    (Not valid for STA.)
+                                           (Note that this value must be
+                                           in the range -128 to 255.)
+
+        4.4  Branch Group
+
+             This group contains the following opcodes:
+
+                  BCC       BCS       BEQ       BGE       BGT
+                  BHI       BHS *     BLE       BLO **    BLS
+                  BLT       BMI       BNE       BPL       BRA
+                  BRN ***   BSR       BVC       BVS
+
+                  * = synonym for BCC
+                  ** = synonym for BCS
+                  *** = 6801 only
+
+             This  group  requires an expression as  its  argument.   The 
+             expression  evaluates  to  the address that  the  branch  is 
+             attempting to reach.  The destination address can be -128 to 
+             +127  bytes  from the address of the NEXT  instruction.   If 
+             this distance is exceeded, the assembler will flag an error.
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 11
+
+
+        4.5  Jump Group
+
+             This group contains the following opcodes:
+
+                  JMP       JSR
+
+             This group requires an argument from the following list:
+
+                  1)   X
+                       X expression
+                       X,expression
+                       expression,X
+
+                  2)   expression
+
+        4.6  Stack Group
+
+             This group contains the following opcodes:
+
+                  PSH       PUL
+
+             This group requires an argument from the following list:
+
+                  1)   A
+
+                  2)   B
+
+        4.7  Pointer Group
+
+             This group contains the following opcodes:
+
+                  ADDD *    CPX       LDD *     LDS       LDX
+                  STD *     STS       STX       SUBD *
+
+                  * = 6801 only
+
+             This group requires an argument from the following list:
+
+                  1)   X
+                       X expression
+                       X,expression
+                       expression,X
+
+                  2)   expression
+
+                  3)   #expression    (Not valid for STD, STS, STX.)
+
+        4.8  On Direct-page Addressing
+
+             The assembler will select the shorter direct-page addressing 
+             in  preference  to  the longer extended  addressing  if  the 
+             expression  in the argument field meets the following  qual-
+             ifications:
+
+                  1)   It  contains  no forward  references.   Note  that 
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 12
+
+
+                       direct-page  RAM definitions should be at the  be-
+                       ginning of the program.
+
+                  2)   It contains no evaluation errors such as undefined 
+                       symbols.
+
+                  3)   It evaluates to a quantity in the range 0-255.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 13
+
+
+        5    Pseudo-operations
+
+        5.1  END
+
+             When  this statement is encountered,  the assembler  decides 
+             that the end of the source file has been reached.   If  this 
+             statement is missing or in a conditional assembly block that 
+             is not being assembled, the assembler will encounter end-of-
+             file on the source file.   In this case,  the assembler will 
+             attach an END statement and will flag an error.   The syntax 
+             is as follows:
+
+                  [label]   END
+
+             If  any  IF  statement is not closed with an  ENDI  at  this 
+             point, an error will be flagged.
+
+             This statement permits no arguments.
+
+        5.2  EQU
+
+             This  statement  is  used to assign a permanent value  to  a 
+             symbol.   This  value may not be subsequently changed  by  a 
+             SET,  another EQU, or by writing the symbol in column 1 as a 
+             label.  The syntax is as follows:
+
+                  label     EQU  expression
+
+             A  phasing  (P) error will result if any forward  references 
+             are encountered in the evaluation of the expression.
+
+        5.3  FCB
+
+             This statement is used to place bytes in memory.   Each byte 
+             is defined by an expression.   Multiple bytes can be defined 
+             by expressions separated by commas.   If an expression eval-
+             uates to a quantity outside the range -128 to 255,  an error 
+             is flagged.  The syntax is as follows:
+
+                  [label]   FCB  [expr1][,epxr2].....
+
+        5.4  FCC
+
+             This  statement  is used to place strings  in  memory.   Its 
+             arguments  may  only be strings.   Multiple strings  may  be 
+             placed  in  memory if the strings are separated  by  commas.  
+             The syntax is as follows:
+
+                  [label]   FCC  [string][,string].....
+
+        5.5  FDB
+
+             This statement is used to place words in memory.   Each word 
+             is defined by an expression.   Multiple words may be defined 
+             by  expressions separated by commas.   Words are  placed  in 
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 14
+
+
+             memory  with  their high-order byte in the low-order  memory 
+             location  and  the low-order byte in the  high-order  memory 
+             location.  The syntax is as follows:
+
+                  [label]   FDB  [expr1][,expr2].....
+
+        5.6  RMB
+
+             This  statement  is used to reserve a block  of  memory  for 
+             working storage,  etc.   It requires one argument that gives 
+             the number of bytes of storage to reserve.  The syntax is as 
+             follows:
+
+                  [label]   RMB  expression
+
+        5.7  Conditional Assembly
+
+             Blocks  of  code can be assembled or not assembled based  on 
+             the value of some expression.   The basic syntax is as  fol-
+             lows:
+
+                            IF   expression
+
+                       (lines of code)
+
+                            ENDI
+
+             If  the  expression  evaluates to 0,  the code will  not  be 
+             assembled.   The  source  lines will be  transfered  to  the 
+             listing,  but no hex output will be generated.
+
+             In addition, the ELSE directive is supported as follows:
+
+                            IF   expression
+
+                       (lines of code)
+
+                            ELSE
+
+                       (more lines of code)
+
+                            ENDI
+
+             This is equivalent to:
+
+                            IF   expression <> 0
+
+                       (lines of code)
+
+                            ENDI
+                            IF   expression = 0
+
+                       (more lines of code)
+
+                            ENDI
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 15
+
+
+
+             Note  that labels are not permitted on conditional  assembly 
+             directives.   Also note that an END statement can fail to be 
+             recognized  if it is in a conditional assembly block with  a 
+             false expression.
+
+             A phasing (P) error will be flagged if there are any forward 
+             references in the expression.
+
+        5.8  ORG
+
+             This  statement  is used to load a value into  the  assembly 
+             program counter.  The value is obtained from the expression.  
+             If the expression contains forward references, a phasing (P) 
+             error will result.  If a label is present,  it will be EQUed 
+             to the new program counter value.  The syntax is:
+
+                  [label]   ORG  expression
+
+        5.9  SET
+
+             This  statement  is used to assign a temporary  value  to  a 
+             symbol.   The  symbol  may not be redefined by an EQU or  by 
+             writing it in column 1 as a label,  but it may be  redefined 
+             by  another  SET  statement.   The value for the  symbol  is 
+             obtained from the expression.  If it contains forward refer-
+             ences, a phasing (P) error will result.  The syntax is:
+
+                  label     SET  expression
+
+        5.10 CPU
+
+             This  statement  turns the 6801 opcodes on or off.   If  the 
+             required  expression evaluates to 6800 (decimal),  the  6801 
+             opcodes are turned off.   If it evaluates to 6801,  the 6801 
+             opcodes  are turned on.   Otherwise,  a value (V)  error  is 
+             flagged.  If the expression contains any forward references, 
+             a  phasing (P) error results.   If a 6801 opcode is  encoun-
+             tered  while the 6801 opcodes are turned off,  an opcode (O) 
+             error results.  The syntax is:
+
+                  [label]   CPU  expression
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 16
+
+
+        6    Error Messages
+
+             Error messages are flagged with a single letter in column  1 
+             of  the offending line in the listing.   The meaning of each 
+             letter follows.
+
+                  A    The addressing mode specified (X, #) is illegal in 
+                       this instruction.
+
+                  B    Distance  on  a branch instruction is  too  great.  
+                       Use a jump instruction with a branch around it, or 
+                       rearrange your code to shorten the distance.
+
+                  D    Digit too large for the base was encountered.   In 
+                       particular,  watch  for 8 or 9 in an octal  number 
+                       and A-F in a decimal number.
+
+                  E    Expression ill-formed.  Look for #, A, B, X embed-
+                       ded in an expression or like flaws.
+
+                  I    If stack imbalance.  Look for ELSE or ENDI without 
+                       an IF or an IF still open at the end of the file.
+
+                  L    Invalid label.   Label may contain invalid charac-
+                       ters or be equal to a reserved word like A or NOT.  
+                       Label  may  be present on a  conditional  assembly 
+                       directive.
+
+                  M    Label multiply defined.   Label defined more  than 
+                       once and all definitions are not SET statements.
+
+                  O    Invalid  opcode.   Look for misspellings,  missing 
+                       semicolons,  opcodes in column 1,  or 6801 opcodes 
+                       with 6801 opcodes are turned off.
+
+                  P    Phasing error.   Look for expressions in ORG, EQU, 
+                       SET,  IF,  or CPU directives that contain  forward 
+                       references.   If  none exist,  something wierd  is 
+                       going  on  as a label that was defined in  pass  1 
+                       mysteriously vanished in pass 2.
+
+                  R    A  or B specified where not allowed or not  speci-
+                       fied where required.
+
+                  S    Syntax error.   Check your syntax against my  sam-
+                       ples.
+
+                  T    Too  many arguments on this line.   FDB directives 
+                       may  only  define 127 words,  while  FCC  and  FCB 
+                       directives  may only define 255 bytes.   On  other 
+                       statements,  you  put superfluous arguments on the 
+                       line.
+
+                  U    Undefined  symbol  encountered  during  expression 
+                       evaluation.
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 17
+
+
+
+                  V    Value out of bounds.   In particular,  FCB expres-
+                       sions and 8-bit immediate values must evaluate  to 
+                       -128 to 255, index values must evaluate to 0 
+                       to 255, and CPU arguments must evaluate to 6800 or 
+                       6801.
+
+                  *    This statement generated by the assembler.   Right 
+                       now,  this  only happens if you drop an END state-
+                       ment or remove it through conditional assembly.
+
+                  "    Quote imbalance error.   Bear in mind that '  will 
+                       not  terminate  a string started with " and  vice-
+                       versa.
+
+                  (    Parenthesis imbalance error.  Count them!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 18
+
+
+        7    Assembler Abort Conditions
+
+             Under certain circumstances,  this assembler will just  give 
+             up and quit in the middle of an assembly.   If you don't get 
+             the error count diagnostic on the console,  read your screen 
+             for sure!  The following messages occur:
+
+                  1)   Can't open source.
+
+                       The  source  file does not exist on the  specified 
+                       disk drive.
+
+                  2)   Can't open list.
+                       Can't open hex.
+
+                       No  directory  entries left on the disk  drive  in 
+                       question.
+
+                  3)   Illegal command line.
+                       No file info supplied.
+
+                       Bone up on command lines.
+
+                  4)   If stack overflow.
+
+                       IF directives may only be nested 16 deep.  Rebuild 
+                       your source code to reduce your nesting depth,  or 
+                       change  the  "#define  IFDEPTH  16"  statement  in 
+                       a68.h and recompile the assembler.
+
+                  5)   Disk read error.
+
+                       Source file has a bad CRC or some other  difficul-
+                       ty.
+
+                  6)   Disk write error.
+
+                       Out  of disk or directory space on the list or hex 
+                       file.
+
+                  7)   Error closing file.
+
+                       Problem closing list or hex file.   You  shouldn't 
+                       get this one.
+
+                  8)   Symbol Table Overflow.
+
+                       Your source program defines too many symbols.  The 
+                       current  limit  is 500.   If you have more  memory 
+                       than  I do,  you can change the  "#define  SYMBOLS 
+                       500"  line in a68.h and recompile  the  assembler.  
+                       Otherwise, you must work on your source code.
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 19
+
+
+        8    Compiling the Assembler
+
+             To  compile  the assembler as it stands,  you will need  the 
+             following items:
+
+                  1)   40K of RAM.
+
+                  2)   The BDS C Compiler Version 1.4x or 1.5x (good box, 
+                       Leor!!).
+
+                  3)   Digital Research's MAC macro assembler (BDS C 1.4x 
+                       only).
+
+                       Note:     Only  needed  if you want to  play  with          
+                                 the  functions  in a68tbls.asm  as  they 
+                                 exist  in a form digestible by CLINK  in 
+                                 the file a68tbls.crl.
+
+             To  get a68tbls.crl up from scratch with BDS C 1.4x,  you do 
+             the following.  I assume everything lives on drive A.
+
+                  A>b:mac a68tbls $pz sz
+                  A>load a68tbls
+                  A>era a68tbls.hex
+                  A>era a68tbls.crl
+                  A>ren a68tbls.crl=a68tbls.com
+
+             With  BDS C 1.5x,  you do the following.   Again,  I  assume 
+             everything lives on drive A.
+
+                  A>casm a68tbls
+                  A>asm a68tbls.aaz
+                  A>ddt a68tbls.hex
+                  -g0
+                  A>save 8 a68tbls.crl
+                  A>era a68tbls.hex
+
+             You should now have a68tbls.crl on drive A.
+
+             Now you are ready to compile the rest of the beast.
+
+                  A>cc1 a68.c -e4700
+                  A>cc1 a68asmln.c -e4700
+                  A>cc1 a68eval.c -e4700
+                  A>cc1 a68get.c -e4700
+                  A>cc1 a68put.c -e4700
+                  A>cc1 a68symb.c -e4700
+
+             Now you can link it all together.
+
+                  A>clink a68 a68asmln a68eval a68get a68put <^E>
+                       a68symb a68tbls -s
+
+             And, as if by magic, you've got a68.com!
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 20
+
+
+             Note that the linkage should all be done on one line, or bad 
+             things  may happen like inadvertent pulls from DEFF.CRL  and 
+             DEFF2.CRL.
+
+             Note that if you have more than 40K of RAM,  you may want to 
+             increase your symbol table size.  Symbols are 10 bytes each, 
+             so plan accordingly.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        6800 Cross-assembler  Rev. 2.6                          Page 21
+
+
+        9    Final Comments
+             
+             Happy  assembling!   If you have questions or note any bugs, 
+             I'd  appreciate  a shout at (216)775-3680  after  1830  hrs. 
+             Eastern time.  The questions will point up weaknesses in the 
+             manual, and the bugs need to be stamped upon unmercifully.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+              Page 20
+
+
+             Note that the linkage should 

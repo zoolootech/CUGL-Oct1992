@@ -1,0 +1,123 @@
+
+/******************************************************************
+*      PrintDlgProc - Print status window dialog window
+*
+*      Global:
+*             bUserAbort
+*             hDlgPrint
+*
+*      Copyright:
+*             Original code by William H. Roetzheim (619) 669-6970
+*             Copyright 1990 by William H. Roetzheim
+*             All rights reserved.
+**********************************************************************/
+
+BOOL FAR PASCAL      PrintDlgProc (HWND hDlg, unsigned iMessage, WORD wParam, LONG lParam)
+{
+       switch (iMessage)
+       {
+              case WM_COMMAND:
+                     switch (wParam)
+                     {
+                           case IDD_CANCEL:
+                                  bUserAbort = TRUE;
+                                  EnableWindow (GetParent (hDlg), TRUE);
+                                  DestroyWindow (hDlg);
+                                  hDlgPrint = 0;
+                                  break;
+
+                           default:
+                                  return FALSE;
+                     }
+                     break;
+
+              default:
+                     return FALSE;
+       }
+       return TRUE;
+}
+
+
+/******************************************************************
+*      AbortDlgProc - Dialog procedure for abort print
+*
+*      Global:
+*             bUserAbort
+*             hDlgPrint
+*
+*      Copyright:
+*             Original code by William H. Roetzheim (619) 669-6970
+*             Copyright 1990 by William H. Roetzheim
+*             All rights reserved.
+**********************************************************************/
+
+BOOL FAR PASCAL AbortDlgProc (HDC hPrinterDC, short nCode)
+{
+       MSG msg;
+
+       while (!bUserAbort && PeekMessage (&msg, (HWND) (WORD) 
+              NULL, 0, 0, (WORD) PM_REMOVE))
+       {
+              if (!hDlgPrint || !IsDialogMessage (hDlgPrint, &msg))
+              {
+                     TranslateMessage (&msg);
+                     DispatchMessage (&msg);
+              }
+       }
+       return !bUserAbort;
+}
+
+
+
+
+
+/******************************************************************
+*      PrintNetwork - Print entire network, one page at a time.
+*
+*      Parameters:
+*
+*      Global:
+*             hInstance
+*             spProject
+*             rBlock
+*
+*      Copyright:
+*             Original code by William H. Roetzheim (619) 669-6970
+*             Copyright 1990 by William H. Roetzheim
+*             All rights reserved.
+**********************************************************************/
+
+void PrintNetwork (void)
+{
+       HDC           hPrnDC;
+       FARPROC     lpfnAbortDlgProc, lpfnPrintDlgProc;
+
+       if (NULL == (hPrnDC = GetPrinterDC (hNetworkWnd)))
+       {
+              return;
+       }
+
+       bUserAbort = FALSE;
+       lpfnPrintDlgProc = MakeProcInstance (PrintDlgProc, hInstance);
+       hDlgPrint = CreateDialog (hInstance, "PRINTDLGBOX", hNetworkWnd, lpfnPrintDlgProc);
+       lpfnAbortDlgProc = MakeProcInstance (AbortDlgProc, hInstance);
+       Escape (hPrnDC, SETABORTPROC, 0, (LPSTR) lpfnAbortDlgProc, (LPSTR) NULL);
+
+       /* Output actual data */
+       Escape (hPrnDC, STARTDOC, 0, 0, NULL);
+
+       for (first page; next page; < last page)
+       {
+              Print out page worth of data
+              Escape (hPrnDC, NEWFRAME, 0, 0, NULL);
+       }
+       Escape (hPrnDC, ENDDOC, 0, NULL, NULL);
+
+       if (!bUserAbort)
+       {
+              EnableWindow (hNetworkWnd, TRUE);
+              DestroyWindow (hDlgPrint);
+       }
+       DeleteDC (hPrnDC);
+}
+

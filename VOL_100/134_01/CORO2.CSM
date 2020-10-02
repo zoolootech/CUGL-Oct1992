@@ -1,0 +1,347 @@
+;	CORO2.CSM
+
+;	Copyright (c) 1983 by Kevin B. Kenny
+;	Released to the BDS `C' Users' Group for non-commercial distribution
+
+;	Kevin Kenny
+;	729-A E. Cochise Dr.
+;	Phoenix, Arizona   85020
+
+;	Assembly language auxiliary functions for coroutine management
+
+;		This file comprises assembly language definitions of
+;	auxiliary functions needed by the BDS C coroutine manager. The
+;	following are included:
+
+;	sbrk		Version of sbrk that accounts for the existence of
+;			multiple stacks.
+;	corstart	Procedure that gets a coroutine started for the
+;			first time, and handles the "falloff" condition.
+;	corpass		Procedure that does the "dirty work" of passing
+;			control from one coroutine to another.  
+;	corwmip		Static storage for coroutine linkages.
+;			Procedure to handle trying to detach main.
+
+	maclib "BDS"
+
+	FUNCTION	sbrk; (size)    size in bytes
+	EXTERNAL	corwmip
+
+	call	ma1toh		; Pick up the size to allocate
+	push	b
+	push	h
+
+	call	corwmip		; Call WMIP to get current FCV.  If
+	mov	e,m		; it's the main coroutine, then it's
+	inx	h		; located at WMIP+2, and the current
+	mov	d,m		; stack pointer is the correct one.
+	inx	h		; Otherwise, the stack bounds check
+	mov	a,h		; needs to use the stack pointer of
+	cmp	d		; the main coroutine.
+	jnz	nmain
+	mov	a,l
+	cmp	e
+	jz	main
+
+nmain:	mov	a,m		; We're in a subsidiary coroutine; get
+	inx	h		; The stack pointer of main from 0-1 in
+	mov	h,m		; it's FCV.
+	mov	l,a
+	jmp	tests
+
+main:	lxi	h,0		; We're in main coroutine; get the stack
+	dad	sp		; pointer.
+
+tests:	pop	d		; Set DE=size to allocate;
+	push	h		; TOS=stack pointer
+
+	lhld	allocp		; Get the heap pointer, and add the
+	dad	d		; request size.  If it carries out,
+	jc	error		; request will not fit in memory.
+
+	dcx	h		; Set DE=stack pointer, TOS=new top of
+	pop	d		; heap (avail + size - 1).
+	push	h		
+
+	lhld	alocmx		; Get HL=stack pointer-alocmx; this is
+	call	cmh		; the maximum value for the new heap
+	dad	d		; pointer.
+	
+	pop	d		; Compare the new heap pointer with the
+	mov	a,h		; computed maximum value.
+	cmp	d
+	jnz	comp2
+	mov	a,l
+	cmp	e
+comp2:	jc	error2		; It's higher -- oops!
+
+	lhld	allocp		; Get heap pointer -> piece to return
+	xchg			; Update heap pointer
+	inx	h
+	shld	allocp
+
+	xchg
+	pop	b
+	ret
+
+error:	pop	h		; Request exceeds memory size; clean up stk.
+error2:	lxi	h,0		; Excessive request-- return 0 for denial.
+	pop	b		; Recover saved frame base pointer
+	ret
+
+	ENDFUNC	sbrk
+
+
+
+	FUNCTION	corstart
+	EXTERNAL	corpass, corwmip
+
+;		This function is the coroutine starter.  It is invoked
+;	the first time control is passed to a created coroutine.  BC
+;	will be the address of the function to call (the "main program"
+;	of the coroutine) and HL will be the initial argument.  We save
+;	the initial entry on the stack, in case the function "falls off
+;	the end", and then call the initial entry passing the passed arg.
+
+begin:	push	b		; Save initial entry
+	push	h		; Prepare the argument
+	mov	h,b		; Get entrypoint in HL
+	mov	l,c
+	call	dopchl		; Call the function
+
+;		The called coroutine has fallen off the end.  We need to
+;	fake the DETACH, and then (after reinvocation) restart it.
+
+	pop	b		; Retrieve function pointer, after
+	pop	b		; discarding prepared argument.  Stack is
+				; now empty.
+
+	push	h		; Save return value on stack; it will
+				; be used as 2nd arg to corpass.
+
+	call	corwmip		; Get the pointer to our fcv.
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+
+	lxi	d,4		; Get pointer to caller's fcv
+	dad	d
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+
+	push	h		; Prepare caller fcv as 1st arg to pass$.
+
+	lxi	d,6		; Now get pointer to caller's "type" word.
+	dad	d	
+
+	mvi	m,4		; Set pass type to "return"
+	inx	h
+	mvi	m,0
+
+	call	corpass; (caller, return$val)
+
+;		We have been reinvoked.  BC is still the initial entry 
+;	point, and HL is the passed value.  Throw away the arguments that
+;	we passed to corpass, and restart the coroutine.
+
+	pop	d
+	pop	d
+	jmp	begin
+
+;		The following instruction is used to call the initial
+;	entry via HL.
+
+dopchl:	pchl
+
+	ENDFUNC	corstart
+
+
+
+	FUNCTION	corpass ;(fcv, passval)
+	EXTERNAL	corwmip
+
+;		This function does all the "dirty work" needed to get
+;	from one coroutine to another.  It maintains the "who-am-I" and
+;	"passer" linkages, saves register content from one invocation to
+;	the next, and does the reloading of the stack pointer and the
+;	transfer of control.
+
+;	First, save the BC register of the departing coroutine:
+
+	push	b
+
+;	Get a pointer to the memory location in which the WMI pointer
+;	resides (BC) and to the current FCV (DE).
+
+	call	corwmip
+	mov	b,h	
+	mov	c,l
+	mov	e,m
+	inx	h
+	mov	d,m
+
+;	Save the current stack pointer at Cf$stkptr$ in the current FCV.
+;	The stack looks like:
+;		+0	BC register storage
+;		+2	Return address
+;		+4	Target FCV
+;		+6	Passed value
+
+	lxi	h,0
+	dad	sp
+	xchg
+	mov	m,e
+	inx	h
+	mov	m,d
+	dcx	h
+	xchg		; FCV pointer back in DE.
+
+;	Get a pointer to target coroutine in HL
+
+	lxi	h,4
+	dad	sp
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+
+;	Set the "passer" word in the target to designate the source.
+
+	inx	h		; Passer is at relative location 2
+	inx	h
+	mov	m,e
+	inx	h
+	mov	m,d
+	dcx	h
+	dcx	h
+	dcx	h
+
+;	Set the WMI linkage to the target coroutine:
+
+	mov	a,l
+	stax	b		; WMI is still in BC
+	inx	b
+	mov	a,h
+	stax	b
+	xchg			; Target FCV now in DE.
+
+;	Get the passed value:
+
+	lxi	h,6
+	dad	sp
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	xchg			; DE = passed value; HL=target FCV
+
+;	Reload the stack pointer from the target FCV
+
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	sphl
+
+;	Put the passed arg in HL, restore the BC register, and go back
+;	to the target coroutine's saved return address.
+
+	xchg
+	pop	b
+	ret
+
+	ENDFUNC	corpass
+
+
+
+	FUNCTION	corwmip
+	EXTERNAL	fprintf, exit
+
+;		This function contains the static storage used by the
+;	coroutine package.  It also has the code that handles the case
+;	where the main coroutine (or one which has been RESUMEd by it)
+;	has tried to DETACH.
+
+;	When we're called, return pointer to the word inmemory where
+;	the WMI linkage is stored:
+
+	lxi	h,wmiptr
+	ret
+
+;	First static area is the WMI linkage:
+
+wmiptr:	dw	mainfcv		; Initially, main coroutine running.
+
+;	Then comes the main coroutine's FCV:
+;	*** SBRK depends on this following WMIP; don't change it...
+
+mainfcv:
+	ds	2	; Space for stack pointer
+	dw	falloff	; Passer -- dumy "falloff" FCV
+	dw	falloff ; Caller
+	dw	0	; Type is unknown.
+	dw	-8	; Stack size is ridiculous.
+	dw	0	; User info is zero.
+
+; 	Next is a dummy FCV for the "falloff" condition:
+
+falloff:
+	dw	fallstk	; Stack pointer
+	dw	falloff	; Linked to self as caller
+passer:	dw	falloff ; Linked to self as passer
+	dw	0	; Type is unknown
+	dw	16	; 6 bytes of stack space
+	dw	0	; User info word is 0
+
+;	The "falloff" coroutine's stack follows:	
+
+	ds	12	; Space for interrupt handler, JIC...
+fallstk: dw	0	; BC register save is unused.
+	dw	mainend	; Return address is "main end" procedure
+
+; 		The following code handles the problems
+;	that arise when the main co-routine tries to return.  It
+;	calls fprintf to display an error message, then exits.  It
+;	can be modified by removing the call to exit() so that it
+;	will continue the "main" coroutine instead.
+
+mainend:
+	lhld	passer		; Who fouled up?
+	shld	wmiptr		; Whoever it was, re-enter it.
+
+	mov	a,m		; Restore the stack pointer of the
+	inx	h		; coroutine that fell off.
+	mov	h,m
+	mov	l,a
+	sphl
+
+	lhld	passer		; Prepare passer ptr as 3rd arg to abort
+	push	h
+
+	lxi	h,message	; Prepare error message pointer as 2nd arg
+	push	h
+
+	lxi	h, 4		; Prepare unit 4 (STDERR) as the 1st arg
+
+	call	fprintf ;(STD_ERR, message, passer)
+
+	pop	b
+	pop	b	; Discard args
+	pop	b
+
+	call	exit		; Quit
+
+	pop	b	;Get BC back
+	ret			; Resume the turkey
+
+message:
+	db	0AH, 'Attempt to detach a coroutine (FCV=0x%04x) which has'
+	db	0AH, 'no caller linkage.'
+	db	0
+
+	ENDFUNC	corwmip
+ed.
+	dw	mainend	;

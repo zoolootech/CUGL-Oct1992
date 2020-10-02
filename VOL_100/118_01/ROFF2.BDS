@@ -1,0 +1,1049 @@
+/* software tools format program -- C version -- Part 2
+ * source:  roff2.bds
+ * version: November 26, 1981.
+ */
+
+#include tools.h		/* defs for primitives */
+#include roff.h
+
+/*	finit - set parameters to default values */
+
+finit()
+{
+	/* include: cparam, cpage, cout, cdefio, cnr, cmac */
+	int  i;
+
+	/* initialize flags */
+	cuflag = NO;
+	dir = 0;
+	putflag = NO;
+
+	/* initialize cparam */
+	inval = 0;
+	rmval = PAGEWIDTH;
+	tival = 0;
+	lsval = 1;
+	fill = YES;
+	ceval = 0;
+	ulval = 0;
+	boval = 0;
+	cchar = '.';
+	tjust [0] = LEFT;
+	tjust [1] = CENTER;
+	tjust [2] = RIGHT;
+	bsval = 0;
+	rjust = YES;
+	cuval = 0;
+	for (i = 0; i < INSIZE; i++) {
+		if (i % 8 == 0) {
+			tabs [i] = YES;
+		}
+		else {
+			tabs [i] = NO;
+		}
+	}
+
+	/* initialize cpage */
+	lineno = 0;
+	curpag = 0;
+	newpag = 1;
+	plval = PAGELEN;
+
+	m1val = 3;
+	m2val = 2;
+	m3val = 2;
+	m4val = 3;
+	bottom = plval - m3val - m4val;
+
+	ehead [0] = NEWLINE;
+	ehead [1] = EOS;
+	ohead [0] = NEWLINE;
+	ohead [1] = EOS;
+
+	efoot [0] = NEWLINE;
+	efoot [1] = EOS;
+	ofoot [0] = NEWLINE;
+	ofoot [1] = EOS;
+
+	ehlim [0] = inval;
+	ehlim [1] = rmval;
+	ohlim [0] = inval;
+	ohlim [1] = rmval;
+
+	eflim [0] = inval;
+	eflim [1] = rmval;
+	oflim [0] = inval;
+	oflim [1] = rmval;
+
+	stopx = NO;
+	frstpg = 0;
+	lastpg = HUGE;
+	print = YES;
+	offset = 0;
+
+	/* initialize cout */
+	outp = 0;
+	outw = 0;
+	outwds = 0;
+
+	/* initialize dynamic storage */
+
+	/* ----- calling sequence changed ----- */
+	dsinit();
+
+	/* initialize symbol table for macros */
+
+	/* ----- calling sequence changed */
+	mactbl = mktabl(29);
+
+	/* initialize cdefio */
+	bp = -1;
+
+	/* initialize cnr */
+	for (i = 0; i < 26; i++) {
+		nr [i] = 0;
+	}
+}
+
+
+/*	gettl - copy title from buf to ttl */
+
+gettl(buf, ttl, lim)
+char *buf, *ttl;
+int  *lim;
+{
+	/* include: cparam */
+	int  i;
+
+	/* skip command name */
+	i = 0;
+	while ( buf [i] != ' ' &&
+	        buf [i] != TAB &&
+	        buf [i] != NEWLINE
+	      ) {
+		i++;
+	}
+
+	/* skip to start of title */
+	skipbl(buf, &i);
+
+	/* copy titles to ttl */
+	scopy(buf, i, ttl, 0);
+
+	/* comment out ----- gettl trace
+	printf("gettl:  buf is -->%s\n",buf);
+	printf("gettl:  ttl is -->%s\n",ttl);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+
+	/* set limits */
+	lim [0] = inval;
+	lim [1] = rmval;
+}
+
+/*	getval - evaluate optional numeric argument
+ *	         set i past argument
+ *	         set argtype to type (numeric or not)
+ *	         calling sequence:  getval (buf, &i, &argtyp);
+ */
+
+getval(buf, i, argtyp)
+char *buf;
+int  *i, *argtyp;
+{
+	/* move *i past blanks */
+	skipbl(buf, i);
+	*argtyp = buf [*i];
+	if (*argtyp == '+' || *argtyp == '-') {
+		(*i)++;
+	}
+	/* move *i past argument */
+	return(ctoi(buf, i));
+}
+
+/*	getwrb - get  a word; hangs onto trailing blanks
+ *	         point i past word
+ *	         calling sequence:  getwrb (in, &i, out);
+ */
+
+getwrb(in, ii, out)
+char *in, *out;
+int *ii;
+{
+	int  i, j;
+
+	i = *ii;
+	j = 0;
+	while ( in [i] != EOS &&
+	        in [i] != ' ' &&
+	        in [i] != TAB &&
+	        in [i] != NEWLINE
+	      ) {
+		out [j++] = in [i++];
+	}
+
+	/* include trailing blanks */
+	while (in [i] == ' ') {
+		i++;
+		out [j++] = ' ';
+	}
+
+	/* supply a blank to end the word if none there */
+	if ( j > 0 && out [j - 1] != ' ') {
+		out [j++] = ' ';
+	}
+
+	out [j] = EOS;
+	*ii = i;
+
+	/* comment out ----- getwrb trace
+	printf("getwrb:  out = %s, i = %d, j = %d\n",out,i,j);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+
+	return(j);
+}
+
+/*	gfield - get next tab or title field
+ *	         set i past field
+ *	         return number of characters copied
+ *	     calling sequence: gfield(buf, &i, n, temp, delim);
+ */
+
+int gfield(buf, ii, n, temp, delim)
+char *buf;
+int *ii;
+int  n;
+char *temp;
+char delim;
+{
+	int  i, j;
+
+	i = *ii;
+	j = 0;
+	if (n > 0) {
+		if (buf [i] == delim) {
+			i++;
+		}
+		while ( buf [i] != delim &&
+		        buf [i] != EOS &&
+		        buf [i] != NEWLINE &&
+		        j < n
+		      ) {
+			temp [j++] = buf [i++];
+		}
+	}
+
+	/* skip things between delims */
+	while ( buf [i] != delim &&
+	        buf [i] != EOS &&
+	        buf [i] != NEWLINE
+	      ) {
+		i++;
+	}
+
+	temp [j] = EOS;
+	*ii = i;
+	return(j);
+}
+
+/*	jcopy - scopy without copying EOS */
+
+jcopy(from, i, to, j)
+char *from, *to;
+int i, j;
+{
+	while (from [i] != EOS) {
+		to [j++] = from [i++];
+	}
+}
+
+/*	justify - justifies string in its tab column */
+
+justify(in, left, right, type, out)
+char *in, *out;
+int left, right, type;
+{
+	int j, n;
+
+	n = width(in);
+	if (type == RIGHT) {
+		j = max ( (right - n), 0);
+		jcopy(in, 0, out, j);
+	}
+	else if (type == CENTER) {
+		j = max( (right + left - n) / 2, left);
+		jcopy(in, 0, out, j);
+	}
+	else jcopy(in, 0, out, left);
+
+	/* comment out ----- justify trace
+	printf("justify: type = %d\n out = %s\n",type,out);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+}
+
+/*	leadbl - delete leading blanks, set tival */
+
+leadbl(buf)
+char *buf;
+{
+	/* include: cparam */
+	int  i, j;
+
+	brk();
+
+	/* find first non-blank character on the line */
+	for (i = 0; buf [i] == ' '; i++) {
+		;
+	}
+	if (buf [i] != NEWLINE) {
+		tival += i;
+	}
+
+	/* move line to left */
+	j = 0;
+	while ((buf [j++] = buf [i++])!= EOS) {
+		;
+	}
+}
+
+/*	ludef - look up a macro name
+ *	        copy the definition to defn
+ *	        return pointer to definition if found.
+ *	        Note:  this is a change in lookup.
+ */
+
+ludef (name, defn)
+char *name, *defn;
+{
+	/* include: cmac */
+	int  i;
+	char *locn;
+
+	/* comment out -----
+	printf("in ludef:  name = %s\n",name);
+	----- end comment out */
+
+	if ((locn = lookup (name, mactbl)) == 0) {
+		return (NO);
+	}
+	else {
+		scopy (locn, 0, defn, 0);
+		return (YES);
+	}
+}
+
+/*	ngetch - get a char from file fd or
+ *	         the stack of pushed back characters.
+ */
+
+ngetch(fd)
+int  fd;
+{
+	/* include: cdefio */
+
+	if (bp >= 0) {
+		return(pbbuf [bp--]);
+	}
+	else {
+		return(getch(fd));
+	}
+}
+
+/*	ngetln - get next line from f into line */
+
+ngetln(line, fd)
+char *line;
+int fd;
+{
+	int  i;
+	int  c;
+
+	i = 0;
+	while (i < MAXLINE - 1 && (c = ngetch(fd)) != EOF) {
+		line [i++] = c;
+		if (c == NEWLINE) {
+			break;
+		}
+	}
+	line [i] = EOS;
+	if (i == 0 && c == EOF) {
+		i = EOF;
+	}
+	return(i);
+}
+
+/*  pbstr - push string back onto input */
+
+pbstr(in)
+char *in;
+{
+	int  i;
+
+	for (i = length(in) - 1; i >= 0; i--)
+		putbak(in [i]);
+}
+
+/*	pfoot - put out page footer */
+
+pfoot()
+{
+	/* include: cpage */
+
+	skip(m3val);
+	if (m4val > 0) {
+		if (curpag % 2 == 0) {
+			puttl(efoot, eflim, curpag);
+		}
+		else {
+			puttl(ofoot, oflim, curpag);
+		}
+
+		/* comment out ----- pagecontrol
+		ifnotdef(PAGECONTROL,  skip(m4val-1) );
+		----- end comment out */
+
+		skip(m4val-1);
+	}
+}
+
+/*	phead - put out page header */
+
+phead()
+{
+	/* include: cpage */
+	int  c [MAXLINE];
+
+	curpag = newpag;
+
+	/* check whether we should print this page */
+	if (curpag >= frstpg && curpag <= lastpg) {
+		print = YES;
+	}
+	else {
+		print = NO;
+	}
+	if (stopx == YES && print == YES) {
+		prmpt();
+	}
+	newpag++;
+
+	/* comment out ---------- pagecontrol
+	ifdef(PAGECONTROL,
+			if (stopx == 0 && print == YES) {
+				putc(PAGEJECT);
+			}
+	      )
+	---------- end comment out */
+
+	if (m1val > 0) {
+		skip(m1val-1);
+		if (curpag % 2 == 0) {
+			puttl(ehead, ehlim, curpag);
+		}
+		else {
+			puttl(ohead, ohlim, curpag);
+		}
+	}
+	skip(m2val);
+	lineno = m1val + m2val + 1;
+}
+
+/*	prmpt - pause for paper insertion. */
+
+prmpt()
+{
+	char line [MAXLINE];
+
+	putlin("Type return to begin a page",SYS_TERM);
+	getlin(line, SYS_TERM);
+}
+
+/*	put - put out line
+ *	      ALL output eventually comes here via
+ *	      calls from text() or calls from brk().
+ */
+
+put(buf)
+char *buf;
+{
+	if (lineno == 0 || lineno > bottom) {
+		phead();
+	}
+	if (print == YES) {
+		put1(buf);
+	}
+	tival = inval;
+	skip (min (lsval - 1, bottom - lineno));
+	lineno += lsval;
+	if (lineno > bottom) {
+		pfoot();
+	}
+}
+
+/*	put1 - put out text beteen header and footer */
+
+put1(buf)
+char *buf;
+{
+
+	/* include: cpage, cparam */
+	int  i, j, w, c;
+	int  start;
+
+	/* comment out ----- put1 trace
+	printf("put1:  buf = %s\n",buf);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+
+	/* putflag may be YES on entry */
+
+	w = 0;
+	start = 0;
+
+	/* page offset */
+	for (i = 0; i < offset; i++) {
+		putc(' ');
+	}
+
+	/* indentation */
+	for (i = 0; i < tival; i++) {
+		putc(' ');
+	}
+
+	/* put out line. handle underlining */
+
+	for ( i = 0; ;i++) {
+		c = buf [i];
+		if ( (putflag == NO) &&
+		     (c == EOS || c == NEWLINE)
+		   ) {
+			break;
+		}
+
+		if (c == STARTU) {
+			start = i + 1;
+			w = 0;
+			putflag = YES;
+		}
+		else if (c == STOPU && putflag == NO) {
+			remark("in put1: extra STOPU ignored");
+		}
+		else if ( c == STOPU ||
+		          c == EOS ||
+		          c == NEWLINE
+		        ) {
+			/* output chars */
+			for (j = start; j < i ;j++) {
+				putch(buf[j], STDOUT);
+			}
+			/* now backspace */
+			for (j = 0; j < w; j++) {
+				putch(BACKSPACE, STDOUT);
+			}
+			/* now underline */
+			for (j = 0; j < w; j++) {
+				putch('_', STDOUT);
+			}
+			if (c == EOS || c == NEWLINE) {
+				break;
+			}
+			putflag = NO;
+		}
+		else if (putflag == YES) {
+			w += widthch(c);
+		}
+		else {
+			putch(c, STDOUT);
+		}
+	} /* end of for loop */
+
+	putch(NEWLINE, STDOUT);
+}
+
+/*	putbak - push character back onto input */
+
+putbak(c)
+char c;
+{
+	/* include: cdefio */
+
+	if (++bp >= PBSIZE) {
+		error("too many characters pushed back.");
+	}
+	pbbuf [bp] = c;
+}
+
+/*	puttl - put out title line
+ *	        substitute line number for '#'
+ *	        substitute date for '%'
+ */
+
+puttl(buf, lim, pageno)
+char *buf;
+int *lim;
+int pageno;
+{
+	/* include cpage, cparam, ctemp */
+	char chars [MAXLINE], cdate[MAXLINE];
+	char delim;
+	int  nc, i, j, n, left, right, ncd;
+	char *now;
+
+	if (print == NO) {
+		return;
+	}
+	left = lim [0];
+	right = lim [1];
+
+	/* calculate the width of the page number and date */
+	nc = itoc(pageno, chars, MAXLINE - 1);
+	now = getnow();
+
+	fmtdat(cdate, tbuf1, now, 0);
+	ncd = length(cdate);
+
+	delim = buf [0];
+
+	/* blank out title field */
+	for (j = 0; j < right; j++) {
+		ttl [j] = ' ';
+	}
+
+	/* get the left, center, and right fields */
+	
+	i = 0;
+	for(n = 0; n < 3 ;n++ ) {
+
+		/* get next field of title */
+		if ( gfield ( buf, &i, right - left,
+		              tbuf1, delim) > 0 ) {
+			
+			/* substitute page num for '#' */
+			subst ( tbuf1, PAGENUM, tbuf2,
+			        chars, nc);
+
+			/* substitute date for '%' */
+			subst ( tbuf2, CURRENTDATE, tbuf1,
+			        cdate, ncd);
+
+			justify ( tbuf1, left, right,
+			          tjust [n], ttl);
+		}
+		if ( buf [i] == EOS ||
+		     buf [i] == NEWLINE
+		   ) {
+			break;
+		}
+	}
+
+	/* trim blanks */
+	while (ttl [right-1] == ' ') {
+		right--;
+	}
+	ttl [right] = NEWLINE;
+	ttl [right+1] = EOS;
+
+	/* offset title */
+	for (i = 0; i < offset; i++) {
+		putc(' ');
+	}
+
+	/* output title */
+	putlin(ttl, STDOUT);
+}
+
+/*	putwrd - put a word in outbuf
+ *	         the word includes trailing blanks
+ *	         justify right margin when line becomes full
+ */
+
+putwrd(wrdbuf)
+char *wrdbuf;
+{
+	/* include cout, cparam */
+	int  last, llval, nextra, len, w;
+
+	len = length(wrdbuf);
+	w = width(wrdbuf);
+
+	/* set new end of outbuf */
+	last = len + outp;
+	llval = rmval - tival;
+
+	if (outw + w > llval || last >= MAXOUT) {
+		/* too big -- buffer will have one word */
+		last = len;
+
+		/* do not allow trailing blanks on a line */
+		nextra = llval - outw;
+		while ( outp > 0 && 
+		        outbuf[outp - 1] == ' '
+		      ) {
+			outp--;
+			nextra++;
+		}
+
+		/* outp points past the last char or 0 here */
+
+		if (rjust == YES) {
+			spread(outbuf, outp, nextra, outwds);
+			if (nextra > 0 && outwds > 1) {
+				outp += nextra;
+			}
+		}
+		brk();		/*  flush previous line */
+	}
+	scopy(wrdbuf, 0, outbuf, outp);
+	outp = last;
+	outw += w;
+	outwds++;
+}
+
+/*	set - set parameter and check range */
+
+set( param, val, argtyp, defval, minval, maxval)
+int *param, val, argtyp, defval, minval, maxval;
+{
+
+	if (argtyp == NEWLINE) {
+		/* use default */
+		*param = defval;
+	}
+	else if (argtyp == '+') {
+		/* increase */
+		*param += val;
+	}
+	else if (argtyp == '-') {
+		/* decrease */
+		*param -= val;
+	}
+	else {
+		/* set to new value */
+		*param = val;
+	}
+	/* put value in bounds */
+	*param = min(*param, maxval);
+	*param = max(*param, minval);
+}
+
+/*	skip - output  n  blank lines */
+
+skip(n)
+int  n;
+{
+	/* include cpage */
+
+	if (print == YES) {
+		while (n-- > 0) {
+			putc(NEWLINE);
+		}
+	}
+}
+
+/*	space - space  n  lines or to bottom of page */
+
+space(n)
+int  n;
+{
+	/* include: cpage */
+
+	brk();
+	if (lineno > bottom) {
+		return;
+	}
+	if (lineno == 0) {
+		phead();
+	}
+	skip(min(n, bottom + 1 - lineno));
+	lineno += n;
+	if (lineno > bottom) {
+		pfoot();
+	}
+}
+
+/*	spread - spread words to justify right margin
+ *               warning:  this routine is sensitive to
+ *	         bad parameters.
+ */
+
+spread(buf, outp, ne, outwds)
+char *buf;
+int outp, ne, outwds;
+{
+	/* include: cparam */
+	int  i, j, nb, nholes;
+
+	/* comment out ----- spread trace
+	printf("spread:  outp = %d,  ",outp);
+	printf("ne = %d,  ",ne);
+	printf("outwds = %d  \n",outwds);
+	printf("spread: buf = %s\n",buf);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+
+	if (ne <= 0 || outwds <= 1 || outp <= 0) {
+		return;
+	}
+
+	/* reverse direction */
+	dir = 1 - dir;
+
+	nholes = outwds - 1;
+	if (tival != inval && nholes > 1) {
+		nholes--;
+	}
+
+	/* point i at last character of buf */
+	i = outp - 1;
+
+	/* leave room for NEWLINE and EOS */
+	j = min(MAXOUT - 2, i + ne);
+
+	while (i < j) {
+		buf [j] = buf [i];
+		if (buf [i] == ' ' && buf [i-1] != ' ') {
+			if (dir == 0) {
+				nb = (ne-1) / nholes + 1;
+			}
+			else {
+				nb = ne / nholes;
+			}
+			ne = ne - nb;
+			nholes--;
+			while (nb-- > 0) {
+				buf [--j] = ' ';
+			}
+		}
+		i--;
+		j--;
+		if (i < 0 || j < 0) {
+			sys_error("spread:\n");
+		}
+	}
+}
+
+/*	subst - substitute a string for char1 */
+
+subst(in, char1, out, subara, n)
+char *in, *out, *subara;
+char char1;
+int  n;
+{
+int  i, j, k;
+
+	for (i = 0, j = 0; in [i] != EOS; i++) {
+		if (in [i] == char1) {
+			for (k = 0; k < n; ) {
+				out [j++] = subara [k++];
+			}
+		}
+		else {
+			out [j++] = in [i];
+		}
+	}
+	out [j] = EOS;
+
+	/* comment out ----- subst trace
+	printf("subst: char = %c,  out = %s\n",char1,out);
+	printf("Hit any key to continue\n");
+	getch(SYS_TERM);
+	----- end comment out */
+
+}
+
+/*	text - process text lines */
+
+text(inbuf)
+char *inbuf;
+{
+	/* include cparam */
+	char wrdbuf [INSIZE];
+	int  i;
+
+	/* data cuflag /NO/ */
+
+	/* expand escapes */
+	doesc(inbuf, wrdbuf, INSIZE);
+
+	/* expand tabs */
+	dotabs(inbuf, wrdbuf, INSIZE);
+
+	if (inbuf [0] == ' ' || inbuf [0] == NEWLINE) {
+		/* move left, set tival */
+		leadbl(inbuf);
+	}
+
+	if (ulval > 0) {
+		/* word underlining */
+		underl(inbuf, wrdbuf, INSIZE);
+		ulval--;
+	}
+
+	if (cuval > 0) {
+		/* continuous underlining */
+		if (cuflag == NO) {
+			scopy(inbuf, 0, wrdbuf, 0);
+			inbuf [0] = STARTU;
+			scopy(wrdbuf, 0, inbuf, 1);
+			cuflag = YES;
+		}
+		cuval--;
+		if (cuflag == YES && cuval == 0) {
+			/* overwrite \n and EOS */
+			i = length(inbuf) - 1;
+			inbuf [i] = STOPU;
+			inbuf [i+1] = NEWLINE;
+			inbuf [i+2] = EOS;
+			cuflag = NO;
+		}
+	}
+	if (boval >  0) {
+		/* boldfacing */
+		bold(inbuf, wrdbuf, INSIZE);
+		boval--;
+	}
+
+	if (ceval >  0) {
+		/* centering */
+		center(inbuf);
+		put(inbuf);
+		ceval--;
+	}
+	else if (inbuf [0] == NEWLINE) {
+		/* all blank line */
+		put(inbuf);
+	}
+	else if (fill == NO) {
+		/* unfilled textd */
+		put(inbuf);
+	}
+	else {
+		/* filled text */
+
+		/* comment out ----- text trace
+		printf("text:  inbuf = %s\n",inbuf);
+		printf("Hit any character to continue\n");
+		getch(SYS_TERM);
+		----- end comment out */
+
+		/* insure two spaces after a period */
+		i = length(inbuf);
+		inbuf [i] = ' ';
+		if (inbuf [i-1] == '.') {
+			inbuf [++i] = ' ';
+		}
+		inbuf [i+1] = EOS;
+		for (i = 0; getwrb(inbuf, &i, wrdbuf) > 0; )
+			putwrd(wrdbuf);
+	}
+}
+
+/*	underl - underline words in a line
+ *	         surround each word with STARTU and STOPU
+ */
+
+underl(buf, tbuf, size)
+char *buf, *tbuf;
+int size;
+{
+	int  i, j, t;
+	int inword;
+
+	inword = NO;
+
+	/* use tbuf as internal buffer */
+	for (i = 0, j = 0; j < size - 3; ) {
+		if (buf [i] == EOS || buf [i] == NEWLINE) {
+			break;
+		}
+		t = tolower(type(buf[i]));
+
+		if (inword == NO) {
+			/* look for start of word */
+			if (t == 'a' || t == '0' || t == '_') {
+				/* add STARTU to buffer */
+				tbuf [j++] = STARTU;
+				inword = YES;
+			}
+		}
+		else {
+			/* look for end of word */
+			if (t != 'a' && t != '0' && t != '_') {
+				/* add STOPU to buffer */
+				tbuf [j++] = STOPU;
+				inword = NO;
+			}
+		}
+		/* always copy the character */
+		tbuf [j++] = buf [i++];
+	}
+
+	/* make sure we end outside underline mode */
+	if (inword == YES) {
+		tbuf [j++] = STOPU;
+	}
+
+	tbuf [j++] = NEWLINE;
+	tbuf [j]   = EOS;
+
+	/* put result back in tbuf */
+	scopy(tbuf, 0, buf, 0);
+
+	/* comment out ----- underl trace
+	printf("underl: buf is: %s\n",buf);
+	----- end comment out */
+}
+
+/*	width - return width of character string */
+
+int width(buf)
+char *buf;
+{
+	int  value;
+
+	value = 0;
+	while (*buf != EOS) {
+		value += widthch(*buf++);
+	}
+	return(value);
+}
+
+/* return width of a character */
+
+widthch(c)
+int c;
+{
+
+	if (c == BACKSPACE) {
+		return(-1);
+	}
+	else if (c >= ' ' && c <= '~') {
+		return(1);
+	}
+	else {
+		return(0);
+	}
+}
+---- underl trace
+	printf("underl: buf is: %s\n",buf);
+	----- end comment out */
+}
+
+/*	width - return width of character string */
+
+int width(buf)
+char *buf;
+{
+	int  value;
+
+	value = 0;
+	while (*buf != EOS) {
+		value += widthch(*buf++);
+	}

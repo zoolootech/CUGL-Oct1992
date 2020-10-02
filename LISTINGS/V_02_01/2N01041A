@@ -1,0 +1,431 @@
+
+(*	Panel Unit  --  EgaVga Graphic Radio-Button Panel
+
+        Turbo Pascal 4 Unit
+
+        **************************************************
+        NOTE:   All compilations should have the boolean
+                evaluation option set to "short-circuit"
+        **************************************************
+
+	Supports MicroSoft compatible Mouse Driver
+
+	June 26, 1990  --  Michael Kelly  --  Version 1.01      *)
+
+Unit Panel;
+
+InterFace
+Uses PanelDrv, Graph, Int16, Mouse;
+
+    Const
+	Gap = 25;       { pixel space between buttons }
+	MaxButton = 10; { maximum number of buttons on panel }
+
+    Type
+	ButtonState = (Up, Down);
+	ButtonTag = String[80]; { option string }
+	Button = Record         { button and associated option string }
+		State  		: ButtonState;
+		UpperLeftX,
+		UpperLeftY,
+		TagColor	: Integer;
+                Tag     	: ButtonTag;
+	End;
+
+	Buttons	= Array[1..MaxButton] of Button;
+
+	ButtonDescriptor = Record   { attributes common to 3D buttons }
+		RadioButton	: Buttons;
+                SideLength,
+		BorderWidth,
+		HighLightEdge,
+		ShadowEdge,
+		Normal,
+		TagHighLight,
+		TagNormal	: Integer;
+	End;
+
+	PanelDescriptor = Record    { defines a radio-button panel }
+		UpperLeftX,
+		UpperLeftY,
+		LowerRightX,
+		LowerRightY,
+		NumButtons, CurrentButton	: Integer;
+		ButtonStyle			: ButtonDescriptor;
+	End;
+
+(*
+ *  draws the panel defined by the PanelDescriptor parameter
+ *
+ *  returns:
+ *              True on success
+ *
+ *              False on error
+ *)
+Function DrawPanel(Var ButtonPanel : PanelDescriptor) : Boolean;
+
+(*
+ *  polling function updates button panel appearence to reflect
+ *  keyboard and mouse input, and determines if a button has been
+ *  pressed
+ *
+ *  note:   does not wait for input
+ *
+ *  returns:
+ *              0 if no button pressed
+ *
+ *              user selection in range 1 to MaxButton if button pressed
+ *)
+Function ButtonPress(Var ButtonPanel : PanelDescriptor) : Integer;
+
+Implementation
+
+(*
+ *  draws the button outline using highlighting and shading
+ *
+ *  returns:
+ *              True on success
+ *
+ *              False on error
+ *)
+Function ButtonBorder(
+    Var ButtonInfo : ButtonDescriptor; ThisButton : Integer) : Boolean;
+
+    Var
+	n, TopLColor, BotRColor, LSide,
+	xl, xr, yu, yd : Integer;
+Begin
+  With ButtonInfo do
+  Begin
+    If RadioButton[ThisButton].State = Up then
+    Begin
+      TopLColor := HighlightEdge;
+      BotRColor := ShadowEdge;
+    End
+    Else
+    Begin
+      TopLColor := ShadowEdge;
+      BotRColor := HighLightEdge;
+    End;
+    LSide := SideLength;
+    xl := RadioButton[ThisButton].UpperLeftX;
+    xr := xl + LSide;
+    yu := RadioButton[ThisButton].UpperLeftY;
+    yd := yu + LSide;
+    SetColor(TopLColor);
+    For n := 0 to BorderWidth - 1 do
+    Begin
+      Line(xl+n, yd-n, xl+n, yu+n);
+      Line(xl+n, yu+n, xr-n, yu+n);
+    End;
+    SetColor(BotRColor);
+    For n := 0 to BorderWidth - 1 do
+    Begin
+      Line(xr-n, yu+n+1, xr-n, yd-n);
+      Line(xr-n, yd-n, xl+n+1, yd-n);
+    End;
+  End; { With ButtonInfo }
+  ButtonBorder := GraphResult = GrOk;
+End;
+(* ButtonBorder *)
+
+(*
+*  adjusts button state, highlighting and shading, then calls
+*  ButtonBorder to make the 3D button appear to be "Up"
+*
+*  returns:
+*              True on success
+*
+*              False on error
+*)
+Function ButtonUp(
+    Var ButtonInfo : ButtonDescriptor; ThisButton : Integer) : Boolean;
+
+Begin
+  With ButtonInfo do
+  Begin
+    RadioButton[ThisButton].State := Up;
+    ButtonUp := ButtonBorder(ButtonInfo, ThisButton);
+  End; { With ButtonInfo }
+End;
+(* ButtonUp *)
+
+(*
+*  adjusts button state, highlighting and shading, then calls
+*  ButtonBorder to make the 3D button appear to be "Down"
+*
+*  returns:
+*              True on success
+*
+*              False on error
+*)
+Function ButtonDown(
+    Var ButtonInfo : ButtonDescriptor; ThisButton : Integer) : Boolean;
+
+Begin
+  With ButtonInfo do
+  Begin
+    RadioButton[ThisButton].State := Down;
+    ButtonDown := ButtonBorder(ButtonInfo, ThisButton);
+  End; { With ButtonInfo }
+End;
+(* ButtonDown *)
+
+(*
+*  sets button state to "Up", then draws button and associated
+*  option string (ButtonTag)
+*
+*  returns:
+*              True on success
+*
+*              False on error
+*)
+Function DrawButton(
+    Var ButtonInfo : ButtonDescriptor; ThisButton : Integer) : Boolean;
+
+    Var
+	x, y, color	: Integer;
+
+Begin
+  If not ButtonUp(ButtonInfo, ThisButton) then
+  Begin
+    DrawButton := False;
+    exit;
+  End;
+  With ButtonInfo do
+  Begin
+    x := RadioButton[ThisButton].UpperLeftX + SideLength + Gap;
+    y := RadioButton[ThisButton].UpperLeftY + SideLength shr 2;
+    SetColor(RadioButton[ThisButton].TagColor);
+    OutTextXY(x, y, RadioButton[ThisButton].Tag);
+  End; { With ButtonInfo }
+  DrawButton := GraphResult = GrOk;
+End;
+(* DrawButton *)
+
+Function DrawPanel(Var ButtonPanel : PanelDescriptor) : Boolean;
+    Var
+	HighLight, Shadow, Normal, TextHighlight, TextNormal 	: Integer;
+	xl, xr, yu, yd, k	: Integer;
+Begin
+  If MouseVisible then
+    ToggleMouseVisibility;
+  With ButtonPanel do
+  Begin
+    HighLight := ButtonStyle.HighLightEdge;
+    Shadow := ButtonStyle.ShadowEdge;
+    Normal := ButtonStyle.Normal;
+    TextNormal := ButtonStyle.TagNormal;
+    TextHighLight := ButtonStyle.TagHighLight;
+    xl := UpperLeftX;
+    xr := LowerRightX;
+    yu := UpperLeftY;
+    yd := LowerRightY;
+    SetColor(HighLight);
+    For k := 0 to ButtonStyle.BorderWidth + 2 do
+    Begin
+      Line(xl+k, yd-k, xl+k, yu+k);
+      Line(xl+k, yu+k, xr-k, yu+k);
+    End;
+    SetColor(Shadow);
+    For k := 0 to ButtonStyle.BorderWidth + 2 do
+    Begin
+      Line(xr-k, yu+k+1, xr-k, yd-k);
+      Line(xr-k, yd-k, xl+k+1, yd-k);
+    End;
+    SetFillStyle(SolidFill, Normal);
+    Bar(xl+k, yu+k, xr-k, yd-k);
+    For k := 1 to NumButtons do
+    Begin
+      If k = CurrentButton then
+	ButtonStyle.RadioButton[k].TagColor := TextHighlight
+      Else
+	ButtonStyle.RadioButton[k].TagColor := TextNormal;
+      If not DrawButton(ButtonStyle, k) then
+      Begin
+	DrawPanel := False;
+	exit;
+      End;
+    End;
+  End; { With ButtonPanel }
+  If MouseOn then
+    ToggleMouseVisibility;
+  DrawPanel := True;
+End;
+(* DrawPanel *)
+
+(*
+*  checks mouse, if active, for "left mouse button down" state
+*  and if True, checks mouse position to determine if a button
+*  has been "clicked on"
+*
+*  returns:
+*              0 if no button "clicked on"
+*
+*              number of button in range 1 to MaxButton "clicked on"
+*)
+Function ButtonClick(Var ButtonPanel : PanelDescriptor) : Integer;
+    Var
+	MX, MY, MouseButtonState : Word;
+	wid, len, k : Integer;
+	RButton : Buttons;
+	ThisButton : Button;
+
+Begin
+  If not GetMousePosition(MX, MY, MouseButtonState) then
+  Begin
+    ButtonClick := 0;
+    Exit;
+  End;
+  If (MouseButtonState and 1) <> 1 then
+  Begin
+    ButtonClick := 0;
+    Exit;
+  End;
+  With ButtonPanel do
+  Begin
+    RButton := ButtonStyle.RadioButton;
+    wid := ButtonStyle.BorderWidth;
+    len := ButtonStyle.SideLength;
+    For k := 1 to NumButtons do
+    Begin
+      ThisButton := RButton[k];
+      With ThisButton do
+      Begin
+	If (MX >= (UpperLeftX - wid)) and
+	  (MX <= (UpperLeftX + len + wid)) and
+	(MY >= (UpperLeftY - wid)) and
+	(MY <= (UpperLeftY + len + wid)) then
+	Begin
+	  ButtonClick := k;
+	  Exit;
+	End;
+      End; { With ThisButton }
+    End; { For }
+  End; { With ButtonPanel }
+  ButtonClick := 0;
+End;
+(* ButtonClick *)
+
+Function ButtonPress(Var ButtonPanel : PanelDescriptor) : Integer;
+    Var
+	KeyCode, ScanCode	: Byte;
+	KeyState, Result, Done	: Boolean;
+	HiLite, Norm, k, choice	: Integer;
+	OldButton, ClickedOn	: Integer;
+
+Begin
+  KeyCode := 0;
+  ScanCode := 0;
+  ClickedOn := 0;
+  Result := False;
+  Done := False;
+  choice := 0;
+  KeyState := key_ready(KeyCode, ScanCode);
+  If KeyState then
+    get_key(KeyCode, ScanCode);
+  If (not KeyState) and (MouseOn) then
+  Begin
+    ClickedOn := ButtonClick(ButtonPanel);
+    If (ClickedOn <> 0) and (ClickedOn <= ButtonPanel.NumButtons) then
+    Begin
+      KeyState := True;
+      If ClickedOn = ButtonPanel.CurrentButton then
+	KeyCode := CReturn
+      Else If ClickedOn = (ButtonPanel.CurrentButton - 1) then
+	ScanCode := UpKey
+      Else If ClickedOn = (ButtonPanel.CurrentButton + 1) then
+	ScanCode := DownKey
+      Else
+      Begin
+	With ButtonPanel do
+	Begin
+	  Norm := ButtonStyle.TagNormal;
+	  HiLite := ButtonStyle.TagHighLight;
+	  OldButton := CurrentButton;
+	  CurrentButton := ClickedOn;
+	  ButtonStyle.RadioButton[OldButton].TagColor := Norm;
+	  ButtonStyle.RadioButton[CurrentButton].TagColor := HiLite;
+	  If MouseVisible then
+	    ToggleMouseVisibility;
+	  Result := DrawButton(ButtonStyle, OldButton);
+	  Result := DrawButton(ButtonStyle, CurrentButton);
+	  If not MouseVisible then
+	    ToggleMouseVisibility;
+	  KeyState := False;
+	  Done := True;
+	End;  { With ButtonPanel }
+      End;  { Else }
+    End;  { If ClickedOn }
+  End;  { If MouseOn }
+  If KeyState then
+  Begin
+    If (MouseOn) and (MouseVisible) then
+      ToggleMouseVisibility;
+    With ButtonPanel do
+    Begin
+      HiLite := ButtonStyle.TagHighLight;
+      Norm := ButtonStyle.TagNormal;
+      Result := False;
+      Done := False;
+      If KeyCode = 0 then
+      Case ScanCode of
+	DownKey, UpKey:
+	Begin
+	  OldButton := CurrentButton;
+	  If ScanCode = DownKey then
+	  Begin
+	    If CurrentButton < NumButtons then
+	      inc(CurrentButton)
+	    Else
+	      CurrentButton := 1;
+	  End;
+	  If ScanCode = UpKey then
+	  Begin
+	    If CurrentButton > 1 then
+	      dec(CurrentButton)
+	    Else
+	      CurrentButton := NumButtons;
+	  End;
+	  ButtonStyle.RadioButton[OldButton].TagColor := Norm;
+	  ButtonStyle.RadioButton[CurrentButton].TagColor := HiLite;
+	  Result := DrawButton(ButtonStyle, OldButton);
+	  Result := DrawButton(ButtonStyle, CurrentButton);
+	  Done := True;
+	End;
+	HomeKey, EndKey:
+	Begin
+	  OldButton := CurrentButton;
+	  If ScanCode = EndKey then
+	    CurrentButton := NumButtons
+	  Else
+	    CurrentButton := 1;
+	  If OldButton <> CurrentButton then
+	  Begin
+	    ButtonStyle.RadioButton[OldButton].TagColor := Norm;
+	    ButtonStyle.RadioButton[CurrentButton].TagColor := HiLite;
+	    Result := DrawButton(ButtonStyle, OldButton);
+	    Result := DrawButton(ButtonStyle, CurrentButton);
+	    Done := True;
+	  End;
+	End;
+      End; { Case }
+      If KeyCode <> 0 then
+      Case KeyCode of
+	CReturn :
+	Begin
+	  Result := ButtonDown(ButtonStyle, CurrentButton);
+	  choice := CurrentButton;
+	  Done := True;
+	End;
+      End;  { Case }
+    End;  { With ButtonPanel }
+  End;  { If KeyState }
+  If (MouseOn) and (not MouseVisible) then
+    ToggleMouseVisibility;
+  ButtonPress := choice;
+End;
+(* ButtonPress *)
+
+End.
+

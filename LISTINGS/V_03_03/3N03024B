@@ -1,0 +1,44 @@
+#include <stdio.h>
+#include <dos.h>
+#include <fcntl.h>
+
+#pragma pack(1)
+
+
+
+void main(int argc, char **argv)
+
+{
+int handle;
+union REGS regs;
+struct {        // control block for READ IOCTL
+       unsigned char cmd;
+       unsigned int adr_off;
+       unsigned int adr_seg;
+       } addrbuf;
+
+if (argc >= 2)
+   {           // open device specified
+   if (!_dos_open(argv[1], O_RDONLY, &handle))
+      {
+      addrbuf.cmd = 0;             // ioctl command 0
+      regs.x.ax = 0x4402;          // ioctl read
+      regs.x.cx = sizeof addrbuf;  // length to read
+      regs.x.dx = (unsigned) &addrbuf;  // buffer to fill
+      regs.x.bx = handle;          // open device handle
+      intdos(&regs, &regs);        // do IOCTL read
+      if (!regs.x.cflag)
+         <%-2>printf("Device header addr for %s is %04X:%04X\n",<%0>
+               argv[1], addrbuf.adr_seg, addrbuf.adr_off);
+      else
+         printf("Error on IOCTL read\n");
+      }
+   else
+      printf("Unable to open device %s\n", argv[1]);
+   }
+else
+   printf("Please enter name of device driver\n");
+}
+
+/* End of File */ 
+

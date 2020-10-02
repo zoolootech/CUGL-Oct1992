@@ -1,0 +1,108 @@
+#define max(i,j)	((i)>(j)?(i):(j))
+#define min(i,j)	((i)<(j)?(i):(j))
+#ifdef __STDC__
+#include <math.h>	/* include this if available */
+#include <limits.h>
+#define FABSMASK	INT_MAX
+#else
+#define FABSMASK	0x7fffffff
+#endif
+#ifndef fabsf
+#ifndef fabs
+	double fabs();
+#endif
+#define fabsf(x)	fabs((double)x)
+#endif
+float lufact(a,n,indx)
+	float **a; /* a[1..n][1..n] as in Press, Flannery et al */
+	int n,indx[]; /* return indx[1..n],factored a[][] */
+{
+	static float *p,*p2,*p3,accest;
+	float *scale=(float *)&indx[1-sizeof(float)/sizeof(int)];
+/* put first scale[] then indx[] in caller's array */
+	static union intflt{float f;int i;} xmax,xx;
+/* smart compilers will use register variables */
+	static int i,j,k,ipiv,newmax;
+	static double d,atemp,atmp2;
+	for(i=1;i<=n;++i){ /* determine scale of each row */
+		xmax.f=fabsf(a[i][1]);
+		for(j=2;j<=n;++j){
+#ifdef ICMP	/* if comparison is to be done by int arithmetic,
+**	noting that only + numbers are possible */
+			xx.f=a[i][j];
+/* consistent style so that this loop will not dominate 
+** time of the other search loop;
+** pointer casting has been tried here,
+** but does not agree with compiler optimizers */
+			xmax.i=max(xx.i&FABSMASK,xmax.i);
+#else
+			xmax.f=max(fabsf(a[i][j]),xmax.f);
+#endif
+		}
+/* except for this assignment,
+** compilers could choose concurrent outer code
+** (assign each loop iteration to independent process) */
+		scale[i]=1/xmax.f;
+	}
+	accest=1; /* initialize to "no loss of accuracy" */
+	for(j=2;j<=n;++j){ /* main factorization loop */
+		xmax.f=0.; /* search down column for max scaled pivot */
+		for(i=j-1;i<=n;++i){
+#ifdef ICMP
+			xx.f=a[i][j-1]*scale[i];
+/* give opportunity for pipelining by using ?
+** instead of if(){} as preferred by certain compilers
+**  in 1988 */
+			xmax.i=(newmax=(xx.i&=FABSMASK)>xmax.i)?xx.i:xmax.i;
+#else
+			xmax.f=(newmax=(xx.f=fabsf(a[i][j-1]*scale[i]))>xmax.f)
+				?xx.f:xmax.f;
+#endif
+			ipiv=newmax?i:ipiv;
+		}
+		p=a[ipiv];
+		d=p[j-1]; /* this is the pivot element */
+		a[ipiv]=a[j-1]; /* swap row pointers */
+		a[j-1]=p;
+		accest=min(accest,xmax.f); /* track cancellation error */
+		scale[ipiv]=scale[j-1];
+		indx[j-1] = ipiv; /* record changes for caller */
+/* column j and row j-1 calculation combined, unrolled into pairs */
+		for(i=j;i<=n;i += 2){
+			double sum11=0.,sum12=0.,sum21=0.,sum22=0.;
+			p2=a[i];
+			p3=a[i+1]; /* may point beyond a[n] */
+			for(k=1;k<j-1;++k){
+/* use += in inner loop in case sumnn are not allocated to registers */
+				sum11 += a[i][k]*(double)a[k][j];
+				sum12 += a[i+1][k]*(double)a[k][j];
+				sum21 += a[k][i]*(double)a[j-1][k];
+				sum22 += a[k][i+1]*(double)a[j-1][k];
+			}
+#if defined(__STDC__) && (FLT_ROUNDS>=0) /* rounded normal precision best */
+			atemp=p2[j-1]/p[j-1];
+			atmp2=p3[j-1]/p[j-1];
+#else /* force into double and encourage compiler to preinvert */
+			atemp=p2[j-1]/d;
+			atmp2=p3[j-1]/d;
+#endif
+/* reassociation of additions is OK for mixed precision, not for full double */
+			p[i] -= sum21; /* completing upper factor */
+/* these results will be discarded in the case i==n */
+			sum22 = p[i+1]-sum22;
+/* note i>=j ; observe sequence */
+			sum12 = p3[j]-sum12-atmp2*p[j];
+/* storage assignments last to allow more parallel computation */
+			p2[j] -= sum11+atemp*p[j];
+			p2[j-1]=atemp;
+			if(i==n)break;
+			p[i+1]=sum22;
+			p3[j-1]=atmp2;
+			p3[j]=sum12;
+		}
+	}
+	accest = min(fabsf(a[n][n]*scale[n]),accest);
+	indx[n]=n;
+	return accest;
+}
+

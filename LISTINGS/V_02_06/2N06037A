@@ -1,0 +1,85 @@
+
+                   Listing 2, TSR DEMO Program
+                   ---------------------------
+/*
+**  DEMO.C
+**  Sample TSR to demonstrate Non-Intrusive Monitor
+**
+**  Written in MicroSoft C version 6.00
+**  Build String:
+**    cl demo.c init.c
+**
+**  Written By:  John R. Naleszkiewicz
+**        Date:  March 15, 1991
+**     Version:  1.00
+*/
+
+#include <stdio.h>
+#include <dos.h>
+#include <process.h>
+
+#define  TIMERTICK     0x1c
+
+/* The interrupt function's prototype statement */
+void _interrupt far timer( void );
+
+/* The variable declarations */
+void     (_interrupt _far *oldTimer)(void);
+int      every_tick = 0;
+int      every_sec = 0;
+int      every_3_sec = 0;
+long     long_every_10_sec = 45000;
+char     alphabet = 'A';
+char     * special_string = "<empty>";
+
+void _interrupt far timer()
+{
+  oldTimer();  /* invoke the old timer first */
+  _enable();   /* enable interrupts */
+
+  ++every_tick;                   /* increment with every tick */
+
+  if( (every_tick % 18) == 0 ) {  /* increment every second */
+    every_sec++;
+    if( ++alphabet > 'Z' )
+      alphabet = 'A';
+    if( every_sec & 2 )
+      special_string = "This is one string";
+    else
+      special_string = "This is the other string";
+  }
+
+  if( (every_tick % 55) == 0 )    /* increment every 3 seconds */
+    every_3_sec++;
+
+  if( (every_tick % 182) == 0 )   /* increment every 10 seconds */
+    long_every_10_sec++;
+}
+
+
+main()
+{
+  /* Save the old interrupt vector */
+  oldTimer = _dos_getvect( TIMERTICK );  
+
+  /* Set the interrupt vector to the new function */
+  _dos_setvect( TIMERTICK, timer );
+
+  /* Hook in the TSR Entry Point */
+  entry_hook();
+
+  printf( "Loading TSR DEMO for the Non-Intrusive Monitor...\n" );
+
+  /* Simulate a TSR by reinvoking COMMAND.COM */
+  spawnlp( P_WAIT, "COMMAND.COM", "COMMAND.COM", NULL );
+
+  /* Unhook the TSR Entry Point */
+  entry_unhook();
+
+  /* Restore the old interrupt vector before quiting */
+  _dos_setvect( TIMERTICK, oldTimer );
+
+  printf( "TSR DEMO Removed\n" );
+}
+
+

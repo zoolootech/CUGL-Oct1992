@@ -1,0 +1,254 @@
+#include "GENERAL.H"
+#include "LIB.H"
+
+#pragma inline
+
+/***********************************************************
+*   BOOL chk_key(void) : uses Bios interrupt 16 to check   *
+*        if a key has been hit.  Returns FALSE if no key,  *
+*        TRUE if a key was hit.                            *
+***********************************************************/
+
+BOOL chk_key()
+{
+   asm mov ah,01h
+   asm int 16h
+   asm jz  short exit
+   asm mov ax,1
+exit:
+   asm mov ax,0
+   return(_AX);
+}
+
+/***********************************************************
+*   void cls(void) : uses the fact that a change of video  *
+*        mode clears the screen.  Uses BIOS interrupts to  *
+*        read the current mode, then to set the same mode. *
+***********************************************************/
+
+void cls(void)
+{
+   asm mov ah,0fh   /* get current video mode */
+   asm int 10h
+   asm xor ah,ah    /* set current video mode, clears screen */
+   asm int 10h
+}
+
+/**********************************************************
+ * BOOL cmpsnf(char far *b,char *s,l: WORD) : Returns     *
+ *   TRUE if 'l' bytes of near string 's' compare exactly *
+ *   with far buffer 'b'.  Returns FALSE if no compare,   *
+ *   or 'l' = 0.                                          *
+ *********************************************************/
+
+BOOL cmpsnf(char far *buf1,char *str1, WORD l) {
+        asm XOR   AX,AX     /* assume fail */
+        asm MOV   CX,l      /* put length in cx */
+        asm JCXZ  CMP00     /* if 0 length no compare */
+        asm LES   DI,buf1   /* far ptr to buf1 */
+        asm MOV   SI,str1   /* near ptr to str1 */
+        asm REPZ  CMPSB
+        asm JNZ   CMP00     /* did they compare? */
+        asm MOV   AX,1      /* yes, TRUE = identical */
+CMP00: 
+        return(_AX);
+}
+/***********************************************************
+*   void delay_1(void) : Reads system timer tick value     *
+*        (updated every 1/18 second), adds 18 to it, and   *
+*        waits for a second to pass.                       *
+***********************************************************/
+
+
+BYTE far *timer = (BYTE far *) 0x0040006C;
+/* where the system keeps the timer tick value */
+
+void delay_1(void) {
+  BYTE time;
+  time = *timer + 18;
+  while (time != *timer) {};
+}
+
+/***********************************************************
+*   WORD dosversion(void) : uses Int 21 to get and return  *
+*        the current version of DOS                        *
+***********************************************************/
+
+WORD dosversion()
+{
+   _AX = 0x3000;
+   asm int 21h
+
+   /* move version # to High BYTE for easier */
+   /* compares */
+   asm xchg ah,al
+   return(_AX);
+}
+
+/****************************************************
+ *  WORD fputsh(char *str) : Print a 'C' string     *
+ *       using the ROM BIOS.  Replaces "C" fputs    * 
+ ***************************************************/
+
+WORD fputsh(char *str) {
+/* use the rom bios to pring a "C" string (ending in \0) */
+
+/* first, find the length of the string we have to print */
+
+        asm   MOV     SI,str  /* ptr to str */
+        asm   PUSH    SI
+        asm   CALL    strlen  /* find length of str */
+        asm   POP     SI
+        asm   MOV     CX,AX   /* put str length in C */
+        asm   JCXZ    DONE    /* if length 0, leave */
+        asm   PUSH    AX     
+
+              /* save string length to return, not really
+              necessary, but easy to do */
+
+        asm   MOV     AH,0EH  /* get interrput request */
+        asm   XOR     BH,BH   /* point to page 0 */
+TTY:    
+        asm   LODSB           /* get the character */
+        asm   INT     10H     /* print a character */
+        asm   LOOP    TTY     /* print them all */
+
+        asm   POP AX          /* return string length */
+DONE:
+        return(_AX);
+}
+
+/***********************************************************
+* void hi-lite(BYTE r,BYTE c,BYTE a, WORD l) : uses several*
+*      bios interrupts.  Positions to screen location r,c  *
+*      reads 'l' bytes from the screen (one at a time ),   *
+*      changes the attribute to 'a' and puts it back on    *
+*      the screen with the new attribute.                  *
+***********************************************************/
+
+void hi_lite(BYTE row, BYTE col, BYTE attr, WORD length)
+{
+   asm mov cx,length /* get length of string to hi lite */
+   asm jcxz done     /* if zero, nothing to hilite */
+   asm xor bh,bh
+   asm mov dh,row
+   asm mov dl,col    /* point to string on screen */
+hi_lt:
+   asm mov ah,02h    /* position to byte to hi lite */
+   asm int 10h
+   asm mov ah,08h    /* read the character on the screen */
+   asm int 10h
+   asm mov bl,attr   /* change attribute to "attr" */
+   asm mov ah,09h      
+   asm push cx
+   asm mov cx,01h
+   asm int 10h /* put it back with passed in attribute */
+   asm pop cx
+   asm inc dl
+   asm loop hi_lt    /* do the whole line */
+   asm mov dl,col
+   asm mov ah,02h
+   asm int 10h  /* reposition to the beginning of line */
+done:;
+}
+
+/***********************************************************
+*   WORD get_key(void) : Uses bios interrupt 16h to get a  *
+*        key stroke, and return it.                        *
+***********************************************************/
+
+WORD get_key()
+{
+   asm mov ah,0
+   asm int 16h
+   return(_AX);
+}
+
+/**********************************************************
+ * WORD movesnf(char far *b,char *s) : Copy all chars in  *
+ *   near string to far buffer.  Uses strlen to find      *
+ *   length.  Returns length of string copied.            *
+ *********************************************************/
+
+WORD movesnf(char far *buf1,char near *str1) {
+     asm MOV   SI,str1  /* near ptr to str1 */
+     asm PUSH  SI       /* pass the pointer */
+     asm CALL  strlen   /* get length of S */
+     asm POP   SI       /* retrive pointer */
+     asm MOV   CX,AX    /* put length in CX */
+     asm JCXZ  DONE     /* don't copy if length '0' */
+     asm INC   CX       /* include the terminating '0' */
+     asm PUSH  CX       /* save length */
+     asm LES   DI,buf1  /* get far pointer to buffer */
+     asm TEST  DI,1     
+         /* if on byte boundary, adjust to word */
+     asm JZ    MOVE00
+     asm MOVSB
+     asm DEC   CX
+MOVE00: 
+     asm SHR   CX,1    
+         /* save odd byte count, adjust for word move */
+     asm REP   MOVSW     /* move words */
+     asm ADC   CX,CX     /* see if last byte */
+     asm REP   MOVSB     /* move if yes */
+     asm POP   AX        /* restore copied length */
+DONE:
+     return(_AX);
+}
+
+/***********************************************************
+* void printstr(char *str) : uses int 21 string print      *
+*      routine to print passed in string.  The string must *
+*      be terminated with a $.                             *
+***********************************************************/
+
+void printstr(char *str)
+{
+   _AX = 0x0900;
+   asm mov dx,str      ;/* ptr to STR */
+   asm int 21h;
+}
+
+/***********************************************************
+* void set_curs(Byte r, Byte c) : uses bios set cursor
+*      routine to position cursor to r,c on screen.        *
+***********************************************************/
+
+void set_curs(BYTE row, BYTE col)
+{
+   asm mov ah,02h
+   asm xor bh,bh
+   asm mov dh,row
+   asm mov dl,col
+   asm int 10h
+}
+
+/***********************************************************
+*   WORD strlen (char *str) : Returns non-0 length of      *
+*        of string 'str'.                                  *
+***********************************************************/
+
+WORD strlen(char *str) {
+        asm MOV   DI,DS      /* point ES to DS */
+        asm MOV   ES,DI      /* done */
+        asm MOV   DI,str     /* ptr to str */
+        asm MOV   CX,-1      /* get maximum count */
+        asm XOR   AX,AX      /* setup 0 search */
+        asm REPNZ SCASB
+        asm NOT   CX
+        asm DEC   CX         /* len 'str' */
+        asm MOV   AX,CX
+        return(_AX);
+}
+
+/****************************************************
+ *  void w_tty(char c) : Print a character using    *
+ *       using the ROM BIOS Write TTY routine       *
+ ****************************************************/
+
+void w_tty(char c)
+{
+   asm mov ah,0eh
+   asm mov al,c
+   asm int 10h
+}

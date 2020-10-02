@@ -1,0 +1,166 @@
+/****************************************************/
+/*                                                  */
+/*      Module :  MEMORY.HPP                        */
+/*                                                  */
+/*      Author :  Ismail Zia                        */
+/*                                                  */
+/*      Date   : 20-Mar-1991                        */
+/*                                                  */
+/*      Purpose: Header file for memory module      */
+/*               class definitions, Macros.         */
+/****************************************************/
+
+
+#ifndef MEMORY_HPP
+        #define MEMORY_HPP             
+
+#ifdef MSW
+        #include        <windows.h>
+#endif 
+
+#include        <stdlib.h>
+
+#ifdef LONG_DEF
+
+        #define MEM_FREE                0xFFFFFFFE
+        #define MEM_INUSE               0x00000001
+        #define MEM_HEADER_SIZE         4
+
+        typedef unsigned long   MEMHEADER;
+
+#else
+
+        #define MEM_FREE                0xFFFE
+        #define MEM_INUSE               0x0001
+        #define MEM_HEADER_SIZE         2
+
+        typedef unsigned int    MEMHEADER;
+#endif
+
+
+class MemBlock
+{
+
+private:
+
+        #ifdef MSW
+                HANDLE  hMemHandle;
+        #endif
+
+        MEMHEADER  *Mem;
+
+        MEMHEADER       Size;
+
+        MEMHEADER       OffSet;
+
+        MEMHEADER       Used;
+
+public:
+
+        MemBlock(const MEMHEADER sz);
+        ~MemBlock(void);
+
+        void *const MemAllocate(const MEMHEADER sz);
+        const MEMHEADER MemFree(void *const ClientP);
+
+        const short ObjInBlock(void *const obj);                        
+
+private:
+
+        void *operator new(size_t sz);
+        void operator delete(void *p);
+
+        void *const NCPointer(MEMHEADER *const p,\
+             MEMHEADER *const Lst,const MEMHEADER sz);
+
+};   // End of class definition MemBlock
+
+
+class ListItem
+{
+        MemBlock Mb;
+        void *Next;
+
+public:
+
+        ListItem(const MEMHEADER sz) : Mb(sz)
+                {
+                        Next=NULL;
+                }
+
+        ~ListItem(void)
+                {
+                }
+
+        ListItem *const GetNext(void)
+                {
+                        return Next;
+                }
+
+        void SetNext(ListItem *const Li)
+                {
+                        Next = Li;
+                }
+
+        const short ObjInBlock(void *const obj)
+                {
+                        return Mb.ObjInBlock(obj);
+                }
+
+        void *const MemAlloc(const MEMHEADER sz)
+                {
+                        return Mb.MemAllocate(sz);
+                }
+
+        const MEMHEADER MemFree(void *const obj)
+                {
+                        return Mb.MemFree(obj);
+                }
+
+
+
+
+private:
+
+        void *operator new(size_t sz);
+
+        void operator delete(void *p);
+
+};      // End of class definition ListItem
+
+
+class List
+{
+        void *Head;
+        void *Tail;
+
+public:
+
+        List(void);
+
+        ~List(void);
+
+        void *const MemAlloc(const MEMHEADER sz);
+        void MemFree(void *const obj);
+
+private:
+
+        void *operator new(size_t sz);
+        void operator delete(void *obj);
+
+                                
+};              // End of class definition List
+
+
+void SetDefaultSize(const MEMHEADER size);
+const MEMHEADER GetDefaultSize(void);
+void InitMem(const MEMHEADER sz);
+void EndMem(void);
+
+void MemErr(void);
+
+
+#endif          //MEMORY_HPP
+
+        
+

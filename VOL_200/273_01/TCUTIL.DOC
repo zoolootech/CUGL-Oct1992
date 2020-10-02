@@ -1,0 +1,1478 @@
+
+                               TCUTIL
+
+                          TurboC Utilities
+                          Developed By Jim Derr
+                          2425 Santa Cruz Ct.
+                          Santa Rosa, Ca. 95401
+
+
+This is may first attempt at distributing software.  I have found
+numerous execelant software tools and packages on BBS's and I hope
+that someone can find these routines usefull.
+
+After I received TURBOC in the mail I was dismayed to find out that
+it did not contain any video or bios routines.  So in order to use
+TURBOC I set out looking for a commerical package and/or a shareware
+package to meet my needs.  The commerical packages were a little steep
+in price and the most of the shareware packaged were overkill.
+
+I decided to develop a set of my own routines and distribute them to
+the BBS community.  This is my first cut at the routines with more
+and better things to come.  I have included the source code for all
+the routines.  All the routines have been tested using the tiny and
+small memory models.
+
+Just to protect myself I do not guarantee these routines, use them
+at your own risk.  They have been tested on PC/XT's, 3270-PC's,
+Personal System/2 model 60, and Compaq Portables.  They should
+work on any good clone that is BIOS compatable.
+
+I have also included the small library files for those of
+you that do not have access to a lib program.  Also included are
+bat files to compile and reproduce the lib file.
+
+PLEASE NOTE THAT THERE ARE MANY HOURS OF WORK IN THESE ROUTINES.
+IF YOU FIND THEM USEFULL AND YOU USE THEM IN YOUR PROGRAMS PLEASE SEND
+$10 TO THE ADDRESS SHOWN ON PAGE 1 OF THIS DOCUMENT.
+
+Files Included are:
+
+tcutil.doc     the documentation file
+tcutil.h       the header file required by the routines
+tcutils.lib    the small model library file
+compall.bat    a batch file to compile all the source code.
+*.cc           source of functions that are written entirely in c.
+*.ca           source of functions that use inline assembler code.
+
+
+                      Notes on Using these routines:
+
+
+Most of these routines are fairly self explanitory.  However a few
+need some additional comments.
+
+BEFORE USING ANY OF THESE ROUTINES IN YOUR PROGRAM YOU MUST!!!!!!!!!!!
+USE THE VIDEO_TYPE ROUTINES.
+
+This routine sets up some global
+variables that the other routines will use.  If you complie your
+program and get an undefined refenece to any one of the following
+you forgot to use the video_type routine.
+                bios, cga, ega, color, mono, scrseg.
+
+
+The make_window routine does not save the portion of the screen it
+is writing over.  There are times when I don't want to save the area
+and I don't want a routine assuming I want to save it.  If you want
+to save the information under the window use the save_scr and rest_scr
+functions to save and restore the information.
+
+The save_scr function does not allocate memory for you, you must do
+it yourself.  This allows you the freedom to either allocate it
+statically or dynamically.  Included in the tcutil header file are
+two macros that will correctly calculate the amount of memory you
+need to allocate to save the information under a given window.
+The following two examples show how to use these macros:
+
+STATIC ALLOCATION:------------------------------------------------------
+#define screen1_size setsize_w(0,0,24,79)  /*number of bytes needed to
+char save_screen1[screen1_size];             save a full screen with
+            .                                no shadow */
+            .
+            .
+save_scr(0,0,24,79,save_screen1);
+
+
+
+DYNAMIC ALLOCATION:-----------------------------------------------------
+#define screen2_size setsize_ws(0,0,10,20) /*number of bytes needed to
+char *save_point;                            save a screen with the
+save_point = (char *)malloc(screen2_size);   coordinated of 0,0,10,20
+             .                               that will have a shadow */
+             .
+             .
+save_scr(0,0,10,20,save_point);
+
+
+There is also another macro in the TCUTIL.H file to aid you in
+defining attribute bytes.  To use it code your attributes as
+follows:
+
+int attr1 = setatr(BLUE,BLACK,0,0);
+                    |     |   | |
+forground color-----+     |   | |
+background color----------+   | |
+blink-------------------------+ |   (where blink and bold is 0 or 1)
+bold----------------------------+
+
+
+Most of the routines do not return any values.  However if they do
+the value returned and it's type is shown in the documentation of
+the function.
+
+RELEASE 2.0 10/19/87 UPDATES:
+
+The following new functions have been added to release 2.0:
+
+beep		activate the speaker.
+get_xa		read a keystoke and return normal and extended key codes.
+soundx      compute a soundex code for a string
+str_xform	transform characters in a string
+
+The following functions have been enhanced or changed.
+
+writef      enhanced for speed.
+get_line    enhanced/changed.  The function will now return any non-printable
+			character as an extended coded int.
+TCUTIL.H	extended coded ints are now defined in the header.
+
+RELEASE 3.0 2/15/88 UPDATES:
+
+The following new functions have been addded:
+
+getfield    read a string from the screen under control of a format mask.
+xprintf     like printf but writes directly to the video buffer.
+melt        4 different ways to restore the screen.
+
+
+
+
+If you find any error or bugs please drop me a line.
+Also if there is some function
+you would like added to this library also drop me a line.
+
+
+                      !!!!ENJOY!!!!!
+
+Jim Derr
+2425 Santa Cruz Ct.
+Santa Rosa, Ca. 95401
+
+
+
+
+
+
+beep                                                                [BEEP.CC]
+
+void     beep(unsigned int pitch, unsigned int nticks )
+/* Sound the speaker using indicated pitch for nticks long
+   for error sound use beep(440,3) beep(220,3)
+*/   	
+
+
+--------------------------------------------------------------------------
+
+
+
+
+box                                                                  [BOX.CC]
+
+void box(int trow, int tcol, int lrow, int lcol, int wattr, int battr)
+/* This will draw a box using upper left row,col and lower right row,col
+   wattr is attribute character for center of box, battr is the border attr.	
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+calc_tots                                                        [CALCTOT.CC]
+
+long calc_tots(char *curr_path)
+/* This function will accept a valid path name I.E. c:\dos and will return
+   the total number of bytes occupied by all files in the specified directory.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+ccolor                                                            [CCOLOR.CC]
+
+ccolor(int row, int col, int attr, int len)
+/* This routine will change the color attributes of a column of characters.
+   row=row to start changing color
+   col=col to start changing color
+   attr=attribute to change to
+   len=number of rows down the screen to change.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+                                  - 1 -
+
+
+
+change_to                                                          [CHGTO.CC]
+
+change_to(char *dir)
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: To change the current disk drive and directory with        ³
+³         one call.                                                  ³
+³ Inputs: Char *dir points to directory to change to. This may       ³
+³         contain a drive letter if required.                        ³
+³Outputs: None.                                                      ³
+³                                                                    ³
+³ Return:  0 = successful.                                           ³
+³         -1 = directory not found.                                  ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+clr                                                                  [CLR.CC]
+
+void clr(wattr)
+/* CLear the screen using the attribute passed */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+clr_eol                                                           [CLREOL.CC]
+
+clr_eol(int last_col)
+/* This will clear from the current cursor location the the end of the line.
+   The last column of the line is specified as last_col
+*/
+
+
+
+--------------------------------------------------------------------------
+
+
+
+
+clrarea                                                          [CLRAREA.CC]
+
+void clrarea(int trow,int tcol,int lrow,int lcol,int wattr)
+/* Clear a portion of the screen using the passed attribute
+	trow = upper left row of area
+	tcol = upper left col of area
+	lrow = lower right row of area
+	lcol = lower right col of area
+*/
+
+
+--------------------------------------------------------------------------
+                                  - 2 -
+
+
+
+clrbox                                                            [CLRBOX.CC]
+
+void clrbox(int trow,int tcol,int lrow,int lcol,int wattr)
+/* Clear the area inside the box built by the BOX function to the
+   specified attribute
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+cur_dn                                                             [CURDN.CC]
+
+cur_dn()
+/* Move the down one row. This will wrap the cursor to the top of
+   the screen if the cursor is on the last row
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+cur_lf                                                             [CURLF.CC]
+
+cur_lf()
+/* Move the cursor one col to the left */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+cur_nl                                                             [CURNL.CC]
+
+cur_nl() 
+/* Move the cursor to the beginning of the next row  */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+cur_rt                                                             [CURRT.CC]
+
+cur_rt()
+/* Move the cursor one col to the right */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+                                  - 3 -
+
+
+
+cur_up                                                             [CURUP.CC]
+
+cur_up() 
+/* Move the cursor one row up */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+do_pull_down                                                      [TCMENU.CC]
+
+do_pull_down(struct pull_down *pull, struct menu_struc *menu1)
+
+
+--------------------------------------------------------------------------
+
+
+
+
+file_exist                                                      [FILEXIST.CC]
+
+file_exist(char *fn)
+/* Check to see of a Find exists.
+	RETURN 1 if exist 0 if not.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+find_file                                                       [FINDFILE.CC]
+
+find_file(char *dir_str, char *file_spec, char *dir_hit, char *file_hit,char *srch_type)
+/* find_file will search a disk looking for a specified file. Parms are:
+	char *dir_str = starting disk and directory to begin search.
+	char *file_spec = file spec to search for.
+	char *srch_type = "e" to search for executables i.e. bat, com, or exe.
+					= "n" to search for anything.
+					if search type is set to "e" and a file is found
+					*srch_type will be set to b,c, or e indicating the
+					type of file found. b=batch, c=com, e=exe.
+	char *dir_hit   = if file found the directory the file was found in.
+	char *file_hit  = if file found the filename.ext of the file.
+	RETURN CODE = 1 if file found.
+				= 0 if not found.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+                                  - 4 -
+
+
+
+flush_key                                                       [FLUSHKEY.CC]
+
+flush_key()
+/* This will flush the keyboard buffer */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_akey                                                         [GETAKEY.CC]
+
+get_akey(char *ch, char *list)
+/* Wait until one of the charaacters in the list is pressed. ch will be set
+   to the upper case value of the key pressed.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_attr                                                         [GETATTR.CC]
+
+int get_attr(int row, int col)
+/* Get the attribute at the specified row and col.
+   RETURNED is attr
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_ca                                                             [GETCA.CC]
+
+get_ca(char *ch, char *scan) 
+/* Read a keystroke.  ch=character code or zero if extended code
+					scan=extended code or scan code
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  - 5 -
+
+
+
+get_chars                                                       [GETCHARS.CC]
+
+int get_chars(int row, int col, int leng, char *string)
+/* This will read leng characters from the screen at the location specified
+   by row,col and will place the characters (not the attr bytes) into the
+   string pointed to by *string.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_cur                                                           [GETCUR.CC]
+
+get_cur(int *row, int *col)
+/* return the current cursor location into row,col.
+   If the cursor is hidden return value will be 1 else 0 will be returned.	
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  - 6 -
+
+
+
+get_field                                                       [GETFIELD.CC]
+
+get_field(int row, int col, char *str, int sleng, int attr, int dleng, char *mask)
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: To provide for formatted field input capability.           ³
+³                                                                    ³
+³ Inputs: row = row to read field from                               ³
+³         col = col to read field from                               ³
+³         *str = pointer to char string to store field into.         ³
+³         sleng = leng of string pointed to by *str.                 ³
+³         attr = attribute used to display field.                    ³
+³         dleng = length of display area.                            ³
+³         *mask = pointer to mask string.                            ³
+³         (THE MASK STRING MUST BE THE SAME LENGTH AS IS SPECIFIED   ³
+³          IN THE SLENG PARAMETER!!!!  THE MASK CONSISTS OF THE      ³
+³          FOLLOWING SPECIAL CHARACTERS.                             ³
+³          A = allow alpha characters only in this position.         ³
+³          N = allow numeric characters only in this position.       ³
+³      blank = allow any characters in this position.                ³
+³          # = force the enter key when the user hits this position. ³
+³                                                                    ³
+³          ANY OTHER CHARACTER IN THE MASK FIELD WILL BE DISPLAYED   ³
+³          ON THE SCREEN AND INPUT WILL NOT BE ALLOWED IN THAT       ³
+³          POSITION. NOTE!!!!!!!!!! THE A AND N MASK CHARACTERS      ³
+³          MUST BE UPPER CASE IN ORDER TO BE RECOGNIZED!!!!!!!!!!!!!!³
+³                                                                    ³
+³Outputs: None.                                                      ³
+³                                                                    ³
+³                                                                    ³
+³ Return: An integer value indicating the key that was pressed to    ³
+³         terminate the entry of the field.  I.E. the enter key      ³
+³         or the ESC key.                                            ³
+³                                                                    ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_line                                                         [GETLINE.CC]
+
+get_line(char *str, int sleng, int attr, int dleng)
+/* This will read s string from the screen starting at the current cursor
+   location.  The length of the string is specified by sleng, the length
+   of the display area is specified by dleng.  Attr specifies the attribute
+   to use when displaying the field.
+   RETURNED is the character code that terminated the input string.
+   I.E. enter key, esc key, function keys, etc.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+                                  - 7 -
+
+
+
+get_linex                                                       [GETLINEX.CC]
+
+get_linex(int row, int col, char *str, int sleng, int attr, int dleng)
+/* This will read a string from the screen starting row,col.
+   The String that is read will be put into the string pointed to by *str.
+   The length of the string is specified by sleng.
+   The length of the display area is specified by dleng.
+   Attr specifies the attribute to use when displaying the field.
+   RETURNED is the character code that terminated the input string.
+   I.E. enter key, esc key, function keys, etc.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_long_date                                                   [GETLDATE.CC]
+
+long int get_long_date()
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: Get the current date.                                      ³
+³                                                                    ³
+³ Inputs: None.                                                      ³
+³                                                                    ³
+³Outputs: None.                                                      ³
+³                                                                    ³
+³ Return: A long int containing the current date in the format       ³
+³         YYMMDD.                                                    ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+get_scode                                                         [SOUNDX.CC]
+
+char get_scode(ch)
+char ch;
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+                                  - 8 -
+
+
+
+get_xa                                                             [GETXA.CC]
+
+get_xa()
+/* Read a keystroke.
+   An int will be returned as follows:
+	  return value will be ascii code of key pressed or
+			 value will be scan code of key press + 256 if the key press
+			 was an extended key.  i.e. function key etc.
+
+  The definitions of the extended keys are in the TCUTIL.H file.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+getfsize                                                        [GETFSIZE.CC]
+
+long getfsize(char *fn)
+/* Return the filesize of a file.
+   char *fn is a pointer to the filespec.
+
+   return = -1 if file is not found.
+   else returned will be the size of the file.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+hide_cur                                                         [HIDECUR.CC]
+
+hide_cur()
+/* Turn the cursor off */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+index                                                              [INDEX.CC]
+
+char *index(char *str, char c)
+/*------------------------------------------------------------------------------
+INDEX - returns a pointer to the first occurance of 'c' in the string pointed
+to by 'str', or NULL if 'str' does not contain 'c'.
+------------------------------------------------------------------------------*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+                                  - 9 -
+
+
+
+left_str                                                         [LEFTSTR.CC]
+
+left_str(int x, char *str, char *new_str)
+/* Please the left x number of character from *str into *new_str */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+locate                                                            [LOCATE.CC]
+
+locate(int row, int col)
+/* Position the cursor at row,col */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+make_shadow                                                       [SHADOW.CC]
+
+make_shadow(int trow, int tcol, int brow, int bcol)
+/* This will create the illusion of a shadow under the window specified by:
+   trow=upper left row
+   tcol=upper left col
+   brow=lower right row
+   bcol=lower right col
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+make_window                                                     [MAKEWIND.CC]
+
+make_window(int trow, int tcol, int brow, int bcol, int wattr, int battr, int shadow, char *title, char *footer)
+/* Make a window at the specified location.
+   trow=upper left row of window   range 0-24
+   tcol=upper left col of windoe   range 0-79
+   brow=lower right row of window
+   bcol=lower right col of window
+   wattr=attribute of window
+   battr=attribute of border of window
+   shadow=0=no shadow =1=make a shadow
+   title=title for window
+   footer=bottom footer for window
+   Needs the following golbal data defined:
+   int color, mono, cga, ega, scrseg, bios;
+*/
+
+
+
+--------------------------------------------------------------------------
+
+                                  - 10 -
+
+
+
+melt                                                                [MELT.CC]
+
+melt(int attr, char type)
+/* Melt will clear the screen in various ways and will set the attributes to
+   attr.
+   type = t,b,l,r,a
+          t=clear from top to bottom
+          b=clear from bottom to top
+          l=clear from left to right
+          r=clear from right to left
+          a=implode screen (clear from outside to inside)
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+menubar                                                           [TCMENU.CC]
+
+menubar(struct menu_struc *menu1, struct pull_down *pulls)
+/* 	This function will display a menu-bar at the top of the screen.
+	Before calling this function you must set up the two menu stuctures
+	needed my the function. The two structures are:
+	1) menu_struc
+	2) pull_down
+	The structures are defined in tcmenu.h.  To initialize do the following:
+
+
+
+--------------------------------------------------------------------------
+
+
+
+
+mid_str                                                           [MIDSTR.CC]
+
+mid_str(int begin, int leng, char *o_str, char *n_str)
+/* Extract the characters from *o_str starting at position begin for leng
+   number of characters and place them into *n_str.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  - 11 -
+
+
+
+parse_fn                                                         [PARSEFN.CC]
+
+parse_fn(char *fspec,char *fdrive, char *fpath, char *fn, char *fe)
+/* This function will parse and break apart the filespec pointed to
+   by *fspec.	It will pass back the drive, directory, filename, extension.
+   If a given part does not exist a NULL character string will be passed
+   back.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+print_char                                                       [PRINTER.CC]
+
+print_char(char ch, int lptnum)
+/* Print the character ch on printer lptnum where lptnum = 1-3.
+   RETURNED = 0 if ok.
+			= 1 if error.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+print_init                                                       [PRINTER.CC]
+
+print_init(int lptnum)
+/* Initialize the printer identified by lptnum. lptnum = 1-3 */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+print_stat                                                       [PRINTER.CC]
+
+print_stat(int lptnum)
+/* query the status of the printer attached as lptnum. lptnum = 1-3.
+	RETURNED = 0 if printer is ready for work.
+			 = 1 if printer is not ready.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+                                  - 12 -
+
+
+
+print_str                                                        [PRINTER.CC]
+
+print_str(char *str, int lptnum)
+/* Print the string pointed to by *str on printer lptnum where
+   lptnum = 1-3.
+   RETURNED = 0 if ok.
+			= 1 if error.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+put_ca                                                             [PUTCA.CC]
+
+put_ca(char ch, int attr, int count)
+/* This will put the specified charater and attribute on the screen at
+   the current cursor location.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+put_sa                                                             [PUTSA.CC]
+
+put_sa(char *ch, int attr)
+/* This will put the character string pointer to by *ch on the screen
+   at the current cursor location using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+rcolor                                                            [RCOLOR.CC]
+
+void rcolor(int row, int col, int attr, int len)
+/* This routine will change the color attribute of a row of character.
+   row=row to change  range 0-24
+   col=beginning col to change	range 0-79
+   attr=attribute to change to
+   len=num of characters to change
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+                                  - 13 -
+
+
+
+rest_scr                                                         [RESTSCR.CA]
+
+rest_scr(int trow, int tcol, int brow, int bcol, char *array)
+/* Restore an area of the current screen that was saved via save_scr.
+   To determine num of chars for array use the following formula:
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+right_str                                                       [RIGHTSTR.CC]
+
+right_str(int x, char *str, char *new_str)
+/* This will take the right x number of character from the string pointed
+   to by *str and place them into the string pointed to by *new_str.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+s_str_lf                                                          [SSTRLF.CC]
+
+s_str_lf(int count, char *str)
+/* This will shift the characters in the string pointed to by *str left
+   count number of characters. Blanks will be added in the positions where
+   character are shifted out. The leng of the string will not be changed.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+s_str_rt                                                          [SSTRRT.CC]
+
+s_str_rt(int count, char *str)
+/* This will shift the characters in the string pointed to by *str right
+   count number of characters. Blanks will be added in the positions where
+   character are shifted out
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+                                  - 14 -
+
+
+
+save_scr                                                         [SAVESCR.CA]
+
+save_scr(int trow, int tcol, int brow, int bcol, char *array)
+/* Save an area of the current screen into a character array
+   To determine num of chars for array use the following formula:
+   num_chars=((brow-trow+1) * (bcol-tcol+1)) *2;
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+scroll_dn                                                       [SCROLLDN.CC]
+
+scroll_dn(int trow, int lcol,int brow, int rcol,int attr, int lines)
+/* This will scroll the defined window down x number of lines:
+   trow=upper left row
+   lcol=upper left column
+   brow=lower right row
+   rcol=lower right col
+   lines=number of lines to scroll
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+scroll_lf                                                       [SCROLLLF.CC]
+
+scroll_lf(int trow, int tcol, int brow, int bcol, int attr, int no_col)
+/* This will scroll the window defined by trow, tcol, brow, bcol to the
+   left the number of columns indicated by no_col.  The columns exposed
+   after scrolling are set to spaces and are given the attribute specified	
+   by attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+scroll_rt                                                       [SCROLLRT.CC]
+
+scroll_rt(int trow, int tcol, int brow, int bcol, int attr, int no_col)
+/* This will scroll the window defined by trow, tcol, brow, bcol to the
+   right the number of columns indicated by no_col.  The columns exposed
+   after scrolling are set to spaces and are given the attribute specified	
+   by attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+                                  - 15 -
+
+
+
+scroll_up                                                       [SCROLLUP.CC]
+
+scroll_up(int trow, int lcol,int brow, int rcol,int attr, int lines)
+/* This will scroll the specified window up the specified number of lines.
+   SEE SCROLL_DN FOR DESCP. IF ARGS PASSED
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+set_mode                                                         [SETMODE.CC]
+
+set_mode(int mode)
+/* This will set the video mode to the mode passed */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+show_cur                                                         [SHOWCUR.CC]
+
+show_cur(int size)
+/* This will make the cursor visiable.
+   size=1 = cursor uses scan lines 6-7.
+   size=9 = cursoe uses scan lines 0-7.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+soundex                                                           [SOUNDX.CC]
+
+soundex(char *out_pntr, char *in_pntr)
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: Calculate the soundx code of a string.                     ³
+³                                                                    ³
+³ Inputs: char *out_pntr = pointer to a 5 char array to put the      ³
+³                          soundx code into.                         ³
+³         char *in_pntr  = pointer to string to calc. soundx code of.³
+³                                                                    ³
+³Outputs: Soundx code stored into area pointed to by *out_pntr.      ³
+³                                                                    ³
+³ Return: None                                                       ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+                                  - 16 -
+
+
+
+sread_a                                                           [SREADA.CA]
+
+sread_a(int row, int col, int *attr)
+/* This will read the attr at row,col and place the attr into
+   the area pointed to by attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+sread_c                                                           [SREADC.CA]
+
+sread_c(int row, int col, char *area)
+/* This will do a read a character at row,col and
+   place it into the area pointer to by area.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+sread_ca                                                         [SREADCA.CA]
+
+sread_ca(int row, int col, char *area)
+/* This will read the character and attr at row,col and place them into the
+   string pointed to by area.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+str_xform                                                       [STRXFORM.CC]
+
+str_xform(char *str,char from,char to)
+/* This function will transform all characters in the string pointed to
+   by *str that are the same as the from character to the to char.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+                                  - 17 -
+
+
+
+stridel                                                          [STRIDEL.CC]
+
+stridel(char *substr, char *str)
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: To delete the string pointed to by *substr from the string ³
+³         pointed to by *str ignoring case.                          ³
+³                                                                    ³
+³ Inputs: char *substr = pointer to substring to delete.             ³
+³         char *str    = pointer to string to delete from.           ³
+³                                                                    ³
+³Outputs: substr deleted from str.                                   ³
+³                                                                    ³
+³ Return: = 0 substr not found in str.                               ³
+³         = 1 substr deleted from str.                               ³
+³                                                                    ³
+³                                                                    ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+strip                                                              [STRIP.CC]
+
+strip(char *str, char c)
+/* This will string all occurances of char c out of string pointed to by *str */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+striprange                                                      [STRIPRNG.CC]
+
+striprange(char *str,char clo,char chi)
+/* This will strip all occurances of the characters that fall between
+   char clo and chi out of the string pointed to by *str.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+swrite_a                                                         [SWRITEA.CA]
+
+swrite_a(int row, int col, int attr)
+/* This will write the attribute attr at row,col
+*/
+
+
+--------------------------------------------------------------------------
+
+                                  - 18 -
+
+
+
+swrite_c                                                         [SWRITEC.CA]
+
+swrite_c(int row, int col, char ch)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+swrite_ca                                                       [SWRITECA.CA]
+
+swrite_ca(int row, int col, char *area)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+test_numeric                                                     [TESTNUM.CC]
+
+test_numeric(char *str)
+
+
+--------------------------------------------------------------------------
+
+
+
+
+trim_l                                                             [TRIML.CC]
+
+trim_l(char *str)
+/* This will remove all blanks from the left side of the string
+   pointed to by *str.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+trim_r                                                             [TRIMR.CC]
+
+trim_r(char *str)
+/* This will trim all blanks characters from the rigth side of the
+   string pointed to by *str.
+*/
+
+
+--------------------------------------------------------------------------
+
+                                  - 19 -
+
+
+
+upcase                                                            [UPCASE.CC]
+
+upcase(char *str)
+/* This will convert the string pointed to by *str to uppercase */
+
+
+--------------------------------------------------------------------------
+
+
+
+
+validate                                                        [VALIDATE.CC]
+
+validate(char *goods, char val_field)
+
+
+--------------------------------------------------------------------------
+
+
+
+
+video_type                                                      [VIDEOTYP.CC]
+
+video_type()
+/* This will determine the Video type of the display.
+   This routine defines the following global definition.
+   int color, mono, cga, ega, bios, scrseg;
+   They can be used by other functions if you define them as external
+   definitions.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+write_tty                                                       [WRITETTY.CC]
+
+write_tty(char *ch)
+/* This will put the character string pointer to by *ch on the screen
+   at the current cursor location using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+writef                                                            [WRITEF.CA]
+
+writef(int row, int col, int attr, char *mch)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+                                  - 20 -
+
+
+
+writef_n                                                         [WRITEFN.CA]
+
+writef_n(int row, int col, int attr, char *mch, int count)
+/* This will write of the string of characters pointed to by mch.
+   Writing will stop when the end of string is reached or count characters
+   are written.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+writefc                                                          [WRITEFC.CA]
+
+writefc(int row, int col, int attr, char mch)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+xprintf                                                          [XPRINTF.CC]
+
+void xprintf(int row, int col,int attr, va_list arg_list, ...)
+/*
+ÚÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ¿
+³Purpose: Provide for fast formatted output to video screen.         ³
+³                                                                    ³
+³                                                                    ³
+³                                                                    ³
+³ Inputs: row = row to display at.                                   ³
+³         col = col to display at.                                   ³
+³         attr = attr to display text with.                          ³
+³         va_list = format string and arguments, these are exactly   ³
+³                   the same format as printf requires.              ³
+³                                                                    ³
+³Outputs: None                                                       ³
+³                                                                    ³
+³ Return: None                                                       ³
+³                                                                    ³
+³Also see: writef, writef_n, video_type, make_window.                ³
+³                                                                    ³
+³Prototype in: tcutil.h                                              ³
+ÀÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÙ
+*/
+
+
+--------------------------------------------------------------------------
+
+
+
+
+
+                                  - 21 -
+
+

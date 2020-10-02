@@ -1,0 +1,69 @@
+PROGRAM RunEnv;
+
+{$M 2000, 500, 6000}    (* Stack and Heap Min, Max *)
+    (* If the heap isn't large enough to put the new string,
+       it is not added to the environment.  If you do multiple
+       changes, the Heap must be twice as big as the environment,
+       as PutEnvString allocates a new env. before deleting the old one.
+
+       This program will not work if the max heap takes up all
+       the available memory, hence the max heap should be kept
+       as low as possible (keeping in mind the above paragraph).
+    *)
+
+Uses DOS, PutEnv;
+
+CONST
+  ExecMsg = 'DOS shell.  Type EXIT to return to ';
+
+PROCEDURE InvokeDOS(command: String);
+  (* runs any DOS command. Call with command='' for a new DOS shell *)
+VAR
+  olddir: DirStr;
+  pathname: DirStr;
+  commandtail:  String[255];
+BEGIN
+  GetDir(0, olddir);
+
+  pathname := GetEnv('COMSPEC');
+  IF command = '' THEN
+    commandtail := ''
+  ELSE
+    commandtail := '/C ' + command;
+
+  SwapVectors;
+  Exec(pathname, commandtail);
+  SwapVectors;
+
+  ChDir(olddir);
+END; (* InvokeDOS *)
+
+VAR
+  promptstr : String[255];
+BEGIN (* RunEnv *)
+  Writeln('Run the program...');
+  Writeln('Type "SET" to see the new environment');
+
+  promptstr := GetEnv('PROMPT');
+  PutEnvString('PROMPT', ExecMsg + 'RunEnv' + '.$_' + promptstr);
+  PutEnvString('NEWSET', 'Anything can be added!');
+  PutEnvString('ONE', 'One');
+  InvokeDOS('');
+
+  Writeln;
+  Writeln('Newset was removed from the environment.');
+  Writeln('Type "SET" to see the new environment');
+  PutEnvString('NEWSET', '' (* or deleted *));
+  InvokeDOS('');
+  FreeEnvString;
+
+  Writeln;
+  Writeln('Try a new prompt...and delete the path.');
+  Writeln('The environment is:');
+  PutEnvString('PROMPT', ExecMsg + 'RunEnv again!' + '.$_' + promptstr);
+  PutEnvString('PATH', '' (* or deleted *));
+  InvokeDOS('SET');
+  FreeEnvString;
+  Writeln('The program is finished!');
+END. (* RunEnv *)
+

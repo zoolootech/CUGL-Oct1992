@@ -1,0 +1,214 @@
+/*
+ *  VIDEO.C Copyright (C) 1990 by Mark R. Nelson
+ *
+ * This module contains a rudimentary set of routines to operate a set
+ * of non-overlapping display windows.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include <string.h>
+#include <dos.h>
+#include "video.h"
+/*
+ * These are all the line drawing constants defined.
+ */
+#define UL_CORNER       218
+#define UR_CORNER       191
+#define LL_CORNER       192
+#define LR_CORNER       217
+#define UPPER_TEE       194
+#define LOWER_TEE       193
+#define LEFT_TEE        195
+#define RIGHT_TEE       180
+#define CENTER_TEE      197
+#define HORIZONTAL_LINE 196
+#define VERTICAL_LINE   179
+
+#define CHAR(w,r,c) \
+ (*physical_screen)[(w)->first_row+(r)][(w)->first_col+(c)].character
+#define ATTRIBUTE(w,r,c) \
+ (*physical_screen)[(w)->first_row+(r)][(w)->first_col+(c)].attribute
+#define ELEMENT(w,r,c) \
+ (*physical_screen)[(w)->first_row+(r)][(w)->first_col+(c)]
+
+WINDOW *current_window=NULL;
+
+/*
+ * I create a structure so I can write directly to screen as if it were
+ * a big array.  That way the compiler takes care of computing the
+ * addresses, all I have to do is insert the row and column.
+ */
+struct video_element {
+                     unsigned char character;
+                     unsigned char attribute;
+                };
+
+struct video_element (far *physical_screen)[25][80];
+struct video_element saved_screen[25][80];
+COORD saved_row;
+COORD saved_col;
+static int screen_initialized=0;
+
+void window_printf(WINDOW *window ,char *format,...)
+{
+    char buffer[81];
+    va_list args;
+    int i;
+
+    va_start(args,format);
+    vsprintf(buffer,format,args);
+    for ( i = 0; i < strlen( buffer ) ; i++ )
+   window_putc( window, buffer[ i ] );
+}
+
+void window_putc( WINDOW *window, char c )
+{
+    if ( c == 13 )
+   window->cursor_col = 0;
+    else if (c == 10 ) {
+   window->cursor_row++;
+   window->cursor_col = 0;
+    } else {
+   CHAR( window, window->cursor_row, window->cursor_col) = c;
+   window->cursor_col++;
+    }
+    if ( window->cursor_col >= window->width ) {
+   window->cursor_col = 0;
+   window->cursor_row++;
+    }
+    if ( window->cursor_row >= window->height ) {
+   window->cursor_row--;
+   scroll( window );
+    }
+    if ( window == current_window )
+   set_cursor( window->first_row + window->cursor_row,
+               window->first_col + window->cursor_col );
+}
+
+void scroll( WINDOW *window )
+{
+    int row;
+    int col;
+
+    for ( row = 0 ; row < ( window->height - 1 ) ; row++ )
+   for ( col = 0 ; col < ( window->width ) ; col++ )
+       CHAR( window, row, col ) = CHAR( window, row+1, col );
+    for ( col = 0 ; col < ( window->width ) ; col++ )
+   CHAR( window, window->height-1, col ) = ' ';
+}
+
+void restore_screen()
+{
+int row;
+int col;
+
+    if (screen_initialized != 0 ) {
+   for (row=0;row<25;row++)
+       for (col=0;col<80;col++)
+            (*physical_screen)[row][col]=saved_screen[row][col];
+   set_cursor( saved_row, saved_col );
+   screen_initialized = 0;
+    }
+}
+
+/*
+ * Change the assignment of physical_screen from 0xb8000000L to 0xb0000000L
+ * if you are on a monochrome system.
+ */
+void initialize_screen()
+{
+    int row;
+    int col;
+
+    if ( screen_initialized == 0 ) {
+   get_cursor( &saved_row, &saved_col );
+   physical_screen=(struct video_element (far *)[25][80])0xb8000000L;
+   for (row=0;row<25;row++)
+       for (col=0;col<80;col++)
+       {
+            saved_screen[row][col]=(*physical_screen)[row][col];
+            (*physical_screen)[row][col].character=' ';
+            (*physical_screen)[row][col].attribute=0x1b;
+       }
+   screen_initialized = 1;
+   atexit( restore_screen );
+    }
+}
+
+void set_cursor(COORD row, COORD col)
+{
+    union REGS inregs;
+    union REGS outregs;
+
+    inregs.h.dh=row;
+    inregs.h.dl=col;
+    inregs.h.bh=0;
+    inregs.h.ah=2;
+    int86( 0x10, &inregs, &outregs );
+}
+
+void get_cursor( COORD *row, COORD *col )
+{
+    union REGS inregs;
+    union REGS outregs;
+
+    inregs.h.ah = 3;
+    inregs.h.bh = 0;
+    int86( 0x10, &inregs, &outregs );
+    *row = outregs.h.dh;
+    *col = outregs.h.dl;
+}
+
+WINDOW *window_open( COORD row, COORD col, COORD width, COORD height )
+{
+    WINDOW *window;
+
+    window = malloc( sizeof( WINDOW ) );
+    if (window == NULL ) {
+   restore_screen();
+   printf( "Allocation failure!\n" );
+   exit(1);
+    }
+    initialize_screen();
+    window->first_row = row;
+    window->first_col = col;
+    window->width = width;
+    window->height = height;
+    window->cursor_row = 0;
+    window->cursor_col = 0;
+    current_window = window;
+    draw_box( window );
+    window_select( window );
+    return( window );
+}
+
+void draw_box( WINDOW *window)
+{
+    COORD row;
+    COORD col;
+
+    for ( row = 0 ; row < window->height ; row++ ) {
+   CHAR( window, row, -1 ) = VERTICAL_LINE ;
+   CHAR( window, row, window->width ) = VERTICAL_LINE;
+    }
+    for ( col = 0 ; col < window->width ; col++ ) {
+   CHAR( window, -1, col ) = HORIZONTAL_LINE;
+   CHAR( window, window->height, col ) = HORIZONTAL_LINE;
+    }
+    CHAR( window, -1,             -1 )            = UL_CORNER;
+    CHAR( window, -1,             window->width ) = UR_CORNER;
+    CHAR( window, window->height, -1 )            = LL_CORNER;
+    CHAR( window, window->height, window->width ) = LR_CORNER;
+}
+
+void window_select( WINDOW *window )
+{
+    current_window = window;
+    set_cursor( window->first_row + window->cursor_row,
+           window->first_col + window->cursor_col );
+
+}
+
+

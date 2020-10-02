@@ -1,0 +1,39 @@
+
+/*LINTLIBRARY*/
+/* a simplified more FORTRAN-like g conversion which is 4.3BSD compatible */
+        /* reverse AT&T sense for BSD compatibility */
+extern char *cvt();
+#define ecvt(arg,ndigs,decexp,neg) cvt(arg,ndigs,decexp,neg,0);
+
+char *gcvt(arg, ndigs, buf)
+    double arg;
+    int ndigs;
+    char *buf;
+{
+    int neg, decexp;
+    register char *p1, *p2;
+    register int i;
+    p2 = buf;
+
+    p1 = ecvt(arg, ndigs, &decexp, &neg);
+
+    if (decexp > ndigs || decexp <= -4) {       /* E-style */
+        (void) sprintf(buf, "%c%c.%se%+.2d", neg ? '-' : ' ', p1[0], &p1[1], decexp - 1);
+    } else {
+        *(p2++) = neg ? '-' : ' ';
+        if (decexp <= 0) {
+            *(p2++) = '.';
+            while (decexp++ < 0)
+                *(p2++) = '0';
+            decexp--;           /* don't put it out again */
+        }
+        for (i = 0; ++i <= ndigs;) {
+            *(p2++) = *(p1++);
+            if (i == decexp)
+                *(p2++) = '.';
+        }
+    /* strip one trailing zero (see cvt() ) */
+        *(p2 - (*(p2 - 1) == '0')) = '\0';
+    }
+    return (buf);
+}

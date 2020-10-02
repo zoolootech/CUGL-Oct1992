@@ -1,0 +1,49 @@
+/* trsifm.mxc */      /**********************************************/
+#define BASAD 0xe8    /* Trs-80 serial port number.                 */
+#define CTRL_C 3      /* Ascii code for CTRL-C.                     */
+#define BAUD 0x55     /* For 300 baud.                              */
+#define COMBITS 0x6f  /* 8 data, 1 stop, no parity.                 */
+int comerror ;        /* Framing, parity, overrun, error flag.      */
+
+void cleanup() {}     /* Dummy routine for compatibility.           */
+
+void setcom()          /******* Initialize communications.  *********/
+{ outp(BASAD,0x02) ;            /* Reset TR1602 UART.               */
+  outp(BASAD+2,COMBITS) ;       /* Set data, stop, parity.          */
+  outp(BASAD+1,BAUD) ;          /* Set baud rate.                   */
+  outp(BASAD,0) ;               /* Set UART for action.             */
+  comerror = 0 ;                /* Clear error flag.                */
+}
+
+static int status()  /****** Read UART status and update  ***********/
+{ int b ;             /* comerror for framing, parity, and          */
+  b = inp(BASAD+2) ;  /* overrun errors.                            */
+  comerror |= (((b & 32) >> 5) | ((b & 16) >> 3) | ((b & 8) >> 1)) ;
+  return(b) ;
+}
+
+int rxready() { return( status() & 0x80 ) ; } /* Rx byte available? */
+
+int rxbyte()  { return( inp(BASAD+3) ) ; }    /* Get rx byte.  ******/
+
+int txready() { return( status() & 0x40) ; }  /* Tx register empty? */
+
+void txbyte(b) int b ; { outp(BASAD+3,b) ; }  /* Send tx byte.  *****/
+
+static int kbuf=0 ;                           /* Byte buffer.       */
+static int kbflag=0 ;                         /* Byte flag.         */
+int kbhit()            /************ Kb byte available? *************/
+{ if( kbflag ) return(1) ;                    /* Byte is waiting.   */
+  kbuf = getkey() ;                           /* Get something.     */
+  if( kbuf == CTRL_C ) exit(1) ;              /* If CTRL-C, exit.   */
+  if( kbuf == EOF )  return(0) ;              /* No byte available. */
+  kbflag = 1 ;                                /* Byte waiting.      */
+  return(1) ;                                 /* Byte available.    */
+}
+
+int getch()                  /******** Get Kb byte. *****************/
+{ while( !kbhit() )   ;                       /* Wait for byte.     */
+  kbflag = 0 ;                                /* Remove, clear flag,*/
+  return( kbuf ) ;                            /* & return byte.     */
+}
+

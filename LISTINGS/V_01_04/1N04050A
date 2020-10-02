@@ -1,0 +1,113 @@
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<ctype.h>
+#include	<string.h>
+
+struct	menu
+{
+	char	level;	/* 0 (top) through 255 */
+	long	help;	/* location in menu.hlp where help starts */
+	int		action;	/* action to take place */
+};
+
+#define	MAX_MENU_LENGTH		16
+#define	TAB					9
+#define	MAX_HELP_LENGTH		80
+
+
+/*
+************************************************************************
+*	makemenu - compile menu definition file.
+*
+*	Files:
+*		menu.txt - menu source definition.
+*		menu.def - compiled menu file.
+*		menu.amp - menu choice strings.
+*		menu.hlp - menu option help file.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+*		Copyright 1989 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************
+*/
+
+
+void main()
+{
+	FILE 	*menu_txt;
+	FILE 	*menu_def;
+	FILE 	*menu_hlp;
+	FILE	*menu_amp;
+	struct 	menu m;
+	int		i,start, line;
+	char	buffer[255];
+	char	name[MAX_MENU_LENGTH];
+	int		total = 0;
+
+	menu_txt = fopen("menu.txt","rb");
+	menu_def = fopen("menu.def","wb");
+	menu_hlp = fopen("menu.hlp","wb");
+	menu_amp = fopen("menu.amp","wb");
+	if ((menu_txt == NULL) || (menu_def == NULL) ||
+		(menu_hlp == NULL) || (menu_amp == NULL)) {
+		printf("\nError opening files.");
+		return;
+	}
+	line = -1;	/* used for error messages */
+	fwrite(&total,sizeof(int),1,menu_def);
+	while (!feof(menu_txt)) {
+		m.level = 0;
+		line++;
+		fgets(buffer,255,menu_txt);
+		if (strlen(buffer) < 5) continue;	/* skip blank lines */
+
+		/* find out level */
+		i = 0;
+		while (buffer[i] == TAB) i++;
+		m.level = i;
+
+		/* find menu choice name */
+		start = i;
+		while (!isspace(buffer[i])) i++;
+		buffer[i++] = NULL;
+		if (strlen(&buffer[start]) > MAX_MENU_LENGTH -1) {
+			printf("\nLine: %d;   ",line);
+			printf("Menu name too long: %s", &buffer[start]);
+			continue;
+		}
+		strcpy(name,&buffer[start]);
+		fwrite(name, MAX_MENU_LENGTH, 1, menu_amp);
+
+
+		/* pick up action */
+		while (isspace(buffer[i])) i++; /* advance past white space */
+		start = i;
+		while(buffer[i] != '|') i++;
+		buffer[i++] = NULL;
+		m.action = atoi(&buffer[start]);
+
+		/* pick up help */
+		start = i;
+		while(buffer[i] != 13) i++;
+		buffer[i] = NULL;
+		if (strlen(&buffer[start]) > MAX_HELP_LENGTH) {
+			printf("\nLine: %d;   ",line);
+			printf("Menu help too long: %s", &buffer[start]);
+			continue;
+		}
+		m.help = ftell(menu_hlp);
+		fputs(&buffer[start],menu_hlp);
+		fputc(NULL,menu_hlp);
+
+		/* write out menu structure */
+		fwrite(&m,sizeof(struct menu),1,menu_def);
+		total++;
+	}
+	rewind(menu_def);
+	fwrite(&total,sizeof(int),1,menu_def);
+ 	fclose(menu_txt);
+	fclose(menu_def);
+	fclose(menu_hlp);
+	fclose(menu_amp);
+}

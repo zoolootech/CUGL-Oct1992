@@ -1,0 +1,216 @@
+	SIMULATING THE USE OF THE CARRY FLAG UNDER De SMET C
+	----------------------------------------------------
+
+	It is often said that 'C' is very close to assembly language
+	in style, although much more frugal in its use of statements
+	and hence easier to maintain and to de-bug.   Where it may
+	miss out in comparison to assembly language is that C
+	functions normally only return one value, be it a 'char',
+	an 'int', a 'long' and so on whereas assembly language
+	provides (in say the case of the 8088/8086 family of chips)
+	for return values in more than one of the AX, BX, CX and DX
+	registers together with information in the setting of some
+	of the flags.
+
+	The assembly language type of return values can easily be
+	simulated in C (in this case De Smet C) when the functions
+	are written in assembler (ASM88 language) and converted into
+	'O' files so that you can include them in the final run-time
+	programme with the 'bind' command.	
+	
+	As an example of the type of code required consider MS-DOS
+	2.x (and the later versions) where there are a great many
+	functions where the carry flag is set to show that an error
+	has occurred, then the error code itself is returned in the
+	AX register.   In the normal coding of these functions in the 
+	library included with the C compiler you just get an 'int'
+	return value (i.e. the return value in the AX register) and
+	you don't have any way of testing whether the carry flag is 
+	set, or not set.   
+
+	Whilst in most cases the return value can generally be 
+	interpreted correctly as an error (when there has been an
+	error) the more elegant way of dealing with the problem is
+	to test for the carry flag being set, just as you would in an
+	assembly language function, and then examine the error value.
+
+	A convenient way of doing this is to use the available 'extern'
+	register declarations which are -
+
+	     extern unsigned _rax, _rbx, _rcx, _rdx, _rsi, _rdi,
+	                     _res, _rds;
+	     extern char _carryf, _zerof;
+
+	and which De Smet C has provided for use with its "_DOINT"
+	function.   If you do this then these values are always
+	available for your use when you need them later and you can
+	use any of the functions on this disk which use the De Smet
+	'_carryf' character variable.
+
+	To illustrate how the technique works and to show how the
+	code needs to be written for the ASM88 language I have chosen 
+	the routine "FUN3CH.A" which is the "Create Handle' function
+	of INT 21H.
+
+	There are a couple of things to keep in mind when studing
+	the code which follows.   The first is that De Smet C
+	pushes the variables (used in the function) onto the stack
+	starting from the rightmost variable.  i.e. they are in
+	the reverse order to the way you normally write them but,
+	because the stack is a "last-on, first-off" device then it
+	means you can extract the information from the stack in
+	the same order as you wrote it in the function itself.
+
+	The second thing is that you don't actually disturb the stack
+	itself.   You access the information there using the Base
+	Pointer ('bp') and then restore the Base Pointer before you
+	exit the routine.   Thirdly you pass the address of the
+	_carryf variable to the function, not the variable itself.
+	In C terminology you pass a pointer to _carryf not _carryf
+	itself.
+
+	The coding for FUN3CH.A now follows.   The additional comments
+	I have made here (not in the actual coding) are marked with
+	'/*' and '*/' just as they would be in a C function.
+
+	---------------------------------------------------------------------
+	ASM88 FILE:     FUN3CH.A     Create Handle
+	----------
+	WRITTEN:        25/10/87
+	-------
+	PURPOSE:        This is one of a series of files which take
+	-------         advantage of INT 21H functions under MS-DOS.
+	                In each case the error situation is marked by
+	                the carry flag being set.   We use the De Smet
+	                external variable '_carryf' to see whether the
+	                carry is set on return from the function.
+	                If so, the error code can be used to obtain
+	                information about the specific error.
+
+	USAGE:          int FUN3CH(name, attr, &_carryf)
+	-----           char *name;  (ASCIIZ string)
+	                int attr;
+	                char *_carryf;
+
+	DEPENDENCIES:           De Smet C V 2.44+
+	------------
+	Copyright 1987 - Cogar Computer Services Pty. Ltd
+	---------------------------------------------------------------------
+
+	/* 
+	    First declare the name of the routine under the heading 'CSEG'.	
+	    Note the underscore needed at the end of the name.
+	*/
+
+	CSEG
+	PUBLIC FUN3CH_
+
+	/*  
+	    The actual coding of the function follows.   Note the technique
+	    to save the setting of the base pointer.   For the purposes of
+	    these programmes it is not necessary to make ES common with DS,
+	    but this is generally useful in ASM88 programmes.
+	*/
+
+	FUN3CH_:
+		push	bp	; normal De Smet C start
+		mov	bp,sp	; point to the stack
+		mov	ax,ds	; and make ES common with DS
+		mov	es,ax
+	----------------------------------------------------------------------
+        The unique programme follows.
+	----------------------------------------------------------------------
+	/*
+	    Take the values we need off the stack.   Note the first value is
+	    located at 'bp+4' because the return address is pushed first and
+	    then 'bp' was pushed by us as we started the programme.
+	    The values are placed into the three registers as required by
+	    MS-DOS so that INT 21H can be used.
+	*/
+
+		mov	dx,[bp+4]	; put address of file name into DX
+		mov	cx,[bp+6]	; put the file attribute into CX
+		mov	ah,3ch	; put the Function No. into AH
+		int	21h
+
+	/*
+	    Now test to see whether the carry flag is set, which will tell
+	    us that an error has occurred.   If there is an error we use
+	    a conditional jump to the code to handle this situation.
+	*/
+
+		jc	FUN3CH_ERROR
+
+	/*
+	    If there is no error then we just jump over the error coding
+	    to the normal return routine.
+	*/
+
+		jmp	FUN3CH_QUIT
+
+	/*
+	    If there has been an error then we get the address of the
+	    (external) carry flag variable and send the value of one
+	    to this address.   This is an example of the coding which
+	    can be used to send a value to any external variable which
+	    has previously had its address passed to the function.
+	*/
+
+	FUN3CH_ERROR:
+		mov	si,[bp+8]	; put address of '_carryf' variable into SI
+		mov	byte [si],1	; and then return with _carryf = 1
+
+	/*
+	    From this point the error routine just 'falls through' to the
+	    normal programme termination where both the starting stack
+	    conditions are restored and the starting Base Pointer is
+	    restored.
+	*/
+
+	----------------------------------------------------------------------
+        Normal programme termination.
+	----------------------------------------------------------------------
+	FUN3CH_QUIT:
+		pop	bp	; restore starting conditions
+		ret
+	----------------------------------------------------------------------
+
+
+	As a side-benefit this technique allows the use of error-trapping
+	so that an explanatory message can be printed to the screen
+	explaining the nature of the error.   The file "ERRLIST.C"
+	is included under the sub-directory "ERRORS" to show the full
+	list of errors which have been included in the function -
+
+	          PRINTERR
+
+	which is also to be found in sub-directory ERRORS.   If you
+	wish to use this facility in a programme just "bind" in
+	PRINTERR to your programme and then use the construct -
+
+	      if(_carryf)
+	      	printerr(error_return);
+
+	where "error_return" is the value returned by the specific
+	function you have just used in the programme.
+
+	If you find some (or all) of these functions useful in your
+	normal C programming then you should use the 'LIB88' library
+	creator to put them into an 'xxxx.S' file which can then be
+	used to bind in the required functions to the final run-time
+	programme.   The code is freely available for personal use
+	although I would appreciate being acknowledged as the person
+	who wrote the functions.
+
+	I have tested a lot of the functions in my own programmes, but
+	not all of them as I don't have any networking facilities.
+	They all appear to work as they should and as described in the
+	'Microsoft MS-DOS Programmer's Reference' manual, but you can
+	never be sure until they are given a thorough work-out by as
+	many persons as possible.   Please send any correspondence 
+	and/or bug reports to -
+
+	Phil E. Cogar,
+	P.O. Box 364,  Narrabeen,
+	N.S.W.   AUSTRALIA  2101
+	------------------------

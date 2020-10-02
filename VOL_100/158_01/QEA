@@ -1,0 +1,625 @@
+/*  VERSION 0011  (DATE: 03/11/86)  (TIME: 22:57)  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+	licensed for private non-profitmaking use 1983
+	
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qea
+
+	FUNCTIONS: main, initialise, edit, finish, seldisk
+
+	PURPOSE: initialise; process commands;
+
+*/
+
+#include "qe.h"
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int argn;
+	char *dig;
+	char *bdosbase;
+	int i,*six,*errbase,err1(),err2(),err3(),err4();
+
+/**************************Default option settings***************************/
+
+	autoin=YES;		/*auto indent  [YES/NO]*/
+	backup=YES;		/*make ".BAK" file [YES/NO]*/
+	readall=NO;		/*read as much text as possible up to memory*/
+	trail=NO;		/*don't strip trailing blanks [YES/NO]*/
+	helpon=NO;		/*start with help menu on [YES/NO]*/
+	expert=YES;		/*brief prompts [YES/NO]*/
+	tabwidth=4;		/*tab stops every n cols [number]*/
+	displaypos=YES;	/*display line:column at top of screen*/
+	blockscroll=NO;	/*don't scroll whole page, just current line*/
+	pagingdisk=0;	/*create buffer file on this disk -
+						set to either 0 (for currently logged-in disk)
+						or to desired disk letter  (eg 'B') */
+	wboot=YES;		/*do a warm boot at end of edit [YES/NO]*/
+	defext[0]='\0'; /*default extension*/
+#if WWRAP
+	rtmarg=LLIM;	/*right margin*/
+#endif
+#if VRSNNUM
+	version=YES;	/*change version num on save*/
+	*date='\0';
+	*time='\0';
+#endif
+/***********************End of default option settings***********************/
+
+
+	inbufp=0;
+	if ((bdos(VERNO,0) & 0xf0)  != 0x20) {
+		puts("Must use CP/M vers 2.x with 'e'"); 
+		exit();
+		}
+
+	filename[0]=name[0]='\0';
+
+	argn=0;	
+	while (++argn < argc)
+		if (*argv[argn] == '-') {
+			dig=argv[argn]+1;
+			switch(*dig) {
+			case 'J' :
+				initjmp = atoi((argv[argn]+2));
+				break;
+			case 'A' :
+				autoin=!autoin; 
+				break;
+			case 'B' : 
+				backup=!backup; 
+				break;
+			case 'L' :
+				displaypos=!displaypos;
+				break;
+			case 'H' :
+				blockscroll=!blockscroll;
+				break;
+#if WWRAP
+			case 'M' :		/* set right margin to n */
+				rtmarg=0;
+				/*while (*++dig) rtmarg=rtmarg*10+*dig-'0';*/
+				rtmarg=atoi((argv[argn]+2));
+				if (rtmarg < LLIM) {
+					trail=YES;
+					autoin=NO;
+				}
+				break;
+#endif
+			case 'T' :		/* set tab width to n */
+				tabwidth=0;
+				while (*++dig) tabwidth=tabwidth*10+*dig-'0';
+				break;
+			case 'S' :		/* flag to strip trailing blanks from lines */
+				trail=!trail;
+				break;
+#if VRSNNUM
+			case 'U' :		/* update version number and date */
+				version= !version;
+				break;
+#endif
+			case 'V' : 
+				helpon=!helpon; 
+				break;
+			case 'E' :
+				expert=!expert;
+				break;
+			case 'X' : 
+				wboot=!wboot; 
+				break;
+			case 'D' : 
+				pagingdisk=*(dig+1);
+				if (pagingdisk >= 'A' && pagingdisk <= 'P') break;
+			default  : 
+				puts("Illegal option: "); 
+				puts(argv[argn]);
+				exit();
+				}
+			}
+		else strcpy(filename[0] ? name : filename,argv[argn]);
+
+	six=6;
+	bdosbase=*six;
+	errbase=bdosbase+3;
+	for (i=0; i < 4; i++) errold[i]=*(errbase+i);
+	*(errbase)=err1;
+	*(errbase+1)=err2;
+	*(errbase+2)=err3;
+	*(errbase+3)=err4;
+
+	ans[0]=patt[0]=changeto[0]=opts[0]='\0';
+	
+	keytranslate();
+	do {
+		initialise();
+		edit();
+		} 
+	while (YES);
+}
+
+initialise()
+{
+	int i,warn;
+
+	cursorx=charn=offset=lastoff=from=to=0;
+	cursory=topline=lastread=lastl=findir=jmpto=1;
+	changed=isdim=replace=repeat=blocking=warn=blankedmess=NO;
+	pfirst=-100;
+	goteof=YES;
+	errmess=NULL;
+
+	curdsk=bdos(CURDSK);
+
+	initvm();
+
+	text[0]='\0';
+	cline=1;
+	altered=YES;
+	puttext();
+
+	if (filename[0]) {
+		putclr();
+		gotoxy(8,11);
+		puts("qe  screen editor  version ");
+		puts(VERSION);
+		gotoxy(12,12);
+		puts("MICROLOGY 1983 and JWH 1984/6");
+		gotoxy(12,13);
+		terminal();
+		while (opentext(filename) == FAIL) {
+			askforfile();
+			if (!filename[0]) goto newfile;
+			}
+		lastl=UNKNOWN;
+		lastread=0;
+		goteof=NO;
+		if (name[0]) {
+			strcpy(filename,name); 
+			name[0]='\0';
+			}
+		format(filename);
+		}
+newfile: errmess=NULL;
+		/* read as much text to fill memory or end of file */
+	if (readall)
+		for (i=1;(!(usage[slotsinmem-1]) && (!(goteof)));i+=100)
+			readtext(i);
+	gettext(1);
+	putclr();
+	if (helpon) dohelp();
+	if (initjmp>2) {     			/* (2-1) is a bad jump from line 1 */
+		jumpline(initjmp-cline);	/* not possible to do init jump to 2*/
+		initjmp=0;
+		putstatusline(cline);
+		}
+	else
+		putpage();
+}
+
+edit()		/*command processor*/
+{
+	char c;
+	sint oldcrx,inc;
+	int to;
+
+	setjmp(mainmenu);
+
+	while (YES) {
+		goodline=cline;
+		if (expert) {
+			if(!blankedmess) xmessoff();
+		}
+		else unmess();
+		putlineno(cline);
+		resetcursor();
+		c=getkey();
+		if (errmess != NULL) {
+			errmess=NULL;
+			putstatusline(cline);
+			}
+		switch(c) {
+		case DOWNKEY	: 
+			moveline(1); 
+			break;
+		case UPKEY	: 
+			moveline(-1); 
+			break;
+		case LEFTKEY	: 
+			movechar(-1); 
+			break;
+		case RIGHTKEY	: 
+			movechar(1); 
+			break;
+		case LEFTWKEY	: 
+			moveword(-1); 
+			break;
+		case RIGHTWKEY	: 
+			moveword(1);  
+			break;
+		case BOLKEY	: 
+			sync(0); 
+			break;
+		case EOLKEY	: 
+			sync(strlen(text)); 
+			break;
+		case UPPAGE	: 
+			movepage(-1); 
+			break;
+		case DOWNPAGE	: 
+			movepage(0); 
+			break;
+		case HOMEKEY	: 
+			if (jumpline(lastl-cline)) sync(strlen(text));
+			break;
+		case BOFKEY	: 
+			if (jumpline(1-cline)) sync(0);
+			break;
+		case DELLEFT	: 
+			changed=YES;
+			deletechar(-1); 
+			break;
+		case DELRIGHT	: 
+			changed=YES;
+			deletechar(0); 
+			break;
+		case DELLNKEY	: 
+			changed=YES;
+			strcpy(textb,text);			/*save for undelete*/
+			text[0]='\0';
+			crdelete((cline == lastl ? -1 : 0)); 
+			break;
+		case DELWDKEY	: 
+			changed=YES;
+			deleteword(); 
+			break;
+		case JUMPKEY	:
+			if (expert) xprtmess("J ? ");
+			else putmess("Jump ([+/-]n,RET=crnt) ? ");
+			scans(ans,6);
+			if (!*ans) jmpto = cline;
+			else
+				calcjmp();
+			if (expert) xmessoff();
+			break;
+		case TOPSCRKEY	:
+			moveline((topline-cursory));
+			break;
+		case BOTSCRKEY	:
+			moveline((SHEIGHT-cursory));
+			break;
+ 		case REPKEY	:
+			repeat=YES; 
+			dofindrep(1); 
+			repeat=NO; 
+			break;
+		case BLOCKKEY	: 
+			to = blockops();
+			if (to == YES) return;
+			if (to == 'r') {
+				if (expert) xprtmess("Read file? ");
+				else putmess("File to read? ");
+				scans(name,15);
+				if (strlen(name) > 0)  {
+					readfile(name);
+					putpage();
+					}
+				}
+			break;
+		case SCRLDNKEY	:
+			/* original */
+			oldcrx = cursorx;
+			to = plast-cline;
+			moveline(to);
+			inc = ( (moveline(1)==YES) ? 1 : 0);
+			cursorx = oldcrx;
+			moveline(((cline-to)<=pfirst) ? (topline-cursory) : (-to - inc));
+
+			  /* new: 29.viii.86 : NOT FOR ADDS*/
+			/*
+			puttext();
+			if (plast>=(pfirst+2) ) {
+				linedelete(topline);
+				inc=plast-pfirst;
+				if (plast<lastl) {
+					getline(++plast);
+					putline(plast,
+						(inc<(SHEIGHT-topline)) ? inc : SHEIGHT);
+				}
+				pfirst++;
+				if (cursory==topline) gettext(pfirst);
+				cursorx=adjustc(cursorx);
+				gotoxy(cursorx,(cursory -= cursory>topline ? 1 : 0));
+			}
+			*/
+			break;
+		case UNDELINE	: 				/*undelete a line*/
+/*		   helpon via kontext key
+			if (helpon) {
+				helpon=NO; 
+				unmess();
+				}
+			else {
+				helpon=YES; 
+				dohelp();
+				}
+*/
+			puttext();
+			cline=inject(cline,textb);
+			if (cursory>=SHEIGHT) {
+				/*linedelete(topline);*/    /*for non-ADDS*/
+				adputpage(pfirst,topline);
+				gotoxy(0,cursory);
+				gettext(cline);
+				putline(cline,cursory);
+				plast++;
+				pfirst++;
+			}
+			else {
+				gotoxy(0,++cursory);
+				/*insertline();*/  /* not for ADDS*/
+				gettext(cline);
+				putline(cline,cursory);
+
+/*adinsrt.c*/
+/*		insertline();	*/
+/*
+		rewrite(0,0);
+		if (dir == 0) adputpage(cline-1,cursory++);
+		else adputpage(cline+1,cursory+1);
+		if (plast-pfirst < SHEIGHT-topline)plast++;
+*/
+				if (plast-pfirst < SHEIGHT-topline)plast++;
+			}
+			break;
+		case CR		: 
+			changed=YES;
+			crinsert(0); 
+			break;
+		case CRSTILL	: 
+			changed=YES;
+			crinsert(-1); 
+			break;
+		case SCRLUPKEY   :
+			/* original:  save current cursorx */
+			oldcrx = cursorx;
+			to = topline-cursory;
+			moveline(to);
+			inc=( (moveline(-1)==YES) ? 1 : 0);
+			cursorx = oldcrx;
+			moveline(((cline-to)>=plast) ? (SHEIGHT-cursory) : (-to + inc));
+
+			/* new: 29.viii.86  NOT FOR ADDS*/
+			/*
+			puttext();
+			if (pfirst >1) {
+				gotoxy(0,topline);
+				insertline();
+				inc=plast-pfirst;
+				putline((--pfirst),topline);
+				if (inc >= (SHEIGHT-topline)) plast--;
+				if (cursory==SHEIGHT) {
+					gettext(plast);
+					cursorx=adjustc(cursorx);
+				}
+				gotoxy(cursorx,(cursory += ((cursory<SHEIGHT) ? 1 : 0)));
+			}
+			*/
+			break;
+		case QWIKKEY	:
+			info();
+			break;
+		case OOPSKEY	:
+			oops();
+			break;
+		case TAB:
+			changed=YES;
+			insertchar('\t');
+			break;
+		case ESCKEY	:
+			resetcursor(); 
+			while (!(c=inkey()));
+			if (c < ' ') ;						/*c already CTRL*/
+			else
+				if (c < '@') break;				/*c not CTRL char*/
+				else
+					c -= ((c < '`') ? 64 : 96);	/*c either upper or lower*/
+		default		:
+			changed=YES;
+			insertchar(c); 
+			break;
+			}
+		}
+}
+
+finish(o)  int o;	/*return YES to edit another file;
+		  			NO to return to current file
+		  			or don't return, but exit if finished altogther */
+{
+	int abandon;
+	char c, tempname[FILELEN], namebak[FILELEN], *strcpy();
+
+	if (o != 'x') {
+	if (expert) xprtmess("W/A/R ? ");
+	else
+	 putmess("W|rite edited text to file, |A|bandon all edits, or |R|eturn? ");
+	while ( (c=getlow()) != 'w' && c != 'a' && c != 'r'); 
+	putch(c);
+	if (c == 'r') return NO;
+	abandon= c == 'a';
+	}
+	if ((c == 'w') || (o == 'x'))  {
+		if (!filename[0]) {
+			if (expert) xprtmess("Write file? ");
+			else putmess("File to write to? ");
+			scans(filename,15);
+			format(filename);
+			if (filename[0] <= ' ' || (!backup && !exists(filename)))
+			{
+				filename[0]='\0';
+				return NO;
+				}
+			}
+		if (backup) {	/*delete old bak file*/
+			retag(strcpy(namebak,filename),"BAK");
+			if (checkexists(namebak))
+				if (funlink(namebak) == FAIL) return NO;
+			}
+#if VRSNNUM
+		if (version) putvrsn();		/*update version num and date */
+#endif
+		strcpy(tempname,filename); /*keep old name in 'filename'*/
+		retag(tempname,"$$$"); /*new file called'.$$$'*/
+		if (writefile(1,lastl,tempname,filename,YES) == FAIL) return NO;
+		/*check original file still exists - may have been deleted or
+		   renamed by user */
+		if (checkexists(filename)) {
+			if (backup) {
+				/*orig. file becomes '.bak' */
+				if (frename(filename,namebak) == FAIL) goto failed;
+				}
+			else {
+				/*delete orig file*/
+				if (funlink(filename) == FAIL) {
+	failed: 			/*if can't delete/rename old file, change
+						new name to '.$$$'*/
+					strcpy(filename,tempname);
+					goto nowrite;
+					}
+				}
+			}
+		frename(tempname,filename); /*new file goes from '$$$' to orig name*/
+		changed=NO;		/*file now not changed*/
+		}
+	if (o == 'x') {
+	    funlink(pagingfile);
+    	xit();
+    	};
+nowrite:
+	if (expert) xprtmess("E/R/A ? ");
+	else putmess("E|xit to CP/M, |R|eturn to this file, or edit |A|nother file? ");
+	while ( (c=getlow()) != 'e' && c!='a' && c!='r');
+	putch(c);
+	switch(c) {
+	case 'e' :
+		if (changed)
+			if (!dispose()) return NO;
+		if (pagefd != NOFILE) {
+			close(pagefd);
+			funlink(pagingfile);
+			}
+		xit();
+	case 'a' :
+		if (changed)
+			if (!dispose()) return NO;
+		fclose(textbuf);
+		if (pagefd != NOFILE) {
+			close(pagefd);
+			funlink(pagingfile);
+			}
+		askforfile();
+		return YES;
+		
+	case 'r' : 
+		if (!abandon) {
+			gotoxy(WAITPOS,0);
+			opentext(filename);
+			lastl=UNKNOWN; 
+			lastread=0; 
+			goteof=NO;
+			initvm();
+			gettext(cline);
+			errmess=NULL;
+			putstatusline(cline);
+			}
+		return NO;
+		}
+}
+
+dispose()		/*check to dispose of modified file*/
+{
+	if (expert) xprtmess("Abandon mods? (y/n) ");
+	else putmess("Abandon modified file? (y/n) ");
+	if (getlow() == 'y') return YES;
+	return NO;
+}
+
+xit()		/*leave the editor, either by returning to CCP or by
+		warm booting, according to X option*/
+{
+	unsigned *cpm;
+	char *bdosbase;
+	int *six, *errbase,i;
+
+	six=6;
+	bdosbase=*six;
+	errbase=bdosbase+3;
+	for (i=0; i < 4; i++) *(errbase+i)=errold[i];
+	deleteline(0,SHEIGHT);
+	gotoxy(0,SHEIGHT-1);
+	if (wboot) exit();
+	else {
+		cpm=6;
+		call(*cpm-6-CCP+0x75f);
+		}
+}
+
+askforfile()	/*get another file to edit into 'filename' */
+{
+	int drive;
+	
+	while(YES) {
+/*		printdirectory(curdsk);	*/
+		putclr();
+dirdone:
+		if (errmess != NULL)  {
+			gotoxy(EMPOS,0);
+			puts(errmess);
+			}
+		gotoxy(0,0);
+		puts("File to edit\n |([return] to create a new file");
+		puts("   >| to view directory|\n");
+		puts(" |A:-P: to change default disk, [escape] to exit)| ? ");
+		if (scans(filename,FILELEN) == ESCKEY) xit();
+		deleteline(EMPOS,0);
+		errmess = NULL;
+		if (filename[0] == '>')  {
+			filename[0] = '\0';
+			deleteline(1,3);
+			puts("Enter [drv:]mask| (RET for all) ");
+			dirmsk();
+			/*
+			if ( (drive=getlow()-'a') < 0 || drive >= 16) drive=curdsk;
+			printdirectory(drive);
+			*/
+			goto dirdone;
+			}
+		if (strlen(filename) == 2 &&
+				filename[1] == ':') {
+			if ( (drive=toupper(filename[0])-'A') >= 0 && drive < 16) {
+				if (seldisk(drive)) continue;
+				bdos(RESETDRV,1 << drive);
+				curdsk=drive;
+				}
+			}
+		else {
+			name[0]='\0';
+			return YES;
+			}
+		}
+}
+
+seldisk(drive)
+int drive;
+{
+	if (dskcheck(setjmp(dskerr))) return FAIL;
+	bdos(SELDSK,drive);
+	return 0;
+}
+funlink(pagingfile

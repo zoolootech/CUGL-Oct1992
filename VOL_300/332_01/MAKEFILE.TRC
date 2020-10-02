@@ -1,0 +1,417 @@
+#################################################################
+#			   PCCURSES				#
+#								#
+# Makefile to generate $(MODEL)curses.lib			#
+# for Borland Turbo-'C' v.1.0 and 2.0.				#
+#								#
+# This makefile will generate subdirectories and call itself	#
+# recursively. Some entries in this makefile are only for	#
+# the author's personal use (I preferred to keep my own stuff	#
+# in the same place). Those are at the end of the makefile.	#
+#################################################################
+# 1.4:	Release:					900114	#
+#################################################################
+
+# The following are the directories where your lib and include
+# files will be installed. These need to be edited for your
+# system. Here are also the default C compiler and the standard
+# compilation flags. Change those if you want to. These are the
+# only changes that should be made to the makefile, unless you
+# have something special in mind...
+
+LIBDIR=\trc\lib
+INCDIR=\trc\inc
+MANDIR=\man
+CC=tcc
+CFLAGS=	-m$(MODEL) -c -O -Z -w -w-pro
+
+#################################################################
+# End of customizable stuff.					#
+#################################################################
+
+OBJS=		attrib.obj   beep.obj     border.obj   boxes.obj     \
+		charadd.obj  chardel.obj  charget.obj  charins.obj   \
+		charpick.obj clrtobot.obj clrtoeol.obj endwin.obj    \
+		initscr.obj  linedel.obj  lineins.obj  longname.obj  \
+		move.obj     mvcursor.obj newwin.obj   options.obj   \
+		overlay.obj  prntscan.obj refresh.obj  scrreg.obj    \
+		setmode.obj  setterm.obj  stradd.obj   strget.obj    \
+		tabsize.obj  termmisc.obj unctrl.obj   update.obj    \
+		winclear.obj windel.obj   winerase.obj winmove.obj   \
+		winscrol.obj wintouch.obj cursesio.obj
+
+#################################################################
+# 'default' is all that can (and usually is) done		#
+#################################################################
+
+default:	small compact medium large
+
+#################################################################
+# Install the .lib files in $(LIBDIR) directory. Header files	#
+# are already installed - have to be to make make work ;-)	#	
+#################################################################
+
+install:	iheaders ismall icompact imedium ilarge iman
+
+#################################################################
+# The following copies the header files to their proper place	#
+#################################################################
+
+iheaders:	$(INCDIR)\curses.h $(INCDIR)\curspriv.h
+
+$(INCDIR)\curses.h:	curses.h
+	-attrib	-r $(INCDIR)\curses.h
+	copy curses.h $(INCDIR)\curses.h
+	attrib	+r $(INCDIR)\curses.h
+
+$(INCDIR)\curspriv.h:	curspriv.h
+	-attrib	-r $(INCDIR)\curspriv.h
+	copy curspriv.h $(INCDIR)\curspriv.h
+	attrib	+r $(INCDIR)\curspriv.h
+
+#################################################################
+# Install the manual pages in the man directory			#
+#################################################################
+
+iman:	$(MANDIR)\curses.3
+
+$(MANDIR)\curses.3: curses.3
+	attrib	-r $(MANDIR)\curses.3
+	copy curses.3 $(MANDIR)\curses.3
+	attrib	+r $(MANDIR)\curses.3
+
+#################################################################
+# The following will create a subdirectory for each memory	#
+# model, and initiate the make:ing in each one.			#
+#################################################################
+# Create work directory if non-existent, go to it, and		#
+# perform the job - small model					#
+#################################################################
+
+ismall:		small
+		-attrib -r $(LIBDIR)\scurses.lib
+		copy smodel.trc\scurses.lib $(LIBDIR)\scurses.lib
+		-attrib +r $(LIBDIR)\scurses.lib
+
+small:		iheaders		\
+		smodel.trc		\
+		smodel.trc\farnear.inc	\
+		smodel.trc\smalhuge.inc
+	cd	smodel.trc
+	-make  -f ..\makefile.trc $(MAKEFLAGS) "MODEL=s" scurses.lib
+	cd	..
+
+smodel.trc:
+	mkdir			smodel.trc
+
+smodel.trc\farnear.inc:		nearcall.inc
+	copy	nearcall.inc	smodel.trc\farnear.inc
+
+smodel.trc\smalhuge.inc:	smaldata.inc
+	copy	smaldata.inc	smodel.trc\smalhuge.inc
+
+#################################################################
+# Create work directory if non-existent, go to it, and		#
+# perform the job - compact model				#
+#################################################################
+
+icompact:	compact
+		-attrib -r $(LIBDIR)\ccurses.lib
+		copy cmodel.trc\ccurses.lib $(LIBDIR)\ccurses.lib
+		-attrib +r $(LIBDIR)\ccurses.lib
+
+compact:	iheaders		\
+		cmodel.trc		\
+		cmodel.trc\farnear.inc	\
+		cmodel.trc\smalhuge.inc
+	cd	cmodel.trc
+	-make  -f ..\makefile.trc $(MAKEFLAGS) "MODEL=c" ccurses.lib
+	cd	..
+
+cmodel.trc:
+	mkdir			cmodel.trc
+
+cmodel.trc\farnear.inc:		nearcall.inc
+	copy	nearcall.inc	cmodel.trc\farnear.inc
+
+cmodel.trc\smalhuge.inc:	hugedata.inc
+	copy	hugedata.inc	cmodel.trc\smalhuge.inc
+
+#################################################################
+# Create work directory if non-existent, go to it, and		#
+# perform the job - medium model				#
+#################################################################
+
+imedium:	medium
+		-attrib -r $(LIBDIR)\mcurses.lib
+		copy mmodel.trc\mcurses.lib $(LIBDIR)\mcurses.lib
+		-attrib +r $(LIBDIR)\mcurses.lib
+
+medium:		iheaders		\
+		mmodel.trc		\
+		mmodel.trc\farnear.inc	\
+		mmodel.trc\smalhuge.inc
+	cd	mmodel.trc
+	-make  -f ..\makefile.trc $(MAKEFLAGS) "MODEL=m" mcurses.lib
+	cd	..
+
+mmodel.trc:
+	mkdir			mmodel.trc
+
+mmodel.trc\farnear.inc:		farcall.inc
+	copy	farcall.inc	mmodel.trc\farnear.inc
+
+mmodel.trc\smalhuge.inc:	smaldata.inc
+	copy	smaldata.inc	mmodel.trc\smalhuge.inc
+
+#################################################################
+# Create work directory if non-existent, go to it, and		#
+# perform the job - large model					#
+#################################################################
+
+ilarge:		large
+		-attrib -r $(LIBDIR)\lcurses.lib
+		copy lmodel.trc\lcurses.lib $(LIBDIR)\lcurses.lib
+		-attrib +r $(LIBDIR)\lcurses.lib
+
+large:		iheaders		\
+		lmodel.trc		\
+		lmodel.trc\farnear.inc	\
+		lmodel.trc\smalhuge.inc
+	cd	lmodel.trc
+	-make  -f ..\makefile.trc $(MAKEFLAGS) "MODEL=l" lcurses.lib
+	cd	..
+
+lmodel.trc:
+	mkdir			lmodel.trc
+
+lmodel.trc\farnear.inc:		farcall.inc
+	copy	farcall.inc	lmodel.trc\farnear.inc
+
+lmodel.trc\smalhuge.inc:	hugedata.inc
+	copy	hugedata.inc	lmodel.trc\smalhuge.inc
+
+#################################################################
+# Put together the library in file tmp.lib, then rename it to	#
+# $(MODEL)curses.lib (You cannot answer 'y' to LIB prompt from	#
+# the .CMD file otherwise).			 		#
+#################################################################
+
+$(MODEL)curses.lib:	$(OBJS)
+	del	$(MODEL)curses.lib
+	lib	@..\curses.cmd
+	ren	tmp.lib $(MODEL)curses.lib
+
+#################################################################
+# Commands and dependencies for individual modules		#
+#################################################################
+
+attrib.obj:	..\attrib.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oattrib ..\attrib.c
+
+beep.obj:	..\beep.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -obeep ..\beep.c
+
+border.obj:	..\border.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -N -oborder ..\border.c
+
+boxes.obj:	..\boxes.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oboxes ..\boxes.c
+
+charadd.obj:	..\charadd.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ocharadd ..\charadd.c
+
+chardel.obj:	..\chardel.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ochardel ..\chardel.c
+
+charget.obj:	..\charget.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ocharget ..\charget.c
+
+charins.obj:	..\charins.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ocharins ..\charins.c
+
+charpick.obj:	..\charpick.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ocharpick ..\charpick.c
+
+clrtobot.obj:	..\clrtobot.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oclrtobot ..\clrtobot.c
+
+clrtoeol.obj:	..\clrtoeol.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oclrtoeol ..\clrtoeol.c
+
+endwin.obj:	..\endwin.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oendwin ..\endwin.c
+
+initscr.obj:	..\initscr.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oinitscr ..\initscr.c
+
+linedel.obj:	..\linedel.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -olinedel ..\linedel.c
+
+lineins.obj:	..\lineins.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -olineins ..\lineins.c
+
+longname.obj:	..\longname.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -olongname ..\longname.c
+
+move.obj:	..\move.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -omove ..\move.c
+
+mvcursor.obj:	..\mvcursor.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -w-par -omvcursor ..\mvcursor.c
+
+newwin.obj:	..\newwin.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -onewwin ..\newwin.c
+
+options.obj:	..\options.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ooptions ..\options.c
+
+overlay.obj:	..\overlay.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ooverlay ..\overlay.c
+
+prntscan.obj:	..\prntscan.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -N -oprntscan ..\prntscan.c
+
+refresh.obj:	..\refresh.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -orefresh ..\refresh.c
+
+scrreg.obj:	..\scrreg.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oscrreg ..\scrreg.c
+
+setmode.obj:	..\setmode.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -osetmode ..\setmode.c
+
+setterm.obj:	..\setterm.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -osetterm ..\setterm.c
+
+stradd.obj:	..\stradd.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ostradd ..\stradd.c
+
+strget.obj:	..\strget.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ostrget ..\strget.c
+
+tabsize.obj:	..\tabsize.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -otabsize ..\tabsize.c
+
+termmisc.obj:	..\termmisc.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -otermmisc ..\termmisc.c
+
+unctrl.obj:	..\unctrl.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -ounctrl ..\unctrl.c
+
+update.obj:	..\update.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -oupdate ..\update.c
+
+winclear.obj:	..\winclear.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owinclear ..\winclear.c
+
+windel.obj:	..\windel.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owindel ..\windel.c
+
+winerase.obj:	..\winerase.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owinerase ..\winerase.c
+
+winmove.obj:	..\winmove.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owinmove ..\winmove.c
+
+winscrol.obj:	..\winscrol.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owinscrol ..\winscrol.c
+
+wintouch.obj:	..\wintouch.c ..\curses.h ..\curspriv.h
+	$(CC) $(CFLAGS) -owintouch ..\wintouch.c
+
+cursesio.obj:	..\cursesio.asm
+	masm ..\cursesio.asm/mx,cursesio.obj,nul,nul;
+
+#################################################################
+# Perform a backup of the files in the directory where the	#
+# 'make backup' command was issued - copies all files to the	#
+# floppy in drive A: or B:					#
+#################################################################
+
+A_backup:
+	@echo ***** Backup of PCcurses *****
+	@echo Insert backup diskette in drive A: and hit any key!
+	@pause
+	@echo Y > yes.txt
+	del a:\*.* < yes.txt >NUL
+	@del yes.txt
+	copy *.* a:
+
+B_backup:
+	@echo ***** Backup of PCcurses *****
+	@echo Insert backup diskette in drive B: and hit any key!
+	@pause
+	@echo Y > yes.txt
+	del b:\*.* < yes.txt >NUL
+	@del yes.txt
+	copy *.* b:
+
+#################################################################
+# Remove all temporary files and work directories that were	#
+# created							#
+#################################################################
+
+clean:
+	@echo Y > yes.txt
+	del smodel.trc\*.* < yes.txt >NUL
+	del cmodel.trc\*.* < yes.txt >NUL
+	del mmodel.trc\*.* < yes.txt >NUL
+	del lmodel.trc\*.* < yes.txt >NUL
+	@del yes.txt
+	rmdir smodel.trc
+	rmdir cmodel.trc
+	rmdir mmodel.trc
+	rmdir lmodel.trc
+
+#################################################################
+# The following is only for the authors installation of his	#
+# special libraries.						#
+#################################################################
+
+iau:	iheaders isau icau imau ilau iman
+
+isau:	small
+	cd	smodel.trc
+	copy	scurses.lib bltmp.lib
+	-attrib	-r $(LIBDIR)\sbllibc.lib
+	-attrib	-r $(LIBDIR)\sbllibc.bak
+	-lib	$(LIBDIR)\sbllibc.lib @..\bllibc.cmd
+	-attrib	+r $(LIBDIR)\sbllibc.lib
+	del	bltmp.lib
+	cd ..
+
+icau:	compact
+	cd	cmodel.trc
+	copy	ccurses.lib bltmp.lib
+	-attrib	-r $(LIBDIR)\cbllibc.lib
+	-attrib	-r $(LIBDIR)\cbllibc.bak
+	-lib	$(LIBDIR)\cbllibc.lib @..\bllibc.cmd
+	-attrib	+r $(LIBDIR)\cbllibc.lib
+	del	bltmp.lib
+	cd ..
+
+imau:	medium
+	cd	mmodel.trc
+	copy	mcurses.lib bltmp.lib
+	-attrib	-r $(LIBDIR)\mbllibc.lib
+	-attrib	-r $(LIBDIR)\mbllibc.bak
+	-lib	$(LIBDIR)\mbllibc.lib @..\bllibc.cmd
+	-attrib	+r $(LIBDIR)\mbllibc.lib
+	del	bltmp.lib
+	cd ..
+
+ilau:	large
+	cd	lmodel.trc
+	copy	lcurses.lib bltmp.lib
+	-attrib	-r $(LIBDIR)\lbllibc.lib
+	-attrib	-r $(LIBDIR)\lbllibc.bak
+	-lib	$(LIBDIR)\lbllibc.lib @..\bllibc.cmd
+	-attrib	+r $(LIBDIR)\lbllibc.lib
+	del	bltmp.lib
+	cd ..
+
+shar:
+	command -c makekit -x *.* >manifest
+	makekit -m *.*
+	del manifest.*

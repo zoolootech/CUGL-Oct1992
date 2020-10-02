@@ -1,0 +1,66 @@
+{Listing1.asm - delay.asm}
+
+
+
+; This file contains the routines to perform a 10ms delay 
+; using the system timer.
+;
+     .MODEL  SMALL, C
+
+     .DATA
+;
+; Video segment and offset used in delay logic
+;
+video   LABEL   DWORD
+vid_seg DW   0
+vid_off DW   0
+
+     .CODE
+
+     PUBLIC  fdcDelay, calibrateDelay
+;
+; Perform a delay to allow the FDC Controller to catch up.  
+; This process works by waiting for the video memory, 
+; which is located on the system bus
+;
+fdcDelay PROC
+     push   es
+     les  bx, video
+     mov  al, es:[bx]
+     mov  es:[bx], al
+     pop  es
+     ret
+fdcDelay ENDP
+
+;
+; Determine the address to use for the delay operation.  
+; For color text modes, use the second video page in 
+; order to avoid creating snow on a CGA.
+;
+calibrateDelay PROC
+   push   bp
+   mov  ah, 0fh   ; get curent video mode
+   int  10h
+   cmp  al, 7     ; monochrome display?
+   je   mono      ;  yes, set the address accordingly
+   mov  vid_seg, 0B800h ; Color address == 
+                        ; 0xB800:((page+1)%2)*4000
+   xor  ax, ax    ; AX == offset
+   mov  bl, bh    ; mov page number to BL
+   inc  bl
+   and  bl, 01h      ; use odd/even pages due to 
+                     ; alternate text modes
+   jz   page0
+   mov  ax, 4000     ; use page 1
+page0:
+   mov  vid_off, ax
+   jmp  SHORT done
+mono:
+   mov  vid_off, 0   ; Monochrome address == 0xB000:0000
+   mov  vid_seg, 0B000h
+done:
+   pop  bp
+   ret
+calibrateDelay ENDP
+
+   END

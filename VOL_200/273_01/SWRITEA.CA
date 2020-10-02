@@ -1,0 +1,44 @@
+#include <dos.h>
+swrite_a(int row, int col, int attr)
+/* This will write the attribute attr at row,col
+*/
+{
+  extern int color, mono, cga, ega, scrseg, bios;
+  union REGS inregs, outregs;
+  int   scrofs, *pattr, orow, ocol ,x;
+  char pchar;
+  char far *base;
+  char far *work;
+	if(mono) base=(char far *)0xb0000000;
+	else base=(char far *)0xb8000000;
+	if(bios) {
+        locate(row,col) ;
+        inregs.h.bh=0x00;
+        inregs.h.ah=0x08;
+		int86(0x10,&inregs,&outregs);
+        inregs.h.bl=attr;
+        inregs.h.bh=0x00;
+        inregs.h.ah=0x09;
+        inregs.x.cx=0x01;
+        inregs.h.al=outregs.h.al;
+        int86(0x10,&inregs,&outregs);
+        return(0);
+	}
+	scrofs = ((((row+1) * 160) - 160) + ((col+1) * 2)) - 2;
+	work = base + scrofs + 1;
+	pchar = attr;
+	asm les bx,work
+	asm mov cl,pchar
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+	asm mov byte ptr es:[bx],cl
+	return(0);
+}
+

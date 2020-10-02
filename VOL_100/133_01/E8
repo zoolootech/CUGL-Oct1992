@@ -1,0 +1,213 @@
+ /*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	FILE: e8
+
+	FUNCTIONS: loc,gettext,getline,inject,deltp,puttext,storetext,
+			readtext,getc,opentext,balloc,error,addhistory
+
+	PURPOSE: get and put text lines into and out of storage
+
+*/
+
+#include "e.h"
+
+loc(line,move)	/*returns line+move, adjusted to be within text*/
+int line, move;
+{
+	int y;
+
+	if ( (y=line+move) < 1) y=1;
+	if (lastl == UNKNOWN && y > lastread) readtext(y);
+	if (y > lastl) return lastl;
+	return y;
+}
+
+gettext(line)	/*makes 'line' the current line*/
+int line;
+{
+	char *getline();
+
+	strcpy(text,getline(line));
+	cline=line;
+}
+
+char *getline(line)	/*returns address of text of line 'line' and updates
+		  	  page usage*/
+int line;
+{
+	struct addr *tptr;
+	int slot;
+
+	tptr=tp[loc(line,0)];
+	if ( (slot=pageloc[tptr->page]) <= 0)
+		slot=swappin(tptr->page);
+	if (usage[slot] >= INUSE) usage[slot]=++clock;
+	return slotaddr[slot] + tptr->moffset;
+}
+
+inject(line,txt)	/* inserts 'txt' after 'line' */
+int line;
+char *txt;
+{
+	int l;
+	struct addr *tptr;
+
+	addhistory(line,HISTINSERT);
+	if ( &tp[lastread+2] >= slotaddr[tppages]) {
+		/*need another slot to store tp's in */
+		if (tppages+2 == slotsinmem) {
+			error("Too many lines of text");
+			return FAIL;
+			}
+		if (usage[tppages] == NOTAVAIL) /*ie page is being alloc'ed into*/
+			allocp=(PAGESIZE+1); /*force alloc into new page*/
+		if (usage[tppages] != FREE) swapout(tppages);
+		usage[tppages++]=NOTAVAIL;
+		}
+	tptr=tp[++line];
+	if (line < ++lastread)
+		movmem(tptr,tptr+1,(lastread-line)*sizeof(*tptr));
+	storetext(tptr,txt);
+	if (lastl != UNKNOWN)lastl++;
+	return line;
+}
+
+delete(from)	/*deletes a line by shifting pointers*/
+int from;
+{
+	struct addr *tptr;
+
+	addhistory(from,HISTDELETE);
+	tptr=tp[from];
+	movmem(tptr+1,tptr,(lastread-from)*sizeof(*tptr));
+	if (lastl != UNKNOWN) lastl--;
+	lastread--;
+	if (lastl < 1)lastl=1;
+	if (lastread < 1)lastread=1;
+}
+
+puttext()	/*replaces cline's text if it has been altered*/
+{
+	if (altered) {
+		addhistory(cline,HISTREPLACE);
+		altered=NO;
+		storetext(tp[cline],text);
+		}
+}
+
+storetext(tpptr,textptr) 	/*stores text at textptr and updates tp record*/
+struct addr *tpptr;
+char *textptr;
+{
+	int p, cp, balloc();
+
+
+	cp=strlen(textptr);
+	
+	if (!trail) {
+		while (--cp >= 0 && isspace(textptr[cp]));
+		textptr[++cp]='\0';
+		}
+		
+	tpptr->moffset=p=balloc(1+cp);
+	tpptr->page=newpage;
+	strcpy(p+npaddr,textptr);
+}
+
+readtext(line)	/*reads file being edited into virtual memory until 'line'
+		  is read, or eof.  If eof, sets lastl to number of last line
+		  read.  File is assumed to be already open*/
+int line;
+{
+	char txt[LLIM], *t;
+	int i, c, l;
+
+	storehist=NO;
+	while (lastread < line) {
+		for (i=0, t=&txt[0]; i < LLIM && ((c=getc(textbuf)) >= ' ' ||
+			c != '\n' && c != FAIL && c != ENDFILE); i++) {
+			    	if (c) *(t++)=c;
+				else i--;
+				}
+		if (txt[i-1] == '\r') t--; 
+		*t='\0';
+		if ( (l=inject(lastread,txt)) == FAIL) goto toomuch;
+		else if ((lastread=l)%100 == 0) putlineno(lastread);
+		if ( (goteof= c == ENDFILE || c == FAIL) )  goto eof;
+		checkkey();
+		}
+	goto ok;
+eof: 
+	fclose(textbuf);
+toomuch: 
+	lastl=lastread;
+ok:	storehist=YES;
+}
+
+opentext(name)	/*open the file being edited for reading*/
+char *name;
+{
+	if (fopen(name,textbuf) == FAIL) {
+		error("Can't open file");
+		lastl=1;
+		return FAIL;
+		}
+	return YES;
+}
+
+balloc(n)	/*allocate and return the offset in newpage of a vector size n*/
+unsigned n;
+{
+	sint slot;
+
+	if (allocp  + n >= PAGESIZE) {
+		/*no room in current newpage; get another*/
+		if (pageloc[newpage] > 0)usage[pageloc[newpage]]=INUSE;
+		pageloc[++newpage]=slot=freememslot();
+		usage[slot]=NOTAVAIL;
+		allocp=0; 
+		npaddr=slotaddr[slot];
+		}
+	allocp+=n;
+	return allocp-n;
+}
+
+error(message)
+char *message;
+{
+	if (errmess != NULL) return;
+	gotoxy(32,0);
+	puts(errmess=message);
+	resetcursor();
+	inbufp=0;
+}
+
+addhistory(l,type)
+int l;
+sint type;
+{
+	struct histstep *step;
+
+	if(!storehist) return;
+
+	step=history[histptr];
+	if (++histptr == HISTLEN) histptr=0;
+	if (histcnt < HISTLEN) histcnt++;
+
+	step->histp.page=tp[l].page;
+	step->histp.moffset=tp[l].moffset;
+	step->histline=l;
+	step->histtype=type;
+	step->histcomm=ncommand;
+}
+strlen(textptr);
+	
+	if (!trail) {
+		while (--cp >= 0 && isspace(textptr[cp]));
+		textptr[++cp]='\0';
+		}

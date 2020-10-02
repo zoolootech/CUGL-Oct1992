@@ -1,0 +1,107 @@
+#include "makedef.h"
+#include <sys\stat.h>
+
+#define	FNFERR (-1)	/* stat error: file not found */
+
+long	process_dependency(TARGET *head, char *build_target)
+{
+TARGET	*p;
+time_t	dependent_t;
+int	rebuilt;
+
+if (p = search_target_list(head, build_target))
+    rebuilt = build_target(head, p, &dependent_t);
+else
+    fatal_error("build target not found");
+
+if (!rebuilt)
+    printf("\n'%s' is up to date.",build_target);
+}
+
+
+
+TARGET 	*search_target_list(TARGET *head, char *target)
+{
+while (head && strcmp(target, head->target))
+    head = head->link;
+return head;
+}
+
+
+
+long	exec_cmd_list(CMD *p)
+{
+int	status;
+
+while (p) {
+    printf("\n%s",p->cmdstr);
+    status = system(p->cmdstr);
+      if (status)
+       exit(status);
+      p = p->link;
+}
+}
+
+
+
+long	build_target(TARGET *head, TARGET *p, time_t *parent_t)
+{
+DEP	*q;
+TARGET	*r;
+long	status = 0;
+time_t	dependent_t;
+time_t	newest_t;
+time_t	current_vertex_t;
+struct	stat statbuf;
+
+/*+++++ Initialization +++++*/
+
+p->color = GRAY;
+if (FNFERR == stat(p->target, &statbuf))
+    statbuf.st_mtime = 0;
+newest_t = current_vertex_t = statbuf.st_mtime;
+
+/*++++ Check current vertex's dependencies +++++*/
+
+q = p->deplink;
+while (q) {
+        if (NULL == (r = search_target_list(head, q->depstr))) {
+	if (FNFERR == stat(q->depstr, &statbuf))
+	    fatal_error("dependency not found");
+	else
+	    dependent_t = statbuf.st_mtime;
+    } else {
+	switch (r->color) {
+	    case WHITE:
+		build_target(head, r, &dependent_t);
+		break;
+	    case GRAY:
+		fatal_error("recursive dependency found");
+		break;
+	    case BLACK:
+		dependent_t = statbuf.st_mtime;
+		break;
+	}
+    }
+    if (dependent_t > newest_t)
+	newest_t = dependent_t;
+    q = q->link;
+}
+
+/*++++  Execute command list ++++*/
+
+if (newest_t > current_vertex_t) {
+    status++;
+        exec_cmd_list(p->cmdlink);
+    if (FNFERR == stat(p->target, &statbuf))
+	fatal_error("commands did not update target");
+    newest_t = statbuf.st_mtime;
+}else
+    newest_t = current_vertex_t;
+
+/*++++ Cleanup ++++*/
+
+p->color = BLACK;
+*parent_t = newest_t;
+return status;
+}

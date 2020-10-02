@@ -1,0 +1,63 @@
+
+
+******************************************************************************
+
+                                 Listing 2
+
+
+#define LAMP_REG_1 (*((char *) (0x2808)))
+#define LAMP_REG_2 (*((char *) (0x2800)))
+
+unsigned char shadow_1 = 0;
+unsigned char shadow_2 = 0;
+
+enum LAMPS { RUN_LAMP, ERROR_LAMP, SETUP_LAMP, ALIGN_LAMP,
+             ALERT_LAMP, SURVEY_LAMP, BIT_LAMP, SPARE_1,
+             BATT_LAMP, CHARGE_LAMP, ZONE_LAMP, EAST_LAMP,
+             SPARE_2, SPARE_3, SPARE_4, SPARE_5, MID = 7 };
+
+/*----------------------------------------------------------------------------
+MACRO to turn on a specific lamp. Use of literals of type LAMPS 
+for the parameter.
+----------------------------------------------------------------------------*/
+#define turn_on( lamp ) \
+( \
+     (lamp > MID) ? \
+     ( \
+          ( ( shadow_1 |= ( ( 1 << (lamp - 8) ) & 0xFF ) ) ) ,
+           (LAMP_REG_ 1 = shadow_1 )
+     ) \
+     : \
+     ( \
+          ( ( shadow_2 |= ( (1 << lamp) & 0xFF ) ) ) , \
+          LAMP_REG_1 = shadow_2) \
+     ) \
+) \
+
+/*----------------------------------------------------------------------------
+MACRO to turn off a specific lamp. Use literals of type
+LAMPS for the parameter.
+----------------------------------------------------------------------------*/
+#define turn_off( lamp ) \
+( \
+     (lamp > MID) ? \
+     ( \
+          ( shadow_1 &= ( ~( 1 << (lamp-8) ) & 0xFF) ), \
+          ( LAMP_REG_1 = shadow_1 ) \  
+     ) \
+     : \
+     ( \
+          ( shadow_2 &= ( ~(1 << lamp) ) & 0xFF ) ) , \
+          ( LAMP_REG_2 = shadow_2 ) \
+     ) \
+) \
+
+Note the use of the trinary operator instead of a control
+structure to decide which shadow register and lamp latch to
+update. The call to these macros looks like this:
+
+     turn_on( RUN_LAMP ) ;
+     turn_off( RUN_LAMP ) ;      
+
+
+******************************************************************************

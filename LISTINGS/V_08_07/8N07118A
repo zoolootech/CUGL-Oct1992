@@ -1,0 +1,103 @@
+/* Listing 4 */
+/*----------------- ARRYLIST.H --------------------------*/
+
+#include "list.h"
+#include <alloc.h>
+#define ARRAY_LIST_CLASS      LIST_CLASS \
+/* Index of current member */ int curr; \
+/* Total members in array */  int tot_members;
+
+typedef struct array_list {
+  ARRAY_LIST_CLASS
+} ARRAY_LIST;
+
+ARRAY_LIST *new_array_list();
+destroy_array_list(ARRAY_LIST *);
+
+/*------------------ ARRYLIST.C -------------------------*/
+
+#include "arrylist.h"
+
+static long total_members(ARRAY_LIST *this) {
+    return((long) this->tot_members);
+}
+
+static unsigned at_top(ARRAY_LIST *this) {
+    return(this->curr == 0);
+}
+
+static unsigned at_end(ARRAY_LIST *this) {
+    return(this->curr == this->tot_members);
+}
+
+static void prev(ARRAY_LIST *this) {
+  if (this->curr > 0)
+    --(this->curr);
+}
+static void next(ARRAY_LIST *this) {
+    if (this->curr < (this->tot_members))
+       ++(this->curr);
+}
+
+static void seek(ARRAY_LIST *this, long where, int from) {
+switch(from) {
+    case SEEK_SET:
+        if (where < this->tot_members)
+            this->curr = (int) where;
+    break;
+    case SEEK_CUR:
+        if (where > 0) {
+            if ( (this->curr + (int) where) <
+                  this->tot_members ) {
+                this->curr += (int) where;
+            }
+        }
+        else {
+            if ((this->curr - (int) where) > 0) {
+                this->curr -= (int) where;
+            }
+        }
+    break;
+    case SEEK_END:
+       if (where <= this->tot_members) {
+            this->curr = this->tot_members - (int) where;
+       }
+    break;
+  }
+}
+static void top(ARRAY_LIST *this) {
+    this->curr = 0;
+}
+static void end(ARRAY_LIST *this) {
+    this->curr = this->tot_members - 1;
+}
+static long tell(ARRAY_LIST *this) {
+    return(this->curr);
+}
+ARRAY_LIST *new_array_list(void) {
+    ARRAY_LIST *this;
+    LIST *l;
+
+    l = new_list();
+    if (l == NULL)
+       return(NULL);
+
+    this = calloc(1,sizeof(ARRAY_LIST));
+    if (this == NULL) {
+        destroy_list(l);
+        return(NULL);
+    }
+    memmove(this,l,sizeof(LIST));
+    free(l);
+
+    this->total_members = total_members;
+    this->at_top = at_top;  this->at_end = at_end;
+    this->prev = prev;      this->next = next;
+    this->seek = seek;      this->top = top;
+    this->end = end;        this->tell = tell;
+    return(this);
+}
+
+destroy_array_list(ARRAY_LIST *this) {
+    destroy_list(this);
+}

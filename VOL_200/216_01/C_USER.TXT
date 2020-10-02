@@ -1,0 +1,133 @@
+                                                 July 15, 1986
+Donna S. Ward
+Operations Manager
+C Users Group
+P.O. Box 97
+McPherson, Kansas  67460
+
+Dear Ms Ward,
+
+     Ref your letter of June 23, you are welcome to the code, and may publish
+it if you wish. If Mr Apsey is a Fortranner, he should have no difficulty
+adapting it to his needs. I'm sorry its in Fortran, and would like to convert
+it to C, but it will be Christmas before I have a spare day. I hope another
+of your readers will volunteer to translate it to C, if found worthy.
+
+     The software is in two pieces, a batch file and the Fortran program. In
+this application, I think the batch file plays a more than usually important
+role. It does more than most of my batch files.
+
+     The batch file, which is baptized CLL.BAT copies files to RAM disk and
+invokes dBase. When dBase is quit, CLL saves any newly created or updated
+files. I haven't tried, but I expect this could be made to work with any
+other language, or no language - not just dBase. One of the commands in CLL
+is "scanfils", which calls up the Fortran routine, SCANFILS.
+
+     Fortran routine SCANFILS checks the latest directory to see what files
+have been created, or altered, and builds the batch file SAVEFILS, containing
+copy commands, which CLL uses to save the necessary files.
+
+     The first statement in CLL.BAT;
+          if exist c:mims.prg goto dbase2
+makes it possible to work in RAM for a while, then quit dBase. All changed
+files will be saved. You can later go back to work on the files without
+re-copying everything back to RAM again.
+
+     After saving a copy of the directory, dBase is called up, followed by
+MIMS (a root menu type of program). The programs and data files comprise a
+a small system which contains file update screens, prints mailing labels,
+member phone directory and file listing. When dBase is quit, another copy
+of the directory is taken, and the program SCANFILS checks for new or changed
+files.
+
+     SAVEFILS is a batch file created by SCANFILS, and contains the names of
+new or changed files in the format;
+          copy e:filename.ext b:.
+
+     SCANFILS is written in Fortran 77, and is pretty straightforward. But
+of course there are always some things which a few words of explanation may
+save someone else a lot of time trying to figure out what the author is up to.
+
+     The usual declarations and initializations are there. Here I guess I
+should mention an old habit of mine, born of reading lots of source code
+with lots of logical unit numbers, like "read(17,1001)iolist". If there are
+as few as 3 or 4 such numbers you will find yourself flipping back and forth
+between source and job control listing to see which files are associated with
+which numbers. So I set up data statements to make the correlations for me.
+Example:  data gpcin /17/
+                  .
+                  .
+          read(gpcin,1001)iolist
+Using this, I wouldn't have to go to the control file or anyplace else to know
+that I was reading the gpc input file. So that is what the statement
+          data oldir,nudir,report,savefi /2,3,4,8/
+is doing. Its keeping me from getting mixed up.
+
+     A couple of lines farther down, the statement
+          data tmpfmt /.........../
+initializes an array containing an execution time format statement. It turns
+out that MS-DOS will not tolerate any spaces between filename and extension,
+just the period. So the number of characters in filename is counted, and the
+A8, which you see in tmpfmt will be changed to A7 or A4, or whatever is the
+number of characters in filename.
+
+     The entire old and new directories are read into arrays, except for the
+headers and trailers, and the size column.
+
+     The "end = ..." in line 47 is not needed. (Line numbers are contained
+in SCANFILS.LST). It is a defensive coding habit. The statement, "...bytes
+free " in the directory trailer, has the " free " right under the time column.
+I use that instead of EOF as a signal to quit the read loop.
+
+     Since the directory listings are so short, not more than 50 in this
+program, I do not sort/merge. The program simply looks at an entry in the
+old directory and then goes thru the new directory from the beginning till
+it finds a match (maybe).
+
+     Beginning on line 88 of scanfils.lst, the program counts the number of
+characters in filename. Fortran 77 uses the internal file concept instead of
+the old encode-decode of Fortran 5. "fname" on lines 88 and 89 is the internal
+file name. I write to it with an A8 format, and read from it with 8A1 format.
+"Nurch", for number of characters in lines 94,95, is another use of the
+internal file.
+
+     The "* Pack nudir arrays " paragraph deletes from the arrays data
+pertaining to files that have been matched up. This may be an inefficient
+use of cpu time. True, it will save some time in the match up process. At any
+rate, the code's there, and it has the plus feature that whatever is left in
+the nudir arrays at the end is a list of newly created files. The "do 300"
+loop, beginning at line 121 writes whatever amy remain in the nudir arrays
+to savefils.
+
+     The last three loops write to report.txt a list of actions taken in the
+RAM disk session, namely;
+          files deleted,
+          files added,
+          files changed.
+
+     Note that a file deleted in RAM is not deleted by the batch file. For the
+few files that I may delete in this application I use DOS. Also, it is
+sometimes handy to be able to get an unneeded file out of RAM by deleting it,
+knowing that it wont be deleted from your floppy.
+
+     This was originally designed to work on a Tandy 2000 with 2 floppies and
+no fixed disk. It first ran with the RAM in c:, but when I got the fixed disk,
+(and a later version of MS-DOS) I had to change it to e:. I did that and
+checked it out. It still works.
+
+      With the application files in b:, and the dBase2 working disk,
+(containing CLL.BAT, SCANFILS.BAT, and CONFIG.SYS capable of establishing a
+RAM disk) in a:, enter CLL, and it will take off. Surprise! You will get
+a copy of new.dir in b: in addition to any other creations or changes.
+
+                        Cordially,
+
+
+
+
+                        Frank H. Jeys
+                        414 Bay Colony
+                        LaPorte, Tex 77571
+
+                        (713) 471-2462
+

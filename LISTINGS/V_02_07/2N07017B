@@ -1,0 +1,214 @@
+#define TIMER_MIN_RESOLUTION    (55)
+#define TIMER_MAX_RESOLUTION    (65535)
+#ifdef __cplusplus
+    #define OUTOFTIMERS TIMER::OutOfTimers
+#else
+    #define OUTOFTIMERS OutOfTimers
+#endif
+
+typedef unsigned long   ulong;
+typedef struct TIMERDATA
+    {
+    FARPROC CallBack;
+    TIMER   *TailPtr;
+    int     ActiveCount;
+    int     TimerId;
+    ulong   IntervalGcd;
+#ifndef __cplusplus
+    TIMER_FIRE  FireFunc;
+#endif
+    }   TIMERDATA;
+
+static TIMERDATA TD;
+
+
+ulong    Gcd(ulong a, ulong b)
+    {
+    ulong    Remainder = a;
+
+    if(a==0 || b==0)
+        return 0;
+    else
+        {
+        Remainder   = b % a;
+        while((Remainder=b%a) != 0)
+            {
+            b           = a;
+            a           = Remainder;
+            Remainder   = b % a;
+            }
+        return a;
+        }
+    }
+
+/*
+ *  SetBaseInterval - Change the interval of the
+ *      base Window timer.  This function handles
+ *      requests that are larger or smaller than
+ *      Windows timer resolutions permit.
+ */
+int     SetBaseInterval(ulong NewInterval)
+    {
+    if(TD.IntervalGcd != 0)
+        NewInterval = Gcd(TD.IntervalGcd, NewInterval);
+    if(NewInterval < TIMER_MIN_RESOLUTION)
+        NewInterval = TIMER_MIN_RESOLUTION;
+    if(NewInterval > TIMER_MAX_RESOLUTION)
+        {/* use heuristic to get "nice" interval */
+        while(NewInterval > TIMER_MAX_RESOLUTION)
+            NewInterval /= 2;
+        NewInterval = (NewInterval / 1000) * 1000;
+        }
+    if(NewInterval != TD.IntervalGcd)
+        {
+        if(TD.TimerId != 0)
+            KillTimer(0, TD.TimerId);
+        while((TD.TimerId=SetTimer(0,0,
+            (unsigned int)NewInterval,
+            TD.CallBack)) == 0)
+
+            if(OUTOFTIMERS())
+                break;
+        if(TD.TimerId)
+            TD.IntervalGcd    = NewInterval;
+        else
+            return FALSE;
+        }
+
+    return TRUE;
+    }
+
+/*
+ *  ReviseInterval() - recalculate Gcd of all timers
+ *      in circular linked list.
+ */
+int ReviseInterval()
+    {
+    TIMER   *Rover = TD.TailPtr;
+    ulong   NewInterval = 0;
+
+    do  {
+        Rover   = Rover->Next;
+        if(Rover->Interval != 0)
+            if(NewInterval == 0)
+                NewInterval = Rover->Interval;
+            else
+                NewInterval = Gcd(NewInterval,
+                              Rover->Interval);
+        } while(Rover != TD.TailPtr);
+    TD.IntervalGcd  = 0;
+    return SetBaseInterval(NewInterval);
+    }
+
+/*
+ *  SetInterval() - change the interval of a single
+ *     timer.  This may require the base interval
+ *     to be changed.  Setting the interval to zero
+ *     stops the timer.
+ */
+int SetInterval(TIMER *Timer, ulong NewInterval)
+    {
+    ulong   SaveInterval;
+    int     TimerWasOn, TimerIsOn, Result;
+    Result  = TRUE;     /* Assume success  */
+    TimerWasOn  = Timer->Interval != 0;
+    TimerIsOn   = NewInterval != 0;
+    /* if deactivating timer */
+    if(TimerWasOn && !TimerIsOn)
+        if(--TD.ActiveCount == 0)
+            {
+            KillTimer(0, TD.TimerId);
+            TD.TimerId      = 0;
+            TD.IntervalGcd  = 0;
+            }
+        else
+            Result  = ReviseInterval();
+    /* else if starting a timer */
+    else if(TimerIsOn && !TimerWasOn)
+        {
+        Timer->Interval = NewInterval;
+        if(NewInterval > TIMER_MAX_RESOLUTION)
+            Result  = ReviseInterval();
+        else
+            Result  = SetBaseInterval(NewInterval);
+        if(Result)
+            ++TD.ActiveCount;
+        }
+    /* else if changing timer interval */
+    else
+        {
+        Timer->Interval = NewInterval;
+        Result      =ReviseInterval();
+        }
+    return Result;
+    }
+
+void    InitTimer(TIMER *Timer, int EventId)
+    {
+    Timer->EventId  = EventId;
+    Timer->Interval = 0;
+    Timer->ThisTime = 0;
+    Timer->LastTime = 0;
+    if(TD.TailPtr == 0)
+        {
+        TD.TailPtr     = Timer;
+        Timer->Next = Timer;
+        }
+    else
+        {
+        Timer->Next     = TD.TailPtr->Next;
+        TD.TailPtr->Next   = Timer;
+        TD.TailPtr         = Timer;
+        }
+    }
+
+void    DeleteTimer(TIMER *Timer)
+    {
+    TIMER   *Rover      = TD.TailPtr;
+    TIMER   *Previous   = 0;
+
+    do  {
+        if(Rover->Next == Timer)
+            Previous    = Rover;
+        else
+            Rover       = Rover->Next;
+        }   while(Previous == 0);
+    if(Previous->Next == Previous)
+        TD.TailPtr  = 0;
+    else
+        {
+        if(Previous->Next == TD.TailPtr)
+            TD.TailPtr     = Previous;
+        Previous->Next  = Previous->Next->Next;
+        }
+    /* in case it was active...*/
+    SetInterval(Timer, 0);
+    }
+
+WORD FAR PASCAL TimerCallBack(HWND Window,
+        WORD MsgNum, WORD WParm, LONG LParm)
+    {
+    ulong   Time;
+    TIMER   *Rover=TD.TailPtr;
+    if(!Rover)  return 0;
+    do  {
+        Rover   = Rover->Next;
+        if(Rover->Interval)
+            {
+            Time    = GetTickCount();
+            if(Rover->Interval+Rover->ThisTime
+                         <= Time)
+                {
+                Rover->LastTime = Rover->ThisTime;
+                Rover->ThisTime = Time;
+#ifdef __cplusplus
+                Rover->Fire();
+#else
+                TD.FireFunc(Rover);
+#endif
+                }
+            }
+        } while(Rover != TD.TailPtr);
+
+    return 0;
+    }

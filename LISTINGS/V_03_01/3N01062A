@@ -1,0 +1,112 @@
+/*
+ *  WINEXT.C - DOS program to fix up bextstr output for Windows.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+/* Biggest line we can handle */
+#define MAX_LINE    (1024*1)
+
+typedef unsigned long   ULONG;
+
+FILE    *OpenFile(char *FileName, char *OpenMode)
+    {
+    FILE    *File = fopen(FileName, OpenMode);
+    if(File == NULL)
+        {
+        fprintf(stderr, "Can't open file '%s' for '%s'\n",
+            FileName, OpenMode);
+        exit(EXIT_FAILURE);
+        }
+    else
+        return File;
+    }
+
+ULONG   GetLineCount(FILE *InputFile, char *InputLine)
+    {
+    if(fgets(InputLine, MAX_LINE, InputFile))
+        return atol(InputLine);
+    else
+        {
+        fprintf(stderr, "Input file is empty\n");
+        exit(EXIT_FAILURE);
+        }
+    }
+
+size_t  ConvertLine(FILE *OutputFile, char *InputLine)
+    {
+    size_t  LineLength = 0;
+    char    C;
+
+    for(; (C=*InputLine++); ++LineLength)
+        if(C == '\\')
+            switch(C = *InputLine++)
+                {
+                /* RC chokes on "\"" */
+                case '"'    :
+                    fputs("\\042", OutputFile);
+                    break;
+                default :
+                    fputc('\\', OutputFile);
+                    fputc(C, OutputFile);
+                }
+        else
+            fputc(C, OutputFile);
+
+    return LineLength + 1; /* add one for end-of-string */
+    }
+
+
+ULONG   Convert(FILE *InputFile, FILE *OutputFile,
+                char *InputLine, ULONG TotalLines)
+    {
+    ULONG   CharCount = 0;
+    ULONG   LineCount = 0;
+
+    while((TotalLines>0) && fgets(InputLine, MAX_LINE, InputFile))
+        {
+        --TotalLines;
+        if(strlen(InputLine))
+            InputLine[strlen(InputLine)-1]  = '\0';
+
+        /* LineCount+1 because bexstr starts numbering
+         * at 2 for some reason.                        */
+        fprintf(OutputFile, "\t%lu\t\"", ++LineCount+1);
+        CharCount   += ConvertLine(OutputFile, InputLine);
+        fputs("\"\n", OutputFile);
+        }
+    if(TotalLines != 0)
+        {
+        fprintf(stderr, "Error: string file delivered %lu less lines than delivered\n", TotalLines);
+        exit(EXIT_FAILURE);
+        }
+    return CharCount;
+    }
+
+
+int     main(int argc, char **argv)
+    {
+    FILE    *InputFile, *OutputFile, *CountFile;
+    char    *InputLine = (char *)malloc(MAX_LINE);
+    ULONG   TotalLines, TotalChars;
+
+    if(InputLine == NULL)
+        {
+        fprintf(stderr, "Can't allocate %ul bytes\n", MAX_LINE);
+        exit(EXIT_FAILURE);
+        }
+    InputFile   = OpenFile("ext.str", "r");
+    OutputFile  = OpenFile("ext.rc", "w");
+    CountFile   = OpenFile("extcnt.h", "w");
+    TotalLines  = GetLineCount(InputFile, InputLine);
+    fprintf(stdout, "Processing %lu lines\n", TotalLines);
+    TotalChars  = Convert(InputFile, OutputFile,
+                          InputLine, TotalLines);
+    fprintf(CountFile, "#define WINEXT_LINES (%lu)\n", TotalLines);
+    fprintf(CountFile, "#define WINEXT_CHARS (%lu)\n", TotalChars);
+    fclose(InputFile);
+    fclose(OutputFile);
+    fclose(CountFile);
+    exit(EXIT_SUCCESS);
+    }

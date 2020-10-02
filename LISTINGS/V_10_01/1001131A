@@ -1,0 +1,171 @@
+#include "window.h"
+#include "vstream.h"  // console stream   header
+
+// TC++ 1.0 didn't define _wscroll in conio.h
+#ifndef __BORLANDC__
+extern int _wscroll;
+#endif
+
+// Initialize class variable. Note you can't do this in  the
+// Definition itself.
+win * win::topwin=NULL;
+win * win::lastwin=NULL;
+
+win::win(int x0,int y0,int x1,int y1,unsigned int clr,int mar):
+       region(x0,y0,x1,y1,0)
+   {
+   if (!topwin)  // first window
+      {
+      textattr(7);  // reset screen
+      clrscr();
+      lastwin=this;
+      }
+   else
+      {
+// save  window contents   & cursor
+      topwin->reinit();
+      topwin->oldx=wherex();
+      topwin->oldy=wherey();
+      }
+   margin=mar;
+   color=clr;
+   prev=NULL;
+   if (topwin) topwin->prev=this;
+   next=topwin;
+   topwin=this;
+   window(x0,y0,x1,y1);
+   gotoxy(1,1);
+   textattr(clr);
+   clrscr();
+   }
+
+void win::maketop(void)
+   {
+   win *gpw;
+ // return if already at top
+   if (this==topwin) return;
+// force top window to save
+   topwin->reinit();
+   topwin->oldx=wherex();
+   topwin->oldy=wherey();
+// patch link list
+   if (lastwin==this) lastwin=prev;
+   if (prev) prev->next=next;
+   if (next) next->prev=prev;
+   prev=NULL;
+   topwin->prev=this;
+   next=topwin;
+   topwin=this;
+   settop();
+
+@cplus =    restore();  // Draw  our screen contents
+   }
+
+void win::settop(void)
+   {
+   window(
+      topwin->left+topwin->margin,
+      topwin->top+topwin->margin,
+      topwin->right-topwin->margin,
+      topwin->bot-topwin->margin);
+   textattr(topwin->color);
+   gotoxy(topwin->oldx,topwin->oldy);
+   }
+
+
+
+win::~win()
+   {
+   this->maketop();  // force us on top
+// just  in case  there is a margin
+   window(left,top,right,bot);
+   textattr(7);
+   clrscr();
+   destroy();
+   if (next) next->prev=NULL;
+   topwin=next;
+   if (!topwin)
+      {
+      window(1,1,80,25);
+      clrscr();
+      }
+   else
+      {
+      for (win *i=lastwin;i;i=i->prev)
+         {
+         i->restore();
+         if (i!=topwin) i->reinit();
+         }
+      settop();
+      }
+   }
+
+
+// boxwin methods
+boxwin::boxwin(int x0,int y0,int x1,int   y1,unsigned int   clr,int  boxt) :
+         win(x0-1,y0-1,x1+1,y1+1,clr,1)
+   {
+   draw_box(boxt,1,1,x1-x0+3,y1-y0+3);
+   window(x0,y0,x1,y1);
+   }
+
+// General purpose box drawing function
+// Type  0: single line box
+// Type  1: double line box
+// Other types are easily added
+void draw_box(int type,int x0,int y0,int x1,int y1)
+   {
+   int oldscroll;  // old  value for _wscroll
+   int i;
+   int hline;
+
+@cplus =    int vline;
+   int c1,c2,c3,c4;
+   int xlen;
+   int ylen;
+   if (type<0||type>1) return;  //  change value to   add more types
+   xlen=x1-x0;
+   ylen=y1-y0;
+   if (type==0)
+      {
+// Constants for a "normal" box
+      hline=196;
+      vline=179;
+      c1=218;
+      c2=191;
+      c3=192;
+      c4=217;
+      }
+   else if  (type==1)
+      {
+      hline=205;
+      vline=186;
+      c1=201;
+      c2=187;
+      c3=200;
+      c4=188;
+      }
+   oldscroll=_wscroll;
+   _wscroll=0;
+   gotoxy(x0+1,y0);
+   for (i=1;i<xlen;i++) putch(hline);
+   gotoxy(x0+1,y0+ylen);
+   for (i=1;i<xlen;i++) putch(hline);
+   gotoxy(x0,y0);
+   putch(c1);
+   gotoxy(x0+xlen,y0);
+   putch(c2);
+   gotoxy(x0,ylen+y0);
+   putch(c3);
+   gotoxy(xlen+x0,ylen+y0);
+   putch(c4);
+   for (i=y0;i<ylen;i++)
+      {
+      gotoxy(x0,i+1);
+      putch(vline);
+      gotoxy(xlen+x0,i+1);
+      putch(vline);
+      }
+   _wscroll=oldscroll;
+   }
+

@@ -1,0 +1,154 @@
+#include "dma.h"
+
+//--- External References ----------------
+extern void Dev_Start_Transmission( void );
+extern ULONG pfnDevHlp;  
+extern DMA_INFO DmaInfo;   // in "DMAISR.C"
+
+//--- Local Functions --------------------
+void OS2_Call_During_Init( DMA_INFO * );
+USHORT GetData(  char *, USHORT );
+USHORT PutData(  char *, USHORT );
+
+// This function MUST be called during driver 
+// initialization, NOT from the interrupt 
+// service routine. 
+void OS2_Call_During_Init( DMA_INFO *pDmaInfo )
+{
+#define DEVHLP_VIRT_TO_PHYS   0x16
+   USHORT   HiWord;
+   USHORT   LoWord;
+   char     *pBuf;
+
+   // Use VirtToPhys DevHelp function to determine 
+   // physical address of first byte of driver's
+   // receive buffer.
+   pBuf = pDmaInfo->RxBuf.pStart;
+   _asm
+   {
+      mov   di, pDmaInfo
+      mov   si, pBuf
+      mov   dl, 16h     ; command code for VirtToPhys
+      call  pfnDevHlp   ; function pointer to kernel's 
+                        ; DevHelp entry point
+      mov   HiWord, ax  ; (AX) = high-order 16 bits of 
+                        ; phys addr
+      mov   LoWord, dx  ; (DX) = low-order 16 bits of
+                        ; phys addr
+   }
+   pDmaInfo->RxBuf.PhysAddr = MAKEULONG( LoWord, HiWord );
+   // Use VirtToPhys DevHelp function to determine 
+   // physical address of first byte of driver's
+   // transmit buffer.
+   pBuf = pDmaInfo->TxBuf.pStart;
+   _asm
+   {
+      mov   di, pDmaInfo
+      mov   si, pBuf
+      mov   dl, DEVHLP_VIRT_TO_PHYS                              
+      call  pfnDevHlp   ; function pointer to kernel's 
+                        ; DevHelp entry point
+      mov   HiWord, ax  ; (AX) = high-order 16 bits of 
+                        ; phys addr
+      mov   LoWord, dx  ; (DX) = low-order 16 bits of 
+                        ; phys addr
+   }
+   pDmaInfo->TxBuf.PhysAddr = MAKEULONG( LoWord, HiWord );
+}
+
+USHORT GetData(char *buffer,  //  Appl. data location
+               USHORT length) //  Length to be copied
+{
+   char     *pOut, *pIn;  
+   USHORT   size, lengthx;
+
+   // Derefence pointers for speed in loop.
+   pOut = DmaInfo.RxBuf.pOut;
+   pIn = DmaInfo.RxBuf.pIn;
+   lengthx = 0;
+   // Compute remaining free space in receive buffer
+   size = pIn - pOut;
+   if (size < 0)
+      size += DmaInfo.RxBuf.Size;
+   // If we can't give 'em all they want, 
+   // give 'em all we got
+   if (length > size)
+      length = size;
+   // Copy data in chunks until input data buffer filled
+   while (length)    // buffer length not exhausted
+   {
+      if (pIn > pOut)
+      {
+         size = pIn - pOut;
+         if (size > length)
+            size = length;
+         memcpy( buffer, pOut, size );
+         pOut += size;
+      }
+      else if (pIn < pOut)
+      {
+         size = DmaInfo.RxBuf.pEnd - pOut + 1;
+         if (size > length)
+            size = length;
+         memcpy( buffer, pOut, size );
+         pOut += size;
+         if (pOut > DmaInfo.RxBuf.pEnd)
+            pOut = DmaInfo.RxBuf.pStart;
+      }
+      else     // data in our buffer exhausted
+         break;
+
+      length  -= size;
+      lengthx += size;
+      buffer  += size;
+   }
+   DmaInfo.RxBuf.pOut = pOut;
+   return( lengthx );   // number of bytes actually copied
+}
+
+USHORT PutData(char *buffer,  //  Appl. data location
+               USHORT length) //  Length to be copied
+{
+   char     *pIn, *pOut;
+   USHORT   size, lengthx;
+
+   // Dereference pointers for speed in loop.
+   pIn = DmaInfo.TxBuf.pIn;
+   pOut = DmaInfo.TxBuf.pOut;
+   lengthx = 0;
+   // Compute remaining free space in transmit buffer
+   size = pOut - pIn - 1;
+   if (size < 0)
+      size += DmaInfo.TxBuf.Size;
+   if (length > size)
+      length = size;
+   while (length)
+   {
+      if (pIn < pOut)
+      {
+         size = pOut - pIn - 1;
+         if (size > length)
+            size = length;
+         memcpy( pIn, buffer, size );
+         pIn += size;
+      }
+      else
+      {
+         size = DmaInfo.TxBuf.pEnd - pIn + 1;
+         if (size > length)
+            size = length;
+         memcpy( pIn, buffer, size );
+         pIn += size;
+         if (pIn > DmaInfo.TxBuf.pEnd)
+         pIn = DmaInfo.TxBuf.pStart;
+      }
+      length  -= size;
+      lengthx += size;
+      buffer  += size;
+   }
+   DmaInfo.TxBuf.pIn = pIn;
+   if (lengthx)
+      Dev_StartTransmission();
+   return( lengthx );
+}
+

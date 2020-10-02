@@ -1,0 +1,47 @@
+
+/* Listing 1 */
+/* Copyright 1990 by Gary R. Olhoeft */
+/* written in MicroWay NDP C-386 to run under the Phar Lap extensions to DOS */
+#include <stdio.h>   /* required for file access */
+void setvga();
+void set512();
+void plot_image_32();
+int _pmode;
+
+main(argc, argv)     /* use arguments to get filename containing image */
+int argc;
+char *argv[];
+  {
+  unsigned char imag[737280]; /* enough to hold 512x480x24-bit image */
+  FILE *stream_in;
+  char file_in[80];  
+  int i;
+  if (argc<2)       /* if not enough arguments, show how to execute */
+    {
+      printf("The calling sequence for this program is:\n");
+      printf("\nrun386 plotpxl drive:\\path\\filename.PXL\n\n");
+      printf("It plots *.pxl files in 512x480x32 mode on the Hercules GSC.\n\n");
+      exit();
+    }
+  _pmode=0x8000;             /* binary file access mode */
+  strcpy(file_in,argv[1]);   /* put filename in file_in */
+  if ((stream_in = fopen(file_in,"r")) == NULL) { strcat(file_in,".pxl\0");}
+  if ((stream_in = fopen(file_in,"r")) == NULL)   /* try to open file */
+     {
+       printf("Cannot find File %s\n",file_in);
+       exit(0);
+     }
+  else
+     {
+     printf("Reading Image File %s\n",file_in);
+     i=fread(imag,1,737280,stream_in); /* read whole image 3x512x480 bytes */
+     i=fclose(stream_in);
+     }
+
+  set512();             /* set Hercules Station Card in 512x480x32-bit mode */
+  plot_image_32(&imag); /* send image address and plot image on screen */
+  getch();              /* wait until key is pressed */
+  setvga();             /* return to VGA mode */
+  exit(0);
+  }
+

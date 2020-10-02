@@ -1,0 +1,50 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     ENDPROC.A     End Process
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          void ENDPROC(ret_code)
+;	-----           int ret_code;  /* can be retrieved by the
+;	                                  parent using Function 4dh */
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC ENDPROC_
+
+ENDPROC_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	byte al,[bp+4]	; the return code
+	mov	ah,4ch
+	int	21h
+	jc	ENDPROC_ERROR
+	jmp	ENDPROC_QUIT
+ENDPROC_ERROR:
+	mov	si,[bp+6]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+ENDPROC_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

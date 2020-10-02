@@ -1,0 +1,494 @@
+/**********************************************************
+           File Name: NTFY_BOX.C
+       Expanded Name: Notify Box
+         Description: Library of functions for displaying
+                      a notification box or window.  An
+                      important requirment to use these
+                      functions is too export the window
+                      callback function NotifyBoxProc.
+                      This function name must be added to
+                      the EXPORTS section of the linker
+                      definition file.
+        Program List: 
+Global Function List: NotifyBox
+                      NotifyBoxCreate
+                      NotifyBoxDestroy
+                      NotifyBoxProc
+Static Function List: get_num_notify_text_lines
+    Local Macro List: NOTIFY_BOX_WIDTH
+                      NOTIFY_BOX_MAX_NUM_LINES
+                      NOTIFY_BOX_WND_CLASS_NAME
+         Global Data: 
+         Static Data: g_lpText
+         Portability: MS Windows, Any memory model,
+                      Any windows compatable C Compiler
+**********************************************************/
+
+/* MS Windows */
+#include <windows.h>
+
+/* Own */
+#include <ntfy_box.h>
+
+#define NOTIFY_BOX_WIDTH 40
+#define NOTIFY_BOX_MAX_NUM_LINES 20
+#define NOTIFY_BOX_WND_CLASS_NAME "NotifyWndClassName"
+
+/* Prototype for window proc callback funciton */
+LONG FAR PASCAL NotifyBoxProc( HWND hWnd,
+		unsigned int iMessage, WORD wParam,
+		LONG lParam );
+
+/* Prototypes for static functions */
+static int NEAR get_num_notify_text_lines( LPSTR lpText,
+		int Width );
+
+/* Modual level global variables */
+static LPSTR g_lpText;
+
+/* Multi modual global variables */
+extern HANDLE G_hInstance;
+
+/**********************************************************
+       Name: NotifyBox
+ Parameters: hWndParent - handle of parent window
+             lpText - text to display in notify box
+             lpCaption - caption text for notify box
+     Return: zero if error
+             nonzero if notify box is created or destroyed
+             successfully
+Description: Creates and displays a notfiy box with the
+             specified text and caption.  The notify box
+             is displayed in the center of the parent
+             window.  If a notify box already exists, the
+             previous notify box is destroyed.
+**********************************************************/
+int FAR NotifyBox( HWND hWndParent, LPSTR lpText,
+		LPSTR lpCaption, HANDLE hInstanceParent )
+	{
+
+	int status = TRUE;
+
+	static HWND l_hWndNotify = NULL;
+
+	if ( l_hWndNotify == NULL )
+		{
+
+		l_hWndNotify = NotifyBoxCreate( hWndParent,
+				lpText, lpCaption, hInstanceParent );
+
+		if ( l_hWndNotify == NULL )
+			{
+			status = FALSE;
+			}
+
+		}   /* if l_hWndNotify */
+	else
+		{
+
+		status = NotifyBoxDestroy( l_hWndNotify );
+
+		if ( status == TRUE )
+			{
+			l_hWndNotify = NULL;
+			}
+
+		}   /* else */
+
+	return ( status );
+
+	}   /* function NotifyBox */
+
+
+/**********************************************************
+       Name: NotifyBoxCreate
+ Parameters: hWndParent - handle of parent window
+             lpText - text to display in notify box
+             lpCaption - caption text for notify box
+     Return: handle of notify box window (NULL if error)
+Description: Creates and displays a notfiy box with the
+             specified text and caption.  The notify box
+             is displayed in the center of the parent
+             window.
+**********************************************************/
+HWND FAR NotifyBoxCreate( HWND hWndParent, LPSTR lpText,
+		LPSTR lpCaption, HANDLE hInstanceParent )
+	{
+
+	BOOL NullWndParentFlag = FALSE;
+
+	HDC hDc;
+
+	HWND hWndNotify;
+
+	RECT Rect;
+
+	short int
+		TextHeight,
+		TextWidth,
+		WindowWidth,
+		NumberOfLines,
+		WindowHeight,
+		WindowXPos,
+		WindowYPos;
+
+	TEXTMETRIC TextMetrics;
+
+	WNDCLASS WndClass;
+
+	if ( hWndParent == NULL )
+		{
+
+		/* Check for a valid instance handle */
+		if ( hInstanceParent == NULL )
+			{
+			MessageBox( hWndParent,
+					"Invalid parent instance handle.\n"
+					"Unable to create NotifyBox.",
+					NULL,
+					MB_OK | MB_ICONEXCLAMATION );
+			return ( FALSE );
+			}   /* if hInstanceParent */
+
+		hWndParent = GetDesktopWindow();
+		NullWndParentFlag = TRUE;
+
+		}   /* if hWndParent */
+	else
+		{
+		hInstanceParent =
+				GetWindowWord( hWndParent,
+				GWW_HINSTANCE );
+		}   /* else */
+
+	/* Register the window class
+	** Note registering is no big
+	** deal - RegisterClass()
+	** just fails. */
+	if ( NullWndParentFlag == TRUE )
+		{
+		WndClass.style = 0;
+		}
+	else
+		{
+		WndClass.style = CS_PARENTDC;
+		}
+	WndClass.lpfnWndProc  = NotifyBoxProc;
+	WndClass.cbClsExtra = 0;
+	WndClass.cbWndExtra = 0;
+	WndClass.hInstance = hInstanceParent;
+	WndClass.hIcon = LoadIcon( NULL, IDI_APPLICATION );
+	WndClass.hCursor = LoadCursor( NULL, IDC_ARROW );
+	WndClass.hbrBackground = COLOR_WINDOW + 1;
+	WndClass.lpszMenuName = NULL;
+	WndClass.lpszClassName = NOTIFY_BOX_WND_CLASS_NAME;
+	RegisterClass( &WndClass );
+
+	/* Calculate the required size of the window */
+	if ( hWndParent == NULL )
+		{
+		/* If there is no parent window use the windows
+		** desktop */
+		hWndParent = GetDesktopWindow();
+		}
+	hDc = GetDC( hWndParent );
+	GetTextMetrics( hDc, &TextMetrics );
+	TextHeight = TextMetrics.tmHeight +
+			TextMetrics.tmExternalLeading;
+	TextWidth = TextMetrics.tmAveCharWidth;
+	WindowWidth = TextWidth * ( NOTIFY_BOX_WIDTH + 2 );
+	WindowWidth += 2 * GetSystemMetrics( SM_CXBORDER );
+	NumberOfLines = get_num_notify_text_lines( lpText,
+			NOTIFY_BOX_WIDTH );
+	WindowHeight = ( NumberOfLines + 2 ) * TextHeight;
+	WindowHeight += GetSystemMetrics( SM_CYCAPTION ) +
+			2 * GetSystemMetrics( SM_CYBORDER );
+	ReleaseDC( hWndParent, hDc );
+	
+	/* Calculate the location of the window */
+	GetWindowRect( hWndParent, &Rect );
+
+	/* Calculate X position */
+	WindowXPos = Rect.left +
+			( Rect.right - Rect.left ) / 2;
+	WindowXPos -= WindowWidth / 2;
+	if ( WindowXPos < 0 )
+		{
+		WindowXPos = 0;
+		}
+
+	/* Calculate Y position */
+	WindowYPos = Rect.top +
+			( Rect.bottom - Rect.top ) / 2;
+	WindowYPos -= WindowHeight / 2;
+	if ( WindowYPos < 0 )
+		{
+		WindowYPos = 0;
+		}
+
+	if ( NullWndParentFlag == TRUE )
+		{
+		hWndParent = NULL;
+		}
+
+	/* Create the window */
+	hWndNotify = CreateWindow(
+			NOTIFY_BOX_WND_CLASS_NAME,
+			lpCaption,
+			WS_OVERLAPPED | WS_BORDER,
+			WindowXPos,
+			WindowYPos,
+			WindowWidth,
+			WindowHeight,
+			hWndParent,
+			NULL,
+			hInstanceParent,
+			NULL );
+
+	if ( hWndNotify != NULL )
+		{
+
+		hDc = GetDC( hWndNotify );
+
+		/* Set the colors of the text. */
+		SetTextColor( hDc,
+				GetSysColor( COLOR_WINDOWTEXT ) );
+		SetBkColor( hDc,
+				GetSysColor( COLOR_WINDOW ) );
+
+		/* Copy text pointer into static data
+		** to pass it into the window proc */
+		g_lpText = lpText;
+
+		/* Display and paint the window */
+		ShowWindow( hWndNotify, SW_SHOW );
+		UpdateWindow( hWndNotify );
+
+		ReleaseDC( hWndNotify, hDc );
+
+		}   /* if hWndNotify */
+
+	return ( hWndNotify );
+
+	}   /* function NotifyBoxCreate */
+
+
+/**********************************************************
+       Name: NotifyBoxDestroy
+ Parameters: hWndNotify - handle of notify box window to
+             destroy
+     Return: nonzero - notify box window was NULL or
+             successfully destroyed
+             zero - notify box was not destroyed
+Description: Removes a notify box window from the display.
+**********************************************************/
+BOOL FAR NotifyBoxDestroy( HWND hWndNotify )
+	{
+
+	if ( hWndNotify != NULL )
+		{
+		return ( DestroyWindow( hWndNotify ) );
+		}
+
+	return ( TRUE );
+
+	}    /* function NotifyBoxDestroy */
+
+
+/**********************************************************
+       Name: NotfifyBoxProc
+ Parameters: hWndNotify 
+     Return: 
+Description: Windows callback function.
+**********************************************************/
+LONG FAR PASCAL NotifyBoxProc( HWND hWnd,
+		unsigned int iMessage, WORD wParam,
+		LONG lParam )
+	{
+	
+	if ( iMessage == WM_PAINT )
+		{
+
+		BOOL FinishedFlag = FALSE;
+
+		int
+			Char,
+			Line;
+
+		char Buffer[NOTIFY_BOX_WIDTH + 1];
+
+		LPSTR lpCurrent;
+
+		PAINTSTRUCT PaintStruct;
+
+		TEXTMETRIC TextMetrics;
+
+		lpCurrent = g_lpText;
+
+		BeginPaint( hWnd, &PaintStruct );
+
+		GetTextMetrics( PaintStruct.hdc, &TextMetrics );
+
+		/* Set the colors of the text to defaults. */
+		SetTextColor( PaintStruct.hdc,
+				GetSysColor( COLOR_WINDOWTEXT ) );
+		SetBkColor( PaintStruct.hdc,
+				GetSysColor( COLOR_WINDOW ) );
+
+		/* Print out the text line by line */
+		for ( Line = 0; Line < NOTIFY_BOX_MAX_NUM_LINES;
+				Line++ )
+			{
+
+			for ( Char = 0; Char < NOTIFY_BOX_WIDTH;
+					Char++ )
+				{
+
+				if ( ( lpCurrent[Char] == '\n' ) ||
+						( lpCurrent[Char] == '\0' ) )
+					{
+					Buffer[Char] = '\0';
+					if ( lpCurrent[Char] == '\0' )
+						{
+						/* Hit end of string */
+						FinishedFlag = TRUE;
+						}
+					lpCurrent = &lpCurrent[Char + 1];
+					break;
+					}
+
+				Buffer[Char] = lpCurrent[Char];
+
+				}   /* for Char */
+
+			if ( Char == NOTIFY_BOX_WIDTH )
+				{
+				/* Do word wrap */
+				for ( ; Char >= 0; Char-- )
+					{
+					if ( lpCurrent[Char] == ' ' )
+						{
+						Buffer[Char] = '\0';
+						lpCurrent =
+								&lpCurrent[Char + 1];
+						break;
+						}   /* if lpCurrent */
+					}   /* for */
+				}   /* if Char */
+
+			if ( Char == -1 )
+				{
+				/* Failure could not word wrap */
+				return ( 0L );
+				}
+			else
+				{
+
+				int Row;
+
+				/* Print out the text */
+
+				Row = ( Line + 1 ) *
+						( TextMetrics.tmHeight +
+						TextMetrics.tmExternalLeading );
+
+				TextOut( PaintStruct.hdc,
+						2 * TextMetrics.tmAveCharWidth,
+						Row, Buffer,
+						(int)lstrlen( Buffer ) );
+
+				}   /* else */
+
+			if ( FinishedFlag == TRUE )
+				{
+				break;
+				}
+
+			}   /* for Line */
+
+		return ( 0L );
+
+		}   /* if iMessage */
+
+	return ( DefWindowProc( hWnd, iMessage, wParam,
+			lParam ) );
+
+	}   /* function NotifyBoxProc */
+
+
+/**********************************************************
+       Name: get_num_notify_text_lines
+ Parameters: lpText - text to process
+             Width - maximum number of characters in a line
+     Return: The number of lines or -1 if error.
+Description: Does simple word wrap of text and calculates
+             the number of lines that fit in a window of
+             specified width in characters.
+**********************************************************/
+static int NEAR get_num_notify_text_lines( LPSTR lpText,
+		int Width )
+	{
+
+	LPSTR lpCurrent;
+
+	int
+		Char,
+		Line;
+		
+	if ( ( lpText == NULL ) || ( *lpText == '\0' ) )
+		{
+		/* Bad input string */
+		return ( 0 );
+		}
+
+	lpCurrent = lpText;
+
+	for ( Line = 0; Line < NOTIFY_BOX_MAX_NUM_LINES;
+			Line++ )
+		{
+
+		for ( Char = 0; Char < Width; Char++ )
+			{
+
+			if ( lpCurrent[Char] == '\0' )
+				{
+				/* Hit the end of the string */
+				return ( Line + 1 );
+				}
+
+			if ( lpCurrent[Char] == '\n' )
+				{
+				/* Hit a new line */
+				lpCurrent = &lpCurrent[Char + 1];
+				break;
+				}
+
+			}   /* for Char */
+
+		if ( Char == Width )
+			{
+
+			/* Exceeded the maximum width
+			** search backwards for a space. */
+			for ( ; Char >= 0; Char-- )
+				{
+				if ( lpCurrent[Char] == ' ' )
+					{
+					lpCurrent = &lpCurrent[Char + 1];
+					break;
+					}
+				}
+
+			if ( Char == -1 )
+				{
+				/* Failure - no space found */
+				return ( -1 );
+				}
+
+			}   /* if Char */
+
+		}   /* for Line */
+
+	return ( Line );
+
+	}   /* function get_num_notify_text_lines */

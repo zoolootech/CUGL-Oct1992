@@ -1,0 +1,197 @@
+#define  MAIN
+#include <dos.h>
+#include <stdlib.h>
+#include <malloc.h>
+/*
+******************************************************************
+Title:      CLIP.C
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /AL /Zi clip.c
+******************************************************************
+*/
+#define GET_WINOLDAP_VERSION        0x1700
+#define OPEN_CLIPBOARD              0x1701
+#define EMPTY_CLIPBOARD             0x1702
+#define SET_CLIPBOARD_DATA          0x1703
+#define GET_CLIPBOARD_DATA_SIZE     0x1704
+#define GET_CLIPBOARD_DATA          0x1705
+#define CLOSE_CLIPBOARD             0x1708
+#define COMPACT_CLIPBOARD           0x1709
+
+#define TEXT_FORMAT                 1
+#define BITMAP_FORMAT               2
+#define METAFILE_FORMAT             3
+#define SYLK_FORMAT                 4
+#define DIF_FORMAT                  5
+#define TIFF_FORMAT                 6
+#define OEM_TEXT                    7
+    
+int ErrorExit(char *message)
+{
+    printf(message);
+    exit(-1);
+}
+                                
+int main(int argc, char *argv[])
+{
+    long clipboardSize;
+    char far *clipboardBuffer;
+    union REGS regs;
+    struct SREGS sregs;
+
+    /*****************************************************/
+
+    regs.x.ax = GET_WINOLDAP_VERSION;
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if (regs.x.ax == GET_WINOLDAP_VERSION)  
+        ErrorExit("Windows Not Loaded or Clipboard Not Supported.\n");
+
+    /*****************************************************/
+
+    regs.x.ax = OPEN_CLIPBOARD;
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if (regs.x.ax == 0)
+        ErrorExit("Clipboard in Use.\n");
+
+    /*****************************************************/
+
+    regs.x.ax = GET_CLIPBOARD_DATA_SIZE;            /* AX = Function No. */
+    regs.x.dx = TEXT_FORMAT;                        /* DX = Data Format */
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if ((clipboardSize = ((long) regs.x.dx << 4L) + regs.x.ax) == 0L)
+    {
+        if ((clipboardBuffer = malloc(1024)))
+        {
+            strcpy(clipboardBuffer, "This is a test of the Clipboard!!!");
+
+            regs.x.ax = SET_CLIPBOARD_DATA;         /* AX = Function No. */
+            regs.x.dx = TEXT_FORMAT;                /* DX = Data Format */
+            sregs.es  = FP_SEG(clipboardBuffer);    /* ES:BX -> Clip Buffer */
+            regs.x.bx = FP_OFF(clipboardBuffer);
+            regs.x.si = 0;                          /* SI:CX = (long) Size */
+            regs.x.cx = strlen(clipboardBuffer);
+            int86x(0x2F, &regs, &regs, &sregs);
+        }
+    }
+    else
+    {
+        clipboardBuffer = malloc((int) clipboardSize);
+
+        regs.x.ax = GET_CLIPBOARD_DATA;             /* AX = Function No. */
+        regs.x.dx = TEXT_FORMAT;                    /* DX = Data Format */ 
+        sregs.es  = FP_SEG(clipboardBuffer);        /* ES:BX -> Clip Buffer */
+        regs.x.bx = FP_OFF(clipboardBuffer);
+        int86x(0x2F, &regs, &regs, &sregs);
+
+        if (regs.x.ax != 0)                         /* Successful? */
+            printf("Clipboard Contains [%s]\n", clipboardBuffer);
+    }
+
+    regs.x.ax = CLOSE_CLIPBOARD;                    /* AX = Function No. */
+    int86x(0x2F, &regs, &regs, &sregs);
+    free(clipboardBuffer);                          /* Clean Up */
+}
+#define  MAIN
+#include <dos.h>
+#include <stdlib.h>
+#include <malloc.h>
+/*
+******************************************************************
+Title:      CLIP.C
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /AL /Zi clip.c
+******************************************************************
+*/
+#define GET_WINOLDAP_VERSION        0x1700
+#define OPEN_CLIPBOARD              0x1701
+#define EMPTY_CLIPBOARD             0x1702
+#define SET_CLIPBOARD_DATA          0x1703
+#define GET_CLIPBOARD_DATA_SIZE     0x1704
+#define GET_CLIPBOARD_DATA          0x1705
+#define CLOSE_CLIPBOARD             0x1708
+#define COMPACT_CLIPBOARD           0x1709
+
+#define TEXT_FORMAT                 1
+#define BITMAP_FORMAT               2
+#define METAFILE_FORMAT             3
+#define SYLK_FORMAT                 4
+#define DIF_FORMAT                  5
+#define TIFF_FORMAT                 6
+#define OEM_TEXT                    7
+    
+int ErrorExit(char *message)
+{
+    printf(message);
+    exit(-1);
+}
+                                
+int main(int argc, char *argv[])
+{
+    long clipboardSize;
+    char far *clipboardBuffer;
+    union REGS regs;
+    struct SREGS sregs;
+
+    /*****************************************************/
+
+    regs.x.ax = GET_WINOLDAP_VERSION;
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if (regs.x.ax == GET_WINOLDAP_VERSION)  
+        ErrorExit("Windows Not Loaded or Clipboard Not Supported.\n");
+
+    /*****************************************************/
+
+    regs.x.ax = OPEN_CLIPBOARD;
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if (regs.x.ax == 0)
+        ErrorExit("Clipboard in Use.\n");
+
+    /*****************************************************/
+
+    regs.x.ax = GET_CLIPBOARD_DATA_SIZE;            /* AX = Function No. */
+    regs.x.dx = TEXT_FORMAT;                        /* DX = Data Format */
+    int86x(0x2F, &regs, &regs, &sregs);
+
+    if ((clipboardSize = ((long) regs.x.dx << 4L) + regs.x.ax) == 0L)
+    {
+        if ((clipboardBuffer = malloc(1024)))
+        {
+            strcpy(clipboardBuffer, "This is a test of the Clipboard!!!");
+
+            regs.x.ax = SET_CLIPBOARD_DATA;         /* AX = Function No. */
+            regs.x.dx = TEXT_FORMAT;                /* DX = Data Format */
+            sregs.es  = FP_SEG(clipboardBuffer);    /* ES:BX -> Clip Buffer */
+            regs.x.bx = FP_OFF(clipboardBuffer);
+            regs.x.si = 0;                          /* SI:CX = (long) Size */
+            regs.x.cx = strlen(clipboardBuffer);
+            int86x(0x2F, &regs, &regs, &sregs);
+        }
+    }
+    else
+    {
+        clipboardBuffer = malloc((int) clipboardSize);
+
+        regs.x.ax = GET_CLIPBOARD_DATA;             /* AX = Function No. */
+        regs.x.dx = TEXT_FORMAT;                    /* DX = Data Format */ 
+        sregs.es  = FP_SEG(clipboardBuffer);        /* ES:BX -> Clip Buffer */
+        regs.x.bx = FP_OFF(clipboardBuffer);
+        int86x(0x2F, &regs, &regs, &sregs);
+
+        if (regs.x.ax != 0)                         /* Successful? */
+            printf("Clipboard Contains [%s]\n", clipboardBuffer);
+    }
+
+    regs.x.ax = CLOSE_CLIPBOARD;                    /* AX = Function No. */
+    int86x(0x2F, &regs, &regs, &sregs);
+    free(clipboardBuffer);                          /* Clean Up */
+}
+

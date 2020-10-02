@@ -1,0 +1,244 @@
+//-----------------------------------------------------------------
+// Partial implementation of cash-register meal pricing program
+
+#include <malloc.h>
+#include <stream.h>
+#include <string.h>
+
+#define FI_START_TEXT "Item"
+#define TAPE_FORMAT   "%-12s %6.2f\n"
+
+//-----------------------------------------------------------------
+//  Food_item class -- one needed for each type of item sold
+//                     ( salad, steak, pie, ... )
+
+class Food_item {
+  public:
+      Food_item()
+               { full_price = 0.0 ;
+                 factor = 1.0 ;
+                 text = malloc( 1 + strlen( FI_START_TEXT ) ) ;
+                 (void) strcpy( text, FI_START_TEXT ) ;
+               }
+      ~Food_item()               { (void) free( text ) ; }
+      double price()             { return( full_price * factor ) ; }
+      double get_full_price()    { return full_price ; }
+      double get_factor()        { return factor ; }
+      char   *get_text()         { return text ; }
+      int    set_full_price( double new_full_price ) ;
+      int    set_factor( double new_factor ) ;
+      int    set_text( char *new_text ) ;
+  private:
+      double full_price ;  // >= 0
+      double factor ;      // 0 (free) to 1 (full price)
+      char   *text ;       // never empty
+} ;
+
+
+int Food_item::set_full_price( double new_full_price )
+{
+    if ( new_full_price < 0.0 ) return( 1 ) ;
+    full_price = new_full_price ;
+    return( 0 ) ;
+}
+
+
+int Food_item::set_factor( double new_factor )
+{
+    if (   new_factor < 0.0
+        || new_factor > 1.0 ) return( 1 ) ;
+    factor = new_factor ;
+    return( 0 ) ;
+}
+
+
+int Food_item::set_text( char *new_text )
+{
+    if ( !new_text ) return( 1 ) ;
+    (void) free( text ) ;
+    text = malloc( 1 + strlen( new_text ) ) ;
+    (void) strcpy( text, new_text ) ;
+    return( 0 ) ;
+}
+
+
+//-----------------------------------------------------------------
+//  Food_list_elem class -- container for Food_item pointers
+
+class Food_list_elem {
+  public:
+      Food_list_elem(  Food_item         *item_to_add
+                     , Food_list_elem    *next_list_elem
+                    )
+                           { item = item_to_add ;
+                             next = next_list_elem ;
+                           }
+      ~Food_list_elem()    { if ( next ) delete( next ) ; }
+      Food_item         *item ;
+      Food_list_elem    *next ;
+} ;
+
+//-----------------------------------------------------------------
+//  Food_list class -- for grouping Food_list_elem
+
+class Food_list {
+  public:
+      Food_list()        { list_start = (Food_list_elem *)0 ; }
+      ~Food_list()       { if ( list_start ) delete( list_start ) ; }
+      int add_item( Food_item *new_item )
+                         { return( add( new_item, 0 ) ) ; }
+      int add_item_once( Food_item *new_item )
+                         { return( add( new_item, 1 ) ) ; }
+      Food_item *find_item_by_name( char *name ) ;
+      void tally() ;
+  private:
+      Food_list_elem    *list_start ;
+      int               add( Food_item *new_item, int only_once ) ;
+} ;
+
+
+int Food_list::add(  Food_item *new_item
+                   , int       only_once )
+{
+    Food_list_elem    *entry ;
+
+    if ( !new_item ) return( 1 ) ;
+
+    if ( only_once ) {
+        entry = list_start ;
+        while ( entry ) {
+            if ( entry->item == new_item ) return( 1 ) ;
+            entry = entry->next ;
+        }
+    }
+
+    list_start = new Food_list_elem( new_item, list_start ) ;
+    return( 0 ) ;
+}
+
+
+Food_item* Food_list::find_item_by_name( char *name )
+{
+    Food_list_elem    *entry ;
+
+    entry = list_start ;
+    while ( entry ) {
+        if ( !strcmp( name, entry->item->get_text() ) )
+            return( entry->item ) ;
+        entry = entry->next ;
+    }
+    return( (Food_item *)0 ) ;
+}
+
+
+void Food_list::tally()
+{
+    Food_list_elem    *entry ;
+    double            total_price = 0.0 ;
+   
+    entry = list_start ;
+    while ( entry ) {
+        total_price += entry->item->price() ;
+        cout << form( TAPE_FORMAT
+                     , entry->item->get_text()
+                     , entry->item->price()
+                    ) ;
+        entry = entry->next ;
+    }
+    cout << form( TAPE_FORMAT, "Total", total_price ) ;
+    cout << "\n\n" ;
+}
+
+//-----------------------------------------------------------------
+//  Main program:  Create food items; add to menu; process orders
+
+main()
+{
+    Food_item    *new_item ;
+    Food_list    menu ;
+    Food_list    *order ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Steak" ) ;
+    (void) new_item->set_full_price( 7.50 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Fish" ) ;
+    (void) new_item->set_full_price( 4.00 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Soup" ) ;
+    (void) new_item->set_full_price( 1.75 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Salad" ) ;
+    (void) new_item->set_full_price( 2.25 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Pie" ) ;
+    (void) new_item->set_full_price( 1.50 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Cake" ) ;
+    (void) new_item->set_full_price( 1.00 ) ;
+    (void) new_item->set_factor( 0.75 ) ;
+    menu.add_item_once( new_item ) ;
+
+    new_item = new Food_item ;
+    (void) new_item->set_text( "Coffee" ) ;
+    (void) new_item->set_full_price( 0.50 ) ;
+    menu.add_item_once( new_item ) ;
+
+    //---------------------------------------
+    //  First order
+
+    order = new Food_list ;
+    order->add_item( menu.find_item_by_name( "Salad" ) ) ;
+    order->add_item( menu.find_item_by_name( "Steak" ) ) ;
+    order->add_item( menu.find_item_by_name( "Pie" ) ) ;
+    order->tally() ;
+    delete( order ) ;
+
+    //---------------------------------------
+    //  Second order
+
+    order = new Food_list ;
+    order->add_item( menu.find_item_by_name( "Soup" ) ) ;
+    order->add_item( menu.find_item_by_name( "Fish" ) ) ;
+    order->tally() ;
+    delete( order ) ;
+
+    //---------------------------------------
+    //  Third order
+
+    order = new Food_list ;
+    order->add_item( menu.find_item_by_name( "Cake" ) ) ;
+    order->add_item( menu.find_item_by_name( "Coffee" ) ) ;
+    order->tally() ;
+    delete( order ) ;
+
+}
+
+//-----------------------------------------------------------------
+//  Sample output below
+
+Pie            1.50
+Steak          7.50
+Salad          2.25
+Total         11.25
+
+
+Fish           4.00
+Soup           1.75
+Total          5.75
+
+
+Coffee         0.50
+Cake           0.75
+Total          1.25
+

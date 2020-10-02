@@ -1,0 +1,102 @@
+#
+# makefile - This is a sample makefile for building the DB library and
+# (turbo)    the test programs. It is to be used with a Unix like MAKE
+#	     utility.  You will need to read through the file and make
+#	     changes needed for your compiler.
+#
+#	     (1) Select desired memory model for 80xxx machines.
+#
+#	     (2) Define the compiler 
+#			MSC     - Microsoft C
+#			TURBO   - Turbo C
+#			SYSV    - AT&T 3B1 
+#			ULTRIX  - DEC Ultrix-32 
+#
+#	     (3) Define ANSI if your compiler supports the ANSI
+#	         function prototypes
+#
+#	     (4) Decide which modules you are going to use. DB_MAIN.C
+#	         has conditional code for each of the file types.
+#		 You can thus built a library which supports only the
+#		 file types you intend to use.
+#			ALL     - All file types
+#			SEQ     - Sequential
+#			RAN     - Random
+#			IDX     - Index
+#			VAR     - Varaible
+
+
+CCFLAGS=-ms -c -DTURBO -DANSI
+CC=tcc
+LBR=/tc/tlibr
+LINK=tcc
+
+all: lib tests
+
+lib: libdb.lib
+
+libdb.lib: db_main.obj db_seq.obj db_ran.obj db_idx.obj db_var.obj \
+	   fname.obj sort.obj db_dict.obj
+	$(LBR) libdb-+db_main-+db_seq-+db_ran-+db_idx-+db_var-+fname-+sort-+db_dict
+
+db_main.obj: db_main.c db.h dblib.h
+	$(CC) $(CCFLAGS) -DALL  db_main.c
+
+db_seq.obj:  db_seq.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_seq.c
+
+db_ran.obj: db_ran.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_ran.c
+
+db_idx.obj: db_idx.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_idx.c
+
+db_var.obj: db_var.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_var.c
+
+db_dict.obj: db_dict.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_dict.c
+
+fname.obj: fname.c
+	$(CC) $(CCFLAGS) fname.c
+
+sort.obj: sort.c dblib.h
+	$(CC) $(CCFLAGS) sort.c
+
+tests: stest.exe rtest.exe itest.exe vtest.exe sortest.exe dtest.exe
+
+stest.exe: stest.obj libdb.lib 
+	$(LINK) stest.obj libdb.lib 
+
+rtest.exe: rtest.obj libdb.lib 
+	$(LINK) rtest.obj libdb.lib 
+
+itest.exe: itest.obj libdb.lib 
+	$(LINK) itest.obj libdb.lib 
+
+vtest.exe: vtest.obj libdb.lib 
+	$(LINK) vtest.obj libdb.lib 
+
+sortest.exe: sortest.obj libdb.lib
+	$(LINK) sortest.obj libdb.lib
+
+dtest.exe: dtest.obj libdb.lib
+	$(LINK) dtest.obj libdb.lib
+
+stest.obj: stest.c db.h
+	$(CC) $(CCFLAGS) stest.c
+
+rtest.obj: rtest.c db.h
+	$(CC) $(CCFLAGS) rtest.c
+
+itest.obj: itest.c db.h
+	$(CC) $(CCFLAGS) itest.c
+
+vtest.obj: vtest.c db.h
+	$(CC) $(CCFLAGS) vtest.c
+
+sortest.obj: sortest.c
+	$(CC) $(CCFLAGS) sortest.c
+
+dtest.obj: dtest.c db.h
+	$(CC) $(CCFLAGS) dtest.c

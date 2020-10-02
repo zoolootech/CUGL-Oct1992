@@ -1,0 +1,163 @@
+;
+;	cpmio(fn,unit)
+;
+;	F. A. Scacchitti 9/4/84
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-character pointer in I/O structure
+UNUSED	EQU	2	;offset	to unused-positions-count in I/O structure
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;	File i/o storage varibles found in ulink()
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+;
+;	Characteristics variable storage found in ulink()	
+;
+EXTRN	ZZSVCH
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+;
+EXTRN	CPMDISK
+;
+;	Default disk I/O buffer
+;
+EXTRN	ZZBUF
+;
+CPMIO::
+	POP	B
+	POP	D
+	POP	H
+	SHLD	ZZFN
+	XCHG
+	SHLD	ZZUNIT
+	PUSH	D
+	PUSH	H
+	PUSH	B
+	LHLD	ZZUNIT			; cpmdisk(*unit);
+	MOV	L,M
+	MVI	H,0
+	PUSH	H
+	CALL	CPMDISK
+	POP	H
+	LHLD	ZZUNIT			; ZZIP = unit+FCBSIZE;
+	LXI	D,FCBSIZE		; cpm(DMA,&ZZIP[BUFFER]);
+	DAD	D
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	ZZNUBU		;# SAVE TO UPGRADE DURING LOOPING
+	XCHG
+	MVI	C,DMA
+	CALL	CBDOS		; (mod fas)
+	LHLD	ZZFN			; t = cpm(ZZFN,unit);
+	MOV	C,L
+	MVI	A,8		;# READ/WRITE UP TO 8 SECTORS
+	STA	ZZMXSC		;# SAVE IT
+	LHLD	ZZUNIT
+	XCHG
+IOLOOP:	PUSH	H		;# NEW CONSTRUCT TO ACCOMODATE 1K BUFFERS
+	PUSH	D		;# SAVE IT ALL FOR REPEAT PERFORMANCE
+	PUSH	B
+;
+	PUSH	H		;# DON'T WRITE BLANKS
+	MOV	A,C
+	CPI	READ
+	POP	H
+	JZ	NOWRIT
+	PUSH	H
+	LHLD	ZZNUBU
+	MOV	A,M
+	POP	H
+	CPI	1AH		;# END OF FILE CHAR ?
+	JZ	IOEXIT
+;
+NOWRIT:
+	CALL	CBDOS		;# READ/WRITE A SECTOR
+	PUSH	PSW
+	CALL	CCSXT##
+	SHLD	ZZT
+	POP	PSW
+	ORA	A		;# CHECK FOR LAST SECTOR
+	JNZ	IOEXIT		;# IF LAST GET OUT OF HERE
+	LDA	ZZMXSC
+	DCR	A		;# CHECK FOR 8 SECTORS DONE
+	JZ	IOEXIT
+	STA	ZZMXSC
+	LHLD	ZZNUBU		;# GET BUFFER ADDRESS
+	LXI	D,128
+	DAD	D		;# COMPUTE NEW BUFFER ADDRESS
+	SHLD	ZZNUBU		;# SAVE TIL NEXT TIME
+	XCHG
+	MVI	C,DMA
+	CALL	CBDOS		;# SET THE NEW BUFFER
+	POP	B
+	POP	D
+	POP	H
+	JMP	IOLOOP
+IOEXIT:	POP	B		;# CLEAN UP
+	POP	D
+	POP	H
+	MVI	C,DMA			; cpm(DMA,ZZBUF);
+	LXI	D,ZZBUF
+	CALL	CBDOS		; (mod fas)
+	LHLD	ZZT			; if(t~=0) return(-1);
+	MOV	A,H			; else	   return(0);
+	ORA	L
+	JNZ	CPMIF1
+	LXI	H,0
+	JMP	CPMIF2
+CPMIF1:
+	LXI	H,-1
+CPMIF2:
+	RET
+;
+	END
+
+

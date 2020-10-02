@@ -1,0 +1,332 @@
+;--------------------------------------------------------------------------
+; 	d o s . m a c
+;       -------------
+;	Macro file to define some system constants (like memory-model).
+;
+;	release history
+;	---------------
+;	Jun, 14. 1987	First version written.
+;
+;	Written by 	Rainer Gerhards
+;			Petronellastr. 6
+;			D-5112 Baesweiler
+;			Phone (49) 2401 - 1601
+;--------------------------------------------------------------------------
+
+;
+;	Define Memory-model to use
+;	--------------------------
+;	Equate the memory model to use to 1, all others to 0.
+;
+S_MODEL	equ	1
+D_MODEL	equ	0
+P_MODEL	equ	0
+L_MODEL	equ	0
+
+;
+;	Define C-compiler to use
+;	------------------------
+;	Equate the label, that describes your C-compiler to his current
+;	version (major version number * 10 + 1st digit of minor version
+;	number). All other lables must be equated to 0.
+;	Currently only the below listed compilers are supported!
+;
+LC	equ	0			; Lattice C
+DLC	equ	0			; Dataligth C
+MSC	equ	0			; Microsoft C
+TC	equ	1			; Borland Turbo C
+
+;
+;	----------------------------------------------------------------------
+;	End of configurable parameters.
+;	----------------------------------------------------------------------
+;	The following macros and equs are internal to the graphics library and
+;	shouldn't be modified by the user.
+;	They are subject to change without notice!
+;	----------------------------------------------------------------------
+;
+
+VERSION	equ	20			; graphic library version
+
+	if1
+	%out	Graphlib Version 2.0, written by Rainer Gerhards.
+	%out
+	endif
+;
+;	compiler and memory model cross-check
+;
+	if1
+	ife	S_MODEL or P_MODEL or D_MODEL or L_MODEL
+	  %out	Error: no memory-model specified!
+	endif
+
+	if	S_MODEL
+	  if	P_MODEL or D_MODEL or L_MODEL
+	   %out	Error: multiple memory models can't be selected in one pass!
+	  endif
+	  %out	Info: S model selected.
+	endif
+
+	if	D_MODEL
+	  if	S_MODEL or P_MODEL or L_MODEL
+	   %out	Error: multiple memory models can't be selected in one pass!
+	  endif
+	  %out	Info: D model selected.
+	endif
+
+	if	P_MODEL
+	  if	S_MODEL or D_MODEL or L_MODEL
+	   %out	Error: multiple memory models can't be selected in one pass!
+	  endif
+	  %out	Info: P model selected.
+	endif
+
+	if	L_MODEL
+	  if	S_MODEL or D_MODEL or P_MODEL
+	   %out	Error: multiple memory models can't be selected in one pass!
+	  endif
+	  %out	Info: L model selected.
+	endif
+
+	ife	DLC or LC or MSC or TC
+	  %out	Error: no C-compiler specified!
+	endif
+
+	if	LC
+	  if	DLC or MSC or TC
+	   %out	Error: multiple compilers aren't supported in one pass!
+	  endif
+	  %out	Info: Lattice C compiler selected.
+	endif
+
+	if	DLC
+	  if	LC or MSC or TC
+	   %out	Error: multiple compilers aren't supported in one pass!
+	  endif
+	  %out	Info: Dataligth C compiler selected.
+	endif
+
+	if	MSC
+	  if	LC or DLC or TC
+	   %out	Error: multiple compilers aren't supported in one pass!
+	  endif
+	  %out	Info:    Microsoft C compiler selected.
+	  %out	Warning: MSC is currently not implemented!
+	endif
+
+	if	TC
+	  if	LC or DLC or MSC
+	   %out	Error: multiple compilers aren't supported in one pass!
+	  endif
+	  %out	Info: Borland's Turbo C compiler selected.
+	endif
+
+	endif	; if1
+;
+;	define macros and system-constants
+;
+
+	if	P_MODEL or L_MODEL
+LPROG	equ	1
+	else
+LPROG	equ	0
+	endif
+
+	if	D_MODEL or L_MODEL
+LDATA	equ	1
+	else
+LDATA	equ	0
+	endif
+
+SETX	macro
+	if	LPROG
+X	equ	6
+	else
+X	equ	4
+	endif
+	endm
+
+;
+;	begin/end Data segment
+;
+
+	if	DLC or LC
+
+DSEG	macro	
+DGROUP	group	DATA
+DATA	segment word public 'DATA'
+	assume	DS:DGROUP
+	endm
+
+ENDDS	macro
+DATA	ends
+	endm
+
+	endif	; if DLC or LC
+
+	if	MSC or TC
+
+DSEG	macro	
+_data	segment word public 'data'
+	assume	DS:_data
+	endm
+
+ENDDS	macro
+_data	ends
+	endm
+
+	endif	; if MSC or TC
+
+;
+;	begin/end code segment
+;
+
+	if	DLC or LC
+
+	if	S_MODEL
+PSEG	macro
+PGROUP	group	PROG
+PROG	segment	byte public 'PROG'
+	assume	CS:PGROUP
+	endm
+ENDPS	macro
+PROG	ends
+	endm
+	endif
+
+	if	D_MODEL
+PSEG	macro
+CGROUP	group	CODE
+CODE	segment	byte public 'CODE'
+	assume	CS:CGROUP
+	endm
+ENDPS	macro
+CODE	ends
+	endm
+	endif
+
+	if	P_MODEL
+PSEG	macro
+_CODE	segment	byte public 'CODE'
+	assume  CS:_CODE
+	endm
+ENDPS	macro
+_CODE	ends
+	endm
+	endif
+
+	if	L_MODEL
+PSEG	macro
+_PROG	segment	byte public 'PROG'
+	assume	CS:_PROG
+	endm
+ENDPS	macro
+_PROG	ends
+	endm
+	endif
+
+	endif	; if DLC or LC
+
+	if	MSC or TC
+
+	if	S_MODEL
+PSEG	macro
+_TEXT	segment	byte public 'CODE'
+	assume	CS:_TEXT
+	endm
+ENDPS	macro
+_TEXT	ends
+	endm
+	endif
+
+	if	D_MODEL or P_MODEL or L_MODEL 
+PSEG	macro
+ASM_TEXT segment byte public 'CODE'
+	assume	CS:ASM_TEXT
+	endm
+ENDPS	macro
+ASM_TEXT ends
+	endm
+	endif
+
+	endif	; if DLC or LC
+
+;
+;	Begin a function macro.
+;
+BEGIN	macro	fnam
+	if	DLC or LC
+	  public  fnam
+	endif
+	if	MSC or TC
+	  public  _&fnam
+	endif
+	if	LPROG
+	  if	DLC or LC
+fnam	   proc	far
+	  endif		
+	  if	MSC or TC
+_&fnam	   proc	far
+	  endif		
+	else
+	  if	DLC or LC
+fnam	   proc	near
+	  endif
+	  if	MSC or TC
+_&fnam	   proc	near
+	  endif
+	endif
+	endm
+
+;
+;	end a function macro
+;
+
+ENDFUNC	macro	fnam
+	if	DLC or LC
+fnam	endp
+	endif
+	if	MSC or TC
+_&fnam	endp
+	endif
+	endm
+
+;
+;	enter a function macro
+;
+
+ENTERF	macro
+	push	bp
+	mov	bp, sp
+	if	MSC or TC
+	  push	di
+	  push	si
+	endif
+	endm
+
+;
+;	leave a function macro
+;
+
+LEAVEF	macro
+	if	MSC or TC
+	  pop	si
+	  pop	di
+	endif
+	pop	bp
+	ret
+	endm
+
+;
+;	define external item
+;
+EXTERN	macro	name, val, alias
+	if	MSC or TC
+	extrn	_&name:val
+alias	equ	_&name
+	else
+	extrn	name:val
+alias	equ	name
+	endif
+	endm
+

@@ -1,0 +1,66 @@
+
+
+/*
+        A wildcard search main for the AMIGA workstation.
+        2 switches are presently supported:  /t for totals
+        and /s for subdirectories.
+*/
+
+#include <functions.h>          /* contains pragmas for system */
+#include <arpbase.h>            /* contains pragmas for ARP calls */
+
+#define MAX_PATH 256
+ 
+struct ArpBase *ArpBase;
+struct AnchorPath anchor;
+char pattern[128];
+int total;
+
+void subfunc(char *path);
+
+void main(int argc, char **argv)
+{
+if (argc < 2)
+        {
+        printf("\n\t%s <filespec> [/s/t]\n", argv[0]);
+        printf("\tFilespec can have DOS wildcards!\n"
+                "\t/S switch includes subdirectories.\n"
+                "\t/T switch gives a total.\n");
+        exit(0);
+        }
+
+ArpBase = OpenLibrary("arp.library", 39);
+if (!ArpBase)
+        {
+        printf("ERROR: couldn't open ARP!!!\n");
+        exit(-1);
+        }
+
+PreParse(BaseName(argv[1]), pattern);
+strcpy(BaseName(argv[1]), "*");
+anchor.ap_Flags = APF_DoWild;
+anchor.ap_StrLen = MAX_PATH;
+
+if (!FindFirst(argv[1], &anchor))
+        do      {
+                if (anchor.ap_Info.fib_DirEntryType > 0)
+                        {
+                         if (!(anchor.ap_Flags & APF_DidDir) &&
+                                                argc > 2 && strstr(argv[2], "/S"))
+                                anchor.ap_Flags |= APF_DoDir;
+                        anchor.ap_Flags &= ~APF_DidDir;
+                        }
+                else
+                        if (PatternMatch(pattern,
+                                                        anchor.ap_Info.fib_FileName))
+                                {
+                                total++;
+                                subfunc(anchor.ap_Buf);
+                                }
+                } while(!FindNext(&anchor));
+
+if (argc > 2 && strstr(argv[2], "/T"))
+        printf("\tTOTAL = %d\n\n", total);
+
+CloseLibrary(ArpBase);
+}

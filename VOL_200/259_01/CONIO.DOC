@@ -1,0 +1,392 @@
+
+
+                       CONIO -- Console I/O Routines for C
+
+
+       DISCLAIMER:
+
+       This file and all of the files distributed with it were created by 
+       Jeff D. Pipkins at Quality Micro Systems, Inc. (QMS) in Mobile, AL. 
+       and are hereby released into the public domain on authority of Dr. 
+       Don Parker.  Although QMS (R) believes these files to perform as 
+       described in the accompanying documentation, QMS assumes absolutely 
+       no responsibility for any of these files, since they are now public 
+       domain.  Furthermore, QMS is not obligated in any way to maintain 
+       or support these files. 
+
+
+
+       CONIO FILES:
+
+       CONIO.ASM  Source code for putch(), getch(), getche(), ungetch(), 
+                  and kbhit(). 
+       CONIO.NER  OBJect code for small and compact memory models
+       CONIO.FAR  OBJect code for medium, large, and huge memory models.
+       CONIO.BAT  Batch file for installing CONIO into your MSC libraries.
+       CONIO.DOC  Print this file at 12 cpi (ELITE)
+       CONIO.H    NOT INCLUDED HERE -- It is assumed that you have this 
+                  file from the Microsoft C distribution discs.  I cannot 
+                  include it here because it is copyrighted.  Note that it 
+                  contains only function declarations. 
+
+
+       STATEMENT OF PURPOSE:
+
+       The routines in CONIO.ASM are meant as replacements for the 
+       corresponding routines found in the Microsoft (R) C libraries.  The 
+       new routines correct problems and offer enhancements.  The source 
+       code is included so that the routines may be (easily) adapted to 
+       work with other C compilers that run on IBM (R) PC compatibles.  
+       The specifications for these routines are offered to The C User's 
+       Group as a working standard for machine-independent console I/O. 
+
+
+       COMMERCIAL:
+
+                                     QMS (R)
+                           Where Imagination Leads (TM)
+
+       This documentation file would look as good as the pages in the 
+       Microsoft (R) C library reference if you printed them on one of 
+       QMS' 300 dpi (dots per inch) laser printers!  (You could even print 
+       on both sides of the paper!)  QMS is the maker of the KISS (R) 
+       laser printer, the first laser printer priced under $2000.  You can 
+       call QMS at (205) 633-4300 to inquire about our full range of 
+       printers or about any new printers introduced since this the 
+       release of this file. 
+
+
+
+       putch
+
+
+
+       o  Summary
+
+       #include <conio.h>      /*  Function declarations only  */
+
+       void putch(c);
+          int c;          /*  Character to be sent to console  */
+
+
+       o  Description
+
+       The putch function writes the character (c) directly to the 
+       console. 
+
+       Redirection of stdout has NO EFFECT on this function.  
+       Output is ALWAYS sent specifically to the console device. 
+
+       The putch function will automatically preceed any line 
+       feeds with a carriage return, so that putch('\n') has the 
+       desired effect. 
+
+       After displaying the character, putch checks the keyboard 
+       for a Ctrl-C (break) or a Ctrl-S (pause), and handles them 
+       appropriately. 
+
+
+       o  Return Value
+
+       There is no return value.
+
+
+       o  See Also
+
+       putchar, putc, getch, getche, ungetch, kbhit, cprintf, 
+       cscanf, cputs, cgets 
+
+
+
+       putch (continued)
+
+
+
+       o  Example
+
+       #include <conio.h>
+
+       void prompt()
+       {
+          putch('\n');
+          putch('A');
+          putch('>');
+       }
+
+
+       
+       getch
+
+
+
+       o  Summary
+
+       #include <conio.h>      /*  Function declarations only  */
+
+       int getch();
+
+
+       o  Description
+
+       The getch function reads, without echoing, a single 
+       character directly from the console (keyboard). 
+
+       If no key has been pressed, and there are no keys in the 
+       ungetch buffer, getch will wait for a key to be pressed 
+       before returning. 
+
+       Redirection of stdin has NO EFFECT on this function.  Input 
+       is ALWAYS read specifically from the console (keyboard) 
+       device. 
+
+       The character read is NOT echoed to the console (screen).
+
+       Carriage returns are translated to line feeds so that a 
+       program can check for the ENTER (or RETURN) key by 
+       comparing the character to '\n', as usual. Line feeds are 
+       translated to carriage returns so that a discriminating 
+       program can tell the difference. 
+
+       If the character to be returned is a Ctrl-C (break) or a 
+       Ctrl-S (pause), appropriate action is taken. 
+
+
+
+
+       
+       getch (continued)
+
+
+
+       o  Return Value
+
+       The getch function returns the character read.  There is no 
+       error return. Note that getch never returns zero, Ctrl-C, 
+       or Ctrl-S.  Also, Ctrl-Z is NOT translated to EOF (-1). 
+
+       IBM (R) PC compatible keyboards have some special keys that 
+       have no ASCII character codes.  The following scheme is 
+       employed to accomodate these keys: If the key has an ASCII 
+       value, it is returned as an integer.  If the key does not 
+       have an ASCII value (e.g. a function key or an arrow key), 
+       then the value returned has the low byte zero and the high 
+       byte will hold the scan code for the key pressed.  For a 
+       complete list of these scan codes, see the IBM Technical 
+       Reference (#6025005), "Keyboard Scan Codes", or one of 
+       Peter Norton's books on the IBM PC. 
+
+
+       o  See Also
+
+       getchar, getc, putch, getche, ungetch, kbhit, cprintf, 
+       cscanf, cputs, cgets 
+
+
+       o  Example
+
+       #include <conio.h>
+
+       char charcode;
+       int i, spec_key;
+
+       /*  This example shows how to detect special keys  */
+
+       if ((i=getch()) & 0x00FF) {
+          spec_key = FALSE;
+          charcode = i;
+       }else{
+          spec_key = TRUE;
+          charcode = (unsigned) i >> 8;
+       }
+
+       
+
+       getche
+
+
+
+       o  Summary
+
+       #include <conio.h>      /*  Function declarations only  */
+
+       int getche();
+
+
+       o  Description
+
+       The getche function behaves exactly like the getch 
+       function, with the exception that the character read from 
+       the keyboard is echoed to the screen. 
+
+       NOTE: The putch function is used to echo the character.  If 
+             the character read is not an ASCII character (i.e. a 
+             special key with no ASCII code), then no character is 
+             echoed. 
+
+
+       o  Return Value
+
+       Exactly the same as the getch function.
+
+
+       o  See Also
+
+       getchar, getc, putch, getch, ungetch, kbhit, cprintf, 
+       cscanf, cputs, cgets 
+
+
+
+       
+
+       getche (continued)
+
+
+
+       o  Example
+
+       #include <conio.h>
+
+       /*  Not a very friendly routine; just for illustration.  */
+
+       int askYN()
+       {
+          int reply;
+
+          do {
+             cprintf("\n(Y)es or (N)o ? ");
+             reply = getche();
+          }while (reply != 'Y' && reply != 'N');
+          if (reply == 'Y')
+             return TRUE;
+          else
+             return FALSE;
+       }
+
+       
+
+       ungetch
+
+
+
+       o  Summary
+
+       #include <conio.h>      /*  Function declarations only  */
+
+       int ungetch(c);
+       int c;                  /*  Character to be "pushed"  */
+
+
+       o  Description
+
+       The ungetch function "pushes" the character (c) back into 
+       the keyboard, so that (c) will be the next character read 
+       by getch, getche, or kbhit. 
+
+       The ungetch function does NOT backspace over the last 
+       character that was echoed to the screen, so be careful when 
+       using ungetch after getche to be sure that your code 
+       performs as intended. 
+
+       Redirection of stdin or stdout has NO EFFECT on ungetch. 
+
+       The ungetch function does NOT check for Ctrl-C or Ctrl-S. 
+
+       The ungetch function has the capability to push back at 
+       least one character; some implementations may allow more, 
+       but one is typical. 
+
+
+       o  Return Value
+
+       The ungetch function returns the character (c) if it is 
+       successful, or EOF (-1) if it cannot push (c) back to the 
+       keyboard. 
+
+
+       o  See Also
+
+       ungetchar, ungetc, putch, getch, getche, kbhit, cprintf, 
+       cscanf, cputs, cgets 
+
+
+
+       
+
+       ungetch (continued)
+
+
+
+       o  Example
+
+       #include <conio.h>
+
+       void ignore_kbd_spaces()
+       {
+          int c;
+
+          do {} while ( isspace(c = getch()) );
+
+          ungetch(c);  /*  OOPS -- one too many.  Put it back.  */
+       }
+
+
+       
+       kbhit
+
+
+
+       o  Summary
+
+       #include <conio.h>      /*  Function declarations only  */
+
+       int kbhit();
+
+
+       o  Description
+
+       The kbhit function behaves exactly like the getch function, 
+       with the exception that it never waits for a key to be 
+       pressed.  If there are no keys in the ungetch buffer, and 
+       no key has been pressed, a zero is returned immediately 
+       without waiting on the keyboard. 
+
+       Note that kbhit checks for and handles Ctrl-C and Ctrl-S. 
+
+
+       o  Return Value
+
+       Exactly the same as the return value for getch, except that 
+       a zero is returned (immediately) if no key has been 
+       pressed. 
+
+
+       o  See Also
+
+       putch, getch, getche, ungetch, cprintf, cscanf, cputs, 
+       cgets 
+
+
+
+
+       
+       kbhit (continued)
+
+
+
+       o  Example
+
+       #include <conio.h>
+
+       /*  Routine to call stay_busy() until the ENTER key is 
+           pressed.                                             */ 
+
+       void stay_busy_until_ENTER()
+       {
+          do {
+             while (!kbhit()) {
+                stay_busy();
+             }
+          }while (getch() != '\n');
+       }
+
+

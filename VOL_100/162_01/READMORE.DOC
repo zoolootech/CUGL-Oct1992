@@ -1,0 +1,128 @@
+
+
+
+
+
+		       Mchip80	 -   Release 1.2, Feb 86
+
+
+	I now believe that some Mchip80 users will have difficulty in
+   certain situations that were not covered in a practical way in the
+   original documentation. Last year when I decided that Mchip80 and its
+   documentation was ready for release, I had personally reached a stage of
+   keen awareness of the C/80 compiler's style and habits in creating an
+   assembly (.MAC) file from the C source. It is now apparent that this
+   awareness is necessary for all Mchip80 users, and some may need these
+   helpful suggestions.
+
+	C/80 will initialize a float at every opportunity in a program,
+   right up to the last line. The original documentation was intended to
+   convey this meaning, and also to cover float constants, which are now
+   declared illegal for use with Mchip80. Here is an example of illegal
+   usage:
+
+   #define	FCONSTA 123.4
+   float	fvar1,fvar2,pow();
+   main() {
+   	fvar1 = pow(FCONSTA,fvar2);
+
+        Here are two examples of pseudo float constants that are acceptable
+   with Mchip80. The first example is when the constant has a fraction part,
+   is in exponential notation, or for any other reason requires the function
+   atof(), Mchip80 version.
+
+   char	fconsta[] = "123.4";
+   float	fvar1,fvar2,fconv,atof(),pow()
+   main() {
+   	fvar2 = pow((fconv = atof(fconsta)),fvar1);
+
+        The second example is when the constant value has no fraction, ie.,
+   can be expressed as an integer or long, and type conversion can do the
+   job.
+
+   int	n;
+   float	fconsta;
+   main() {
+   	fconsta = n =123;
+
+        Both examples result in float variables that can be used as substite
+   constants, until they are written over with some other data. A great
+   awareness tool is the compiler '-t' switch, which can be useful on a
+   dummy "situation" program. The following program is 'unreal', having no
+   input or output, and is created solely for a '-t' switch exercise, and
+   resides on file 'specimen.c'.
+
+   float	pow();	/* returns a float, says nothing about parameters */
+   float	fvar1,fvar2;
+   main() {
+   	fvar2 = pow(123.4,fvar1);
+   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+        Use C/80 configured for floats and longs, with this command line:
+
+   c -t specimen=specimen
+
+        As promised in the Toolworks documentation, the compiler delivers a
+   .MAC file with all the source lines from 'specimen.c' at the appropriate
+   places, set up as comments. Print a hard copy of specimen.mac, put it
+   aside and read some more of this.
+
+        You can also use the '-t' switch exercise on one of your real
+   programs, and I suggest color coding the .MAC printout for visual clarity
+   and pattern detection. You will need four to six different coloured felt
+   tip highlighters. Your first impression right now might be here comes a
+   tedious and childish task, but give it a try if Mchip80 does strange
+   things to your program. First use blue on all the comment lines from the
+   source file, to push them into the background. Put red on all RET
+   instructions, and there won't be many of them. Select either yellow or
+   green for the CALL instructions. Then treat every PUSH and POP
+   instruction to the same color, perhaps orange. It is starting to get
+   interesting, because a pattern is showing. C/80 uses the stack before and
+   after calling a function. Read more about it in the Toolworks
+   documentation.
+
+        The most interesting lines are now in vivid black and white. Find
+   the segments where the program is handling floats or longs, it doesn't
+   matter which. Draw boxes around these segments in a color of your choice.
+   There should be CALLs to subroutines named 'slong' and 'llong', which are
+   in Mathpak, and which copy 32 bit variables between memory and registers
+   BC and DE. Mchip80 has no problem with 'slong' and 'llong', and is in
+   fact totally dependent on them.
+
+        Look again for another situation inside the float/long boxes, where
+   numbers are loaded "immediate" (instruction LXI) into registers BC and
+   DE, and where 'slong' and 'llong' are absent. Here the C/80 compiler has
+   created these numbers and initialized a float or a long. If a float
+   variable received this treatment, the original program has to be changed
+   before it will work with Mchip80. You can see this undesirable situation
+   on the hard copy of 'specimen.mac' printed earlier. In a second exercise,
+   change the file 'specimen.c', by replacing 123.4 with fvar2, and do the
+   '-t' switch exercise again. This version is correct for Mchip80.
+
+        The '-t' switch exercise is a great tool for exploring the interface
+   between C/80 and Mchip80, and after a little more use and experience, you
+   can almost phase it out.
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,107 @@
+
+----------
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#define rangeof(lo, hi) ((hi) - (lo) + 1)
+#define WEEKS_PER_MONTH 6
+
+enum day {SUN, MON, TUE, WED, THU, FRI, SAT};
+typedef enum day day;
+
+static const char *day_image[] =
+	{"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", NULL};
+
+enum month
+	{
+	JAN, FEB, MAR, APR, MAY, JUN,
+	JUL, AUG, SEP, OCT, NOV, DEC
+	};
+typedef enum month month;
+
+static const char *month_image[] =
+	{
+	"JAN", "FEB", "MAR", "APR", "MAY", "JUN",
+	"JUL", "AUG", "SEP", "OCT", "NOV", "DEC", NULL
+	};
+
+typedef int monthly_calendar[WEEKS_PER_MONTH][rangeof(SUN, SAT)];
+typedef monthly_calendar annual_calendar[rangeof(JAN, DEC)];
+
+/*
+ * return the number of week days in a month
+ */
+int monthly_week_days(monthly_calendar cal)
+	{
+	day d;
+	int w, sum = 0;
+
+	for (w = 0; w < WEEKS_PER_MONTH; ++w)
+		for (d = MON; d <= FRI; ++d)
+			if (cal[w][d] > 0)
+				++sum;
+	return sum;
+	}
+
+/*
+ * print a monthly calendar to stdout
+ */
+void print_monthly(monthly_calendar cal)
+	{
+	day d;
+	int w;
+
+	for (w = 0; w < WEEKS_PER_MONTH; ++w)
+		{
+		for (d = SUN; d <= SAT; ++d)
+			if (cal[w][d] > 0)
+				printf("%4d", cal[w][d]);
+			else
+				printf("    ");
+		putchar('\n');
+		}
+	putchar('\n');
+	}
+
+/*
+ * fgete(t, f) gets an enumeration value from FILE f using image
+ * table t. It returns the integer value corresponding to the
+ * image read, or EOF if no legitimate value is found.
+ */
+int fgete(const char *t[], FILE *f)
+	{
+	char buf[BUFSIZ];
+	const char **p;
+
+	if (fscanf(f, "%s", buf) == 1)
+		for (p = t; *p != NULL; ++p)
+			if (strcmp(buf, *p) == 0)
+				return p - t;
+	return EOF;
+	}
+
+int main(void)
+	{
+	annual_calendar cal;
+	day d;
+	FILE *f;
+	int w;
+	month m;
+
+	f = fopen("cal.dat", "r");
+	for (m = JAN; m <= DEC; ++m)
+		for (w = 0; w < WEEKS_PER_MONTH; ++w)
+			for (d = SUN; d <= SAT; ++d)
+				fscanf(f, "%d", &cal[m][w][d]);
+	fclose(f);
+	for (m = JAN; m <= DEC; ++m)
+		print_monthly(cal[m]);
+	while ((m = fgete(month_image, stdin)) != EOF)
+		printf("week days in %s = %d\n",
+			month_image[m], monthly_week_days(cal[m]));
+        return EXIT_SUCCESS;
+	}
+
+Listing 4 - Calendars in C
+

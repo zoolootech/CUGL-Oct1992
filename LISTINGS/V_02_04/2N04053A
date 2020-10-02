@@ -1,0 +1,75 @@
+
+/*
+ * PROGRAM     :  BRAND.C
+ * AUTHOR      :  Mark R. Nelson
+ * DATE        :  January 13, 1990
+ * DESCRIPTION :  This program "brands" the unused bytes 
+ *       of CMOS RAM with the string specified on the 
+ *       command line.  The string is padded out to the 
+ *       correct length, 12 bytes.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dos.h>
+#include <conio.h>
+
+#ifdef M_I86                /* Microsoft C functions */
+#define enable            _enable
+#define disable           _disable
+#define inportb( a )      inp( a )
+#define outportb( a, b )  outp( a, b )
+#endif
+
+unsigned char read_cmos( int location );
+void write_cmos( int location, unsigned char value );
+void error_exit( void );
+
+int main( int argc, char *argv[] )
+{
+    int i;
+    char buffer[ 25 ];
+
+    if ( argc < 2 )
+        error_exit();
+    if ( strlen( argv[ 1 ] ) > 12 )
+        error_exit();
+    printf( "Branding string: %s\n", argv[ 1 ] );
+    strcpy( buffer, argv[ 1 ] );
+    strcat( buffer, "            " );
+    for ( i = 0 ; i < 12 ; i++ )
+        write_cmos( 0x34 + i, buffer[ i ] );
+    return( 0 );
+}
+
+unsigned char read_cmos( int location )
+{
+    outportb( 0x70, location );
+    return( (unsigned char) inportb( 0x71 ) );
+}
+
+void write_cmos( int loc, unsigned char value )
+{
+    int checksum;
+
+    outportb( 0x70, loc );
+    outportb( 0x71, value );
+    if ( loc > 0xf && loc < 0x2e ) {
+        checksum = 0;
+        for ( loc = 0x10 ; loc <= 0x2d ; loc++ )
+            checksum += read_cmos( loc );
+        write_cmos( 0x2e, (char) ( checksum >> 8 ) );
+        write_cmos( 0x2f, (char) ( checksum & 255 ) );
+    }
+}
+
+void error_exit()
+{
+    puts( "\nUsage:  BRAND string" );
+    puts( "\n\"string\" must be less than 12 bytes. " );
+    puts( "The string parameter will be padded out, " );
+    puts( "and written into locations 0x34 through 0x3f " );
+    puts( "of CMOS RAM." );
+}
+

@@ -1,0 +1,95 @@
+/*****************************************************/
+/* mlefix.c                                          */
+/* -- Program to fix the leaky MLE bug.              */
+/*****************************************************/
+
+#define NOCOMM
+#include <windows.h>
+#include "win.h"
+
+HANDLE  hmemUser;
+FARPROC lpfnMLEFilter;
+
+LONG    FAR PASCAL  MLEFilter(WORD, WORD, WORD, DWORD);
+int     FAR PASCAL  LibMain(HANDLE, WORD, WORD, LPSTR);
+int     FAR PASCAL  WEP(short);
+
+int FAR PASCAL
+LibMain(HANDLE hins, WORD ds, WORD cbHeap, LPSTR lsz)
+/*****************************************************/
+/* -- hins      : This library's instance.           */
+/* -- ds        : The library's default data segment */
+/* -- cbHeap    : Size of out local heap.            */
+/* -- lsz       : Command line invoked with.         */
+/*****************************************************/
+    {
+    WORD        wVersion    = GetVersion();
+    WNDCLASS    wcs;
+
+    /* Only need to fix this bug for version 3.0. */
+    if (LOBYTE(wVersion) != 3 || HIBYTE(wVersion) != 0)
+        return FALSE;
+
+    /* Get USER's default data segment. */
+    if ((hmemUser = LoadLibrary("user.exe")) == 0)
+        return FALSE;
+
+    /* Superclass the edit class. */
+    GetClassInfo(NULL, "edit", &wcs);
+    UnregisterClass("edit", NULL);
+    lpfnMLEFilter = (FARPROC)wcs.lpfnWndProc;
+    wcs.lpfnWndProc = MLEFilter;
+    RegisterClass(&wcs);    /* This better work! */
+
+    return TRUE;
+    }
+
+int FAR PASCAL
+WEP(short wCode)
+/*****************************************************/
+/* -- The usual do-nothing stub.                     */
+/*****************************************************/
+    {
+    return FALSE;
+    }
+
+LONG FAR PASCAL
+MLEFilter(WORD hwnd, WORD wm, WORD mp1, DWORD lmp1)
+/*****************************************************/
+/* -- Superclasser for MLE's.                        */
+/* -- hwnd      : Main window.                       */
+/* -- wm        : Message type.                      */
+/* -- mp1, mp2  : Message parameters.                */
+/*****************************************************/
+    {
+    LONG    lVal;
+
+    lVal = CallWindowProc(lpfnMLEFilter, hwnd, wm, mp1,
+        lmp1);
+
+    if (wm == WM_NCCREATE &&
+        (GetWindowLong(hwnd, GWL_STYLE) &
+            (WS_VSCROLL | WS_HSCROLL)))
+        {
+        WORD    dsUser  = HIWORD(GlobalLock(hmemUser));
+        WORD    dsLocal;
+
+        _asm    mov dsLocal, ds;    /* Save ds. */
+        _asm    mov ds, dsUser;     /* Get USER ds. */
+
+        /* Free dangling USER heap memory. */
+        if (((WND *)hwnd)->unknown4 != 0)
+            {
+            LocalFree(((WND *)hwnd)->unknown4);
+            ((WND *)hwnd)->unknown4 = 0;
+            }
+
+        _asm    mov ds, dsLocal;    /* Restore ds. */
+
+        /* In case of REAL mode. */
+        GlobalUnlock(hmemUser);
+        }
+
+    return lVal;
+    }
+

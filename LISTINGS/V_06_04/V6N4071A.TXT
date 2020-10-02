@@ -1,0 +1,42 @@
+/* hilevel.c */             /******************************************/
+#define DELETE 127                   /* DELETE on most keyboards.     */
+#define DELSEQ "\b \b"               /* Backspace,space,backspace.    */
+#define IXMAX 256                    /* Max length of input line.     */
+
+void rt_putc(c) int c ;     /*** Send a byte to remote terminal. ******/
+{ while( !txready() ) ;              /* Wait until ready.             */
+  txbyte(c) ;                        /* Send it.                      */
+  if(c == '\l') rt_putc('\r') ;      /* If LF, send CR too.           */
+}
+
+int rt_getc()               /********  Get a byte from remote. ********/
+{ while( !rxready() )   ;            /* Wait until byte available.    */
+  return(rxbyte()) ;                 /* Read and return it.           */
+}
+
+void rt_puts(s) char *s ;   /*******  Send a string to remote, ********/
+{ while( *s ) rt_putc(*s++) ;        /* no automatic newline.         */
+}
+
+int rt_gets(s) char *s ;    /**** Get a line from remote, with  *******/
+{int ix,c ;                          /* some editing, up to CR.       */
+ for(ix=0,c=rt_getc() ; c != '\r' && ix < IXMAX ; c = rt_getc() )   /**/
+   { if( c < 32 ) continue ;         /* Ignore CTRL chrs except CR.   */
+     if( c == DELETE && ix > 0 )     /* Backup-erase on DELETE.       */
+       { rt_puts(DELSEQ) ;                                          /**/
+         ix-- ;                                                     /**/
+       }                                                            /**/
+     else                                                           /**/
+       { s[ix++] = c ;               /* Record input byte, and        */
+         rt_putc(c) ;                /* echo to remote.               */
+       }                                                            /**/
+   }                                                                /**/
+ s[ix] = '\0' ;                      /* Replace CR with Null.         */
+ rt_putc('\l') ;                     /* Echo CR-LF.                   */
+ return(ix) ;                        /* Return string length.         */
+}
+
+/***** For formatted output use sprintf(s,...) ; rt_puts(s) ; *********/
+
+/***** For formatted input use rt_gets(s) ; sscanf(s,...) ;   *********/
+

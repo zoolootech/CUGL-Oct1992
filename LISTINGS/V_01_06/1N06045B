@@ -1,0 +1,74 @@
+
+
+Listing 1: the assembly header
+
+
+;
+; RDTOP.ASM
+;
+
+_TEXT   SEGMENT BYTE PUBLIC 'CODE'
+_TEXT   ENDS
+_DATA   SEGMENT WORD PUBLIC 'DATA'
+_DATA   ENDS
+_BSS    SEGMENT WORD PUBLIC 'BSS'
+_BSS    ENDS
+_END    SEGMENT WORD PUBLIC 'LEMEND'
+_END    ENDS
+
+DGROUP  GROUP _TEXT,_DATA,_BSS,_END
+
+_TEXT   SEGMENT BYTE PUBLIC 'CODE'
+        ASSUME  CS:_TEXT,DS:DGROUP
+
+        EXTRN RANDOM:NEAR      ;C FUNCTION
+        EXTRN BINEND:BYTE      ;THIS COMPUTES LENGTH OF LEM AT LINK TIME
+
+;       LEM HEADER
+
+        DB         'BIO'       ;SIGNATURE
+        DD         0           ;RESERVED
+        DW         BINEND      ;STORE LENGTH OF LEM
+        DB         1           ;NUMBER OF PROCEDURES/FUNCTIONS
+
+;       'RANDOM' DESCRIPTOR
+
+        DB         'RANDOM',0,0,0,0,0,0,0
+        DW         RDHEAD      ;OFFSET TO START OF PROCEDURE/FUNCTION
+        DB         1           ;TYPE = FUNCTION 
+        DB         2           ;NUMBER OF PARAMETERS CALLED
+
+;       MAXIMUM VALUE PARAMETER
+
+        DB         1           ;TYPE CONVERSION = WORD
+MAXVAL  DW         0,0         ;SEGMENT AND OFFSET
+MAXVALL DW         0           ;LENGTH
+
+;       SEED PARAMETER
+
+        DB         1           ;TYPE CONVERSION = WORD
+SEED    DW         0,0         ;SEGMENT AND OFFSET
+SEEDL   DW         0           ;LENGTH
+
+RETVAL  DW         0
+
+RDHEAD  PROC       FAR
+
+        LES        BX,DWORD PTR MAXVAL    ;GET LENGTH ADDRESS
+        PUSH       WORD PTR ES:[BX]       ;PUSH LENGTH ITSELF
+        LES        BX,DWORD PTR SEED      ;GET LENGTH ADDRESS
+        PUSH       WORD PTR ES:[BX]       ;PUSH LENGTH ITSELF
+        CALL       RANDOM
+
+        MOV        RETVAL,AX              ;SAVE RETURN VALUE
+        MOV        AX,1                   ;RETURN TYPE IS SHORT
+        LEA        BX,RETVAL              ;OFFSET OF MEM LOCATION
+        MOV        CX,2                   ;LENGTH
+
+        RET
+
+RDHEAD  ENDP
+_TEXT   ENDS
+        END
+
+

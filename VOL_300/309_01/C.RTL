@@ -1,0 +1,116 @@
+; c runtime library for division, multiply and switch
+
+        .area    ROMCODE (REL,CON)
+        .globl   ccdiv
+        .globl   ccmult
+        .globl   ccswitch
+
+        .module  crtl
+
+ccdiv:
+ clr adr31
+ stx adr1
+ std adr2
+ccd1:
+ bgt ccd2
+ com adr31
+ coma
+ comb
+ addd #1
+ std adr2
+ccd2:
+ ldd adr1
+ cmpd #0
+ bgt ccd3
+ com adr31
+ coma
+ comb
+ addd #1
+ std adr1
+ccd3:
+ lda #16
+ sta adr3
+ clra
+ clrb
+divd:
+ asl adr1+1
+ rol adr1
+ rolb
+ rola
+ cmpd adr2
+ blo nosub
+ subd adr2
+ inc adr1+1
+nosub:
+ dec adr3
+ bne divd
+ tfr d,x
+ ldd adr1
+ tst adr31
+ beq ccd4
+ coma
+ comb
+ addd #1
+ccd4:
+ rts
+
+
+; 16 bit multiplication
+ccmult:
+ stx adr1
+ std adr2
+ clr adr3
+ clr adr3+1
+ lda adr1+1
+ ldb adr2+1
+ mul
+ std adr3+2
+ lda adr1
+ ldb adr2+1
+ mul
+ addd adr3+1
+ std adr3+1
+ lda adr1+1
+ ldb adr2
+ mul
+ addd adr3+1
+ std adr3+1
+ bcc nocarry
+ inc adr3
+nocarry:
+ lda adr1
+ ldb adr2
+ mul
+ addd adr3
+ tfr d,x
+ ldd adr3+2
+ rts
+
+;  switch statement
+; d = switch value
+; s = switch table
+;     fdb addr1, value1
+;     fdb addr2, value2
+;     ...
+;     fdb 0
+;     [jmp default]
+;     continuation
+;
+ccswitch:
+ puls x 		;get stack adr
+swloop:
+ ldy ,x++		;get address
+ cmpy #0		;if 0
+ beq swend 	;then it is the default
+ cmpd ,x++ 	;else, if it is not the switch value
+ bne swloop	;try next one
+ jmp ,y 		;else we found it
+swend:
+ jmp ,x 		;default exit
+
+        .area  RAMDATA (REL,CON)
+adr1:	.ds 2
+adr2:	.ds 2
+adr3:	.ds 1
+adr31:	.ds 3
+

@@ -1,0 +1,108 @@
+#include <dos.h>
+#include "windows.h"
+/*
+******************************************************************
+Title:      PIPEFUNC.C - General Purpose Pipe Functions
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /AL /Gs /Zi /c PIPEFUNC.C                    for DOS
+            cl /AL /Gsw /W3 /Oas /Zpe /Zi /c PIPEFUNC.C     for WINDOWS
+******************************************************************
+*/
+#define GET_API_ENTRY_POINT             0x1684
+#define DEVICE_ID                       0x2020
+#define DEVICE_VERSION                  0x0300
+#define GET_VERSION                     0
+#define REGISTER_CALLBACK               1
+#define UNREGISTER_CALLBACK             2
+#define ALLOCATE_GDT_SELECTOR           3
+#define FREE_GDT_SELECTOR               4
+#define CALL_WINDOWS_PROCEDURE          5
+
+FARPROC lpPipeProc = NULL;
+
+BOOL PASCAL PipeSetup(void)
+{
+    BOOL retVal = FALSE;
+    union REGS regs;
+    struct SREGS sregs;
+
+    segread(&sregs);                        /* Is The Device Loaded? */
+    regs.x.ax = GET_API_ENTRY_POINT;
+    regs.x.bx = DEVICE_ID;
+    sregs.es  = regs.x.di = 0;
+    int86x( 0x2F, &regs, &regs, &sregs);
+
+    FP_SEG(lpPipeProc) = sregs.es;
+    FP_OFF(lpPipeProc) = regs.x.di;
+
+    if (lpPipeProc)                         /* Device Is Loaded */
+    {
+        _asm mov ax, GET_VERSION;           /* Get Version */
+        retVal = (*lpPipeProc)() < DEVICE_VERSION ? FALSE:TRUE;
+    }
+    return(retVal);
+}
+
+BOOL PASCAL PipeRegisterCallback(HWND hWnd, FARPROC lpFuncPtr)
+{
+    BOOL retVal = FALSE;
+
+    if (lpPipeProc)
+    {
+        _asm mov ax, REGISTER_CALLBACK;
+        _asm mov bx, hWnd;
+        _asm mov cx, word ptr lpFuncPtr+2;
+        _asm mov dx, word ptr lpFuncPtr;
+        (*lpPipeProc)();
+        retVal = TRUE;
+    }
+    return(retVal);
+}
+
+BOOL PASCAL PipeUnregisterCallback(void)
+{
+    BOOL retVal = FALSE;
+
+    if (lpPipeProc)
+    {
+        _asm mov ax, UNREGISTER_CALLBACK;
+        (*lpPipeProc)();
+        retVal = TRUE;
+    }
+    return(retVal);
+}
+
+WORD PASCAL PipeAllocateSelector(WORD segment)
+{
+    _asm mov ax, ALLOCATE_GDT_SELECTOR
+    _asm mov bx, segment
+    return((*lpPipeProc)());
+}
+
+void PASCAL PipeFreeSelector(WORD selector)
+{
+    _asm mov ax, FREE_GDT_SELECTOR
+    _asm mov bx, selector
+    (*lpPipeProc)();
+}
+
+BOOL PASCAL PipeCallWindowsProc(WORD message, WORD wParam, LONG lParam)
+{
+    BOOL retVal = FALSE;
+
+    if (lpPipeProc)
+    {
+        _asm mov ax, CALL_WINDOWS_PROCEDURE
+        _asm mov bx, message
+        _asm mov si, wParam
+        _asm mov cx, word ptr lParam+2
+        _asm mov dx, word ptr lParam
+        (*lpPipeProc)();
+        retVal = TRUE;
+    }
+    return(retVal);
+}
+
+

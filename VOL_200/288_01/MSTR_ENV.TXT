@@ -1,0 +1,217 @@
+                                             Scott Robert Ladd
+                                             302 North 12th St.
+                                             Gunnison, CO 81230
+                                             (303) 641-6438
+
+                                             1700 words
+                                              350 source lines
+
+
+                Accessing the Master Environment in MS-DOS
+                           by Scott Robert Ladd
+
+     When writing software for MS-DOS, a programmer often 
+confronts what seem to be artificial restrictions on what can and 
+can't be done. Some of the utilities provided with MS-DOS can 
+accomplish tasks which the programmer cannot duplicate through 
+documented features of the operating system. This article 
+attempts to lift the shroud from one of MS-DOS's hidden secrets 
+by providing functions for accessing the master copy of the MS-
+DOS environment. It is assumed that the reader is familiar with 
+the 8088's segmented memory model and the way in which MS-DOS 
+functions are accessed via software interrupts.
+
+     The environment is a collection of text variables maintained 
+by COMMAND.COM. These variables consist of a name and an 
+associated text string. Environment variables are used for a wide 
+variety of purposes by both the operating system and application 
+programs. Common examples of environment variables include 
+COMSPEC (which stores the pathname of the MS-DOS shell), PROMPT 
+(the prompt definition string), and PATH (containing the list of 
+directories to be searched for executable files). Some 
+environment variables are maintain through special commands, as 
+in the preceding examples. Other environment variables are stored 
+using the internal MS-DOS command SET. Programmers are well aware 
+of environment variables; most compilers use them for locating 
+header files, libraries, and compiler components.
+
+     Every program in MS-DOS has its own environment. A program 
+which executes another program is known as a "parent", while the 
+program it executed is called a "child". A child, in turn, can 
+also be the parent of other programs. A child process inherits a 
+copy of the environment associated with its parent. Changes made 
+by the child to its copy of the environment have no affect on the 
+parent's copy -- and vice versa.
+
+     The MS-DOS command shell, COMMAND.COM, is the ultimate 
+parent of all resident programs, since it is the first program 
+loaded. At boot time, COMMAND.COM allocates a block of memory 
+into which it stores the master environment variables. Since most 
+programs are executed from the COMMAND.COM prompt, it is the 
+direct parent of most programs. However, many programs are 
+capable of running other programs directly, and additional copies 
+of COMMAND.COM can be resident simultaneously as well.
+
+     When a program is loaded by MS-DOS, a 256-byte header is 
+created for it. This header contains important operating system 
+data, and is called the Program Segment Prefix (PSP). A program 
+can locate the copy of its local environment via a segment 
+pointer stored at offset 0x2C within the PSP. Most MS-DOS 
+implementations of C provide the function getenv(), which 
+retrieves the value of an environment variable from the local 
+environment. Some compilers also offer a putenv() function, which 
+stores a variable in the local environment.
+
+     Putenv() is not particularly useful. When a local 
+environment is created, it's size is only slightly larger than 
+that required to hold all of the existing variables in the parent 
+environment. A copy of the environment cannot be expanded, so 
+there is very little room to add new variables. Any changes to a 
+local environment are transient; when a program terminates, its 
+local environment vanishes too. In addition, changing the local 
+copy of the environment is solely useful if child programs are to 
+be executed, since they are the only ones which will see new or 
+changed values. 
+
+     It would be useful to make changes to the master 
+environment. A program could pass along information to other 
+programs through master environment variables. A program could 
+store status information for future incarnations of itself in the 
+master environment. A TSR can use the variables in the global 
+environment to ensure that it is aware of any changes since it 
+was executed. The problem is that MS-DOS does not provide any 
+documented way of accessing the master environment. In order to 
+work with the master environment, we must enter the world of 
+undocumented features. I'll begin with a short discussion of MS-
+DOS memory management.
+
+     MS-DOS organizes memory into blocks. Each block is prefaced 
+by a 16-byte paragraph-aligned header called the Memory Control 
+Block, or MCB for short. The MCB contains 3 pieces of 
+information: a status indicator, the segment of the owning 
+program's PSP, and the length of the block. The status indicator 
+is a byte which contains either the character 'M' (indicating 
+that it is a member of the MCB chain) or a 'Z' (denoting this as 
+the last MCB in the chain). The length of the block is stored as 
+a number of 16-byte paragraphs.
+
+     Many popular public domain programs can use the chain of 
+MCBs to display a map of programs and data resident in memory. 
+The first MCB can be located through an undocumented INT 0x21 
+service of MS-DOS, 0x52. Function 0x52 returns a pointer (in 
+ES:BX) to an internal table of MS-DOS values. Immediately 
+preceding this table is the segment address of the first MCB. 
+Starting with the first MCB, a program can follow the chain of 
+memory blocks by a simple formula: add the size of a block plus 1 
+to the segment address of the current block to calculate the 
+segment of the next MCB in the chain.
+
+     The initial copy of COMMAND.COM creates a memory segment 
+which will contain the master environment. Usually, this is 
+located in the memory block directly after the one which contains 
+COMMAND.COM, and the environment pointer in COMMAND.COM's PSP is 
+set to 0. Beginning with MS-DOS version 3.3, however, the 
+location of the environment's memory block may be different. In 
+this case, the environment pointer in COMMAND.COM's PSP contains 
+the segment of the environment block.
+
+     Once the memory block containing the environment is located, 
+we can directly manipulate the variables stored there. 
+Environment variables are stored in sequential order and are 
+terminated by NULs, exactly like strings in C. The end of the 
+valid data in the environment is indicated by a pair of 
+consecutive NULS. Each variable consists of a name (customarily 
+in upper case), and equal sign, and a text value.
+
+     MSTR_ENV.C (listing 1) is a module for C which directly 
+accesses the master environment. It contains three public 
+functions, m_getenv(), m_putenv(), and m_delenv(). A fourth 
+function, m_findenv() initializes the pointer to the master 
+environment. Whenever one of the public functions is called, it 
+checks a flag (initialized) to see if it is necessary to call 
+m_findenv(). This eliminates the need for an explicit call by an 
+application program to an initialization function, making the 
+programmer's task easier and less error-prone.
+
+     M_findenv() begins by invoking MS-DOS function 0x52. The 
+returned values in the ES and BX registers are then used to 
+construct a point to the segment address of the first MCB. The 
+first MCB is the one for the MS-DOS kernel and device drivers; 
+the second MCB is associated with COMMAND.COM. Using the formula 
+mentioned above for following the chain of MCBs, m_findenv() 
+finds the second MCB (for COMMAND.COM). That MCB contains the 
+segment of COMMAND.COM's PSP. Once the PSP has been located, the 
+environment pointer stored there is checked to see if it is 0. If 
+so, the environment is stored in the next consecutive memory 
+block above COMMAND.COM; otherwise, we have a segment address, 
+and can build a direct pointer to the master environment block. 
+Finally, m_findenv() calculates the size of the environment from 
+the size of its memory block.
+
+     The three public functions make changes to the master 
+environment. Retrieving the value of a variable is done with the 
+m_getenv() function, which returns a pointer to a statically-
+allocated char array which contains the value of the requested 
+variable. The static array is changed every time that m_getenv() 
+is called. If it could not find the requested variable,  
+m_getenv() returns NULL.
+
+     Deleting a variable is accomplished by calling m_delenv(), 
+passing it the name of the variable to be deleted. Caution should 
+be taken not to delete important MS-DOS environment variables 
+such as PATH or COMSPEC. A cautious programmer might add checks 
+in m_delenv() to prevent critical variables from being deleted. A 
+zero is returned to indicate success; a return of 1 reflects a 
+failure to find the variable.
+
+     M_putenv() is used to store a new variable. It accepts the 
+name and value of the variable as parameters. It then calls 
+m_delenv() to delete any current variable of the same name, and 
+appends the new variable information to the end of the 
+environment. The name of the variable is converted to uppercase, 
+as this is the convention used by the internal MS-DOS commands 
+such as PATH and SET. If the new variable won't fit within the 
+available space in the environment, m_putenv() returns 1 to 
+indicate failure. Also, if the variable will be longer than 256 
+bytes, a 1 is returned. This is because the MS-DOS SET command 
+cannot manipulate environment variables which are longer than 256 
+bytes. A return value of 0 means that m_putenv() succeeded.
+
+     MSTR_ENV.C is written in ANSI-conformant C, and has been 
+tested with Zortech C v1.07, Microsoft C v5.10, Microsoft Quick C 
+v2.0, WATCOM C v6.5, and Borland Turbo C v2.0. It should compile 
+and work under MS-DOS C compilers which support far pointers and 
+software interrupt calls. As with all functions which use 
+"undocumented features" of MS-DOS, it is important to realize 
+that these functions may not work with future versions of MS-DOS. 
+I made sure that the functions in MSTR_ENV.C worked with MS-DOS 
+versions 2.1, 3.0, 3.21, and 3.30.
+
+     With care, however, it is possible to access the master 
+environment, giving the programmer a new resource for building 
+more capable programs.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

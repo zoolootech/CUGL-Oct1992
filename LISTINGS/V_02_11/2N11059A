@@ -1,0 +1,158 @@
+
+Listing 3.  ASCIIZ.ASM
+
+code SEGMENT WORD PUBLIC 'CODE'
+
+   ASSUME   CS:code,DS:code,ES:code
+
+   ORG      00h
+
+; ========== Routine to Do Initialization and Test Run ==========
+
+setup proc near       ; main procedure
+
+   jmp  SHORT start   ; jump over data to code start point
+
+   ALIGN 2
+   string      DB    "xxxxxxxxxxxxxxxxxxxxxxxxx"
+               DB    "xxxxxxxxxxxxxxxxxxxxxxxxx"
+               DB    "xxxxxxxxxxxxxxxxxxxxxxxxx"
+               DB    "xxxxxxxxxxxxxxxxxxxxxxxxx",0,0
+ 
+   add_scasb   DW    scasb_version
+   get_length  DW    lodsw_version
+
+start:
+
+   push ds                    ; set up stack
+   sub  ax,ax                 ;    for return
+   push ax                    ;       to DOS
+
+   push cs                    ; align cs
+   push cs                    ;    with ds
+   pop  ds                    ;       and es
+   pop  es                    ;
+
+   call get_bus_width         ; routine to set address
+
+   ;  ...............
+
+   mov  cx,offset string      ; load pointer to string
+   call get_length            ; get length of string into CX
+
+   ret
+
+setup endp
+
+; ======= Routine to Determine Bus Width of Current Machine =====
+
+get_bus_width  proc  near
+
+   push  ds                   ; save data segment
+
+   sti                        ; make sure interrupts are on
+   call  start_count          ; routine to start on next tick
+cmpsb_loop:
+   cmp   bl,ds:[046Ch]        ; next clock tick yet?
+   loopz cmpsb_loop           ; just loop if not
+   not   cx                   ; take ones complement
+   mov   ax,cx                ; store the value
+   call  start_count          ; routine to start on next tick
+cmpsw_loop:
+   cmp   bx,ds:[046Ch]        ; next clock tick yet?
+   loopz cmpsw_loop           ; just loop if not
+   not   cx                   ; take ones complement
+
+   pop   ds                   ; restore data segment
+
+   cmp   ax,cx                ; byte cmps equal word cmps?
+   jbe   init_quit            ; if so go with status quo
+   sub   ax,cx                ; else get the difference
+   sar   ax,1                 ; scale down to stay in range
+   sar   cx,1                 ; of registers
+   mov   bl,100               ; get the percent scaler
+   mul   bl                   ; scale the difference up
+   div   cx                   ; get the percentage
+   cmp   ax,2                 ; eight bit if the percentage
+   jbe   init_quit            ;   difference is two or more
+   mov   si,offset add_scasb  ; point to routine address
+   mov   di,offset get_length ; point to target address
+   movsw                      ; move the address into place
+      
+init_quit:
+
+   ret
+
+get_bus_width  endp
+
+; =========== Routine to Delay to Next Clock Interrupt =========
+
+start_count  proc  near
+
+   xor   cx,cx                   ; get a zero
+   mov   ds,cx                   ; point to BIOS area
+   dec   cx                      ; get 0FFFFh into CX
+   mov   bx,ds:[046Ch]           ; get the current clock tick
+
+start_loop:
+   cmp   bx,ds:[046Ch]           ; next tick yet?
+   jz    start_loop              ; if not just loop
+   mov   bx,ds:[046Ch]           ; save tick value
+
+   ret
+
+start_count  endp
+
+; ============= SCASB Version of Get Length of ASCII ===========
+
+scasb_version  proc  near
+
+   cld                           ;  clear direction
+   mov   di,cx                   ;  load offset
+   mov   cx,0ffffh               ;  set counter
+   mov   al,0                    ;  load comparison value
+   repnz scasb                   ;  find the zero
+   not   cx                      ;  take ones complement
+   dec   cx                      ;  adjust length
+
+   ret
+
+scasb_version  endp
+
+; ============= LODSW Version of Get Length of ASCII ===========
+
+lodsw_version  proc  near
+
+   cld                           ;  clear direction
+   mov   si,cx                   ;  load offset
+
+repeat:
+   REPT 10                       ;  block replicate macro
+   lodsw                         ;  load word from string
+   test  ah,al                   ;  zero yet?
+   jz    end_repeat              ;  if so exit and adjust
+   ENDM                          ;  end of macro
+
+   lodsw                         ;  load word from string
+   test  ah,al                   ;  zero yet?
+   jnz   repeat                  ;  if not repeat
+end_repeat:
+   sub   si,cx                   ;  get unadjusted count
+   mov   cx,si                   ;  move it to destination
+   cmp   al,0                    ;  is lead byte zero?
+   jz    adj_two                 ;  if so adjust back two
+   dec   cx                      ;  else adjust back one
+   jmp   adj_end                 ;   then exit
+adj_two:
+   sub   cx,2                    ;  adjust back two
+adj_end:
+
+   ret
+
+lodsw_version  endp
+
+; ==============================================================
+
+code ENDS   ; end of code segment
+
+        end setup  ; end assembly

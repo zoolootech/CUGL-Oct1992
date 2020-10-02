@@ -1,0 +1,150 @@
+Listing 1. The stream sockets example. Server program.
+
+/* receive -- the server program. It runs in the background listening for
+ * client connections. Remote or local clients send character strings to the 
+ * server that receives them and echoes them on the server side. The present
+ * program operates in conjunction with one or more client programs called
+ * "send". 
+ *        Usage:  receive &
+ */
+
+#include   <sys/types.h>
+#include   <sys/socket.h>
+#include   <netdb.h>
+#include   <netinet/in.h>
+
+#define    FAIL   1                  /* exit code in case of failure */
+#define    SUCC   0                  /* correct termination code     */
+#define    PORT_NUMBER  2227         /* arbitrarily chosen port number for 
+                                      * client-server communication. Must be
+                                      * non-reserved (> 1023) and the same in 
+                                      * client and server 
+                                      */
+#define    MAX_CONN  5               /* maximum number of connection requests
+                                      * that can be queued.
+                                      */
+
+int sock_descr ;                     /* listen socket descriptor       */
+int new_sockds ;                     /* connected socket descriptor    */
+struct sockaddr_in client_addr ;     /* peer socket address            */ 
+
+/* ------------------------------------------------------------------- */
+
+main()
+{
+    void error(), server() ;
+    struct sockaddr_in my_sock_addr ;    /* local socket address structure */ 
+    int length = sizeof(struct sockaddr) ;
+
+    /* create the listen socket */
+    if ((sock_descr = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+        error("error opening stream socket in server", "") ;
+
+    /* fill socket data structure */
+    my_sock_addr.sin_family        = AF_INET ;
+    my_sock_addr.sin_addr.s_addr   = INADDR_ANY ;
+    my_sock_addr.sin_port          = PORT_NUMBER ; 
+
+    /* bind the listen address to the socket */ 
+    if (bind(sock_descr, (struct sockaddr *)&my_sock_addr, length) != 0)
+        error("error binding to stream socket", "") ;
+    
+    /* start listening at the socket for incoming connections. A maximum
+     * of MAX_CONN pending connections is allowed. 
+     */
+    if (listen(sock_descr, MAX_CONN) != 0)
+        error("error in listen() call", "") ;
+    for ( ; ; )  {
+
+        /* the following "accept" call will block until a connection
+         * request arrives. When it is done, it returns a new socket
+         * descriptor through which client and server can communicate.
+         * The original socket "sock_descr" is kept for listening to
+         * further connection requests.
+         */ 
+
+        if ((new_sockds = accept(sock_descr, (struct sockaddr *)&client_addr, 
+                                 &length)) == -1)
+            error("accept", "") ;
+        /* create new process to handle client requests */
+        switch ( fork() )  {
+            case -1  :  
+                error("fork: can't create new process", "") ;
+            case  0  :  /* child, communicates with client */
+                server() ;
+                exit(SUCC) ;
+            default  :  /* parent */
+                /* original process don't need to keep transmission socket */
+                if (close(new_sockds) == -1)
+                    error("father, close communication socket", "") ;
+                putchar('\n') ;
+                /* and keep looping waiting for further connection requests */
+        }
+    } 
+}
+
+/* ------------------------------------------------------------------- */
+
+/* server -- the routine that actually serves incoming client requests */
+
+void server()
+{
+    char *inet_ntoa(); /* returns a pointer to a 'dot' notation Internet addr.*/
+    char client_name[50], *p = client_name ;
+    struct hostent *client_info, *gethostbyaddr() ;
+    char buffer[256] ;      /* buffer to read incoming strings */
+    int nread ;
+    char message[12] ;      /* termination message for client  */
+
+    (void)strcpy(message, "-- ALL DONE") ;
+    /* close the listen socket inherited from the father */        
+    if (close(sock_descr) == -1)
+        error("child: close listen socket", "") ;
+
+    /* find out and write client information given the client address 
+     * structure 'client_addr' returned in the preceding 'accept' call.
+     */ 
+    if ((client_info = gethostbyaddr((char *)&client_addr.sin_addr,
+              sizeof(struct in_addr), client_addr.sin_family)) == NULL)  {
+
+        /* since the information is unavailable, use the ascii dot format
+         * of the Internet address. 
+         */
+        (void)strcpy(client_name, "Unknown Host") ;
+        (void)strcat(client_name, " ") ;
+        (void)strcat(client_name, inet_ntoa(client_addr.sin_addr)) ;
+    }
+    else
+        p = client_info->h_name ;         
+    printf("'send' process on host '%s' connected to 'receive' server\n", p) ;
+
+    /* start receiving requests from the client process */ 
+    while ((nread = read(new_sockds, buffer, sizeof buffer)) > 0)
+        printf("server received: '%s'\n", buffer) ;
+    if (nread < 0)
+        error("socket read error", "") ;
+    /* the server is finished handling client requests, send termination
+     * message to the client.
+     */
+    if (write(new_sockds, message, sizeof message) < 0)
+        error("server write error", "") ;
+    if (close(new_sockds) == -1)
+        error("close socket", "") ;
+}
+
+/* ------------------------------------------------------------------- */
+
+void error(s1, s2)   /* print system call error message and exit */
+    char *s1, *s2 ;
+{
+    extern int errno, sys_nerr ;
+    extern char *sys_errlist[] ;
+ 
+    fprintf(stderr, "%s %s", s1, s2) ;
+    if (errno > 0 && errno < sys_nerr)
+        fprintf(stderr, " (%s)", sys_errlist[errno]) ;
+    fprintf(stderr, "\n") ;
+    exit(FAIL) ;
+}
+
+/* ------------------------------------------------------------------- */ 

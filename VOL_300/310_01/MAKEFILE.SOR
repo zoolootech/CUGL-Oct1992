@@ -1,0 +1,58 @@
+# Makefile for Little Smalltalk and DOS
+
+CFLAGS = /AL 
+BINDIR=\bin
+PARSEDIR=..\parser
+LINKFILE=linklst
+
+.c.obj: 
+	msc $(CFLAGS) $<;
+
+Objects = main.obj object.obj line.obj \
+class.obj number.obj symbol.obj string.obj byte.obj array.obj file.obj \
+primitiv.obj syms.obj cldict.obj process.obj interp.obj block.obj courier.obj \
+lex.obj drive.obj lexcmd.obj
+
+Objects.c = main.c object.c line.c \
+class.c number.c symbol.c string.c byte.c array.c file.c \
+primitiv.c syms.c cldict.c process.c interp.c block.c courier.c \
+lex.c drive.c lexcmd.c
+
+Objects.h = block.h byte.h file.h interp.h number.h object.h \
+	    primitiv.h process.h string.h symbol.h drive.h env.h cmds.h
+
+MISC = disclaim Makefile *.h sstr.c symbols newmal.c
+
+lst.exe: $(Objects)
+	link @$(LINKFILE)
+
+install: lst.exe
+	copy lst.exe $(BINDIR)
+
+syms.c: sstr.exe symbols
+	dosym  
+
+sstr.exe: sstr.c
+	msc sstr;
+	link sstr;
+
+drive.h: $(PARSEDIR)\drive.h symbols
+	copy $(PARSEDIR)\drive.h .
+
+cmds.h: $(PARSEDIR)\cmds.h symbols
+	sstr symbols <$(PARSEDIR)\cmds.h >cmds.h
+
+env.h: $(PARSEDIR)\env.h
+	copy $(PARSEDIR)\env.h .
+
+number.obj: number.c number.h
+interp.obj: drive.h cmds.h
+primitiv.obj: $(Objects.h) 
+main.obj: $(Objects.h)
+
+clean:
+	del *.obj
+	del drive.h
+	del cmds.h
+	del env.h
+

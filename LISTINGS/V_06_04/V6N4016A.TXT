@@ -1,0 +1,87 @@
+
+
+struct 
+	{
+	int total;
+	char date[9];
+	} customer_header;
+
+struct 
+	{
+	int code;
+	char name[41];
+	char address[2][41];
+	} customer_record;
+
+#include <stdio.h>
+
+/* Misc. data */
+
+FILE *customer_file;
+
+int open_customer()
+	{ 
+    /* Open as read/write */ 
+	if ((customer_file = fopen("customer.dat", "r++")) == NULL)
+		{
+        /* Does not exist, try creating it */  
+		if ((customer_file = fopen("customer.dat", "w++")) == NULL)
+			{
+			printf("Can't open customer.dat, error %d.\n", errno);
+			exit(errno);
+			}
+        /* Write out a initial header record */
+		memset(&customer_header, 0, sizeof (customer_header));
+		write_customer_header();
+		}
+	else 
+        /* Read the header record */
+		fread(&customer_header, sizeof (customer_header), 1, customer_file);
+	}
+
+
+/* Write the header record */
+
+int write_customer_header()
+	{
+	fseek(customer_file, 0L, 0);
+	return fwrite(&customer_header, sizeof (customer_header), 1,
+	    customer_file);
+	}
+
+/* Read record */
+
+int read_customer(record)
+int record;
+	{
+	fseek(customer_file, (long) record * sizeof (customer_record) 
+		+ sizeof (customer_header), 0);
+	return fread(&customer_record, sizeof (customer_record), 1,
+	    customer_file);
+	}
+
+/* Write record */
+
+int write_customer(record)
+int record;
+	{
+	fseek(customer_file, (long) record * sizeof (customer_record) 
+		+ sizeof (customer_header), 0);
+	return fwrite(&customer_record, sizeof (customer_record), 1,
+	    customer_file);
+	}
+
+/* Delete a record  (slow method ) */
+
+int delete_customer(record)
+int record;
+	{
+	int i;
+	for (i = record;  i < customer_header.total - 1;  i++)
+		{
+		read_customer(i + 1);
+		write_customer(i);
+		}
+	customer_header.total--;
+	write_customer_header();
+	}

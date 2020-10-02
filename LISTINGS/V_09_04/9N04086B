@@ -1,0 +1,144 @@
+
+
+/* *************************************************************
+     DSAT.C         Dynamic String Array Test
+     Version 1.0
+     Created by:    Anthony Whitford
+     (c) 1990
+     ********************************************************* */
+
+#include <process.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+typedef char **     ptrarray_t;
+
+int wordcount (const char *);
+int str_to_ptrarray (const char *, char ***);
+void free_ptrarray (char ***);
+
+void main (void)
+     {
+     int numofitems, retval;
+     ptrarray_t strlist;
+     if ((retval = str_to_ptrarray("This is a test.", &strlist)) == -1)
+      printf("Error turning the string into a pointer list.");
+     else
+      {
+      /* Test the data. */
+          printf("\nString list outside function...\n");
+      for (numofitems = 0; strlist[numofitems] !=NULL; numofitems++)
+           {
+           printf("%u -->   ***%s***\n",
+           numofitems, strlist[numofitems]);
+           }
+          puts("");
+      free_ptrarray(&strlist); /* Free pointer array. */
+          }
+     exit (retval);      /* Return number of words or error. */
+     }
+
+/* ****************************************************************          
+     Function:      wordcount
+     Parameters:    const char *str     -> the string.
+     Description:   Counts the number of words in a string up to 
+                         255 bytes.
+     Returns:       The number of words in astring.
+     ************************************************************* */
+
+int wordcount (const char *str)
+     {
+     int words = 1;           /* Initialize word cunt. */
+     char tstr[256];          /* Declare a temporary string. */
+     strcpy(tstr, str);       /* Make a working copy. */
+     if (strtok(tstr, " ")  == NULL)    /* If string is only */
+      return (0);                        /*  spaces, return 0. */
+     while (strtok(NULL, " ") !=NULL)
+     words++;            /* Count how many words. */
+     return (words);          /* Return number of words in string. */
+     }
+
+/*  ************************************************************
+     Function:      str_to_ptrarray
+     Parameters:    const char *orgstr  -> the original string 
+                                                  to be parsed,
+                    char ***ptrarray    -> the address ofthe 
+                                             pointer array.
+     Description:   Breaks a string into its words and composes
+                         a pointer array of the words.
+     Returns:       "ptrarray" becomes a NULL terminating pointer
+                    array, and pointer array, or -1 if an error 
+                    occurred.
+     ******************************************************** */
+
+int str_to_ptrarray (const char *orgstr, char ***ptrarray)
+     {
+     unsigned index = 0, words;
+     char *cptr,*thestr; 
+     if (( thestr = (char *) calloc((size_t)(strlen(orgstr) + 1),
+          sizeof(*thestr))) == NULL)
+      return (-1);        /* Make a working copy of the
+                   string. */
+     strcpy(thestr, orgstr);
+     words = wordcount(thestr);    /* Get number of words. */
+     if ((*ptrarray = (char **) calloc(words + 1,
+       (size_t) sizeof(**ptrarray))) ==NULL)
+       {
+       free(thestr);
+       return (-1);        /* Error allocating space for
+                   ptrarray.*/
+       }
+
+     /* THIS IS A NEW PRINTF */
+     for (index = 0; index < words; index ++)
+    {
+    printf("\n & *ptrarray[index] %x & (*ptrarray)[index] %x",
+        ptrarray[index], &((*ptrarray)[index]));
+    }
+     index = 0;
+
+     cptr = strtok(thestr, " ");
+     while (index < words)
+      {
+      if ((*ptrarray[index] = (char *)calloc((size_t)(strlen(cptr) + 1),
+           sizeof(**ptrarray[index]))) == NULL)
+            {
+                    free_ptrarray(ptrarray);
+            free(thestr);  /* If memory allocation
+                         error, free */
+            return (-1);   /* thestr, ptrarray, and
+                          return -1. */
+            }
+      strcpy(*ptrarray[index++], cptr);
+      cptr = strtok (NULL, " ");
+      }
+     *ptrarray[index] = NULL; /* Terminate ptrarray with a NULL. */
+     free(thestr);            /* Free allocated memory. */
+     /* Test the data. --- Delete the next four lines when
+                    debugged!!  */
+     printf("\nString list inside function...\n");
+     for (index = 0; *ptrarray[index] != NULL; index++)
+      printf("%u --> ***%s***\n", index, *ptrarray[index]);
+     puts(" ");
+     
+     return (words);     /* Return the number of pointers. */
+     }
+
+/* ************************************************************
+     Function:      free_ptrarray
+     Parameters:    char ***ptrarray  _> address ofthe pointer 
+                                                  array.
+     Description:   Frees allocated memory for the pointer array 
+                    allocated with the str_to_ptrarray function.
+     Returns:       Nothing.
+     ******************************************************* */
+void free_ptrarray (char ***ptrarray)
+     {
+     unsigned count = 0; /* Declare and reset counter. */
+     for (; *ptrarray[count] != NULL; count++)
+      free(*ptrarray[count]);  /* Free each string/word. */
+     free(*ptrarray);              /* Free the handle. */
+     }
+
+

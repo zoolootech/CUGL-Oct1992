@@ -1,0 +1,145 @@
+;	file DEQ.MAC
+; I/O ports for AM9511 arithmetic processor chip
+; IMPORTANT. It is up to every user to set the
+; I/O port values for his hardware.
+PORT.D	EQU	0BCH	; Data Port
+PORT.C	EQU	0BDH	; Command Port
+
+;	   AM9511 chip command bytes
+;	   _________________________
+ 
+;	16-BIT INT ARITHMETIC
+ 
+.IADD	EQU	0ECH	;Add X to Y. 
+.ISUB	EQU	0EDH	;Subtract X from Y.
+.IMUL	EQU	0EEH	;Multiply Y by X. Standard 16 bit result
+.IMUO	EQU	0F6H	;Multiply Y by X. Upper 16 bits, if needed
+.IDIV	EQU	0EFH	;Divide Y by X.
+ 
+;	32-BIT LONG ARITHMETIC
+ 
+.LADD	EQU	0ACH	;Add X to Y.
+.LSUB	EQU	0ADH	;Subtract X from Y.
+.LMUL	EQU	0AEH	;Multiply Y by X. Standard 32 bit result
+.LMUO	EQU	0B6H	;Multiply Y by X. Upper 32 bits, if needed
+.LDIV	EQU	0AFH	;Divide Y by X.
+ 
+;	32-BIT FLOAT OPERATIONS
+ 
+.FADD	EQU	90H	;Add X to Y.
+.FSUB	EQU	91H	;Subtract X from Y.
+.FMUL	EQU	92H	;Multiply Y by X.
+.FDIV	EQU	93H	;Divide Y by X.
+ 
+.SQRT	EQU	01H	;Square Root of X.
+.SIN	EQU	02H	;Sine of X.
+.COS	EQU	03H	;Cosine of X.
+.TAN	EQU	04H	;Tangent of X.
+.ASIN	EQU	05H	;Inverse Sine of X.
+.ACOS	EQU	06H	;Inverse Cosine of X.
+.ATAN	EQU	07H	;Inverse Tangent of X.
+.LOG	EQU	08H	;Common Logarithm of X.
+.LN	EQU	09H	;Natural Logarithm of X.
+.EXP	EQU	0AH	;e raised to power in X.
+.PWR	EQU	8BH	;Y raised to power in X.
+ 
+;	MISC. OPERATIONS
+ 
+			;No Operation, clear
+.NOP	EQU	00H	;status byte to NULL
+ 
+FTOI	EQU	1FH	;Convert X from float format
+FTOL	EQU	1EH	; to either int or long format.
+ 
+ITOF	EQU	1DH	;Convert X from int or long format
+LTOF	EQU	1CH	; to float format
+ 
+NXI	EQU	74H	;Negate X, int format (change sign)
+NXL	EQU	34H	;Negate X, long format
+NXF	EQU	15H	;Negate X, float format
+ 
+PXI	EQU	77H	;PUSH Stack (int, long, float).
+PXL	EQU	37H	; X is copied into Y.
+PXF	EQU	17H	; Last on stack is lost.
+ 
+RDI	EQU	78H	;Rotate Down (pop stack).
+RDL	EQU	38H	; Old Y becomes new X.
+RDF	EQU	18H	; Old X rotates to last.
+ 
+XY.I	EQU	79H	;Exchange X and Y, int
+XY.L	EQU	39H	;Exchange X and Y, long
+XY.F	EQU	19H	;Exchange X and Y, float
+ 
+PXF.PI	EQU	1AH	;Push (float to X), the pi constant.
+
+;	SMALL INTEGERS AS FLOATS
+; Negative, one through ten
+; (last two bytes are nulls for small integers)
+NFE10	EQU	084A0H
+NFE9	EQU	08490H
+NFE8	EQU	08480H
+NFE7	EQU	083E0H
+NFE6	EQU	083C0H
+NFE5	EQU	083A0H
+NFE4	EQU	08380H
+NFE3	EQU	082C0H
+NFE2	EQU	08280H
+NFE1	EQU	08180H
+; Positive, zero through ten
+; (again, the two low order bytes are nulls)
+FE0	EQU	0
+FE1	EQU	0180H
+FE2	EQU	0280H
+FE3	EQU	02C0H
+FE4	EQU	0380H
+FE5	EQU	03A0H
+FE6	EQU	03C0H
+FE7	EQU	03E0H
+FE8	EQU	0480H
+FE9	EQU	0490H
+FE10	EQU	04A0H
+
+	.Z80	; Zilog Code
+
+LDR.FV	MACRO	FVAL	; load float val of int to registers
+	IFB	<FVAL>
+	EXITM
+	ENDIF
+	LD	BC,FVAL
+	LD	DE,0
+	ENDM
+
+EQUJPS	MACRO	DEVC,J1,J2,J3,J4,J5,J6
+	LOCAL	JMPIN,DBJ
+	IFB	<J1>
+	EXITM
+	ENDIF
+	IFNB	<DEVC>
+	LD	A,DEVC
+	LD	(CMDBYT),A
+	ENDIF
+	IFB	<J3>
+	IFB	<J2>
+	JP	J1
+	ELSE
+	LD	IX,J2
+	JP	J1
+	ENDIF
+	ELSE
+	LD	IX,JMPIN
+	LD	A,-3
+JMPIN:	ADD	A,3
+	LD	(DBJ),A
+	DB	018H	; JR (jump relative)
+DBJ:	DB	0	; displacement byte
+	IRP	J,<<J1>,<J2>,<J3>,<J4>,<J5>,<J6>>
+	IFB	<J>
+	EXITM
+	ENDIF
+	JP	J
+	ENDM
+	ENDIF
+	ENDM
+
+	.8080
+

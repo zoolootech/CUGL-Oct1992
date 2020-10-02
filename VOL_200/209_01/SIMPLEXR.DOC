@@ -1,0 +1,334 @@
+SIMPLEXR.DOC       VERS:- 01.00  DATE:- 09/26/86  TIME:- 10:02:52 PM
+
+notes on the simplex method of function minimization, 
+	by use of the Nelder-Mead algorithm.
+
+
+
+
+
+
+        By J. A. Rupley, Tucson, Arizona
+
+
+         NOTES ON THE ALGORITHM OF THE SIMPLEX FITTING PROGRAM
+
+
+        A. THE SIMPLEX METHOD OF FUNCTION MINIMIZATION
+
+
+             The fitting of a model with variable parameters to a set of
+        data points is handled by minimizing an error function, such as
+        the sum of squares of the differences between observed values and
+        values calculated according to the model.
+
+             We describe here a simplex approximation procedure for
+        estimating the parameter values that give a function minimum.
+        The strategy is that of Nelder and Mead, and their article
+        (Computer Journal, vol 7, p 308, 1965) should be consulted for
+        more information than is given below.
+
+             A simplex is constructed in parameter space, with vertices
+        that are arbitrary but not too far from the point at which the
+        function is a minimum and that describe a volume that includes
+        the minimum point.
+
+             The position of each vertex in parameter space defines (or
+        equally, is defined by) a set of parameter values, for which one
+        calculates the function value for that vertex.  The simplex has
+        (M + 1) vertices, where M is the number of free parameters.
+
+             In successive iterations the vertex with the highest
+        function value is moved, to obtain a new vertex position of
+        smaller function value.  The movement is directed with respect to
+        the center of the reduced simplex, which is the simplex less the
+        highest vertex.  The movements can be the following:
+             reflection;
+             expansion beyond the reflected position;
+             reflection after failed expansion;
+             contraction toward the center of the reduced simplex from
+                  the original position;
+             contraction from the reflected position;
+             if none of these operations gives a lower function value
+                  then the entire simplex is shrunk about the lowest
+                  vertex.
+
+             Exit from the iterative minimization is if the fractional
+        RMS deviation of the function values at the vertices is less than
+        a test value and if the centroid of the simplex is within two RMS
+        deviations of the mean of the vertices.  The default test value
+        is 1E-8 * the mean function value.
+
+             Thus at exit from the minimization, the centroid of the
+        simplex gives an arbitrarily close approximation of the parameter
+        values at the function minimum.
+
+
+                                        1
+
+
+
+
+
+
+
+
+
+
+             The routine that calculates the function values must be
+        adapted to the model to be optimized.
+
+             Entry of the data and starting parameter values can be at
+        compilation, by initializing the data and parameter arrays, or by
+        reading a text file.
+
+             Results should be written to a file, for convenience of
+        review and for recovery from crashes.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        2
+
+
+
+
+
+
+
+
+
+
+        B. THE QUADRATIC FIT TO THE LEAST SQUARES FUNCTION SURFACE
+
+
+             Standard deviations of the parameters are calculated by
+        fitting a quadratic function to the surface about the minimum in
+        parameter space and then using the properties of this function to
+        calculate the variance-covariance matrix for the parameters.  The
+        strategy is a modification of that of Nelder and Mead (1965).
+
+             The contracted simplex obtained through the previous
+        minimization process is used to define a new coordinate system of
+        M oblique axes in parameter space.  The origin of the axes is at
+        the centroid of the simplex.  Each axis corresponds to a free
+        parameter.  The unit value (scale) for each axis is set in the
+        new system at the average of the deviations of the vertices of
+        the simplex from the centroid value.
+
+             In effect, one constructs in the new coordinate system a new
+        simplex, based on the one obtained by the previous minimization
+        process.  The (M + 1) vertices of the new construct are at the
+        centroid (the zero of the new system) and at the unit points on
+        each free parameter axis.  As before, the values of the least
+        squares function at these vertices describe a surface.  It is
+        this least squares surface to which a quadratic function is to be
+        fit.
+
+             If necessary, the scales of the axes (the unit values) in
+        the new coordinate system can be adjusted to give better behavior
+        of the surface in the vicinity of the minimum.
+
+             The diagonal matrix Q transforms the new coordinate system
+        back to the original system.  The elements of Q are for each
+        parameter the (adjusted) average differences between the vertices
+        and the centroid of the original simplex.
+
+             The function value, y, in the region near the function
+        minimum generally can be approximated in the new coordinate
+        system by the quadratic vector function:
+
+              y  =  a(o)   +   2 a'.x   +   x'.B.x                   (1)
+
+             The elements of the vector x are the values of the M free
+        parameters at a point in parameter space.  The scalar a(o), the
+        vector a and the matrix B are determined by the shape of the
+        surface y near the minimum and can be calculated with the use of
+        simple numerical approximations, evaluated at x = 0 (the position
+        of the centroid of the original simplex):
+
+
+
+
+
+
+
+
+                                        3
+
+
+
+
+
+
+
+
+
+                a(0)   =   y(0)
+
+                ai     =   0.5 * (dy/dxi)
+                       =   0.25 * (yi - y-i)
+
+                bij    =   0.5 * (d2y/dxi.dxj)
+                       =   0.25 * (yij + y-i-j + 2 * y(0)
+                                           - y-i - y-j - yi - yj)
+
+                bii    =   0.5 * (d2y/dxi2)
+                       =   0.5 * (yi + y-i - 2 * y(0))
+
+             The point x = 0 (the centroid position) may not be the true
+        position of the function minimum, although it is assumed to be
+        close to it.  A refined estimate of the minimum position, based
+        on the quadratic approximation of equation (1) above, is given by
+        x(min):
+
+             xmin = - B-1.a
+
+
+             The function minimum at x(min) is given by y(min) :
+
+             ymin = a(0) - a'.B-1.a
+
+
+             The position of the minimum in the original coordinate
+        system is obtained by back transformation of x(min) with the
+        matrix Q, giving the point p(min):
+
+             pmin = p(0) - Q'.B-1.a
+
+             As a test of the quality of the quadratic approximation (1),
+        there should be close agreement between the function values
+        y(min), y(p(min)), and y(centroid), and between the sets of
+        parameter values defining the points p(min) and the centroid.
+
+             The variance-covariance matrix C is given by
+
+             C = Q'.B-1.Q
+
+             A diagonal element of C, multiplied by the mean square error
+        (MSE), gives the variance of the corresponding parameter:
+
+             var(i) = cii * MSE
+
+             MSE = ymin/(n - m)
+
+        where the divisor (n - m) = # degrees freedom: n = # of data
+        points used in calcn of ymin, and m = # of free parameters; and
+        ymin = the sum of residuals squared
+
+
+
+
+
+                                        4
+
+
+
+
+
+
+
+
+
+             The standard deviation is the square root of the variance:
+
+             std-dev(i) = sqrt(var(i))
+
+             The quadratic fit can fail, giving negative values of the
+        diagonal elements of the variance-covariance matrix or a value of
+        y(p(min)) > y(centroid).  Failure can come from too tight a
+        simplex, resulting in too small values of the B matrix elements,
+        or from too large a simplex, resulting in non-quadratic behavior
+        of the least squares function within the region defined by the
+        simplex.  The problem of too tight a simplex does not arise if
+        the precision of the floating point routines of the program is
+        sufficiently high (e.g., 14 digits).  The problem of non-quadratic
+        behavior commonly arises in the early stages of the fitting, when
+        the minimum has not yet been approached closely.  This can be
+        taken into account by modifying the fitting algorithm, or one can
+        be patient.  If a parameter moves so close to a bound that
+        expansion of the simplex toward the bound is not possible, then
+        that parameter should be fixed.
+
+             It may be useful to cycle between short sessions of simplex
+        fitting and quadratic approximation, to more rapidly approach the
+        lsq function minimum.  Toward this end, the presumed more
+        accurate approximation of the function minimum given by p(min) is
+        used to replace the previously obtained centroid value of the
+        simplex.  That is, the simplex returned to the simplex fitting
+        routine would have M vertices at the "unit" positions on the
+        parameter axes and the (M+1)th vertex at p(min), not at the
+        "origin", ie the old centroid value.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        5
+
+
+

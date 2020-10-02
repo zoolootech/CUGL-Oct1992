@@ -1,0 +1,101 @@
+/* Listing 7 */
+/*--------------------- PHLIST2.H ----------------------*/
+#include "pinlist.h"
+
+typedef struct phone_entry {
+    char last_name[21], first_name[11], phone_no[14];
+
+} PHONE_ENTRY;
+
+#define PHONE_LIST_CLASS PINNACLE_LIST_CLASS \
+              PHONE_ENTRY pe; \
+              DBCOL last, first, phone, lastfirst;
+
+typedef struct phone_list {
+    PHONE_LIST_CLASS
+} PHONE_LIST;
+
+PHONE_LIST *new_phone_list();
+void destroy_phone_list(PHONE_LIST *);
+/*--------------------- PHLIST2.C -----------------------*/
+#include "phlist2.h"
+#include <string.h>
+#include <conio.h>
+#include <stdlib.h>
+
+static void phone_list_memory_error(char *fun) {
+fprintf(stderr,
+"\nMemory Error in Function %s <Press a Key>\n", fun);
+getch(); exit(1);
+}
+
+static unsigned find(PHONE_LIST *this, char *srch_l_name) {
+DBSEARCH sobj; unsigned found;
+
+sobj = DB_SearchObject(this->db, String, srch_l_name, "==");
+
+found = DB_FindNext(this->last,sobj,DBNEXT);
+DB_Free(sobj);
+return(found);
+}
+
+static display(PHONE_LIST *this) {
+    strcpy(this->pe.last_name,DB_GetString(this->last));
+    strcpy(this->pe.first_name,DB_GetString(this->first));
+    strcpy(this->pe.phone_no,DB_GetString(this->phone));
+    printf("%-20s, %-10s  -  %-13s\n",this->pe.last_name,
+    this->pe.first_name, this->pe.phone_no);
+}
+
+static void add_member(PHONE_LIST *this, PHONE_ENTRY *pe) {
+    DB_AddRow(this->table);
+    DB_PutString(this->last,pe->last_name);
+    DB_PutString(this->first,pe->first_name);
+    DB_PutString(this->phone,pe->phone_no);
+}
+
+static void replace_member(PHONE_LIST *this,
+PHONE_ENTRY *pe) {
+    DB_PutString(this->last,pe->last_name);
+    DB_PutString(this->first,pe->first_name);
+    DB_PutString(this->phone,pe->phone_no);
+}
+
+static PHONE_ENTRY *current(PHONE_LIST *this) {
+    strcpy(this->pe.last_name,DB_GetString(this->last));
+    strcpy(this->pe.first_name,DB_GetString(this->first));
+    strcpy(this->pe.phone_no,DB_GetString(this->phone));
+    return(&(this->pe));
+}
+
+PHONE_LIST *new_phone_list() {
+PINNACLE_LIST *pl; PHONE_LIST *this;
+
+pl = new_pinnacle_list("fonelist.db","PhoneList");
+if (pl == NULL)
+   return(NULL);
+
+this = calloc(1,sizeof(PHONE_LIST));
+if (this == NULL) {
+    destroy_pinnacle_list(pl);
+    return(NULL);
+}
+
+memmove(this,pl,sizeof(PINNACLE_LIST));
+free(pl);
+
+this->last = DB_Column(this->table,"Last");
+this->first = DB_Column(this->table,"First");
+this->phone = DB_Column(this->table,"Phone");
+this->lastfirst =  DB_Column(this->table,"LastFirst");
+DB_OrderBy(this->lastfirst);
+this->find = find; this->display = display;
+this->add_member = add_member;
+this->replace_member = replace_member;
+this->current = current;
+return(this);
+}
+
+void destroy_phone_list(PHONE_LIST *this) {
+    destroy_pinnacle_list(this);
+}

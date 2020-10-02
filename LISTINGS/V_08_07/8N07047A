@@ -1,0 +1,97 @@
+
+
+------------------------------------------------------
+LISTING 3
+
+
+/*		Options.c
+*/
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+#include "Options.h"
+struct tOPTIONS{
+	int argc, next;
+	char    **argv;
+	boolean  *used;
+	};
+typedef struct tOPTIONS OPTIONS;
+#define this ((OPTIONS *)options)
+	static void
+ErrorExit( char *format, ...){
+		va_list ap;
+	va_start( ap, format);
+	fprintf( stderr, "Error:  ");
+	vfprintf( stderr, format, ap);
+	fprintf( stderr, "!\nAborting.\n");
+	exit(1);
+	va_end( ap );
+	}
+	boolean
+IsSwitch( Options options, const char switch_character){
+		int k =0;
+	for( ;k < this->argc; k++ )
+		if( this->argv[k][0] == '-' &&
+		    this->argv[k][1] == switch_character
+		    )return (this->used[k] =TRUE);
+	return FALSE;
+	}
+	char *
+GetParameter( Options options, const char switch_character){
+		int k =1;
+	for( ;k < this->argc; k++ )
+		if( this->argv[k][0] == '-' &&
+		    this->argv[k][1] == switch_character
+		    ){
+			this->used[k++] =TRUE;
+			this->used[k]   =TRUE;
+			return this->argv[k];
+			}
+	return NULL;
+	}
+	boolean
+IsMoreSwitches( Options options ){
+		int k =0;
+	for(; k < this->argc; k++)
+	    if( !this->used[k] && this->argv[k][0] == '-' )
+		return TRUE;
+	return FALSE;
+	}
+	char *
+GetNextOption( Options options ){
+	for( ;this->next < this->argc; this->next++)
+	    if(	!this->used[this->next] && 
+		 this->argv[this->next][0] != '-'
+		)return( this->argv[this->next++] );
+	return NULL;
+	}
+	Options
+CreateOptions(void){
+		OPTIONS *opt;
+	if( (opt =calloc( 1, sizeof(OPTIONS))) == NULL )
+	    ErrorExit("Out of memory in CreateOptions()");
+	opt->argc =0;
+	opt->argv =NULL;
+	opt->next =0;
+	opt->used =NULL;
+	return (Options)opt;
+	}
+	void
+PutArgs( Options options, const int argc, char **argv){
+	this->argc =argc -1;/* ignore the program name */
+	this->argv =argv +1;/* in argv[0]              */
+	this->next =0;
+	if( (this->used =calloc(this->argc,sizeof(boolean)))
+	    == NULL )ErrorExit("Out of memory in PutArgs()");
+		{ 	int k=0; 
+			while( k < this->argc )
+				this->used[k++] =FALSE;
+		}
+	}
+	void
+DestroyOptions( Options options){
+	if( this->used )free( this->used );
+	free( this );
+	}
+
+

@@ -1,0 +1,42 @@
+
+;
+; Critical Error handler routine
+;
+
+XCPTN    PROC   FAR            ; PROC must be FAR (to make RET FAR)
+         STI
+         CMP    DI,0002H       ; Drive not ready?
+         JE     NEWHND         ; then goto new code
+OLDHND:  DEC    SP             ; Allocate
+         DEC    SP             ; 2 words on stack
+         DEC    SP             ; for use by
+         DEC    SP             ; FAR RET
+         PUSH   BP             ; BP will be used
+         MOV    BP,SP          ; to compute position of those 2 words
+         PUSH   AX
+         PUSH   DS
+         MOV    AX,SEG DGROUP
+         MOV    DS,AX
+         MOV    AX,WORD PTR DS:[OLDVCT+02H] ; Get segment from old vector
+         MOV    WORD PTR SS:[BP+04H],AX     ; Put it in reserved word
+         MOV    AX,WORD PTR DS:[OLDVCT]     ; Get offset from old vector
+         MOV    WORD PTR SS:[BP+02H],AX     ; Put it in reserved word
+         POP    DS
+         POP    AX
+         POP    BP
+                ; Stack is now as it was on entry
+                ; except for 2 words
+                ; that will be popped and used by RET
+         CLI
+         RET              ; FAR RET used as FAR goto
+NEWHND:
+         ...
+
+         IRET
+XCPTN    ENDP
+
+         ...
+
+_BSS     SEGMENT BYTE PUBLIC 'BSS'
+OLDVCT   DD    ?          ; Address of the old handler
+_BSS     ENDS

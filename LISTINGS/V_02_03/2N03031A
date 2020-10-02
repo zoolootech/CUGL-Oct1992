@@ -1,0 +1,137 @@
+; SVGALIB.ASM
+; Assembler: MASM 5.1 
+;-------------------------------------------------------------------
+; SuperVGA Library of functions to demonstrate how to work with the
+; ATI VGA Wonder Card in 800 x 600 x 256 mode (63h)
+;
+; The following routines are included in the file
+; C Routines
+; TextMode      - Place the video card into Color Text Mode (co80)
+; SvgaMode      - Place the video card into SVGA 800 x 600 x 256
+; ChkMode       - Check to see if graphic video mode is supported
+; SetPixel      - Set a pixel (x,y) to a Color
+; InvertPixel   - Invert the pixel at (x,y)
+;-------------------------------------------------------------------
+; This file must be compiled with the MASM 5.1 assembler
+; This particular assembler must be used because of the Assembly/C
+; parameter passing mechanism that is supported by this version
+; of the assembler "PROC    x:WORD" syntax 
+;-------------------------------------------------------------------
+
+.MODEL MEDIUM,C
+.CODE
+
+PAGEMSK    equ     0E1h        ;page mask
+EXTREG     equ     0010h       ;extended select register
+BIOSSEG    equ     0C000h      ;BIOS segment
+VGASEG     equ     0A000h      ;VGA segment
+
+; This function is used to set the video card into TextMode
+; (Color 80). The card is set through the BIOS interrupt 
+; function call
+
+            PUBLIC  TextMode
+TextMode    PROC    
+            mov     ah,0       ; Function # and Video Mode   
+            mov     al,3h        
+            int     10h        ; call BIOS 
+            ret
+TextMode    ENDP
+
+
+; This function is used to set the video card into 
+; 800 x 600 x 256 (63h). The card is set through the 
+; BIOS interrupt function call
+
+            PUBLIC  SvgaMode
+SvgaMode    PROC    
+            mov     ah,0      ; Function # and Video Mode
+            mov     al,63h   
+            int     10h       ;call BIOS to do the check
+            ret
+SvgaMode    ENDP
+
+
+; This function is used to check is the Desired Mode
+; is available for the video adapter. It is not currently 
+; called is the example C program. The card's mode is 
+; check through the BIOS interrupt function call
+
+           PUBLIC  ChkMode
+ChkMode    PROC    USES es bp, mode:WORD
+           mov     ax,mode         ;mode in AX
+           mov     ah,12h                   
+           mov     bx,5506h                 
+           mov     bp,0ffffh                
+           int     10h        ;call BIOS to do the check
+           mov     ax,bp      ;get return value fro BIOS call
+           inc     ax         ;if the mode is supported
+           ret
+ChkMode    ENDP
+
+
+
+;Set the passed X,Y to color C:  setpixel(x,y,c);
+
+           PUBLIC  SetPixel
+SetPixel   PROC    x:WORD, y:WORD, c:WORD
+       mov     ax,320h        
+       mul     y               ;y * 320h
+       add     ax,x            ;Add in x so that...
+       adc     dx,0            ;DX = page, AX = byte
+       mov     bx,ax           ;set BX to byte value
+       mov     ax,dx           ;get the page
+       mov     ch,al           ;put page in CH
+       mov     ax,BIOSSEG      ;point to video bios segment
+       mov     es,ax           ;with ES register
+       mov     dx,es:[EXTREG]  ;get EXTENDED_REG address
+       mov     al,0B2h         
+       out     dx,al           ;send it to board
+       inc     dl              ;next port address
+       in      al,dx           
+       mov     ah,al           
+       and     ah,PAGEMSK      ;mask off bits
+       shl     ch,1            ;align page to bits
+       or      ah,ch           ;assert bits
+       mov     al,0B2h         
+       dec     dl              ;point back to PAGE register
+       out     dx,ax           ;set the page
+       mov     ax,VGASEG       ;set AX = video segment
+       mov     es,ax           
+       mov     ax,c            ;color to set
+       mov     BYTE PTR es:[bx],al  ;save color in video page
+       ret
+SetPixel    ENDP
+
+
+;Invert the passed X,Y:  InvertPixel(x,y)
+
+               PUBLIC  InvertPixel
+InvertPixel    PROC    x:WORD, y:WORD
+          mov     ax,320h        
+          mul     y              ;y * 320h
+          add     ax,x           ;Add in x so that...
+          adc     dx,0           ;DX = page, AX = byte
+          mov     bx,ax          ;set BX to byte value
+          mov     ax,dx          ;get the page
+          mov     ch,al          ;put page in CH
+          mov     ax,BIOSSEG     ;point to video bios segment
+          mov     es,ax          ;with ES register
+          mov     dx,es:[EXTREG] ;get EXTENDED_REG address
+          mov     al,0B2h        
+          out     dx,al          ;send it to board
+          inc     dl             ;next port address
+          in      al,dx          
+          mov     ah,al          
+          and     ah,PAGEMSK     ;mask off bits
+          shl     ch,1           ;align page to bits
+          or      ah,ch          ;assert bits
+          mov     al,0B2h        
+          dec     dl             ;point back to PAGE register
+          out     dx,ax          ;set the page
+          mov     ax,VGASEG      ;set AX = video segment
+          mov     es,ax
+          xor     BYTE PTR es:[bx],0FFh ;invert the byte
+          ret
+InvertPixel    ENDP
+          END              ; End of Code 

@@ -1,0 +1,377 @@
+
+
+
+
+                         MAKE, Version 1.1
+                                by
+                          James Pritchett
+                     275 Bleecker St., Apt. 1
+                        New York, NY  10014
+                          (212) 989-1865
+                         December 6, 1985
+
+
+
+ACKNOWLEDGEMENTS
+
+      The  code  for  MAKE  is based on the program MK written by
+   Allen Holub and published in Dr. Dobb's Journal,  August  1985
+   issue (#106).    Many  of the functions used in MAKE are taken
+   directly from MK,  with  only  the  alterations  necessary  to
+   compile under   BDS   C.      Other   functions  were  altered
+   significantly to port from MS-DOS to CP/M-80.   Finally,  MAKE
+   includes  features  not  available in MK, such as command line
+   options and some macros.  I am thus heavily  indebted  to  Mr.
+   Holub  for  his  functions, which are identified in the source
+   files, as well as for the overall structure  of  the  program.
+   The  code  as  published  in DDJ contains no copyright notice,
+   but it should be assumed  that  all  functions  identified  as
+   written  by  Holub are his property and if used elsewhere, due
+   credit should be given to him. 
+
+
+DESCRIPTION
+
+      MAKE is a version of the UNIX utility for CP/M-80.  It  was
+   developed  with  the BDS C compiler, version 1.50a, and should
+   run on any standard CP/M-80 system.
+
+      MAKE is a utility used to simplify the  compilation/linkage
+   process  of  C  programs  consisting  of  more than one source
+   file.  Put simply, MAKE will determine which  files,  if  any,
+   need  to  be  compiled and linked, and will batch all the CP/M
+   commands needed to perform the compilation and  linkage.    If
+   changes are made to some, but not all, source files, MAKE will
+   determine which files have been changed and will compile  only
+   those files that have been changed.
+
+      MAKE  gets the information on which source files are needed
+   for a program and what commands are necessary to  compile  and
+   link  from a "makefile." The makefile is a text file outlining
+   the interdependancy of files relating  to  a  program  (source
+   files, object  files, header files).  The makefile consists of
+   a series of "objects" that  can  be  made  (object  files  and
+   executable files).   Each object has a list of "dependancies",
+   which are either filenames (source files or header files),  or
+   other objects  in  the  makefile.  Each object also has a list
+   of "actions"  necessary  to  make  the  object:    these   are
+   standard CP/M  command lines (such as "CC FOO").  In practice,
+   objects that are executable files will depend  on  object-file
+   objects  (i.e.,  COM  files  depend on CRL files), and objects
+   that are object files will depend on source and  header  files
+   (i.e., CRL  files  depend  on C and H files).  The actions for
+   making  executable-file  objects  will  usually   be   linkage
+   commands,  and the actions for making object-file objects will
+   be compilation commands.
+
+      When MAKE is run, it is given a "target"  to  make.    MAKE
+   will  find  the  target  object  in  the  makefile,  and  will
+   evaluate its dependancies.  If a  dependancy  is  a  file,  it
+   will  check  to  see  if  that file has been changed since the
+   last MAKE run.  If a  dependancy  is  another  object  in  the
+   makefile, MAKE  will  see if that object needs making.  If any
+   of the dependancy files has been changed, or  if  any  of  the
+   dependancy  objects  needs  making,  then  the commands in the
+   action list will be batched for execution.   Since  dependancy
+   objects  are  made  before the target, the commands for making
+   dependancies will always occur before  the  commands  for  the
+   target.
+
+      MAKE  determines  whether  files have been changed by means
+   of file attributes.  MAKE checks a  particular  attribute  bit
+   (attribute t3'  by  default)  in  the dependancy filename.  If
+   that bit is set, then the file  is  assumed  to  be  unchanged
+   from the  last  MAKE  run.    If the bit is reset, the file is
+   assumed to be changed, and will  cause  the  object  it  is  a
+   dependancy for  to  be  made.  If the bit is reset, it will be
+   set by MAKE after testing.  It will remain set until the  file
+   is edited  or  renamed  (i.e.,  until it is altered).  The set
+   attribute will have no effect on other CP/M functions.  For  a
+   full  discussion  of this principle, see Ian Ashdown's back-up
+   utility BU, DDJ, January 1985, issue #99 (note  that  although
+   he  refers  to  t3'  as an "archive bit", any unused CP/M file
+   attribute will perform the same).  MAKE will  not  affect  any
+   other file attributes that may be set for a given file.
+
+      Commands  are  batched  by  creating  a pending SUBMIT file
+   (A:$$$.SUB) and warm-booting.    MAKE  will  nest  with  other
+   batched  commands,  so  that MAKE itself can be invoked from a
+   SUBMIT file.
+
+
+MAKEFILE FORMAT
+
+      A makefile entry is in the following format:
+
+       objectname: dependancy1 dependancy2 . . . dependancyX
+                   action1
+                   action2
+                   . . .
+                   action3
+
+   Any number of entries may be contained in a  single  makefile,
+   and  all  entries  need not relate to the same target (i.e., a
+   makefile  may  contain   information   relating   to   several
+   different programs).
+
+      The  objectname  may  be  any combination of alphanumerics,
+   and does not necessarily  have  to  be  the  filename  of  the
+   object  to  be  made  (e.g.,  if  the  object  to  be  made is
+   "FOOBAR.COM", the objectname could be "FOOBAR.COM",  "FOOBAR",
+   or "BINKY").    Objectnames must be terminated by a colon, and
+   must begin in the left-most column.
+
+      Following the objectname, on the same line, is  a  list  of
+   dependancies, each  separated  by  white  space.  A dependancy
+   may  be  either  a  filename   or   an   objectname   (if   an
+   objectname, it  must  refer  to  another  entry  in  the  same
+   makefile).  Any dependancy that does not match  an  objectname
+   in the  makefile will be considered a filename.  Filenames are
+   in the standard BDS C format:
+
+       [uu/d:]filename.typ
+
+   where "uu/" is an optional user area specification,  and  "d:"
+   is an  optional  drive  name  specification.  All dependancies
+   must be on the same line  as  the  objectname.    There  is  a
+   maximum of 20 dependancies per entry.
+
+      There  are  two  "macros"  available  in MAKE, version 1.1:
+   the default drive and default user area.   These  specify  the
+   drive  and  user  area that will be searched for all filenames
+   that do not have  explicit  drive/user  specifications.    The
+   format of the two macros is:
+
+       $:d     (d = drive name)
+       $/uu    (uu = user area)
+
+   Macros  must  be  on  separate  lines,  and  must begin in the
+   left-most column.  If no default drive/user is  given  in  the
+   makefile,  and  no explicit drive/user is given on a filename,
+   then  the  currently  logged  drive/user  will  be   searched.
+   Macros should  be  stated only once in a makefile.  If a macro
+   is stated more than once, the last statement will be used.
+
+      On the line  after  the  objectname/dependancy_list  begins
+   the action_list.    Each action should be a CP/M command line,
+   and each action should be on a different line.  There must  be
+   no  blank  lines  either  between  the objectname line and the
+   first  action_list   line,   or   between   actions   in   the
+   action_list.   Actions  should  be given in the order they are
+   to be executed.  Any amount of white  space  may  precede  the
+   action  on  the line, although this is not necessary (it looks
+   neater, however).    The  first  blank  line  terminates   the
+   action_list.   There  may  be  no  more  than  10  actions per
+   action_list.  If the default disk or default user area  macros
+   are  used,  they  will NOT affect filenames listed as parts of
+   commands.
+
+      The action_list is optional.  Objects with no actions  will
+   be  evaluated  as  normal,  but  will  not affect the batch of
+   commands.  The reason for this is  to  set  up  an  objectname
+   that substitutes  for  a  list of files in a makefile.  If you
+   have a program that has several source files  that  depend  on
+   the  three  headers  "FOO.H",  "BAR.H",  and "ZOT.H", then the
+   following makefile entry:
+
+       headers: foo.h bar.h zot.h
+                                   [blank line]
+
+   will  allow  you  to  use  the  objectname  "headers"  in  the
+   dependancy_lists  for  the  source  files in lieu of the three
+   header filenames.  This is also a way of  getting  around  the
+   maximum-dependancy limit.   Note that such a "no-action" entry
+   MUST be followed by a blank line.
+
+      If a dependancy_list or an action cannot be contained on  a
+   single  physical  line,  a  backslash  typed at the end of the
+   line will continue the list or action on the next line.    For
+   example, the action:
+
+       L2 B:FOOBAR B:BINKY -L A:DIO A:WILDEXP A:FLOAT\
+       A:LONG -D -T 7000
+
+   will be  processed  as  a  single line.  The maximum length of
+   any logical line  is  300  characters.    All  characters  are
+   folded  to upper-case, so that "foo", "Foo", and "FOO" are all
+   equivalent.
+
+      Comments may be placed in a makefile.  All comments  should
+   begin with  a  '#'  in  the  left-most  column.  Any number of
+   comments may be included in a makefile, and may occur  at  any
+   point in a makefile.
+
+      A sample  makefile  is  given on the disk.  It contains the
+   information necessary to create MAKE.COM.
+
+
+USAGE
+
+      Command syntax is as follows:
+
+       MAKE [target] [options]
+
+   If no target is given on the command line, MAKE will take  the
+   first object  in  the  makefile  as  the  target.  The options
+   are:
+
+          -A:  MAKE will make  all  objects  encountered  in  the
+       course  of  evaluating  the target, whether it thinks they
+       need it or not.
+
+          -F filename:  MAKE will read  the  file  "filename"  as
+       the makefile.    If  this  option  is not given, MAKE will
+       supply the default filename "MAKEFILE".
+
+          -N:  MAKE will  evaluate  the  objects,  but  will  not
+       actually batch  the  commands.  This is helpful in testing
+       a makefile.
+
+          -Q:  "Quiet"  mode.    Supresses  all  messages  except
+       fatal errors.
+
+          -R:   MAKE  will  not  set  the  file attributes of any
+       files.  This is useful  when  a  header  file  needed  for
+       several  different  programs  has  been  changed,  and you
+       don't want it to be set as unchanged  until  all  programs
+       have been re-compiled/linked.
+
+          -T:  "Touch-up"  mode.  MAKE will set the attributes of
+       files, but will not batch any  commands.    This  is  used
+       when  a  file  has  had  insignificant  changes made to it
+       (such as adding a comment).
+
+   All options  must  be  preceded  by  a  hyphen,  and  must  be
+   separated by a space.
+
+      As  MAKE  evaluates the target, it will display the command
+   lines to be batched in the order  they  will  execute.    When
+   evaluation  is complete, the user is prompted for verification
+   of the $$$.SUB file creation.  Typing Control-C at the  prompt
+   aborts MAKE  and  will  prevent the execution of commands.  If
+   the -Q option is  given,  the  display  of  commands  and  the
+   prompt is supressed.
+
+      Examples of usage:
+
+       (1) MAKE FOOBAR.COM
+       (2) MAKE FOOBAR.COM -F B:FOOMAKE -Q
+       (3) MAKE -F MAKEFOO
+
+       (1) makes "FOOBAR.COM" from the file "MAKEFILE"
+       (2) makes "FOOBAR.COM" from the file "B:FOOMAKE" in quiet mode
+       (3) makes the first object in the file "MAKEFOO"
+
+ERROR MESSAGES
+
+   Non-fatal errors:
+
+    "Unknown option -o ignored."
+       -- This will not affect the parsing of other options.
+
+    "Unknown macro $xxx ignored."
+       -- Self-explanatory.
+
+   Fatal errors:
+
+    "Can't open MAKEFILE."
+       -- Self-explanatory.
+
+    "File empty!"
+       -- The makefile has no entries in it.
+
+    "Line too long (300 chars maximum)"
+    "Action too long (max = 10 lines)"
+    "Too many dependancies!  (20 maximum)"
+       -- The  various  limits have been exceeded.  To change the
+       limits for any of these, see CONFIGURABLE OPTIONS below.
+
+    "Missing ':'"
+       --  MAKE  cannot  locate  a   colon   after   a   supposed
+       objectname.
+
+    "Don't know how to make <target>."
+       -- Target does not exist in makefile.
+
+    "Dependancy file <filename> does not exist."
+       --  MAKE  cannot  locate  a  dependancy  it  thinks  is  a
+       filename.  If this error occurs for a dependancy  that  is
+       NOT  a  filename, then the dependancy could not be located
+       as an object in the makefile.
+
+    "Can't create A:$$$.SUB"
+    "Error in writing A:$$$.SUB"
+    "Error in closing A:$$$.SUB"
+       -- All self-explanatory.
+
+    "Out of memory"
+       -- Some function or another has tried to  allocate  memory
+       and failed.    This  should only happen if the makefile is
+       really big, and breaking up the makefile  should  fix  the
+       problem.
+
+
+CONFIGURABLE OPTIONS
+
+      MAKE consists  of  the  following  files:   MAKE.H, MAKE.C,
+   MAKEIO.C and MDEBUG.C.  MDEBUG.C is needed only if  the  debug
+   code  is  included  in  the  program  by  #defining the symbol
+   "DEBUG" in MAKE.H.  To compile/link MAKE:
+
+       CC MAKE -E3000
+       CC MAKEIO -E3000
+       L2 MAKE MAKEIO
+
+   If compiling with the debug code, don't use the -E options.
+
+      The following constants are in MAKE.H and  may  be  altered
+   by the user:
+
+       MAXLINE:
+       Maximum characters per input line (default:  300)
+
+       MAXDEP:
+       Maximum dependancies per dependancy_list (default:  20)
+
+       MAXBLOCK:
+       Maximum commands per action_list (default:  10)
+
+       MAXUSER:
+       Maximum valid user area on system (default:  15)
+
+       MATTRIB:
+       Number  of  attribute  to  use in testing dependancy files
+       for changed/unchanged status.  Can be any  number  from  1
+       to  11,  except  9  or  10,  which  are  reserved for CP/M
+       (defaults to 11).  If you  use  Ian  Ashdown's  BU,  or  a
+       similar  utility  that  works  with  attribute 11, you may
+       wish to change MATTRIB to another attribute.
+
+       PUBLIC:
+       If you use the Plu*Perfect Systems  "public  files"  patch
+       for  the  CP/M  BDOS,  #define this symbol to include code
+       that will  keep  MAKE  from  inadvertantly  moving  public
+       files around  between  user  areas.  Otherwise, comment it
+       out (PUBLIC file protection is ON by default).
+
+
+WISH LIST
+
+   Fuller set of macros (like for rootname, string  substitution,
+   etc.).
+
+   Generic  dependancies  (see  Holub's  article  in  DDJ  for  a
+   discussion of these goodies).
+
+
+
+   I hope this utility is useful for all BDS  C  programmers  out
+   there (how  could  it  NOT be?).  Note that MAKE will work for
+   non-C programs, too (like assembly code), or it could even  be
+   used  as a simple file archiving program (although not as good
+   as BU).  Enjoy!
+
+
+   James Pritchett
+
+

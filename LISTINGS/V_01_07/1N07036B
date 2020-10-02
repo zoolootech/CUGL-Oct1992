@@ -1,0 +1,30 @@
+
+LISTING 5
+/*
+ * respond_to_msg() - respond to message just sent to this node.
+ */
+
+unsigned respond_to_msg(int nd, int event)
+{
+	char	read_buf[128];    /* A buffer for the data */
+	char	send_buf[128];    /* A buffer to send back */
+	static	int error_flag = 0;  /* Asynch upcall puts neterrno here */
+	int	len;              /* Length of the data in packet */
+	struct	addr reply_to;	/* IP address message came from */
+
+/*
+* Get data from queue and find out who we have to reply to.
+*/
+	if ((len = net_read(nd, read_buf, sizeof(read_buf),
+	  	    (struct addr *) &reply_to, 0)) == -1) {
+		error_flag = neterrno;
+                return;
+	}
+
+	/* Send same the response back to the source host. */
+	strcpy(send_buf,read_buf);
+  	if (net_writeto(nd, send_buf, sizeof(send_buf), &reply_to, 0) == -1) {
+  		error_flag = neterrno;
+	return;					/*  & return to the kernel */
+}
+

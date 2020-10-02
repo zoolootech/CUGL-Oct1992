@@ -1,0 +1,59 @@
+main(){ /* test driver for lufact() */
+#define NP 6 /* max size for single precision */
+#define NP2 NP*2 /* row pointer arrays doubled in size for guard */
+float ac[NP][NP],xlc[NP][NP],xuc[NP][NP],xc[NP][NP],
+	factr,lufact(),
+	*pa[NP2],*pxl[NP2],*pxu[NP2],*px[NP2],
+/* shifts to 1 based addressing */
+	**a= &pa[-1],**xl= &pxl[-1],**xu= &pxu[-1],**x= &px[-1];
+/* make sure indxc has room for float array [NP] */
+int indxc[NP2+1],jndxc[NP],*indx= &indxc[-1],*jndx= &jndxc[-1],i,j,k;
+	factr=3; /* scale up to make binary value exact */
+	for(i=5;i<NP2;i += 2)factr *= i;
+	printf("\n Original Scaled Hilbert Matrix");
+	for(i=1;i<=NP;++i){ /* set up row pointers base 1 */
+		a[i+NP]=a[i]= &ac[i-1][-1]; /* wrap overflow around */
+		xl[i+NP]=xl[i]= &xlc[i-1][-1];
+		xu[i+NP]=xu[i]= &xuc[i-1][-1];
+		x[i+NP]=x[i]= &xc[i-1][-1];
+		printf("\n");
+		for(j=1;j<=NP;++j)
+			printf("%13.3f",a[i][j]=factr/(i+j-1));
+	}
+	printf("\n\nMatrix Factorization Accuracy: %g",lufact(a,NP,indx));
+	printf("\n\n factored matrix");
+	for(i=1;i<=NP;++i){ /* copy factors and multiply them as check */
+		printf("\n indx[%d]=%d\n",i,indx[i]);
+		for(j=1;j<=NP;++j){
+			printf("%13g",ac[i-1][j-1]);
+			if(j>=i){
+				xu[i][j]=a[i][j];
+				xl[i][j]=(j==i);
+			}
+			else{
+				xu[i][j]=0;
+				xl[i][j]=a[i][j];
+			}
+		}
+	}
+	for(i=1;i<=NP;++i){
+		jndx[i]=i;
+		for(j=1;j<=NP;++j){
+			double sum=0;
+			for(k=1;k<=NP;++k)sum += xl[i][k]*xu[k][j];
+			x[i][j]=sum;
+		}
+	}
+	printf("\n\n Product of lower and upper matrices");
+	for(i=1;i<=NP;++i){
+		register int dum=jndx[indx[i]];
+		jndx[indx[i]]=jndx[i];
+		jndx[i]=dum;
+	}
+	for(i=1;i<=NP;++i){
+		for(j=1;jndx[j]!=i;++j);
+		printf("\n");
+		for(k=1;k<=NP;++k)printf("%13.6f",x[j][k]);
+	}
+}
+

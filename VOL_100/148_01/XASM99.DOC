@@ -1,0 +1,1022 @@
+.pl 70
+.op
+
+.he        TMS9900/99105 Cross-assembler  Rev. 1.0                    Page #
+
+
+
+
+
+
+
+                  TMS9900/99105 Cross-assembler
+
+
+                            Rev. 1.0
+
+        Derived from the original William C. Colley, III.
+                      M6800 Cross Assembler
+
+                               by
+
+
+                        Alexander Cameron 
+
+             Written and modified during June 1984.
+
+
+
+
+                    The Manual Such As It Is.
+
+
+.pa
+.pn 1
+.op
+...COLUMNWIDTH 65
+...MARGINWIDTH 6
+...T1
+        1.1       Format of Cross-assembler Commands
+...T2
+        1.1.1     Command Strings
+
+                  To   run  the 9900 cross-assembler,   type  the 
+                  following command line:
+
+                  A>a99 filename options
+
+                  filename: 
+                  The   name   of  the  source  input   file   is 
+                  filename.a99,  the list can go to filename.l99, 
+                  and the hex file can go to filename.h99.
+
+                  options:   See next section.
+
+...T2                 
+        1.1.2     Options
+
+                  The   source  file  comes  from  the  currently  
+                  logged  disk drive  unless  it is redirected by 
+                  putting  the  string "sd" in the options field.  
+                  s  specifies the source file and d is a  device 
+                  code from the following list:
+
+                  a, b, c, d   Disk drives.
+                  -            The currently logged in disk drive.
+
+                  Lines   of input containing errors will  always 
+                  be  output to the console device.   If the full 
+                  listing  is desired,  it must be called for  by 
+                  putting  the string "ld" in the options  field.  
+                  l specifies list file and d is a device code as 
+                  per the source file,  or one of the  following: 
+                 
+                  x              Console device.
+                  y              List device.
+
+                  The   hex file will not be output unless called  
+                  for  as per the list file.
+
+                  Options   must  be run together into  a  single 
+                  string with no embedded blanks.
+
+...T2
+        1.1.3     Examples
+
+                  A>a99 barf       source -- a:barf.a99
+                                      list   -- none.
+                                      hex    -- none.
+
+                  A>a99 barf sblxha source -- b:barf.a99
+                                      list   -- con:
+                                      hex    -- a:barf.h99
+
+                  A>a99 barf ly    source -- a:barf.a99
+                                      list   -- lst:
+                                      hex    -- none.
+
+
+                  A>b:a99 barf sbh-  source -- b:barf.a99
+                                      list   -- none.
+                                      hex    -- a:barf.h99
+
+
+...T1
+        1.2       Format of TMS9900 Cross-assembler Source Files
+
+                  Lines of source input are terminated with CR/LF  
+                  pairs.  Internally, the character before the LF 
+                  is discarded, so if the CR is missing, the last 
+                  character  of the line will be eaten  up.   The 
+                  internal line buffer will hold a 120  character 
+                  line.    This  may be changed by  altering  the  
+                  "#define  LINLEN  120" statement in  xasm99.gbl 
+                  and  recompiling the cross-assembler.    Excess 
+                  characters in the line are thrown out.
+
+                  Lower   case   letters are converted  to  upper 
+                  case in  as few places as possible.  They are:
+
+                       1)  In opcodes,
+
+                       2)  In checking for keywords such as NOT, and
+
+                       3)  In command strings.
+
+                  This  means that "not",   "NOT",   "Not",  etc.  
+                  are   all  possible  spellings of  the  logical 
+                  inversion   operator.  This  also   means  that 
+                  "foo"   and   "FOO"   are   different  symbols.  
+                  Watch  this if you start encountering U  errors 
+                  of symbols that you "know" you defined.
+
+...T2
+        1.2.1     Statements
+
+                  Source files input to the 9900  Cross-assembler  
+                  consist of statements of the form:
+
+                  [label] [opcode] [arguments] [;comments.]
+
+                  Labels   are  recognized by their beginning  in 
+                  column  1. If  it  doesn't  begin there,  it is 
+                  assumed  to   be   an  opcode.     Labels   are  
+                  assigned  the  current  program counter   value  
+                  unless  the line's opcode is  "EQU"  or "SET".
+
+                  Opcodes    may   be  either  9900   instruction  
+                  mnemonics  or pseudo-ops.
+
+                  The   arguments following the opcode will  vary 
+                  with  the opcode.   In the case of opcodes such 
+                  as "NOP", they may be absent entirely.
+
+                  Lines  terminate with either a CR/LF pair or  a 
+                  semicolon  that  is  not embedded in a   quoted  
+                  string.   Anything after a semicolon is ignored 
+                  by  the  assembler,  but  will  appear  in  the 
+                  listing.   Note  that  a semicolon in column  1 
+                  will make the entire line a comment.
+...T2
+        1.2.2     Symbols
+
+                  Symbols  may  be of any length,   but only  the  
+                  first   8 characters  are  significant.    This 
+                  may  be  changed   by  changing   the  "#define 
+                  SYMLEN   8"   statement    in    a68.gbl    and   
+                  recompiling   the   assembler.      Note   that   
+                  this  increases   the storage required  by  the 
+                  symbol  table   as each  entry  in  the  symbol 
+                  table  is  SYMLEN+2  bytes   in  length.    The  
+                  following    characters   are   legal   in    a 
+                  symbol:
+
+                       A-Z  a-z  !  &  .  :  ?  [  \  ]  ^  _  `
+                                 {  |  }  ~  0-9
+
+                  Note   that  symbols may not begin with 0-9  as 
+                  this would make  them impossible to distinguish 
+                  from Intel  format numbers.
+
+                  A   special   symbol $ is always equal  to  the 
+                  address  of the first byte of code generated by 
+                  a given line.
+
+...T2
+        1.2.3     Numeric Constants
+
+                  Numbers  begin  with  0-9,%.  %  leading   base  
+                  designator  represent  binary.  If  the  number 
+                  begins with 0-9,  the  assembler  looks for one 
+                  of the trailing  base designators B,  O,  Q, D, 
+                  or  H.   If the number does not end with one of 
+                  these,  it is assumed to be decimal.  B is  the  
+                  base designator for binary,   O and Q  are  for 
+                  octal,   D   is  for decimal,   and H  is   for  
+                  hexidecimal.  Trailing base designators and the 
+                  hex digits A-F can be in  either upper or lower 
+                  case.    Note  that  hex numbers  that    start  
+                  with   A-F   and   are   specified   with   the 
+                  designator   H  must have a leading zero  added  
+                  to  keep them from being mistaken for  symbols.  
+                  For example:
+
+                  0ff80h 		   evaluate to ff80 hex.
+                  128 and 128d             evaluate to 80 hex.
+                  35o, and 35q             evaluate to 1d hex.
+                  %0111000 and 0111000b    evaluate to 39 hex.
+
+                  A  character  constant is a string composed  of 
+                  zero,  one, or two ASCII characters,  delimited 
+                  by  either single or double  quotes ('  or  ").   
+                  Note  that  single quotes only  balance  single 
+                  quotes,  and double quotes only  balance double 
+                  quotes.   Thus  a character constant of 22  hex 
+                  can be specified by '"'.  For example:
+
+                       "ab"           evaluates to 6162 hex.
+                       ""             evaluates to 0000 hex.
+                       "'"            evaluates to 0027 hex.
+                       'A'            evaluates to 0041 hex.
+
+
+
+                  Note   that  in  the  two-character   character 
+                  constant,   the left-hand character will appear 
+                  in  the  upper-order byte and   the  right-hand 
+                  character will appear in the lower-order byte.
+
+...T2
+        1.2.4     Strings
+
+                  Strings   are   formed  in  the  same  way   as  
+                  character constants  except that they may be of 
+                  any length up  to and including 255 characters.  
+                  The  first  character  will be  placed  in  the 
+                  lowest-order   memory   byte.     A   line-feed 
+                  character  may  not  be  embedded in  a  string  
+                  as   it terminates  the line and will  yield  a  
+                  quote   imbalance error.    Note  that  strings  
+                  are  only  valid  in  the arguement field of an 
+                  "TEXT" pseudo-op.
+
+...T1
+        1.3       Expression Evaluation
+
+                  The   following   operators  are  allowed    in  
+                  expressions.  The operators are listed in order 
+                  of precedence.
+
+                       Unary Plus, Unary Minus
+
+                       *, /, MOD, SHL, SHR
+
+                       +, -
+
+                       >, >=, <, <=, <>, =
+                                 (These can also be written as
+                                      GT, GE, LT, LE, NE, EQ.)
+
+                       NOT       (1's complement)
+
+                       AND       (Bitwise logical AND)
+
+                       OR, XOR   (Bitwise logical OR and Exclusive 
+                                  OR)
+
+                       HIGH, LOW
+                  Parentheses  are  used to change the  order  of 
+                  precedence.     During     evaluation   of   an 
+                  expression,   as  soon as a  new  operator   is 
+                  encountered  that has precedence less  than  or   
+                  equal   to   the  last  operator   encountered,   
+                  all  operations  up  to the  new  operator  are 
+                  performed.      That    is,      subexpressions  
+                  involving   operators  of    higher  precedence 
+                  are computed first.
+
+                  All operators except +,   -,  *,  /, =, <>, >=, 
+                  <=, >, < must  be separated from their operands 
+                  by at least  one space or tab.
+
+                  The  "HIGH mumble" is equivalent to "mumble SHR 
+                  8"   and "LOW mumble" is equivalent to  "mumble 
+                  AND 0ffH".
+
+                  The relational operators (=,  >, etc.) evaluate 
+                  to 0ffffh if the relationship is true,  0 if it 
+                  is false.
+
+                  Expressions     are   terminated   by   commas,  
+                  semicolons,  or CR/LF pairs.
+
+...T1
+        1.4       990 Family Instructions
+
+                  The     instructions    of    the    9900/99105 
+                  microprocessor  fall  into several  catagories.   
+                  Each requires a certain  set  of arguments  and 
+                  disallows  other arguments.   Arguments may  be  
+                  specified  in  any order and are  separated  by  
+                  commas    Blanks    may    be    used    freely  
+                  throughout   the argument field (except  within 
+                  symbols  or operators such as  NOT) to  enhance 
+                  the readability of the source code.  
+                  The basic syntax is as follows:
+
+                  [label]   LI  R1,expression   ;The expression 
+                                                ;is evaluated 
+						;from left to 
+                                                ;right.
+
+                  The  type  of  addressing each  instruction  is 
+                  allowed  along with the number of operands  the 
+                  assembler  expects the instruction to have,  is 
+                  carried in the ATTRIB byte which is returned by 
+                  the  GETOPC  function.    The  ATTRIB  byte  is 
+                  is  made  up  of two 4 bit  nibbles  the  least 
+                  significat  describing operand 1 and  the  most 
+                  significant  describing  operand  2.  (See  the 
+                  heading comments of GETOPC which is part of the 
+                  file A99TBLS.CSM).    The ATTRIB byte will also 
+                  tell  the  assembler which one of the  7  basic 
+                  instruction  formats a particulare  instruction 
+                  falls into.   Thes formats/groups are discussed 
+                  in the following sections.
+
+...T2
+        1.4.1     Addressing Modes 
+
+                  The  9900/99105 instruction set allows 5  basic 
+                  addressing  modes.  These are:
+
+                   Mode                          Example  
+                   ----                          -------
+
+                   Workspace register            MOV R1,R3
+                   Workspace register indirect   A *R1,R2
+                   Symbolic                      CLR @expr
+                   Indexed                       A @expr(R1),R2
+                   Workspace register indirect   DEC *R7+
+                   (auto increment)
+
+                   These modes will in general be written in  the 
+                   form:
+
+                         R, *R, *R+, @X, @X(R)
+
+                  where  R  refers  to  a Register and  X  to  an 
+                  address.
+
+
+...T2
+        1.4.2     Instruction Formats
+
+                  The  assembler will properly evaluate  7  basic 
+                  instrucion formats; these are:
+
+                         Format 0  -  No operands at all (N)
+                         Format 1  -  R,*R,*R+,@X,@X(R)
+                         Format 2  -  Displacement (Disp)
+                         Format 3  -  Destination Field only (D)
+                         Format 4  -  Signed Displacement (SD)
+                         Format 5  -  Workspace Register (W or C)
+                         Format 6  -  Immediate Operands (IOP)
+                         Format 7  -  Bit Manipulation Instrucions
+                                      (TMS99105 only)  
+
+                  Depending  on the instruction these formats may 
+                  lie  within  either the source  or  destination 
+                  fields.
+...T2
+        1.4.3     Group 1 Instructions 
+
+                  This group contains the following opcodes:
+                   
+                       NOP 
+                       RSET IDLE CKOF CKON LREX
+                       RTWP      
+
+                  These  opcodes permit no arguments,  and  hence 
+                  are of format 0.
+
+...T2
+        1.4.4     Group 2 Instructions
+                    
+                  This group of instructions are of Format type 1 
+                  and are Dual Operand Instructions with Multiple 
+                  Addressing  Modes  for Source  and  Destination 
+                  Operand. 
+
+                  This group contains the following opcodes:
+
+                          A  AB C CB S SB SOC SOCB 
+                          SZC  SZCB  MOV MOVB
+                         
+                  Instruction format:  [opcode|format1|format1]
+
+                  Example:             A *R1+,R2
+
+...T2
+        1.4.5     Group 3 Instructions
+
+                  This  group  of instructions are  Dual  Operand 
+                  Instructions with Multiple Addressing Modes for 
+                  the  Source  Operand  and  Workspace   Register 
+                  Addressifng for the Destination.
+
+                  This group contains the following opcodes:
+                         
+                         COC CZC XOR MPY DIV XOP LDCR STCR
+
+                  Instruction format:  [opcode|format3|format1]
+
+                  Example:              XOP @LABEL,3  
+
+...T2
+        1.4.6     Group 4 Instructions
+
+                  This   group  of  instructions  allow  Multiple 
+                  Addressing  modes for the source  Operand,  and 
+                  thus a single operand instructions.
+
+                  This  following  instructions  belong  to  this 
+                  group:
+
+                         B BL BLWP CLR SETO INV NEG ABS SWPB
+                         INC INCT DEC DECT X
+                         BIND(a TMS99105 instruction)
+
+                  Instruction format:  [opcode|format1]
+
+                  Example:             INC @LABEL(R3)
+
+...T2
+        1.4.7     Group 5 Instructions
+
+                  This  group of instructions are CRU  Single-Bit 
+                  Instructions.
+
+                  The  following  instructions  belong  to   this 
+                  group:                           
+
+                         SBO SBZ TB
+
+                  Instruction format:  [opcode|format4]
+
+                  Example:             SBO 25
+
+
+        1.4.8     Group 6 Instructions
+
+                  This   group   covers  the   Conditional   Jump 
+                  instrucions.     Note    that    the    maximum 
+                  displacement range is +127 to -128 words.
+
+                  The   following  instructions  belong  to  this 
+                  group:
+                    
+                         JEQ JGT JH JHE JL JLE JLT JMP JNC JNE
+                         JNO JOC JOP
+
+                  Instruction format:  [opcode|format2]
+
+                  Example:             JEQ LABEL
+
+
+...T2
+        1.4.9     Group 7 Instructions
+
+                  This  group  have an Immediate  Source  Operand 
+                  with  an Workspace Register as the  Destination 
+                  Operand.
+
+                  The   following  instructions  belong  to  this 
+                  group:
+
+                         AI ANDI CI LI ORI
+                         BLSK (a TMS99105 instruction)
+
+                  Instruction format:   [opcode|format5]
+                                        [    format6   ]         
+
+                  Example:              AI R3,128
+
+
+...T2
+        1.4.10    Group 8 Instructions
+
+                  This  group  covers the Internal Register  Load 
+                  Immediate  Instructions and have  an  Immediate 
+                  Source Operand only.
+
+                  The  following  instructions  belong  to   this 
+                  group:
+                         
+                         LWPI LIMI
+
+                  Instruction format:   [ opcode  ]
+                                        [ format6 ]
+
+                  Example:              LIMI 3
+
+
+...T2    
+        1.4.11    Group 9 Instructions
+
+                  This  group covers the Internal Register  Store 
+                  Instructions  and  have  Destination  Workspace 
+                  Register Addressing only.
+
+                  The   following  instructions  belong  to  this 
+                  group:
+
+                         STST STWP
+                         LST  LWP ( TMS99105 instructions )  
+
+                  Instruction format:   [opcode|format5]
+                    
+                  Example:              STST R3
+
+...T2
+        1.4.12    Group 10 (TMS99105 only)
+          
+                  This group covers the Bit-Manipulation instruc-
+                  tions peculiar to the TMS99105.  This group has 
+                  a  different instruction format than the  basic 
+                  9900  set  insofar as the format fields lie  in 
+                  the 2nd word.   The instructions in this  group 
+                  are:
+                         TMB TCMB TSMC
+
+                  Instruction format:   [     opcode     ]
+                                        [ format3|format1]
+                           
+                  Example:              TMB @BITMAP(R3),8
+
+...T1
+        1.5       Pseudo-operations
+...T2
+        1.5.1     END
+
+                  When   this  statement  is   encountered,   the  
+                  assembler  decides   that   the   end  of   the  
+                  source   file  has  been reached.     If   this  
+                  statement   is  missing  or  in  a  conditional 
+                  assembly block that is not being assembled, the  
+                  assembler  will  encounter end-of-file  on  the 
+                  source  file.    In this case,   the  assembler 
+                  will  attach an END statement  and will flag an 
+                  error.   The syntax  is  as follows:
+
+                  [label]   END
+
+                  If  any IF statement is not closed with an ENDI 
+                  at this point, an error will be flagged.
+
+                  This statement permits no arguments.
+
+...T2
+        1.5.2     EQU
+
+                  This  statement is used to assign  a  permenant 
+                  value  to  a symbol.    This value may  not  be 
+                  subsequently changed by a SET,  another EQU, or 
+                  by  writing the symbol in column 1 as a  label.  
+                  The syntax is as follows:
+
+                  label     EQU  expression
+
+                  A   phasing  (P)  error  will  result  if   any   
+                  forward  references   are  encountered  in  the 
+                  evaluation  of  the expression.
+
+...T2
+        1.5.3     BYTE
+
+                  This  statement  is  used  to  place  bytes  in 
+                  memory.     Each   byte    is  defined  by   an 
+                  expression.    Multiple bytes can be defined by 
+                  expressions  separated  by  commas.     If   an 
+                  expression  evaluates to a quantity outside the 
+                  range -128  to 255,  an error is flagged.   The 
+                  syntax  is  as follows:
+
+                  [label]   BYTE  [expr1][,epxr2].....
+
+...T2
+        1.5.4     TEXT
+
+                  This  statement  is used to  place  strings  in 
+                  memory.   Its  arguments  may only be  strings.  
+                  Multiple strings may be placed  in  memory   if  
+                  the  strings  are  separated  by  commas.   The 
+                  syntax is as follows:
+
+                  [label]   TEXT  [string][,string].....
+
+
+...T2
+        1.5.5     WORD
+
+                  This  statement  is  used  to  place  words  in 
+                  memory.     Each   word    is  defined  by   an 
+                  expression.    Multiple words may be defined by 
+                  expressions separated by  commas.    Words  are  
+                  placed  in memory with their high-order byte in 
+                  the low-order memory location and the low-order 
+                  byte  in the high-order memory  location.   The 
+                  syntax is as follows:
+
+                  [label]   WORD  [expr1][,expr2].....
+
+...T2
+        1.5.6     BSS (Block Starting with Symbol)
+
+                  This  statement is used to reserve a  block  of 
+                  memory   for  working   storage,    etc.     It 
+                  requires one argument that gives the number  of 
+                  bytes  of storage to  reserve.    The syntax is 
+                  as follows:
+
+                  [label]   BSS  expression
+
+...T2
+        1.5.7     EVEN
+
+                  This  statement  is used to force the assembler 
+                  to  align code on an even word boundary if  the 
+                  present  programme  counter  is  odd.   If  the 
+                  programme counter is odd a zero byte is  output 
+                  if   even  the  statement  is   ignored.    The 
+                  assembler will also flag an error is an attempt 
+                  is made to output code to an odd address.   The 
+                  syntax is as follows:
+                    
+                  [label]   EVEN 
+ 
+...T2
+        1.5.8     DXOP
+
+                  This statement allows the programmer to  define 
+                  their   own   macro  instructions  around   the 
+                  Extended  Operation  Instruction  (XOP).    The 
+                  assemble  will  substitute the XOP code  for  a 
+                  given instruction in place of the name assigned 
+                  to the XOP.  The syntax is as follows:
+
+                         DXOP PUSH,3    ;assign the name PUSH to
+                                        ;XOP number 3
+                  
+                  For  example if PUSH is a previously coded  XOP 
+                  which  pushes  registers  onto the  stack  then 
+                  instead  of coding this XOP instruction as  XOP 
+                  R3,3  you can code PUSH R3 - this will  produce 
+                  the  same code as XOP R3,3 but will   generally 
+                  make  the  programme far more easy  to  follow.  
+                  The 990 CPU's allow up to 15 XOP's.
+                    
+                    
+...T2
+        1.5.9     Conditional Assembly
+
+                  Blocks   of  code  can  be  assembled  or   not 
+                  assembled    based  on   the  value   of   some 
+                  expression.   The basic syntax is as follows:
+
+                            IF   expression
+
+                       (lines of code)
+
+                            ENDI
+
+                  If  the  expression evaluates to 0,   the  code 
+                  will not be assembled.    The source lines will 
+                  be  transfered  to the  listing,   but  no  hex 
+                  output will be generated.    It  is recommended  
+                  that   a  value  of $ffff be used for  a   true 
+                  value  since it turns into a false value  under  
+                  bitwise inversion.
+
+                  In    addition,     the   ELSE   directive   is  
+                  supported  as follows:
+
+                            IF   expression
+
+                       (lines of code)
+
+                            ELSE
+
+                       (more lines of code)
+
+                            ENDI
+
+                  This is equivalent to:
+
+                            IF   expression
+
+                       (lines of code)
+
+                            ENDI
+                            IF   NOT expression
+
+                       (more lines of code)
+
+                            ENDI
+
+                  Note   that   labels  are  not   permitted   on  
+                  conditional  assembly directives.    Also  note 
+                  that   an  END   statement  can   fail   to  be 
+                  recognized if it is in  a  conditional assembly 
+                  block with a false expression.
+
+                  A  phasing  (P) error will be flagged if  there 
+                  are  any forward references in the expression.
+
+...T2
+        1.5.10    AORG
+
+                  This   statement   is  used  to load  a   value  
+                  into  the assembly program counter.   The value 
+                  is  obtained  from the  expression.    If   the 
+                  expression  contains   forward  references,   a 
+                  phasing  (P) error will result.  If a label  is 
+                  present,  it  will be EQUed to the new  program 
+                  counter value.  The syntax is:
+
+                  [label]   AORG  expression
+
+...T2
+        1.5.11    SET
+
+                  This  statement is used to assign  a  temporary 
+                  value  to  a symbol.    The  symbol may not  be 
+                  redefined by an EQU or by  writing it in column 
+                  1  as a label,   but it  may  be  redefined  by 
+                  another  SET  statement.    The value  for  the 
+                  symbol is obtained from the expression.   If it 
+                  contains  forward  references,   a phasing  (P) 
+                  error will  result.  
+                  The syntax is:
+
+                  label     SET  expression
+
+...T1
+        1.6       Error Messages
+
+                  Error   messages   are flagged with  a   single  
+                  letter   in column  1  of the offending line in 
+                  the   listing.    The  meaning of  each  letter 
+                  follows.
+
+                       A    Presently not implemented.
+
+                       B    Distance  on  a  branch   instruction  
+                            is    too   great.     Use   a   jump 
+                            instruction  with a branch around it,  
+                            or rearrange your code to shorten the 
+                            distance.
+
+                       D    Digit  too  large for  the  base  was 
+                            encountered.   In particular,   watch 
+                            for 8 or 9 in an  octal number and a-
+                            f in a decimal number.
+
+                       E    Expression ill-formed.   Look for non 
+                            arithmetic   characters  in   indexed 
+                            addressing modes.
+
+                       I    If  stack imbalance.    Look for ELSE 
+                            or   ENDI  without   an IF or  an  IF 
+                            still open at the end of the file.
+
+                       L    Invalid  label.    Label may  contain  
+                            invalid characters  or  be equal to a  
+                            reserved  word like NOT.    Label may 
+                            be present on  a conditional assembly 
+                            directive.
+
+                       M    Label   multiply   defined.     Label 
+                            defined   more  than  once  and   all 
+                            definitions are not SET statements.
+
+                       O    Invalid     opcode.       Look    for  
+                            misspellings,  missing semicolons, or 
+                            opcodes in column 1.
+
+                       P    Phasing error.   Look for expressions 
+                            in   ORG,    EQU,    SET,    or    IF  
+                            directives    that   contain  forward 
+                            references.  If none exist, something 
+                            wierd is going on as a label that was 
+                            defined   in  pass   1   mysteriously 
+                            vanished in pass 2.
+
+                       R    Register value too large.   Registers 
+                            values  between  0  and 15  only  are 
+                            allowed.  This error will most likely 
+                            occur  if a register value  is  being 
+                            evaluated  from  an expression  which 
+                            overflows.
+
+                       S    Syntax  error.    Check  your  syntax 
+                            against  my samples.
+
+                       T    Too     many   arguments   on    this  
+                            line.     WORD  directives  may  only 
+                            define  127  words,   while TEXT  and  
+                            BYTE directives may only define   255 
+                            bytes.      On    other   statements,   
+                            you    put  superfluous arguments  on 
+                            the line.
+
+                       U    Undefined     symbol      encountered     
+                            during expression evaluation.
+
+                       V    Value     out    of   bounds.      In  
+                            particular,   FCB expressions  and 8-
+                            bit  immediate values  must  evaluate  
+                            to -128 to 255,   while index  values 
+                            must evaluate to 0 to 255.
+
+                       *    This   statement  generated  by   the  
+                            assembler.   Right   now,   this only 
+                            happens   if   you   drop   an    END   
+                            statement      or      remove      it    
+                            through conditional assembly.
+
+                       "    Quote   imbalance  error.    Bear  in 
+                            mind  that  ' will  not  terminate  a 
+                            string  started   with  "  and  vice-
+                            versa.
+
+                       (    Parenthesis  imbalance error.   Count 
+                            them!
+
+...T1
+        1.7       Assembler Abort Conditions
+
+                  Under  certain circumstances,   this  assembler 
+                  will  just give up and quit in the middle of an 
+                  assembly.    If you don't  get the error  count 
+                  diagnostic on  the  console, read  your  screen 
+                  for sure!   The  following  messages occur:
+
+                       1)   Can't open source.
+
+                            The    source  file  does  not  exist  
+                            on  the specified disk drive.
+
+                       2)   Can't open list.
+                            Can't open hex.
+
+                            No   directory  entries left  on  the 
+                            disk  drive in question.
+
+                       3)   Illegal command line.
+
+                            Bone up on command lines.
+
+                       4)   No file info supplied.
+
+                            Bone up on command lines.
+
+                       5)   If stack overflow.
+
+                            IF   directives  may only  be  nested  
+                            16   deep.    Rebuild   your   source  
+                            code  to  reduce  your nesting depth, 
+                            or  change  the "#define IFDEPTH  16"  
+                            statement in xasm99.gbl and recompile 
+                            the assembler.
+
+                       6)   Disk read error.
+
+                            Source   file   has  a  bad  CRC   or  
+                            some  other difficulty.
+
+                       7)   Disk write error.
+
+                            Out of disk or directory space on the 
+                            list or hex file.
+
+                       8)   Error closing file.
+
+                            Problem    closing   list   or    hex  
+                            file.    You shouldn't get this one.
+
+                       9)   Symbol Table Overflow.
+
+                            Your  source program defines too many 
+                            symbols.   The  current limit is 500.   
+                            If  you have more memory than  I  do, 
+                            you  can change the "#define  SYMBOLS    
+                            500" line in a99.gbl  and   recompile 
+                            the    assembler.    Otherwise,   you 
+                            must work on your source code.
+
+...T1
+        1.8       Compiling the Assembler
+
+                  To   compile the assembler as it  stands,   you 
+                  will  need the following items:
+
+                       1)   40K of RAM.
+
+                       2)   The BDS C Compiler Version 1.5
+                            (good box, Leor!!).
+
+                       3)   Digital   Research's   ASM   or   MAC 
+                            assembler.   (Note:   Only  needed if 
+                            you want to play  with the  functions  
+                            in  a99tbls.mac as they  exist in   a  
+                            form  digestible  by  CLINK  in   the  
+                            file xasm99.crl.)
+
+                  To  get  a99tbls.crl  up  from  scratch,    you  
+                  do   the  following.    I   assume   all  files 
+                  including ASM or MAC live on drive A.
+
+                       A>casm a99tbls        ;source a99tbls.csm
+
+                  This should yield a file a99tbls.asm on drive A.
+
+                       A>mac  a99tbls $pz -s  ;may use asm fn.aaz 
+
+		       A>cload  a99tbls       ;produce CRL file 
+
+                 You  should  now have a99tbls.crl on  drive  A.
+
+                  Now  you  are ready to compile the rest of  the 
+                  beast.
+
+                       A>cc a99
+                       A>cc a99asmlnc
+                       A>cc a99evalc
+                       A>cc a99getc
+                       A>cc a99putc
+                       A>cc a99symbc
+
+                  Now you can link it all together.
+
+                       A>clink a99 -s
+
+                       *a99asmln
+                       *a99eval
+                       *a99get
+                       *a99put
+                       *a99symb
+                       *a99tbls
+
+                  And, as if by magic, you've got a99.com!
+
+                  Note  that  the linkage can all be done on  one 
+                  line,   but my paper isn't wide enough here  to 
+                  do  it  that way.  Note  that if you have  more 
+                  than 40K of  RAM,   you  may want  to  increase 
+                  your symbol table size.    Symbols are 10 bytes 
+                  each, so plan accordingly.
+
+
+...T1
+        1.9       Final Comments
+                  Happy   assembling!    If you have questions or 
+                  note   any bugs,    I'd   appreciate  a   shout  
+                  at    (617)258-1204,  (617)266-3179  or on  the 
+                  Boston CBBS at  (617)963-8310.   The  questions 
+                  will  point up weaknesses in the   manual,  and 
+                  the bugs need to be stamped upon unmercifully.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

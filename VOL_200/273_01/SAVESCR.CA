@@ -1,0 +1,75 @@
+#include <dos.h>
+
+save_scr(int trow, int tcol, int brow, int bcol, char *array)
+/* Save an area of the current screen into a character array
+   To determine num of chars for array use the following formula:
+   num_chars=((brow-trow+1) * (bcol-tcol+1)) *2;
+*/
+{
+extern bios, mono, cga;
+int x, y, orow, ocol, ncols, scrofs;
+union REGS inregs;
+char pchar;
+char far *base;
+char far *work;
+
+    if(mono) base = (char far *) 0xb0000000;
+    else     base = (char far *) 0xb8000000;
+
+    ncols = bcol - tcol + 1;
+    if(bios) {
+        get_cur(&orow,&ocol);
+        for(x=trow; x<=brow; x++) {
+            for(y=tcol; y<=bcol; y++) {
+                locate(x,y);
+                inregs.h.ah = 0x08;
+                inregs.h.bh = 0x00;
+                int86(0x10,&inregs,&inregs);
+                *array++ = inregs.h.al;
+                *array++ = inregs.h.ah;
+            }
+        }
+        locate(orow,ocol);
+        return(0);
+    }
+
+    for(x=trow;x<=brow;x++) {
+        scrofs = ((((x + 1) * 160) - 160) + ((tcol + 1) * 2)) - 2;
+        work = base + scrofs;
+        for(y=0; y<ncols ;y++) {
+            asm les     bx,work
+            if(cga) {
+                asm mov     dx,03dah
+                asm in      al,dx
+                asm test    al,1
+                asm jnz     $-3
+                asm in      al,dx
+                asm test    al,1
+                asm jz      $-3
+            }
+            asm mov     cl,byte ptr es:[bx]
+            asm mov     pchar,cl
+            *array = pchar;
+            work++; array++;
+            asm les     bx,work
+            if(cga) {
+                asm mov     dx,03dah
+                asm in      al,dx
+                asm test    al,1
+                asm jnz     $-3
+                asm in      al,dx
+                asm test    al,1
+                asm jz      $-3
+            }
+            asm mov     cl,byte ptr es:[bx]
+            asm mov     pchar,cl
+            *array = pchar;
+            work++; array++;
+        }
+    }
+
+}
+
+
+	
+

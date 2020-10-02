@@ -1,0 +1,790 @@
+/*
+	archive - BDS C version
+
+	translated from Software Tools ar/ver1.rat by:
+
+		Oscar Goldman
+		1221 Knox Road
+		Wynnewood, PA 19096
+
+	converted to use BDS C library by:
+
+		Edward K. Ream
+		1850 Summit Ave.
+		Madison, WI 53705
+		(608) 231 -2952
+
+	version: May 5, 1982; February 24, 1983
+*/
+
+#include "bdscio.h"
+#include "dio.h"
+#include "date.h"
+
+
+#define MAXLINE 300		/*  maximum line size */
+#define MAXCHARS 30
+#define NEWLINE '\n'
+#define EOS 0
+#define YES 1
+#define NO 0
+
+#define	MAXFILES  100		/*  maximum number of files processable */
+#define SYS_MAXFN 15
+
+#define	DELETE_CMD	'd'	/*  delete member from archive */
+#define	PRINT_CMD	'p'	/*  print archive members */
+#define	TABLE_CMD	't'	/*  print table of contents */
+#define	UPDATE_CMD	'u'	/*  update archive member */
+#define	VERBOSE_CMD	'v'	/*  controls amount of output */
+#define	EXTRACT_CMD	'x'	/*  extract archive member */
+
+#define	USAGE_MESSAGE  "usage: ar1 [-](dptux)[v] archive [files]\n"
+
+#define	HEADER_STRING  "#-h-"
+#define	TRAILER_STRING "#-t-"
+#define	NAMESIZE  20		/*  size of name allowed in header */
+
+/*
+	The following depend on a properly defined notion of file type.
+	All strings should be the same length.
+*/
+
+#define	ASCII_STRING   "ascii "
+#define	LOCAL_STRING   "local "
+#define	BINARY_STRING  "binary"
+#define	ASCII          0
+#define	LOCAL          1
+#define	BINARY         2    
+
+
+/*
+	The file size (in chars) is computed for storage in the 
+	archive headers, although this information is not used.
+*/
+
+/*   GLOBAL VARIABLES    */
+
+char *fname [MAXFILES];			/* list of file names		*/
+int   fstat [MAXFILES];			/* status of each name in list	*/
+int   fcount;				/* number of files on the list	*/
+
+char  chead [MAXLINE];			/* current header		*/
+
+int   errcnt;				/* error count			*/
+int   verbose;				/* YES if verbose flag on	*/
+
+
+main (argc,argv)
+int  argc;
+char **argv;
+{
+	_allocp = NULL;
+	dioinit(&argc, argv);
+	main1(argc, argv);
+	dioflush();
+}
+
+main1(argc, argv)
+int argc;
+char **argv;
+{
+	char *archive, *command;
+	int i;
+
+	/* initialize global error count */
+	errcnt = 0;
+
+	/* make sure there is at least a command and an archive name */
+	if (argc < 3) {
+		fprintf(STD_ERR, "too few arguments\n");
+		error (USAGE_MESSAGE);
+	}
+
+	/*
+		Put a list of file names into fnames [].
+		Check for duplicates.
+	*/
+	get_fnames(argc, argv);
+
+	/* point at the name of the archive */
+	archive = argv [2];
+	upper (archive);
+
+	/* point at the options list */
+	command = argv [1];
+	lower (command);
+
+	/* skip leading '-' if present */
+	if (command [0] == '-') {
+		i = 1;
+	}
+	else {
+		i = 0;
+	}
+
+	if (command [i + 1] == VERBOSE_CMD) {
+		verbose = YES;
+	}
+	else if (command [i + 1] == EOS) {
+		verbose = NO;
+	}
+	else {
+		fprintf(STD_ERR, "option too long\n");
+		error (USAGE_MESSAGE);
+	}
+
+	if (command [i] == UPDATE_CMD) {
+		update (archive);
+	}
+	else if (command [i] == TABLE_CMD) {
+		table (archive);
+	}
+	else if (command [i] == EXTRACT_CMD || command [i] == PRINT_CMD) {
+		extract (archive, command [i]);
+	}
+	else if (command [i] == DELETE_CMD) {
+		delete (archive);
+	}
+	else {
+		fprintf(STD_ERR, "unknown option\n");
+		error (USAGE_MESSAGE);
+	}
+}
+
+
+/* Add file 'name' to archive open on 'fd' */
+
+add_file (name, fd)
+char *name;
+int fd;
+{
+	char head [MAXLINE], trail[MAXLINE];
+	int nfd;
+	char nfbuf [BUFSIZ];
+
+	/* kludge for BDS C fopen */
+	nfd = nfbuf;
+
+	if (fopen (name, nfbuf) == ERROR) {
+		fprintf(STD_ERR, "can't add %s\n", name);
+		errcnt++;
+		return;
+	}
+
+	if (errcnt == 0) {
+		make_header (head, name);
+		if (verbose == YES) {
+			fprintf(STD_OUT, "%s\n", name);
+		}
+		put_line (head, fd);
+		copy_in (nfd, fd);
+		make_trailer (head, trail);
+		put_line (trail, fd);
+	}
+	fclose (nfd);
+}
+
+
+/*
+	Copy a file into an archive.
+	May have to be adjusted to allow for binary files.
+*/
+
+copy_in (fd, afd)
+int fd, afd;
+{
+	int c;
+
+	while (1) {
+		/* allow abort with ^C from console */
+		chkkey();
+
+		c = getc(fd);
+		if (c == ERROR || c == CPMEOF) {
+			break;
+		}
+		putc (c, afd);
+	}
+}
+
+
+/* Copy archive element from one archive to another */
+
+copy_ele (oldafd, newafd)
+int oldafd, newafd;
+{
+	char line [MAXLINE];
+
+	while (get_line (line, oldafd) != 0) {
+		put_line (line, newafd);
+		if (ele_end (line) == YES) {
+			return;
+		}
+	}
+	remark ("archive integrity in doubt - missing trailer.\n");
+	errcnt++;
+}
+
+
+/* Copy a file out of an archive */
+
+copy_out (afd, fd)
+int afd, fd;
+{
+	char line [MAXLINE];
+	int  start;
+
+	while (get_line (line, afd) != 0) {
+		if (ele_end (line) == YES) {
+			/*  we've copied the whole archive element */
+			return;
+		}
+		else {
+			put_line (line, fd);  /*  ordinary text */
+		}
+	}
+	remark ("archive integrity in doubt - missing trailer.\n");
+	errcnt++;
+}
+
+
+/* Delete files from the archive */
+
+delete (aname)
+char *aname;
+{
+	int  tprefx;
+	char  tname [SYS_MAXFN];
+	int afd, tfd;
+	char afbuf [BUFSIZ], tfbuf[BUFSIZ];
+
+	/* kludge for BDS C fopen, fcreat */
+	afd = afbuf;
+	tfd = tfbuf;
+
+	tprefx = 0;
+	if (fcount <= 0) {
+		error ("delete by name only.\n");
+	}
+	if (fopen (aname, afbuf) == ERROR) {
+		cant (aname);
+	}
+
+	mkunik (tprefx, tname); 
+	if (fcreat (tname, tfbuf) == ERROR) {
+		fprintf(STD_ERR, "can not create %s\n", tname);
+	}
+
+	replace (afd, tfd, DELETE_CMD);
+	not_found ();
+
+	fclose (afd);
+	putc (CPMEOF, tfd);
+	fflush (tfd);
+	fclose (tfd);
+	if (errcnt == 0) {
+		unlink (aname);
+		rename (tname,aname);
+	}
+	else {
+		remark ("fatal errors - archive not altered.\n");
+	}
+	unlink (tname);
+}
+
+
+/* Extract files from archive */
+
+extract (archive, cmd)
+char *archive, cmd;
+{
+	char name [SYS_MAXFN], hdr[MAXLINE];
+	int afd, fd;
+	char    afbuf [BUFSIZ], fbuf[BUFSIZ];
+
+	/* kludge for BDS C fopen, fcreat */
+	afd = afbuf;
+	fd  = fbuf;
+
+	if (fopen (archive, afbuf) == ERROR) {
+		fprintf(STD_ERR, "can not open archive: %s\n", archive);
+		exit();
+	}	
+
+	/* NOTE:  this code could be much improved by keeping track of the
+	 *	  number of files that have been extracted and exiting
+	 *	  when all have been found.
+	 */
+
+	while (get_header (afd, hdr, name) != EOF) {
+
+		if (file_arg (name) == NO) {
+			skipf (afd);
+		}
+		else {
+			if (verbose == YES && cmd == PRINT_CMD) {
+				fprintf(STD_OUT, "%s\n", name);
+			}
+			else if (verbose == YES) {
+				fprintf(STD_OUT, "%s\n", name);
+			}
+
+			if (cmd == PRINT_CMD) {
+				copy_out (afd, STD_OUT);
+			}
+			else {
+				if (fcreat (name, fbuf) != ERROR) {
+					copy_out (afd, fd);
+					putc (CPMEOF, fd);
+					fflush (fd);
+					fclose (fd);
+				}
+				else {
+					fprintf(STD_ERR,
+						"can not create %s\n", name);
+					errcnt++;
+					skipf (afd);
+				}
+			}
+
+		}
+	}
+	not_found();
+}
+
+
+/* See if name is present in argument list */
+
+file_arg (name)
+char *name;
+{
+	int i;
+
+	/* a null list matches ALL files */
+	if (fcount <= 0) {
+		return (YES);
+	}
+
+	for (i = 0; i < fcount; i++) {
+		if (strcmp (name, fname [i]) == 0) {
+			fstat [i] = YES;
+			return (YES);
+		}
+	}
+	return (NO);
+}
+
+
+/* Determine size of file (in chars) */
+
+unsigned
+fsize (name)
+char *name;
+{
+	int fd;
+	char fbuf [BUFSIZ];
+	unsigned count;
+	char line [MAXLINE];
+	int n;
+
+	/* kludge for BDS C fopen */
+	fd = fbuf;
+
+	if (fopen (name, fbuf) == ERROR) {
+		return (ERROR);
+	}
+
+	count = 0;
+	while (n = get_line(line, fd)) {
+		count += n;
+	}
+
+	fclose (fd);
+	return (count);
+}
+
+
+/*
+	Get file names into 'fname', check for duplicates.
+	File names are stored LOWER CASE.
+*/
+
+get_fnames(argc, argv)
+int argc;
+char **argv;
+{
+	int ap, fp, len, i;
+	char line [MAXLINE];
+
+	for (fp = 0, ap = 3; ap < argc; ap++) {
+
+		fname [fp] = argv[ap];
+		if (fname [fp][0] == '-' && fname [fp][1] == EOS) {
+			
+			while (fp < MAXFILES) {
+				/* get list from standard input */
+
+				len = get_line (line, STD_IN);
+				if (len <= 1) {
+					break;
+				}
+				/* remove the NEWLINE */
+				line [len-1] =EOS;
+
+				/* save it in dynamic storage */
+				fname [fp] = strsav (line);
+				lower (fname [fp]);
+				fp++;
+				if (fp >= MAXFILES) {
+					error("too many file names\n");
+				}
+			}
+		}
+		else {
+			lower (fname [fp++]);
+			if (fp >= MAXFILES) {
+				error ("too many file names.\n");
+			}
+		}
+	}
+
+	/* set global count of the number of files. */
+	fcount = fp;
+	for (fp = 0; fp < fcount; fp++) {
+		fstat [fp] = NO;
+	}
+
+	for (fp = 0; fp < fcount-1; fp++) {
+		for (i = fp + 1; i < fcount; i++) {
+			if (strcmp (fname [fp], fname [i]) == 0) {
+				fprintf(STD_ERR,
+					"duplicate %s\n", fname [i]);
+				errcnt++;
+			}
+		}
+	}
+	if (errcnt != 0) {
+		error ("fatal errors - archive not altered.\n");
+	}
+}
+
+
+/* Get header information from archive member in 'fd' */
+
+get_header (fd, hdr, name)
+int fd;
+char *hdr, *name;
+{
+	char text [SYS_MAXFN],*hdrstr;
+	int index;
+
+	hdrstr = HEADER_STRING;
+
+	if (get_line (hdr, fd) == 0) {
+		return (EOF);
+	}
+
+	/* keep file names in LOWER case in header, trailer */
+	lower (hdr);
+
+	index = getwrd (hdr, text);
+	if (strcmp (text, hdrstr) != 0) {
+		remark ("archive not in proper format.\n");
+		errcnt++;
+		return (EOF);
+	}
+
+	save_header (hdr);
+	getwrd (hdr + index, name);
+	return (YES);
+}
+
+
+/*
+	Determine file type (ASCII, LOCAL, or BINARY).
+	There is no straight-forward way to do this in CP/M.
+*/
+ 
+get_ftype (name)
+char *name;
+{
+	return (ASCII);
+}
+
+
+/* Make header line for an archive member */
+
+make_header (head, name)
+char *head, *name;
+{
+	int  type, length;
+	char size [20], *now;
+
+	strcpy (head, HEADER_STRING);
+	strcat (head, "  ");
+	strcat (head, name);
+
+	for (length = strlen(name) + 1; length <= NAMESIZE; length++) {
+		strcat (head, " ");
+	}
+
+	sprintf(size, "%11d", fsize(name));
+	strcat (head, size);
+	strcat (head, "  ");
+
+	type = get_ftype (name);
+	if (type == ASCII) {
+		strcat (head, ASCII_STRING);
+	}
+	else if (type == LOCAL) {
+		strcat (head, LOCAL_STRING);
+	}
+	else if (type == BINARY) {
+		strcat (head, BINARY_STRING);
+	}
+	else {
+		strcat (head, ASCII_STRING);
+	}
+
+	strcat (head, "  ");
+	now = getnow();
+	strcat (head, now);
+	strcat (head, "\n");
+}
+
+
+/* Make trailer line for an archive member */
+
+make_trailer (head, trail)
+char *trail, *head;
+{
+	int index;
+
+	/* skip over header string */
+	index = getwrd (head, trail);
+
+	strcpy (trail, TRAILER_STRING);
+	strcat (trail, head + index);
+}
+
+
+/* Print 'not found' message if member isn't in archive */
+
+not_found()
+{
+	int i;
+
+	for (i = 0; i < fcount; i++) {
+		if (fstat [i] == NO) {
+			fprintf(STD_ERR, "%s not in archive.\n", fname [i]);
+			errcnt++;
+		}
+	}
+}
+
+
+/* See if string is end of archive element */
+
+ele_end (str)
+char *str;
+{
+	int i;
+	char *tstr;
+
+	/* look for trailer string */
+	tstr = TRAILER_STRING;
+	for (i=0; tstr [i] != EOS; i++) {
+		if (tstr [i] != str[i]) {
+			return(NO);
+		}
+	}
+
+	/* compare str against name in the trailer */
+	str = skipbl (str + i);
+	if (strcmp(str, chead) ==  0) {
+		return YES;
+	}
+	else {
+		return NO;
+	}
+}
+
+
+/* Replace or delete archive members */
+
+replace (afd, tfd, cmd)
+int afd, tfd;
+char cmd;
+{
+	char hdr [MAXLINE], name[SYS_MAXFN];
+
+	while (get_header (afd, hdr, name) != EOF) {
+		if (file_arg (name) == YES) {
+			if (cmd == UPDATE_CMD) {
+				add_file (name, tfd);
+			}
+			if (verbose == YES && cmd == DELETE_CMD) {
+				fprintf(STD_OUT, "%s\n", name);
+			}
+			skipf (afd);
+		}
+		else {
+			/* just copy.  make no change */
+			fprintf(tfd, "%s", hdr);
+			copy_ele (afd, tfd);
+		}
+	}
+}
+
+
+/* Save current header in the global array chead [] */
+
+save_header (head)
+char *head;
+{
+	int index;
+
+	/* skip header string */
+	index = getwrd (head, chead);
+	head = skipbl (head + index);
+	strcpy (chead, head);
+}
+
+
+/* Skip current archive element on file afd */
+
+skipf (afd)
+int afd;
+{
+	char line [MAXLINE];
+
+	while (get_line (line, afd) != 0) {
+		if (ele_end (line) == YES) {
+			return;
+		}
+	}
+	remark ("archive integrity in doubt - missing trailer.\n");
+	errcnt++;
+}
+
+
+/* Print table of archive contents */
+
+table (aname)
+char *aname;
+{
+	int afd;
+	char    afbuf [BUFSIZ];
+	char hdr [MAXLINE], name[SYS_MAXFN];
+
+	/* kludge for BDS C fopen */
+	afd = afbuf;
+
+	if (fopen (aname, afbuf) == ERROR) {
+		cant (aname);
+	}
+
+	while (get_header (afd, hdr, name) != EOF) {
+		if (file_arg (name) == YES) {
+			tprint (hdr);
+		}	
+		skipf (afd);
+	}
+
+	fclose (afd);
+	not_found();
+}
+
+
+/* Print table entry for one archive member */
+
+tprint (hdr)
+char *hdr;
+{
+	char name [SYS_MAXFN];
+	int index;
+
+	/* skip over the header string */
+	index = getwrd (hdr, name);
+
+	/* put file name in name [], point i past name */
+	index += getwrd (hdr + index, name);
+
+	/* print the name */
+	fprintf(STD_OUT, "%s", name);
+
+	/* print other info from header only in verbose mode */
+	if (verbose == YES) {
+		for (; hdr [index] != NEWLINE && hdr [index] != EOS; index++) {
+			putc (hdr [index], STD_OUT);
+		}
+	}
+
+	/* end the line of information */
+	putc (NEWLINE, STD_OUT);
+}
+
+
+/* Update existing files, add new ones at end */
+
+update (aname)
+char *aname;
+{
+	int afd, tfd;
+	char    afbuf [BUFSIZ], tfbuf[BUFSIZ];
+	int fp;
+	int tprefx;
+	char  tname [SYS_MAXFN];
+
+	/* kludge for BDS C fopen, fcreat routines */
+	afd = afbuf;
+	tfd = tfbuf;
+
+	tprefx = 0;
+	if (fopen (aname, afbuf) == ERROR) {
+		/*  try to create a new archive */
+		if (fcreat (aname, afbuf) == ERROR) {
+			fprintf(STD_ERR, "can not create %s\n", aname);
+		}
+		putc(CPMEOF, afd);
+		fflush(afd);
+		fclose(afd);
+		if (fopen(aname, afbuf) == ERROR) {
+			cant(aname);
+		}
+	}
+	mkunik (tprefx, tname);
+	if (fcreat (tname, tfbuf) == ERROR) {
+		fprintf(STD_ERR, "can not create %s\n", tname);	
+	}
+
+	/* update existing members */
+	replace (afd, tfd, UPDATE_CMD);
+
+	/* add new members */
+	for (fp = 0; fp < fcount; fp++) {
+		if (fstat [fp] == NO) {
+			add_file (fname [fp], tfd);
+			fstat [fp] = YES;
+		}
+	}
+	fclose (afd);
+	putc (CPMEOF, tfd);
+	fflush (tfd);
+	fclose (tfd);
+
+	if (errcnt == 0) {
+		unlink (aname);
+		rename (tname,aname);
+	}
+	else {
+		remark ("fatal errors - archive not altered.\n");
+		unlink (tname);
+	}
+}
+(aname);
+		rename (tname,aname);
+	}
+	else {
+		re

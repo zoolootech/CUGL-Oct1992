@@ -1,0 +1,162 @@
+/*
+**  Figure 3 - Gameport support functions
+**
+**  This file contains several related functions required to access the
+**  switch inputs on the gameport in a controlled, debounced fashion.
+**
+**  In order to work correctly, the routine "debounce()" MUST be called
+**  often as a part of the user program.  Debouncing takes place as a
+**  function of the time interval between successive calls to debounce().
+**
+**  It does not use a specific timebase, although the debounce() function
+**  could be tied to the user timebase, Int 1Ch.
+*/
+
+#include <stdio.h>
+
+#define GAMEPORT 0x201        /* gameport address */
+#define IDLE 0                /* state definitions for debouncer */
+#define INPROG 1
+#define WAITOPEN 2
+
+void            init_game(int),
+                clear_game(void),
+                debounce(void);
+
+unsigned char   get_press(void);
+
+struct {
+    unsigned char seed;
+    unsigned char counter;
+    unsigned char new_value;
+    unsigned char last_value;
+    unsigned char state;
+    unsigned char key_down;
+    int multi;
+    } gamesw;
+
+
+/*
+** init_game(mode)
+** call this routine before using any of the gameport support routines.
+** Or, manually initialize the gamesw structure.
+** "mode" is 1 to allow multiple keypresses, 0 for exclusion
+*/
+
+void init_game(int mode)
+{
+        gamesw.seed = 100;
+        gamesw.multi = (unsigned char)(mode & 0xff);
+        clear_game();
+}
+
+
+/*
+** clear_game()
+**     clears the game port structure items and allows for immediate
+**     re-processing of new keystrokes.
+*/
+
+void clear_game(void)
+{
+        gamesw.key_down = gamesw.last_value = gamesw.new_value = 0;
+        gamesw.state = IDLE;
+}
+
+
+/*
+** get_press()
+**    returns a fully debounced key value, or NUL if nothing
+**    pressed.  Note that getting a waiting keystroke will re-init
+**    the control structure.
+*/
+
+unsigned char get_press(void)
+{
+        unsigned char i;
+
+        if (gamesw.key_down == 0)
+                return(0);
+        i = gamesw.key_down;
+        gamesw.key_down = 0;
+        return(i);
+}
+
+
+/*
+** debounce()
+**
+** This routine is called periodically (try for about 20 to 200 times per
+** second, nominal) to process potential key presses.  This system
+** does NOT allow multiple key presses if the gamesw.multi byte is set
+** to FALSE, and under those conditions will wait for a key to be
+** fully debounced in order to return a value.
+** If gamesw.multi is TRUE, then any stable value will be returned.
+** In all cases, a pending keyvalue MUST be fetched via get_press or
+** cleared via clear_game() before any further keypress is recognized.
+** This routine returns nothing except through the gamesw structure.
+*/
+
+void debounce(void)
+{
+        unsigned char i;
+
+        if (gamesw.key_down != 0)
+                return;         /* do nothing until a key is read       */
+
+        i = inp(GAMEPORT);      /* read port, raw                       */
+
+        /* convert bits to high active, in lower nibble                 */
+
+        i = ~i;
+        i >>= 4;
+        gamesw.new_value = i & 0x0f;
+        switch (gamesw.new_value)
+        {
+        case 1:  
+        case 2:  
+        case 4:  
+        case 8:  
+        case 0:
+                break;
+        default:                /* multiple keys down                   */
+                if (gamesw.multi)
+                        break;  /* multiple keys allowed                */
+                gamesw.state = WAITOPEN; /* else wait for all open      */
+                return;
+        }
+        if (gamesw.new_value != gamesw.last_value)
+                gamesw.state = IDLE;
+        switch (gamesw.state)
+        {
+        case IDLE:
+                if (gamesw.new_value == 0)
+                        break;
+
+                /* save original keystroke */
+
+                gamesw.last_value = gamesw.new_value;
+                gamesw.counter = gamesw.seed;
+                gamesw.state = INPROG;
+                break;
+        case INPROG:
+                if (--gamesw.counter > 0)
+                        break;                  /* not timed out yet    */
+                gamesw.state = WAITOPEN;
+                gamesw.key_down = gamesw.new_value;
+                break;
+        case WAITOPEN:
+                if (gamesw.new_value != 0)
+                {       /* any closure restarts timeout                 */
+                        gamesw.counter = gamesw.seed;
+                        break;
+                }
+                if (--gamesw.counter > 0)
+                        break;
+                gamesw.state = IDLE;
+                gamesw.last_value = gamesw.new_value = 0;
+                break;
+        default:
+                break;
+        }
+}

@@ -1,0 +1,57 @@
+/* Add rotation about x axis to transformation matrix
+
+   Copyright (c) 1988 by Gus O'Donnell
+
+   Revision history:
+
+   Version 1.00         February 29, 1988       As released.
+
+   Version 1.01         March 20, 1988          Created libraries for all
+                                                memory models
+
+*/
+#include <3d.h>
+#include <float.h>
+#include <math.h>
+#include <stdio.h>
+
+void    xrot (double theta, MATRIX this_mat)
+
+/* Add rotation to the transformation matrix.
+
+Vertices may be rotated about any axis.  Note that x rotation is about
+the vector i = [1 0 0].  If a rotation about a point local to the object
+is desired, the point (and the entire object) must first be translated
+to [0 0 0], the rotation performed, and the translation reversed.  This
+is accomplished by concatenating these three transformations.
+
+The end result of the rotation is
+
+   [x y z] -> [x (y cos theta + z sin theta) (z cos theta - y sin theta)]
+
+The rotation is clockwise as viewed along the axis of rotation from
+the positive direction.  The angle is expressed in radians.
+
+The matrix created for the scaling transformation is
+
+           |  1.0  0.0         0.0        0.0  |
+           |  0.0  cos theta  -sin theta  0.0  |
+           |  0.0  sin theta   cos theta  0.0  |
+           |  0.0  0.0         0.0        1.0  |
+
+The current transformation matrix this_mat is then multiplied by the rotation
+transformation matrix, thus concatenating the rotation operation with the
+current transformation.
+*/
+
+{
+    MATRIX xr_mat;
+
+    identity (xr_mat);
+    xr_mat [1] [1] = cos(theta);
+    xr_mat [1] [2] = -sin(theta);
+    xr_mat [2] [1] = sin(theta);
+    xr_mat [2] [2] = cos(theta);
+    mat_mul (this_mat,xr_mat,this_mat);
+}
+

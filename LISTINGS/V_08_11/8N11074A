@@ -1,0 +1,68 @@
+/****************** LISTING 3 - comm.c ******************/
+ 
+#include "ipc.h"
+ 
+ULONG open_comm_link(USHORT *mbxid, ULONG mbxsiz, 
+            char *mbxname)
+{
+char    permanence_flag     = TEMPORARY_MBX;
+ULONG   protection          = WORLD_ACCESS;
+ULONG   access_mode         = PSL$C_USER;
+$DESCRIPTOR (mbx_logical_name, mbxname);
+mbx_logical_name.dsc$w_length = strlen(mbxname);
+ 
+return (SYS$CREMBX(permanence_flag, mbxid, mbxsiz, mbxsiz, 
+            protection, access_mode, &mbx_logical_name));
+}
+ 
+ULONG close_comm_link(USHORT mbxid)
+{
+return (SYS$DASSGN(mbxid));
+} 
+ 
+ 
+ULONG send(USHORT mbxid, MSGBUF *msg, int msgsiz)
+{
+int               status;
+USHORT            func = IO$_WRITEVBLK | IO$M_NOW; 
+IO_STATUS_BLOCK   iosb = {0, 0, 0}; 
+ 
+status = SYS$QIOW(0, mbxid, func, &iosb, 0, 0, msg, 
+            msgsiz, 0, 0, 0, 0);
+ 
+return status;
+}
+ 
+ 
+ULONG broadcast(MSGBUF *msg, ULONG msgsiz, CLIENT *p)
+{
+while (p) { 
+    send(p->mbxid, msg, msgsiz);
+    p = p->link;
+}
+return SUCCEED;
+}
+ 
+void receive(USHORT mbxid)
+{
+int    status;
+USHORT func = IO$_READVBLK;
+ 
+extern RCVBUF msgque[QSIZE];
+extern BOOL qfull, qempty, qovrflo;
+extern int qtail, qhead;
+ 
+if (!qfull) {
+    qempty = FALSE;
+    qtail = (++qtail) % QSIZE;
+    status = SYS$QIO (RCVEF, mbxid, func, 
+                 &msgque[qtail].iosb, &receive, 
+                 mbxid, &msgque[qtail].msg, sizeof(MSGBUF),
+                 0, 0, 0, 0);
+    if (((qtail+1) % QSIZE) == qhead)
+        qfull = TRUE;
+}
+else {
+    qovrflo = TRUE;
+}
+}

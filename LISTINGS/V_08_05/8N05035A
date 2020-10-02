@@ -1,0 +1,287 @@
+/*
+prb.c - Packetized Ring Buffer demonstration
+
+(c) Copyright 1989, 1990 Martin J. Stitt
+*/
+
+#include <alloc.h>
+#include <string.h>
+#include <stdlib.h>
+
+typedef unsigned char byte;
+typedef unsigned int word;
+
+typedef struct {
+  word prb_totbytes;     /* define the ring buffer's size */
+  byte *prb_base;        /* ptr to base of buffer */
+  byte *prb_head;        /* head ptr - from which data is read */
+  byte *prb_tail;        /* tail ptr - at which data is written */
+  word prb_free;         /* amount of free space in the buffer */
+  word prb_eobofs;       /* offset of byte just past the eob */
+  byte prb_packets;      /* number of records in the buffer */
+  byte prb_use_rectype;  /* indicates use of two byte headers */
+  word prb_overflow;     /* indicates when a record is too large */
+  byte prb_max_dsize;    /* maximum size for record's data */
+  } prb_type;
+
+/*- prb_init -----------------------------------------------------------
+entry parms:	ptr to a partially initialized prb structure
+		prb_base must point to an allocated buffer
+		prb_totbytes must be its size
+		prb_use_rectype must be assigned
+exit parms:	function return value != 0 when the last buffer
+		offset is 0xFFFF
+notes: call before writing and reading.  can recall later to flush the
+ring buffer.  can ignore return value on sucessive calls.
+------------------------------------------------------------------------*/
+word prb_init(prb_type *b) {
+
+  b->prb_head = b->prb_base;                 /* initialize the pointers */
+  b->prb_tail = b->prb_base;                 /* to flush the buffer */
+  b->prb_free = b->prb_totbytes;
+  b->prb_packets = 0;
+  b->prb_max_dsize = 255-1;                  /* -1 for the header byte */
+  if(b->prb_use_rectype) b->prb_max_dsize--; /* if using 2 byte header */
+  b->prb_overflow = 0;
+  b->prb_eobofs = (word) b->prb_base + b->prb_totbytes;
+  return((b->prb_eobofs == 0) ? 1 : 0);
+  }
+
+/*- prb_write_data ---------------------------------------------------------
+entry parms:	ptr to buffer structure
+		ptr to caller's data, size of caller's data
+		record type code (ignored if prb_use_rectype == 0)
+exit parms:	function return value != 0 if overflow
+------------------------------------------------------------------------*/
+word prb_write_data(prb_type *b, void *idata, byte dsize, byte rectype) {
+
+  byte csize;                     /* data bytes to xfer */
+  byte psize;                     /* total packet size */
+  word block1;                    /* bytes before wrap of tail */
+  byte need_wrap;                 /* flags need for a 2 part xfer */
+  word adjust_head;               /* bytes to advance the head ptr */
+  word head2end;                  /* bytes before wrap of head */
+
+  if(dsize == 0) return(1);       /* anything to insert? */
+  if(dsize > b->prb_max_dsize) return(1); /* don't allow oversized data */
+  psize = dsize+1;                /* +1 for the pkt size header byte */
+  if(b->prb_use_rectype) {        /* if using a record type */ 
+    psize++;                      /* account for header byte */
+    }
+  if(psize > b->prb_totbytes) {   /* if record too large for buffer */ 
+    if(psize < b->prb_overflow) { /* record overflow unless another */
+      b->prb_overflow = psize;    /* larger recorded */
+      }
+    return(1);                    /* indicate a problem */
+    }
+  while(psize > b->prb_free) {    /* while not enough free room */ 
+    b->prb_free += *b->prb_head;  /* adjust free to show deletion */
+    b->prb_packets--;             /* adjust accounting of pkts */
+    adjust_head = *b->prb_head;   /* fetch size of pkt to be deleted */
+    head2end = b->prb_eobofs - (word) b->prb_head; /* calc bytes till wrap */
+    if(adjust_head > head2end) {  /* will deletion involve a wrap? */ 
+      adjust_head -= head2end;    /* calc bytes in second portion */
+      b->prb_head = b->prb_base;  /* wrap around */
+      }
+    b->prb_head += adjust_head;   /* advance the head pointer */
+    if((word) b->prb_head == b->prb_eobofs) {  /* if pkt deleted just fit */ 
+      b->prb_head = b->prb_base;  /* need to wrap */
+      }
+    }
+  block1 = b->prb_eobofs - (word) b->prb_tail; /* calc size of 1st block */
+  b->prb_packets++;               /* update accounting of pkts */
+  b->prb_free -= psize;           /* update accounting of free space */
+  csize = psize-1;                /* sub 1 for pkt size header byte */
+  *(b->prb_tail++) = psize;       /* write header byte, advance tail */
+  need_wrap = 0;                  /* initialize flag */
+  if(psize > block1) {            /* if won't all fit in 1st block */ 
+    need_wrap = 1;                /* write remainder in 2nd block */
+    csize = block1-1;             /* -1 for header already written */
+    if(csize == 0) {              /* if block1 only had 1 byte */ 
+      b->prb_tail = b->prb_base;  /* do the wrap now */
+      need_wrap = 0;              /* don't need to wrap later */
+      csize = psize-1;            /* -1 for header already written */
+      }
+    }
+  if(b->prb_use_rectype) {        /* if type code to be inserted */ 
+    *(b->prb_tail++) = rectype;   /* insert it now and advance tail */
+    csize--;                      /* account for type code */
+    if(csize == 0) {              /* if block1 only had 2 bytes */ 
+      b->prb_tail = b->prb_base;  /* do the wrap now */
+      need_wrap = 0;              /* don't need to wrap later */
+      csize = psize-2;            /* account for 2 bytes in header */
+      }
+    }
+  memmove(b->prb_tail,idata,csize);     /* insert csize bytes into buffer */
+  b->prb_tail += csize;                 /* advance tail past new data */
+  if(need_wrap)	{                       /* if more data left to insert */ 
+    b->prb_tail = b->prb_base;          /* wrap the tail back around */
+    (byte) idata += csize;              /* advance the caller's pointer */
+    memmove(b->prb_tail,idata,(psize-block1)); /* insert the remaining data */
+    b->prb_tail += (psize-block1);
+    }
+  if(b->prb_eobofs == (word) b->prb_tail) { /* if blk went just up to end */ 
+    b->prb_tail = b->prb_base;              /* need to wrap tail back around */
+    }
+  return(0);                                /* indicate success */
+  }
+
+/*- prb_read_rectype ---------------------------------------------------
+entry parms:	ptr to buffer structure
+		address of byte to receive rectype
+exit parms:	function return value is data size
+		0 means buffer is empty
+
+notes: presumes all ring buffer records contain a rectype byte in 
+their header.  if the buffer is empty, the rectype value returned 
+will be garbage.
+------------------------------------------------------------------------*/
+byte prb_read_rectype(prb_type *b, byte *rectype) {
+
+  byte *tptr;                         /* local scratch pointer */
+
+  if(b->prb_packets == 0) return(0);  /* anything in buffer? */
+  tptr = b->prb_head + 1;             /* point to the record type code */
+  if(b->prb_eobofs == (word) tptr) {  /* need to wrap to read */ 
+    tptr = b->prb_base;               /* the 2nd byte? */
+    }
+  *rectype = *tptr;                   /* transfer rectype to caller */
+  return(*b->prb_head-2);             /* return the record size */
+  }
+
+/*- prb_read_data -----------------------------------------------------------
+entry parms:	ptr to buffer structure
+		address of buffer to receive record contents
+exit parms:	function return value is data size
+		0 means buffer is empty
+
+notes: presumes caller has referenced any recorded rectype and has 
+supplied a pointer to a large enough buffer.  *prb_head can be
+referenced to verify the size requirement.
+------------------------------------------------------------------------*/
+byte prb_read_data(prb_type *b, void *dest) {
+
+  byte dsize;                       /* data bytes in packet */
+  byte csize;                       /* bytes to transfer */
+  byte rsize;                       /* bytes left when need 2 xfers */
+  word block1;                      /* bytes before wrap */
+
+  if(b->prb_packets == 0) return(0); /* make sure buffer has data */
+  b->prb_free += *b->prb_head;      /* adjust free to show deletion */
+  b->prb_packets--;                 /* adjust accounting of packets */
+  rsize = 0;                        /* init remainder var */
+  csize = *b->prb_head;             /* fetch the record size */
+  dsize = csize - 1;                /* record the data size */
+  block1 = b->prb_eobofs - (word) b->prb_head; /* calc size of 1st block */
+  if(csize > block1) {              /* if a wrap will be required */ 
+    rsize = csize - block1;         /* calculate the remainder */
+    csize = block1;                 /* adjust csize to do 1st blk only */
+    }
+  csize--;                          /* account for record size header */
+  b->prb_head++;                    /* step past record size header */
+  if(csize == 0) {                  /* if done with 1st block already */ 
+    b->prb_head = b->prb_base;      /* wrap the head back around */
+    csize = rsize;                  /* start accounting with remainder */
+    rsize = 0;                      /* signal that wrap has been done */
+    }
+  if(b->prb_use_rectype) {          /* if using a two byte header */ 
+    b->prb_head++;                  /* step past the record type */
+    csize--;                        /* adjust accounting */
+    dsize--;                        /* adjust accounting */
+    if(csize == 0) {                /* if done with 1st block */ 
+      b->prb_head = b->prb_base;    /* wrap the head back around */
+      csize = rsize;                /* start accounting with remainder */
+      rsize = 0;                    /* signal that wrap has been done */
+      }
+    }
+  memmove(dest,b->prb_head,csize);  /* tranfer 1st block to caller */
+  b->prb_head += csize;             /* advance head past copied data */
+  if(rsize != 0) {                  /* if any remainder in a 2nd block */ 
+    b->prb_head = b->prb_base;      /* wrap the head back around */
+    (byte) dest += csize;           /* advance dest past copied data */
+    memmove(dest,b->prb_head,rsize); /* transfer the 2nd block */
+    b->prb_head += rsize;           /* advance head past copied data */
+    }
+  if(b->prb_eobofs == (word) b->prb_head) { /* if blk went just up to end */ 
+    b->prb_head = b->prb_base;      /* need to wrap head back around */
+    }
+  return(dsize);                    /* report the data size */
+  }
+
+/*------------------------------- main ------------------------------*/
+
+main() {
+
+  prb_type sample;                      /* record to hold buffer data */
+  byte workbuf[256];                    /* general purpose buffer */
+  byte rlen;                            /* size of data in read records */
+  word x,y;                             /* general purpose words */
+  byte rectype;                         /* type of record being read */
+
+  sample.prb_totbytes = 100;
+  sample.prb_use_rectype = 0;
+  if((sample.prb_base = malloc(sample.prb_totbytes)) == NULL) {
+    printf("\nInsufficient memory\n");
+    exit(1);
+    }
+  if(prb_init(&sample) != 0) {          /* make sure position is ok */ 
+    printf("\nBuffer ends at FFFF\n");
+    exit(1);
+    }
+
+  /* 
+  write some strings into the buffer.  since all packets will hold
+  the same type of data, the rectype field is not used.
+  */
+
+  strcpy(workbuf,"1234567890123456789012345678901234567890123456789");
+  prb_write_data(&sample,workbuf,strlen(workbuf),0);
+  strcpy(workbuf,"123456789012345678901234567890123456789012345678");
+  prb_write_data(&sample,workbuf,strlen(workbuf),0);
+  strcpy(workbuf,"this will cause a wrap");
+  prb_write_data(&sample,workbuf,strlen(workbuf),0);
+
+  /* dump the buffer's contents */
+
+  printf("\n\n");
+  while((rlen = prb_read_data(&sample,workbuf)) != 0) {
+    *(workbuf+rlen) = 0;                /* add string terminator */
+    puts(workbuf);
+    }
+
+  /*
+  write some differing types of records.  text strings will be 
+  identified by a rectype of 0 and integers with a rectype of 1.
+  */
+
+  sample.prb_use_rectype = 1;
+  prb_init(&sample);    /* flush buffer and activate record types */
+  strcpy(workbuf,"text is rectype 0");
+  prb_write_data(&sample,workbuf,strlen(workbuf),0);
+  x = 0x1234;
+  prb_write_data(&sample,&x,2,1);
+  strcpy(workbuf,"more text");
+  prb_write_data(&sample,workbuf,strlen(workbuf),0);
+  prb_write_data(&sample,"can send a literal string",25,0);
+  prb_write_data(&sample,"but must count its chars",24,0);
+  prb_write_data(&sample,"this will cause a wrap",22,0);
+
+  /* dump the buffer's contents */
+
+  printf("\n\n");
+  while((rlen = prb_read_rectype(&sample,&rectype)) != 0) {
+    switch(rectype) {
+    case 0:                             /* deal with string records */
+      prb_read_data(&sample,workbuf);
+      *(workbuf+rlen) = 0;              /* add a string terminator */
+      printf("rectype 0: %s\n",workbuf);
+      break;
+    case 1:                             /* deal with integer records */
+      prb_read_data(&sample,&y);
+      printf("rectype 1: %04X\n",y);
+      break;
+    default:
+      printf("\nError - undefined rectype: %d\n",rectype);
+      }
+    }
+  }

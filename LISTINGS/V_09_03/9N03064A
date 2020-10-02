@@ -1,0 +1,54 @@
+/* Modulename:  io.c
+ *
+ * Description: This module contains routines 
+ *        for the serial I/O interface and 
+ *        timers of the 8052.
+ *        Compiler option : -C51
+ */
+
+#ifndef _CC51
+#include "reg51.h"
+#endif
+#include "clock.h"
+
+/*    function prototypes     */
+
+void out_char( char );
+void reset_serial( void );
+void init_timer( void );
+
+void
+out_char( char c )
+{
+    while ( !TI )  /* Output port ready? */
+           ;       /* No: keep looping   */
+    TI = 0;         /* Reset flag        */
+    SBUF = c;       /* Put character     */
+}
+
+void
+reset_serial( void )
+{
+    RI   = 0;       /* clear receive and transmit 
+                       interrupt flag  */
+    TI   = 0;       
+    TH1  = 0xFD;    /* Initialize serial port: */
+    SCON = 0xDA;    /*    9600 baud, 8 bits  */
+                    /*    no parity, 1 start bit, */
+                    /*    2 stop bits             */
+               /* Cristal frequency: 11.0592 Mhz. */
+}
+void
+init_timer( void )
+{
+
+    TR1  = 1;     /* set timer 1 in run mode           */
+    TMOD = 0x21;  /* timer 1 in 8 bit auto reload mode,*/
+                  /* timer 0 in 16 bit timer mode      */
+    TL0  = ( TIME_FACTOR % 256 );
+    TH0  = ( TIME_FACTOR / 256 );
+    PT0  = 1;  /* timer 0 at interrupt priority level 0 */
+    ET0  = 1;  /* enable timer 0 overflow interrupt     */
+    EA   = 1;  /* enable all interrupts                 */
+    TR0  = 1;  /* set timer 0 in run mode               */
+}

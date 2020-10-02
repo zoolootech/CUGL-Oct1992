@@ -1,0 +1,1783 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            S O U N D   E F F E C T S
+
+                               C Function Library
+                                  Version 1.0b
+
+
+                       Copyright (C) 1986 by Paul Canniff
+                              All Rights Reserved.
+
+
+
+
+                                  Paul Canniff
+                                  P.O. Box 1056
+                                Marlton NJ 08053
+
+                            CompuServe ID 73047,3715
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                            
+                                                        Updated 05 Mar 86
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                 C O N T E N T S
+
+                  Introduction  .......................  1
+                  Installation for Aztec C  ...........  2
+                  Installation for Ecosoft C  .........  3
+                  Installation for Lattice C  .........  4
+                  Installation for other compilers  ...  5
+                  Using The Library  ..................  6
+                  Making Music (using PLAY)  ..........  8
+                  Making Noise (using SOUND)  ......... 10
+                  Function Summary List  .............. 11
+                  Individual Function Descriptions  ... 12
+                  Technical Information  .............. 18
+                  What To Do When It Doesn't Work  .... 23
+                  Change Log .......................... 24
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                  Introduction
+
+        This library facilitates the use of sound and music on the IBM-PC 
+        family  and  compatibles.   It has been tested with  the  Lattice 
+        compiler  version 2.15 and the Manx Aztec compiler version  3.20.  
+        Other compilers (or versions of these compilers) should work just 
+        fine,  provided  you can rewrite or modify the  assembly-language 
+        portions.   I  will be glad to help get the library working  with 
+        other compilers.
+
+        The  main  functions in the  library  are  play(),  sound(),  and 
+        sounds().   Play()  accepts  a form of  musical  notation,  while 
+        sounds()  and sounds() accept specific frequencies and  durations 
+        for  greater  flexibility  (at the expense of more work  for  the 
+        programmer).  These functions are discussed in more detail in the 
+        sections "Making Music" and "Making Noise".  Calls to sound() and 
+        play()   can  be  freely  intermixed  in  either  foreground   or 
+        background,  providing  a  flexible high-level interface  to  the 
+        speaker.
+
+        All  of  these  sound-making routines can run  in  foreground  or 
+        background.  Foreground means that the sound is generated in much 
+        the  same  way  that most other  PC  output  is  generated;   the 
+        application  requests that it be done,  the driver does  it,  and 
+        then it returns to the application.   This is straightforward and 
+        clean.
+
+        Background is the fancy way.   The music or the sound effects are 
+        requested  by  the application,  which can then continue  to  run 
+        while the driver controls the speaker.   This allows you to  play 
+        some  music  while your program performs some  operations,  which 
+        might be better than just flashing WAIT at the user.
+
+        In addition,  the library includes a number of low-level routines 
+        that access the speaker directly.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        1
+
+
+
+
+
+        Sound Effects                                General Installation
+
+
+
+        The  following  general  installation procedure  applies  to  all 
+        supported compilers.  
+
+        (1)  First, set up your "work area", whether it be a subdirectory 
+             on  a hard disk,  or a floppy disk.   If you have room on  a 
+             current work disk,  or in your usual C subdirectory, you may 
+             want  to use them.   Wherever you decide upon,  this disk or 
+             diectory will be referred to as your "work area".
+
+        (2)  Copy all .C and .H files from the distribution disk to  your 
+             work  area.   
+
+        (3)  There are also some assembly-langauge source files which you 
+             will need, called DELAY and SOUNDINT.  There are versions of 
+             these files on the disk for each supported  compiler.   Copy 
+             the  proper files to your work area,  changing the extension 
+             to .ASM in the process.
+
+                    AZTEC:    *.ASZ  ->  *.ASM
+                    LATTICE:  *.ASL  ->  *.ASM
+                    ECOSOFT:  *.ASE  ->  *.ASM
+            
+        (*)  Keep  the original distribution disk in a safe  place;   all 
+             further actions discussed should be done on your work  area, 
+             not the distribution disk.
+
+        (2)  Edit  the file SOUND.H and make sure that the only  compiler 
+             flag set is the one for your compiler.   That flag should be 
+             set to 1, all others to 0.
+
+        (3)  Compile  the C files.   They include the following H  files, 
+             which should be included with your compiler:
+
+                  Lattice, Ecosoft:     STDIO.H, DOS.H
+                  Aztec:                STDIO.H, MODEL.H
+
+        (4)  Assemble  the  .ASM files using the assembler provided  with 
+             your   compiler,   the  Miscrosoft   Macro   Assembler,   or 
+             equivalent.   The  following "macro" headers are included by 
+             the assembly files:
+
+                  Lattice:       DOS.MAC
+                  (all others)   -none-     
+
+        (5)  The  file  SOUNDTST  is  not a part  of  the  Sound  Effects 
+             library,  but  is furnished as an example of an  application 
+             calling  the sound functions.   To test  the  library,  link 
+             SOUNDTST  to  all  the sound functions,  and  any  necessary 
+             modules.  The following modules are required:
+
+                  Lattice:       C.OBJ, LC.LIB
+                  Ecosoft:       ??
+                  Aztec:         C.LIB
+
+
+
+                                        2
+
+
+
+
+
+        Sound Effects                         Installation - Manx / Aztec
+
+
+
+                     Manx Aztec C Version 3.20 Installation
+
+        Note:  Older Manx compilers (such as version 1.06) should require 
+               no change to the following procedure.
+
+        Before  starting,  set  up  your "work area",  whether  it  be  a 
+        subdirectory on a hard disk, or a floppy disk.   Then ...
+
+        (1)  Copy  the .C and .H files to your work diskette or hard disk 
+             subdirectory.   Copy  all .ASL files to .ASM files  on  your 
+             work  area.   Keep the original distribution disk in a  safe 
+             place;  all further actions discussed should be done on your 
+             work area, not the distribution disk.
+
+        (2)  Edit  the file SOUND.H and make sure that the only  compiler 
+             flag set to 1 is C_AZTEC. 
+
+        (3)  Compile  the C files.   They include the following H  files, 
+             which should be included with your compiler:
+
+                  STDIO.H     MODEL.H
+
+        (4)  Assemble  the  .ASM  files using the Manx  Aztec  Assembler, 
+             Miscrosoft Macro Assembler or equivalent.
+
+        (5)  Link  the file SOUNDTEST.OBJ to the rest of .OBJ's  produced 
+             by the above commands, and to the C library (C.LIB). 
+
+        (6)  If  you hear music,  you have correctly installed your sound 
+             routines.   You  may use LIB or PLIB86 to form them  into  a 
+             library if you want.   Note that you will have to repeat the 
+             installation procedure for every memory model you use.   Oh, 
+             yes,  you  can delete the SOUNDTST files when you are  done, 
+             though the source gives a good example of the correct way to 
+             access the library.
+
+                                   Aztec Notes
+
+        (1)  Sound_done() must also be called before exiting an  overlay, 
+             if the overlay contains the Sound Effects code and data.  If 
+             both  code and data of the Sound Effects functions reside in 
+             the root, this is not necessary.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        3
+
+
+
+
+
+        Sound Effects                              Installation - Ecosoft
+
+
+
+                       Ecosoft C Version 3.02 Installation
+
+        Before  starting,  set  up  your "work area",  whether  it  be  a 
+        subdirectory on a hard disk, or a floppy disk.   Then ...
+
+        (1)  Copy  the .C and .H files to your work diskette or hard disk 
+             subdirectory.   Copy  all .ASE files to .ASM files  on  your 
+             work  area.   Keep the original distribution disk in a  safe 
+             place;  all further actions discussed should be done on your 
+             work area, not the distribution disk.
+
+        (2)  Edit  the file SOUND.H and make sure that the only  compiler 
+             flag set to 1 is C_ECOSOFT.
+
+        (3)  Compile  the C files.   They include the following H  files, 
+             which should be included with your Lattice Compiler:
+
+                  STDIO.H     DOS.H
+
+        (4)  Assemble  the .ASM files using the Microsoft Macro Assembler 
+             or equivalent.   The file PRO.H must be present.   This file 
+             is included in the Ecosoft C package and allows the assembly 
+             modules to know the memory model in use.
+
+        (5)  Link  the file SOUNDTEST.OBJ to the rest of .OBJ's  produced 
+             by  the  above  commands,  and  to  the  Ecosoft  C  library 
+             (ECOC.LIB). 
+
+        (6)  If  you hear music,  you have correctly installed your sound 
+             routines.   You  may use LIB or PLIB86 to form them  into  a 
+             library if you want.   Note that you will have to repeat the 
+             installation procedure for every memory model you use.   Oh, 
+             yes,  you  can delete the SOUNDTST files when you are  done, 
+             though the source gives a good example of the correct way to 
+             access the library.
+
+                                  Ecosoft Notes
+
+        (1)  The  file SOUNDP.H is provided to define the  Sound  Effects 
+             callable  functions,  using the prototype form.   If you are 
+             using  prototyping,  this  file should be  included  in  any 
+             source module that calls the Sound Effects library.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        4
+
+
+
+
+
+        Sound Effects                              Installation - Lattice
+
+
+
+                   Lattice C Version 2.14 or 2.15 Installation
+
+        Note:  The new Lattice compilers (version 3.xx) should require no 
+               change to the following procedure.
+
+        Before  starting,  set  up  your "work area",  whether  it  be  a 
+        subdirectory on a hard disk, or a floppy disk.   Then ...
+
+        (1)  Copy  the .C and .H files to your work diskette or hard disk 
+             subdirectory.   Copy  all .ASL files to .ASM files  on  your 
+             work  area.   Keep the original distribution disk in a  safe 
+             place;  all further actions discussed should be done on your 
+             work area, not the distribution disk.
+
+        (2)  Edit  the file SOUND.H and make sure that the only  compiler 
+             flag set to 1 is C_LATTICE.
+
+        (3)  Compile  the C files.   They include the following H  files, 
+             which should be included with your Lattice Compiler:
+
+                  STDIO.H     DOS.H
+
+        (4)  Assemble the .ASM files using the Microsoft Macro  Assembler 
+             or equivalent.  The file DOS.MAC must be present.  This file 
+             is included in the Lattice C package and allows the assembly 
+             modules to know the memory model in use.
+
+        (5)  Link  the file SOUNDTEST.OBJ to the rest of .OBJ's  produced 
+             by  the  above  commands,  and  to  the  Lattice  C  library 
+             (LC.LIB). 
+
+        (6)  If  you hear music,  you have correctly installed your sound 
+             routines.   You  may use LIB or PLIB86 to form them  into  a 
+             library if you want.   Note that you will have to repeat the 
+             installation procedure for every memory model you use.   Oh, 
+             yes,  you  can delete the SOUNDTST files when you are  done, 
+             though the source gives a good example of the correct way to 
+             access the library.
+
+                                  Lattice Notes
+
+        (1)  When compiling the Sound Effects functions,  be usure to use 
+             the  correct  compiler flags and DOS.MAC file,  so that  the 
+             Sound  Effects functions are using the same memory model  as 
+             your application.   You may want to compile four versions of 
+             the Sound Effects functions, one for each memory model.
+
+        (2)  Be  sure  to compile Sound Effects functions using the  "-v" 
+             compiler flag to disable stack checking.  This is compatible 
+             with  the  Lattice library.   Not disabling  stack  checking 
+             could result in detection of a bogus "stack overflow" during 
+             the   timer  interrupt  handler's  execution.    This   will 
+             terminate the application.
+
+
+
+                                        5
+
+
+
+
+
+        Sound Effects                               Installation - Others
+
+
+
+
+                             Non-Supported Compilers
+
+        To  use  the  Sound Effects library with a  compiler  other  than 
+        Lattice  or  Aztec,  you  will  have to  be  familiar  with  your 
+        compiler  in order to customize the few assembler routines.   The 
+        following  questions should be answered first.   The answers  for 
+        the supported compilers are given for reference.
+
+
+                                                    Lattice  Manx  Yours?
+                                                    -------  ----  ------
+         o Does  your compiler append or  prepend 
+           an  underscore  to  the name  of  each 
+           function?                                   N      Y
+
+         o Where does the compiler put parameters?   Stack   Stack
+
+         o Where  does  your compiler  place  its 
+           return values for int?                     AX      AX
+           For long int?                             AX,BX   DX,AX
+
+         o Does your compiler use near calls, far 
+           calls, or allows both?                    Both    Both
+
+         o What provision does your library make     inp()  inport()
+           for access to the I/O ports?             outp()  outport()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        6
+
+
+
+
+
+        Sound Effects                                 General Information
+
+
+
+                                Using The Library
+
+        Using the Sound Effects library is similar to using the  standard 
+        library's  I/O functions.   There is an "open",  some operations, 
+        the  a  "close".   In the case,  the opening function  is  called 
+        sound_init() and the closing function is sound_done().  One point 
+        that  cannot  be stressed overmuch is the importance  of  calling 
+        sound_done()  before exiting the program.   Any application which 
+        uses  the sound library should call sound_done() at all  possible 
+        exit points.
+
+        Note the following things about sound_done():
+
+             (1)  It  never  hurts to call  it.   Sound_done()  knows  if 
+                  sound_init() has been called, and acts accordingly.
+
+             (2)  When called it will kill any music still playing.
+
+        The opposite number of sound_done() is sound_init(),  who  should 
+        (of  course) be called first,  before any other sound  functions.  
+        It  is possible to get away without calling sound_init(),  if you 
+        want to play in mode 1.   But it really is much neater to call it 
+        anyway.
+
+        What is mode 1?   Glad you asked.   In the play() function, there 
+        is a MODE sub-command which has to do with how notes are  played.  
+        But  outside  of that little corner,  when we say "mode"  we  are 
+        talking about then WHEN and HOW of the sound output.
+
+        You  got  a  taste of the meaning of modes in the  discussion  of 
+        Background  and  Foreground  in  the   introduction.    Real-time 
+        programmers,  forget your usual understanding of these terms.  In 
+        terms  of this library music playing in Foreground plays when you 
+        tell  it to,  and your application can do nothing else until  the 
+        music is finished.   Music in Background is just "set up" by your 
+        command to play,  and actually plays while your application runs.  
+        So,  it  is  "background music" for the  application,  hence  the 
+        terminology.  
+
+        Note   that   the   terms  music  and  sound  are   used   rather 
+        interchangeably.    Music  using  normal  notes  is  most  easily 
+        generated  by  the play() function,  while sound() gives  a  more 
+        flexible  interface if you are into  strange  frequencies.   Both 
+        functions can operate in Foreground and Background.
+
+
+
+
+
+
+
+
+
+
+
+
+                                        7
+
+
+
+
+
+        Sound Effects                                 General Information
+
+
+        There  are  actually five modes in which the sound  routines  can 
+        run.  See the "Technical Information" section for a more complete 
+        description of the timing techniques.  The default mode is 1.
+
+          Mode      When          Timing Method
+          ----   ----------    -------------------------
+            1    Foreground    Delay Loop
+            2    Foreground    Standard Clock Interrupt
+            3    Foreground    Enhanced Clock Interrupt  (*)
+            4    Background    Standard Clock Interrupt
+            5    Background    Enhanced Clock Interrupt  (*)
+
+
+        The  mode number shown above is the value you should give to  the 
+        first parameter to sound_init().  The second parameter is sued as 
+        a  true/false flag,  and tells sound_init() whether to install  a 
+        break handler.   The break handler acts as a safety feature;   it 
+        makes sure that sound_done() is called before the application  is 
+        terminated by the user typing Control-C or Control-Break.
+
+        If  you provide your own break handler,  you will want to disable 
+        the  built-in  handler.   Just make sure that you  included  that 
+        handler  in  the  list  of  possible  exits,  so  that  it  calls 
+        sound_done() before terminating the application.  
+
+        If  you don't have a break handler built in to  the  application, 
+        let sound_init() put one in for you.
+
+        OK,  now   you  know that your application should look  something 
+        like this:
+
+             main()
+             {
+                  sound_init(m,1);
+                  .
+                  .     
+                  .
+                  sound_done();
+             }
+
+        That's  pretty  boring.   You can spice it up after  reading  the 
+        sections  "Making  Music" and "Making Noise".   One  more  useful 
+        function before you go ...  quiet().   If you set up a long piece 
+        of  background music,  and for some reason have to kill it  early 
+        (but not get ready to exit),  call quiet().   It has no effect in 
+        Foreground modes.
+
+
+                                   ----------
+
+             (*)  The enhanced modes currently produce the same
+                  results as the standard modes.  In a future 
+                  version these modes will provide better time
+                  resolution.  See "Tech Tips" for details.
+
+
+
+                                        8
+
+
+
+
+
+        Sound Effects                                        Making Music
+
+
+
+                                  Making Music 
+                                  (Using Play)
+
+        The  play function translates a musical score into  sounds.   The 
+        score is written using a special notation described below.   This 
+        notation  allows  the  use of 8 octaves of 12  notes  each,  with 
+        various tempos, etc.  The format of pla() is:
+
+             void play(m)
+             char *m;
+
+        Commands are a single letter followed immediately by one or  more 
+        arguments,  if  necessary.   Spaces,  commas,  and semicolons may 
+        appear between commands for clarity, but are ignored by play().
+
+
+        A to G:   These are the notes A through G, in the current octave.  
+                  A  note  may be followed by up to three  modifiers,  in 
+                  this order only:
+
+                       Sharp/Flat indication:  # or + is sharp;
+                                               - is flat.
+                       Note length:  number from 1 to 64 (see L)
+                       Dots: Up to 10 dots.  A dotted note plays for 3/2
+                             of it's normal time.  Two dots = 9/4, three
+                             dots = 27/8, etc.
+
+                  Examples (assuming the current note length is 4):
+
+                       C+        C sharp 1/4 note
+                       C+8       C sharp 1/8 note
+                       B-.       C sharp 1/4 note dotted = 3/8 note
+                       A2.       A 1/2 note dotted = 3/4 note
+
+
+        Ln        Sets the current note length.  Note length is 1/n, so a 
+                  parameter  of 4 will set subsequent note to 1/4  notes.  
+                  Individual  notes may override the current length  with 
+                  an explicit length (see above examples).   The range is 
+                  1 to 64.
+
+                  Note  length  combines  with  tempo  to  determine  the 
+                  duration of the note.  Length is measured as a fraction 
+                  of  a whole note,  while tempo is in quarter-notes  per 
+                  second.   For  example,  with a tempo of 32 and a  note 
+                  length of 2, a note will last for 1/16 of a second.
+
+
+
+
+
+
+
+
+
+
+                                        9
+
+
+
+
+
+        Sound Effects                                        Making Music
+
+
+        Mx        Sets the mode of the music.  There are three modes:
+
+                     x=N (NORMAL):   notes are played for 7/8 of the note 
+                         time, with the remaining 1/8 being a rest.
+
+                     x=S (STACCATO): notes are played for 3/4 of the note 
+                         time, with the remaining 1/4 being a rest.
+
+                     x=L (LEGATO):  notes  are played for the  full  note 
+                         time, with no rest.
+
+                  The modes Foreground and Background have nothing to  do 
+                  with these modes !
+
+        Nn        Plays note n (range 0..84),  where 0 means silence.  If 
+                  the  argument is missing or out of range,  no  note  is 
+                  played.  Cannot be dotted or given explicit length.
+
+        On        Sets octave to n (range 0..7).   If argument is out  of 
+                  range, current octave remains unchanged.
+
+        P[n][.]   Pause or rest;   see the rules for note length (n)  and 
+                  dotting  for  the  regular notes  A-G  above.   If  the 
+                  argument is missing or invalid, no pause takes place.
+
+        R         Resets to default values.  Resets the following:
+                            Octave = 4
+                            Length = 1
+                            Mode = Normal
+                            Tempo = 120
+
+        Tn        Tempo,  which  may range from 32 to 255,  controls  the 
+                  number  of quarter-notes per second.   The  default  is 
+                  120.
+
+        <         Moves down one octave.   If already at octave 0,  stays 
+                  there.
+
+        >         Moves  up one octave.   If already at octave  7,  stays 
+                  there.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       10
+
+
+
+
+
+        Sound Effects                                        Making Noise
+
+
+
+                                  Making Noise 
+                            (Using Sound and Sounds)
+
+        The  function  sound() and sounds() allow the program to  produce 
+        sounds other than those on the normal musical scale.  The penalty 
+        for  this flexibility is that more work is usually  required   to 
+        specify the frequency and duration of each sound, especially when 
+        forming complex noises.
+
+        To  produce a single sound,  call  sound().   Simple,  eh?   Just 
+        provide  the  frequency  as  (Hz * 100),  and  the  duration  in 
+        milliseconds.   To produce a series of sounds,  you can set up an 
+        array  of  structures  of the type sound_element and pass  it  to 
+        sounds(),  along  with a count of the number of  elements.   Each 
+        element  takes up six bytes;  four bytes for the frequency  (long 
+        int) and two for the duration (unsigned).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       11
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+
+                              Summary Function List
+
+        These  functions  are described in detail later,  but here  is  a 
+        comprehensive list of the functions in the library, with the file 
+        location and a short description of each one.
+
+
+                                   High-Level
+
+        sound_init   SOUNDCTL    Call to set mode, etc.
+        sound_done   SOUNDCTL    Call before exit.
+        sound_mode   SOUNDCTL    Returns current mode.
+        sound        SOUND       Make a noise.
+        sounds       SOUND       Make several noises.
+        play         PLAY        Make pleasant noises using easy notation.
+        quiet        SOUNDOUT    Kill playing background music.
+        sound_bchk   SOUNDOUT    Check status of sound buffer.
+         
+                                    Low-Level
+                  
+        spkr_on      SPKRCTL     Speaker on  (continuous noise) 
+        spkr_off     SPKRCTL     Speaker off (blissful quiet)
+        spkr_freq    SPKRCTL     Sets the frequency of the noise
+        spkr_cntr    SPKRCTL     Sets frequency also (see func description)
+                  
+                             Internal --- DO NOT USE
+                  
+        sound_out    SOUNDOUT    Interrupt-driven output routine
+        snd_irh      SOUNDINT    Assembly interface for sound_out
+        snd_brk      SOUNDINT    Built-in break handler
+        snd_giv      SOUNDINT    Utility - get interrupt vector
+        snd_siv      SOUNDINT    Utility - set interrupt vector
+        delay        DELAY       Internal delay loop used in mode 1               
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       12
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+                              SOUND_INIT and SOUND_DONE
+
+        Purpose:
+
+             Set up and tear down the interrupt vectors needed to provide 
+             sound.
+
+        Summary:
+
+             int sound_init(mode,install_bh)
+             int mode, install_bh;
+
+             int sound_done();
+
+        Parameters:
+
+             Mode:          Must be in the range 1..5;  sets the mode for 
+                            subsequent   calls  to  sound()  and  play().  
+                            Values are:
+
+                             1  Foreground w/ Delay Loop               
+                             2  Foreground w/ Standard Clock Interrupt 
+                             3  Foreground w/ Enhanced Clock Interrupt
+                             4  Background w/ Standard Clock Interrupt 
+                             5  Background w/ Enhanced Clock Interrupt
+
+             Install_bh:    If  this  is  0,  no  break-handler  will  be 
+                            installed.   Otherwise,  a break handler will 
+                            be installed.   See Technical Information for 
+                            a complete description of the break handler.
+
+        Returns:
+
+             Zero  indicates success.   Sound_init will return -1  if  an 
+             invalid mode is passed.
+
+        Notes:
+
+             Sound_init()  may  be called more than once without  harmful 
+             effects.   When called,  any music currently playing will be 
+             killed.   You can use calls to sound_init() to change  modes 
+             during the application.
+
+             Sound_done() shust off background music and the speaker, and 
+             cleans  up any interrupt vectors which may have been changed 
+             by sound_init().  This lets the application safely exit.
+
+
+
+
+
+
+
+
+
+
+
+                                       13
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+                                   SOUND_MODE
+
+        Purpose:
+
+             Returns  the current sound mode.   See sound_init() for  the 
+             possible values.
+
+        Summary:
+
+             int sound_mode()
+
+        Parameters:
+
+             None
+
+        Returns:
+
+             Returns   current  mode,   range  1-5.    See   sound_init() 
+             description for complete list of modes.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       14
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+                                SOUND  &  SOUNDS
+
+        Purpose:
+
+             Produce a sound or sounds for a certain time.
+
+        Summary:
+
+             void sound(freq,dur)
+             long freq;
+             unsigned dur;
+
+             void sounds(n,sa)
+             int n;
+             struct sound_desc *sa;     
+
+        Parameters:
+
+             freq:  Frequency in MHz * 10.   Ex: 400MHz passed as 40000L.  
+                    The  allowable  range is ???.   A frequency of  0  is 
+                    treated  as "silence".   A sound with a duration of 0 
+                    is ignored.
+
+             dur:   Duration of sound in milliseconds.
+
+             n:     Number of sounds passed.   Numbers less than zero are 
+                    treated as zero.
+
+             sa:    Array  of  sound  descriptions,   each  containing  a 
+                    frequency  and a duration,  as per the freq  and  dur 
+                    parameters passed to sound.
+
+        Returns:
+
+             0 if all parameters all OK
+            -1 if error in parameters (out of range).     
+
+        Error Handling:
+
+             Checks parameter range only.
+
+        Notes:
+
+             These  functions  are effected by the mode currently set  by 
+             the  most recent call to sound_init.   They may be used  for 
+             either foreground or background operation.
+
+
+
+
+
+
+
+
+
+
+
+                                       15
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+                                      PLAY
+
+        Purpose:
+
+             Play a series of musical notes using an easy notation.
+
+        Summary:
+
+             void play(music)
+             char *music;
+
+        Parameters:
+
+             The  music  parameter  is a string which  can  contain  many 
+             complex  operations,  all  of  which are  described  in  the 
+             section "Making Music".
+
+        Returns:
+
+             Nothing.
+
+        Error Handling:
+
+             Any  problems encountered in the music string are handled as 
+             described in the section "Making Music."
+
+        Notes:
+
+             The  play function introduces an amount of overhead in terms 
+             of code size,  as it must parse the string.  A program which 
+             is  memory-critical  should use  sounds();   of  course  the 
+             programmer  must  then perform the task of  converting  each 
+             note into one or more sounds. 
+
+             See "Making Music" for details on play()'s operation.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       16
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+                        DIRECT SPEAKER CONTROL FUNCTIONS
+
+        Purpose:
+
+             Direct control of speaker port.
+
+        Summary:
+
+             void spkr_on()
+
+             void spkr_off()
+
+             void spkr_freq(f)
+             long f;
+
+             void spkr_cntr(c)
+             unsigned c;
+
+        Parameters:
+
+             The  parameter  to spkr_freq is the frequency in MHz to  set 
+             the  speaker to.   The parameter to spkr_cntr is the  actual 
+             counter  value to be passed to the 8253  timer  chip.   Note 
+             that  the only functions to actually turn the speaker on  or 
+             off  are spkr_on and spkr_off;   setting the frequency  does 
+             not imply activating or deactivating the speaker.
+
+        Returns:
+
+             Nothing.
+
+        Error Handling:
+
+             None.  
+
+        Notes:
+
+             Unlike sound(),  sounds(),  and play(),  which can be freely 
+             intermixed,  use  of  these  low-level  functions  while  in 
+             background  mode  can disrupt the background  music.   While 
+             this  is far from fatal,  is can produce unpleasant  noises.  
+             Call quiet() before using these functions.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       17
+
+
+
+
+
+        Sound Effects                               Function Descriptions
+
+
+
+                           BACKGROUND-BUFFER FUNCTIONS
+
+        Purpose:
+
+             Control music playing in background.
+
+        Summary:
+
+             void quiet()
+
+             void sound_bchk(used,avail)
+             int *used, *avail;
+
+        Parameters:         
+
+             quite:              none.
+
+             sound_buffchk():    used to return values (see below).
+
+        Returns:            
+
+             quiet() has no return value.
+
+             buffchk() returns the number of sound elements in the buffer 
+             and the number of free elements,  via the parameters  "used" 
+             and "avail" respectively.
+
+        Error Handling:     
+
+             None.
+
+        Notes:
+
+             A  call to quiet will kill any background music,  flush  the 
+             buffer, and shut off the speaker.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       18
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+
+                             =======================
+                              TECHNICAL INFORMATION
+                             =======================
+
+        I  have tried to be clear and precise in these  technical  notes.  
+        Should  you  find any errors in code or  documentation,  or  have 
+        suggestions for improvement,   I would appreciate your  feedback.  
+        These  paragraphs  are  not for the faint  of  heart.   For  more 
+        details,  I  suggest some of Peter Norton's  excellent PC  books, 
+        and the ever-cryptic but fact-filled IBM Technical Reference.
+
+        Here is a brief summary of this section:
+
+
+             Timing Sound Duration (MODES)
+                Delay Loop - How, Pro & Con
+                Timer Interrupt - How, Pro & Con
+                Enhanced Interrupt - How, Pro & Con
+
+             Sound Generation Mechanics
+                Speaker Logic
+                Setting The Frequency
+
+             The Background Buffer
+
+             The Break Handler
+
+             The Interrupt Handler
+
+                  
+                            =========================
+                            TIMING THE SOUND DURATION
+                            =========================
+
+        There  are five modes in which the sound routines can run.   They 
+        define  WHEN  the music plays,  and how the  proper  DURATION  is 
+        determined.  The FREQUENCY of the sounds is always determined and 
+        produced by the same method regardless of mode,  and is described 
+        a few paragraphs below.
+
+          Mode   When          Timing
+          ----   ----          ------
+            1    Foreground    Delay Loop
+            2    Foreground    Standard Clock Interrupt
+            3    Foreground    Enhanced Clock Interrupt
+            4    Background    Standard Clock Interrupt
+            5    Background    Enhanced Clock Interrupt
+
+        The  default mode is mode 1.   It poses the fewest problems,  but 
+        has some limitations.  The timing is achieved using a delay loop, 
+        which  is  simply  a small piece of code with a  known  execution 
+        time.   By looping through this piece of code you can approximate 
+        the duration of the sounds fairly well.   
+
+
+
+                                       19
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+        Unfortunately,  the  delay loop method has problems.   It is very 
+        dependent on the hardware, for one thing.   A processor  running 
+        at  8MHz  will  execute the code in close to half the time  of  a 
+        standard  PC running at 4.77MHz,  so the sounds will be  shorter.  
+        Also, the timing becomes dependent on processor type.  The normal 
+        PC has an 8088;  on an  AT&T 6300  (8086) or on a PC-AT (80286),
+        there  will be a noticeable timing difference due to the  varying 
+        bus widths and execution speeds, even if the base processor clock 
+        speed was the same.   And as the coup-de-grace,  this method will 
+        be thrown off by the occurance of interrupts.   An interrupt will 
+        cause  other code to be executed which will extend the  execution 
+        time of the loop.
+
+        Fortunately there is a better timing method available.   There is 
+        an  on-board main system clock chip which provides a pulse with a 
+        frequency  of about 1.19MHz.   This is stepped down to  a  more 
+        reasonable rate by the 8253 counter chip.   The most familiar use 
+        of  this is to provide the system tick,  which occurs 18.2 time a 
+        second and generates the hardware clock interrupt (IRQ0,  INT 8).  
+        This  is  generally  independent  of  the  clock  speed  of   the 
+        processor,  and so is a good timing source across the extended PC 
+        family.
+
+        We can use this system tick to time the sounds.   Both foreground 
+        and  background methods can do this;   the foreground modes  will 
+        merely  wait  around  until the sound  is  over.   Therefore  the 
+        following  discussions  of the use of the system  tick  interrupt 
+        apply to both foreground and background.
+
+        The  standard  interrupt modes (2 and 4) tie  into  the  software 
+        interrupt  vector  0x1C.   This  is the  "user  timer  interrupt" 
+        vector, and is provided by the BIOS as a nice way to tie software 
+        into   the  timer.    The  BIOS  interrupt  handler  retains  all 
+        responsibility  for handling the messy tasks of  sending  end-of-
+        interrupt  to  the interrupt controller  chip,  incrementing  the 
+        time-of-day  clock tick,  etc.   This is a clean way to  use  the 
+        system tick to time events.
+
+                                Possible Problems
+
+        There  are  only two possible problems (that I can see) to  using 
+        the  system  tick.   One  is that some  memory-resident  software 
+        packages  are very possessive about interrupts.   That is why  so 
+        many of them are incompatible with each other.   In  theory,  any 
+        number  of  drivers could share the user system tick by  chaining 
+        themselves together,  but they often don't.   This software does, 
+        so it will work with well-behaved utilities.
+
+        The other problem mainly involves background mode.   If the  user 
+        aborts the program by using control Ctrl-Break, interrupt vectors 
+        will  not be restored,  and eventually the system will crash  and 
+        need  rebooting.   This  can be prevented by using  the  provided 
+        break handler (see SOUND_INIT) or by calling sound_done() if your 
+        application already provides its own break handler.
+
+
+
+                                       20
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+                                 Enhanced Modes 
+
+        The  enhanced  interrupt  modes  (3 and  5)  are  not  yet  fully 
+        implemented,  and  are  presently  the  same as  modes  2  and  4 
+        respectively.   In a future release, they will follow the example 
+        of  BASIC and change the system tick generation to provide better 
+        resolution.   This tick is sped up by a factor of 4.   The  sound 
+        system  must intercept this tick at the INT 8 level,  and provide 
+        the tick to the BIOS only every fourth time,  to keep the  system 
+        time-of-day  clock from speeding ahead.   The advantage is better 
+        time resolution.
+
+        The  disadvantages to the enhanced modes include all of the  ones 
+        given for the standard clock modes, plus the code has to dig even 
+        deeper  into  territory  where  applications  programs  are   not 
+        encouraged  to  venture.   Still,  taking proper care to  restore 
+        vectors upon exit,  this should be clean enough for everyday use.  
+        There is a question as to the value of the more precise timing of 
+        the sounds, which may not be of great importance anyway.
+
+
+                           ==========================
+                           SOUND GENERATION MECHANICS
+                           ==========================
+
+                                  Speaker Logic
+
+        The  sounds  are produced using the speaker attached to  the  IBM 
+        motherboard.   The  speaker  is pulsed to provide  sound  of  the 
+        desired  frequency.   The pulsing action is provided courtesy  of 
+        the   main   system  clock,   stepped  down  through   the   8253 
+        programmable counter.  There is also an on/off switch provided by 
+        a  bit  in  the  PPI chip.   The  speaker  control  circuitry  is 
+        logically (not electrically) diagrammed as:
+
+            +-------+    +--------+
+            | 8284A |--->| 8253-5 |----+                      
+            +-------+    +--------+    |    ____               /|
+                                       +--> )   \             / |
+                                            |AND >---------->[  |
+                                       +--> )___/             \ |
+                      +-----+          |                       \|
+                      | PPI |----------+                    
+                      +-----+                                Speaker
+
+        The  PPI switch is accessed as bits 0 and 1 at I/O address  0x61.  
+        When the bits are set the speaker switch is on,  when cleared the 
+        speaker  switch  is  off.    See  the  spkr_on()  and  spkr_off() 
+        functions to see how to do this from C.   Note that the value  of 
+        the  PPI  is  first read,  the required bits  changed,  and  then 
+        written  out.   This is necessary because the PPI has many  other 
+        uses for the rest of the bits.
+
+
+
+
+
+                                       21
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+                        Setting Frequency using the 8253
+
+        The   system  clock  oscillates  at  about  1.19MHz.    The  8253 
+        programmable counter steps down this frequency by sending a pulse 
+        for  every so many input pulses.   The well-known system tick  of 
+        18.2  ticks per second is obtained using this chip and a  divisor 
+        of 0xFFFF.  The chip has two counters;  while one output connects 
+        to  the system clock interrupt,  the other ties to  the  speaker.  
+        So,  by  changing the divisor in the counter,  we can change  the 
+        frequency  of  the  pulses  sent to the  speaker  and  hence  the 
+        frequency of the sound it produces.
+
+        For  more  details on the use of the 8253  programmable  counter, 
+        consult the Intel part spec.  
+
+
+                              =====================
+                              THE BACKGROUND BUFFER
+                              =====================
+
+        Sounds  to be played in modes 2 through 5 are placed in a  buffer 
+        and  played  under interrupt control.   Since this buffer  is  of 
+        finite size, it is possible to overflow.  Overflowing sounds will 
+        be discarded.
+
+        Each entry takes up four (4) bytes,  and the number of entries in 
+        the  buffer  is fixed when you build the library.   The  compiled 
+        files on the disk have a default buffer size of 64 entries.   You 
+        can   change  this  by  changing  the  value  of   the   constant 
+        SND_BUFFSIZE in SOUND.H and recompiling the system.
+
+        Each  note sent to play() will usually generate two entries,  one 
+        for the note and one for the inter-note pause.  Using sound() and 
+        sounds() will generate exactly one entry per sound element.
+
+        The  sound buffer is circular,  so that as entries are output  to 
+        the speaker,  more can be added.   Check the status of the buffer 
+        using the function sound_bchk(),  which will get you both  the 
+        number of entries used and the number of entries free.
+
+
+                               ===================
+                                THE BREAK HANDLER
+                               ===================
+
+        The  built-in  break handler has a simplistic view of  life.   It 
+        accepts  control,  calls sound_done() to clean  up,  then  passes 
+        control  to the break handler that precedes it.   This means that 
+        the usual net result is an exit to DOS, but safely.  Feel free to 
+        use  the  given function as a template,  but  keep  the  original 
+        around in case you accidentally muck it up a bit.
+
+
+
+
+
+
+                                       22
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+                             =======================
+                              THE INTERRUPT HANDLER
+                             =======================
+
+        This  refers   to  the timer interrupt  handler,  a  very  simple 
+        routine.   Its  job is to save the registers,  load  the  segment 
+        registers that C functions expect, call sound_out() to do all the 
+        work,  and restore all the registers.   It then calls the routine 
+        which  was  previously  the interrupt handler.   This is  a  nice 
+        courteous  thing  to do,  as it allows sharing of  this  valuable 
+        resource, the system tick.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       23
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+                              WHEN THINGS GO WRONG
+
+        First of all,  please feel free to ask me (the author) questions.  
+        I cannot accept phone questions at this time, mainly because I am 
+        not  near any particular phone during the day.   You can reach me 
+        by mail or by CompuServe EASYMAIL (73047,3715).   But first,  see 
+        if the following list has your problem on it.
+
+
+        "I cannot read the distribution disk."
+
+             The  distribution  disk is provided in IBM  double-sided  9-
+             sector format.  You will not be able to read it with single-
+             sided drives or with a DOS version before 2.0.
+
+             If you can read such disks normally,  there is a chance that 
+             the diskette has been damaged in transit.  Please return the 
+             diskette and you will get another copy, no charge.
+
+
+        "The files will not compile on my system."
+
+             If  you are using a non-supported compiler,  all I can do is 
+             refer you to the section on Setting Up for Other Compilers".  
+             If  you  do  get  everything working,  even  if  just  on  a 
+             different  version  of  Lattice  or  Manx/Aztec,   I   would 
+             appreciate  if you let me know.   I will do everything I can 
+             to help you get it compiled and running,  but without a copy 
+             of  the  compiler (DO NOT SEND ME  COPYRIGHTED  SOFTWARE)  I 
+             cannot promise much.
+
+             Be  sure  you have the file SOUND.H where your compiler  can 
+             find  it.   Also be sure that you have enough room  on  your 
+             diskettes for the compiler's output.
+
+        "My system locks up when I run a program using sound."
+
+             First,  if you have any memory-resident utilities, let's get 
+             rid  of them for the moment.   De-install them,  even remove 
+             them  from your AUTOEXEC.BAT file,  then reboot the  system.  
+             Try the program again.  If it still crashes ...
+
+             Make sure you are calling quiet() before the program exits.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       24
+
+
+
+
+
+        Sound Effects                               Technical Information
+
+
+
+
+                                   ==========
+                                   CHANGE LOG
+                                   ==========
+
+        Version 1.0b  (OPEN)
+
+                Added new file SOUNDP.H containing prototypes for all
+                user-callable functions, for compilers which support
+                prototyping.
+
+                Added support for Ecosoft Eco-C88 compiler.
+
+                Compressed definition of Install in SOUNDCTL, by combining
+                all definitions using typedef's and #defines to allow for
+                compiler and library differences.
+
+
+        Version 1.0a  (2/20/85)
+
+                Delay now written in assembler.
+
+                Corrected error in play(), which would not play dotted
+                notes if a length was also specified.  
+
+                Corrected error in SOUND.H's definition of MS2TICKS, which
+                was miscalculated and rounding badly.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                       25
+
+
+
+
+
+

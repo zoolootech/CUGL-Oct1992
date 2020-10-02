@@ -1,0 +1,81 @@
+
+#include <stdio.h>
+#include <signal.h>
+#include <assert.h>
+#include <setjmp.h>
+#include <string.h>
+#include <stdlib.h>
+
+#define streq(x,y)	(0 == strcmp(x,y))
+
+/* reserved to us if name begins with asterisk */
+#define SIG_RESERVED(x)	(signals[x].name[0] == '*')
+
+void sig_handler();
+void print_signal();
+
+enum cmd_status {CMD_OK, CMD_ERROR};
+
+enum cmd_status
+cmd_trap(argc,argv)
+int argc;
+char **argv;
+{
+	enum cmd_status rc = CMD_OK;
+	char *action = 0;
+	int len;	/* length of action */
+	int i;
+
+	if (argc == 1) {
+		for (i=0;i<NSIG;i++) print_signal(i);
+		return(rc);
+	}
+
+	if (-1 == string_to_signal(argv[argc-1])) {
+		action = argv[argc-1];
+		argc--;
+	}
+
+	for (i=1;i<argc;i++) {
+		int sig = string_to_signal(argv[i]);
+		if (sig < 0 || sig >= NSIG) {
+			fprintf(stderr,"trap: invalid signal %s",argv[i]);
+			rc = CMD_ERROR;
+			break;
+		}
+
+		if (!action) {
+			print_signal(sig);
+			continue;
+		}
+
+		if (SIG_RESERVED(sig)) {
+			fprintf(stderr,"trap: cannot trap (%s)",argv[i]);
+			rc = CMD_ERROR;
+			break;
+		}
+
+		if (signals[sig].action) free(signals[sig].action);
+
+		if (streq(action,"SIG_DFL")) {
+			signal(sig,signals[sig].defaultX);
+			signals[sig].action = 0;
+		} else {
+			len = 1 + strlen(action);
+			if (0 == (signals[sig].action = malloc(len))) {
+				fprintf(stderr,"trap: malloc failed");
+				signal(sig,signals[sig].defaultX);
+				rc = CMD_ERROR;
+				break;
+			}
+			memcpy(signals[sig].action,action,len);
+			if (streq(action,"SIG_IGN")) {
+				signal(sig,SIG_IGN);
+			} else signal(sig,sig_handler);
+		}
+	}
+	return(rc);
+}
+
+
+

@@ -1,0 +1,275 @@
+#include "windows.h"
+#include "frontend.h"
+#include "xqlcalls.h"
+
+/*  Main Window Process */
+long FAR PASCAL MainWndProc(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL SQLDlgProc (HWND,unsigned,WORD,LONG);
+
+void ExecSQL (void);
+int  FetchRecords (void);
+
+char appName[] = "FRONTEND";
+char msgS [80];              /* Message box text */
+int status;       /* Returned status of XQL call */
+
+int PASCAL WinMain (HANDLE hInstance,
+                    HANDLE hPrevInstance,
+                    LPSTR  lpszCmdLine,
+                    int    nCmdShow)
+{
+
+ WNDCLASS MainWndClass;
+ MSG      msg;
+ HWND     hMainWnd;
+
+ if (!hPrevInstance)
+  {
+    MainWndClass.style         = CS_HREDRAW |
+                                 CS_VREDRAW;
+    MainWndClass.lpfnWndProc   = MainWndProc;
+    MainWndClass.cbClsExtra    = 0;
+    MainWndClass.cbWndExtra    = 0;
+    MainWndClass.hInstance     = hInstance;
+    MainWndClass.hIcon         = LoadIcon (NULL,
+                                   IDI_APPLICATION);
+    MainWndClass.hCursor       = LoadCursor (NULL,
+                                         IDC_ARROW);
+    MainWndClass.hbrBackground = GetStockObject
+                                      (WHITE_BRUSH);
+    MainWndClass.lpszMenuName  = NULL;
+    MainWndClass.lpszClassName = appName;
+
+    if (!RegisterClass (&MainWndClass))
+       return (FALSE);
+  }
+ arrowCursor = MainWndClass.hCursor;
+ waitCursor  = LoadCursor (NULL, IDC_WAIT);
+
+ hMainWnd = CreateWindow (appName,
+              "FE APP",
+              WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
+              GetSystemMetrics (SM_CXSCREEN) / 10,
+              GetSystemMetrics (SM_CXSCREEN) / 10,
+              3 * GetSystemMetrics (SM_CXSCREEN) / 4,
+              3 * GetSystemMetrics (SM_CXSCREEN) / 4,
+              NULL,
+              NULL,
+              hInstance,
+              NULL);
+
+ ShowWindow (hMainWnd, nCmdShow);
+ UpdateWindow (hMainWnd);
+
+ while (GetMessage (&msg, NULL, 0, 0))
+  {
+     TranslateMessage (&msg);
+     DispatchMessage (&msg);
+  }
+ return (msg.wParam);
+}
+
+/*--------------------------------------------------*/
+long FAR PASCAL MainWndProc (HWND hWnd,
+                             unsigned message,
+                             WORD wParam, LONG lParam)
+{
+   static HANDLE hInstance;
+
+   switch (message)
+    {
+      case WM_CREATE :
+           hDC = GetDC (hWnd);
+           SelectObject (hDC, GetStockObject
+                               (SYSTEM_FIXED_FONT));
+           ReleaseDC (hWnd, hDC);
+
+           SetCursor (waitCursor);                         
+           status = XQLLogin (userid, password,
+                              ddpath, datapath,
+                              sReserved, iReserved);
+           SetCursor (arrowCursor);
+           if (status)
+            {
+               sprintf (msgS,
+                "A login error occurred, status: %d",
+                status);
+               MessageBox (NULL, msgS, " ERROR ",
+                        MB_OK | MB_ICONEXCLAMATION);
+            }
+           else
+            {
+               hInstance = ((LPCREATESTRUCT)
+                             lParam)->hInstance;
+               procAddr  = MakeProcInstance
+                             (SQLDlgProc, hInstance);
+               DialogBox (hInstance, "SQLBox",
+                                     hWnd, procAddr);
+               FreeProcInstance (procAddr);
+               XQLFree (cursorID);
+               XQLLogout ();
+               XQLStop ();
+            }
+
+           SendMessage (hWnd, WM_CLOSE, 0, 0L);
+           return 0;
+
+      case WM_CLOSE :
+           DestroyWindow (hWnd);
+           return 0;
+
+      case WM_DESTROY :
+           PostQuitMessage (0);
+           return 0;
+
+     }
+   return (DefWindowProc (hWnd, message,
+                          wParam, lParam));
+ }
+
+/*--------------------------------------------------*/
+BOOL FAR PASCAL SQLDlgProc (HWND hDlg,
+                            unsigned message,
+                            WORD wParam, LONG lParam)
+
+{
+ switch (message)
+  {
+   case WM_INITDIALOG :
+     SetFocus (GetDlgItem (hDlg, X_IN_WIN));
+     return (TRUE);
+
+   case WM_COMMAND :
+     switch (wParam)
+      {
+       case X_SEND :
+
+         GetDlgItemText (hDlg, X_IN_WIN, (LPSTR)
+                          statement, MAXSTATELEN-1);
+         SetCursor (waitCursor);
+         ExecSQL ();
+         SetCursor (arrowCursor);
+         if (status < 0)  /* Informative stat code */
+           {
+            sprintf (msgS,
+                   "Statement executed successfully");
+            SetDlgItemText (hDlg, X_OUT_WIN, msgS);
+           }
+
+         else if (status > 0) /* Error! */
+           {
+            sprintf (msgS,
+               "Compile Error - status - %d", status);
+            SetDlgItemText (hDlg, X_OUT_WIN, msgS);
+           }
+
+         else /* Operation was SELECT */
+           {
+            buffer = (char *) LocalAlloc
+                             (LPTR, MAXSTATELEN);
+            status = FetchRecords ();
+            SetDlgItemText (hDlg, X_OUT_WIN, "");
+            if (status)
+              {
+               sprintf (msgS,
+                 "Fetch Error - status - %d", status);
+               SetDlgItemText (hDlg, X_OUT_WIN, msgS);
+              }
+
+            else
+              {
+               hDC = GetDC (hDlg);
+               SelectObject (hDC, GetStockObject
+                                 (SYSTEM_FIXED_FONT));
+               ReleaseDC (hDlg, hDC);
+               SetDlgItemText (hDlg, X_OUT_WIN,
+                               buffer);
+              }
+
+            LocalFree ((LOCALHANDLE) buffer);
+
+           }
+
+           SetFocus (GetDlgItem (hDlg, X_IN_WIN));
+
+           return (TRUE);
+
+       case X_CLEAR :
+           SetDlgItemText (hDlg, X_IN_WIN,  "");
+           SetDlgItemText (hDlg, X_OUT_WIN, "");
+           SetFocus (GetDlgItem (hDlg, X_IN_WIN));
+           return (TRUE);
+
+       case X_END_DLG:
+           EndDialog (hDlg, 0);
+           return (TRUE);
+      }
+   default :
+      break;
+  }
+ return (FALSE);
+}
+
+
+/*--------------------------------------------------*/
+void ExecSQL (void)
+
+{
+   if (cursorID == -1)
+    {
+     status = XQLCursor ((LPWORD) &cursorID);
+     if (status)
+       return;
+    }
+
+   statlen = strlen (statement);
+   status  = XQLCompile (cursorID, (LPWORD)
+                       &statlen, (LPBYTE) statement);
+
+   return;
+}
+
+
+/*--------------------------------------------------*/
+int FetchRecords (void)
+
+{
+  int option    = 1;
+  int ASCIIFlag = 1;
+  int spacing   = 2;
+
+  int   count;
+  long  recLen, recCount;
+  int   bufSize;
+  char *p;
+
+  bufSize  = MAXBUFLEN;
+  recCount = 10;
+
+  status = XQLFetch (cursorID, option, &bufSize,
+                     buffer, &recCount,
+                     ASCIIFlag, spacing);
+
+  if (status > 0)  /* Fetch was not successful */
+   {
+     LocalFree ((LOCALHANDLE) buffer);
+     return (status);
+   }
+
+  p = buffer;
+  recLen = *(long *) p;  /* Get length */
+
+  /* Make buffer printable */
+
+  for (count = 0; count < recCount; count++)
+   {
+      (char) *p = (char) 13;
+      (char) *(p+1) = (char) 10;
+      p += (2 + recLen); 
+      recLen = *(long *) p;
+   }                                            
+  return (0);
+}
+
+
+

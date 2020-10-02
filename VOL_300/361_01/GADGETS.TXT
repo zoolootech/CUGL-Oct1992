@@ -1,0 +1,1557 @@
+
+
+/* Gadgetx.lib ---> A Custom Turbo-C Library "Bag of Tricks".
+ *
+ * J.Ekwall						30 August 91
+ *
+ * Copyrighted to the Public Domain.  Unlimited	Distribution Authorized.
+ *
+ * User	Assumes	All Risks/Liabilities.
+ *
+ * Last	Update:	16 September 91/EK
+ */
+
+============================================================================
+
+   The need for	"Gadgets" to extend the	reach of ANSI-C	has spun off many 
+commercially available "External" Libraries, among these C-Express and 
+Vitamin-C.  The	need to	freely distribute Tools	limits their usefulness, 
+particularly in	our current User-Hostile ADPE environment.
+
+   These routines are Public Domain, either home-grown,	taken from other 
+Public Domain sources (such as C User's	Croup (CUG)), taken from Publications
+or lifted from Shareware and significantly modified/enhanced (nullifying 
+the original copyright).  CUG sources are identified by	their distribution 
+disk number, ie. [CUG-273] is "TurboC Utilities" developed By Jim Derr,
+2425 Santa Cruz	Ct., Santa Rosa, Ca. 95401.
+
+========================================================================
+
+Notes:
+    1. On the CRT, X ranges 1-80, Y ranges 1-25.
+    2. Direct Video Routines use Vpeek/Vpoke which are hardwired for
+       Color CGA/EGA/VGA Video RAM based at 0xB800.
+
+-------------------------------------------------------------------------
+
+>AnyCharacter.  Pop a Query Window for an Ascii	Value.
+
+int AnyCharacter(void)
+{ /* Create Any	Character */
+    int	c, ch =	0, n = 3, xx, yy;
+    char FootPrint[216];
+
+ /* Ask	'em */
+    Getxy(&xx, &yy);
+    MkAskBox(FootPrint,	28, 11,	26, 3, 'L', "[ ASCII Value ]",
+       "[ <ESC>	to Cancel ]", "Enter Three Digits: ", 0x4E);
+
+ /* Catch Response, Build Character & Split */
+    while (n &&	(c = Kbq_read()) != ESC	&& c !=	CR)
+       if (isdigit(c)) { ch = 10 * ch +	c - '0'; n--; DputChr(c, 0x4E);	}
+    ZapAskBox(FootPrint, 28, 11, 26, 3,	'L'); Gotoxy(xx, yy); ShowCursor(1);
+    if (c IS ESC) return 0; else return	ch & 0xFF;
+}
+
+-------------------------------------------------------------------------
+
+>BaseName.  Return a Pointer to	the Name.Ext portion of	a Full Path.
+
+char *BaseName(char *FileName)
+{
+    char *tp1;
+    
+    if ((tp1 = strrchr(FileName, BKSL))	!= NULL) return	++tp1;
+    if ((tp1 = strrchr(FileName, COLON)) != NULL) return ++tp1;
+    return FileName;
+}
+
+-------------------------------------------------------------------------
+
+>Beep.  Sound Tone for Specified Duration (in milliSeconds).
+
+void Beep(unsigned int pitch, unsigned int Duration)
+{ sound(pitch);	delay(Duration); nosound(); }
+  
+-------------------------------------------------------------------------
+
+>Box.  Draw/Clr	a Single Line Box on the Screen.		  [CGU-273]
+
+void Box(int Left, int Top, int	Right, int Bottom, int Fill, int Color)
+/* Draw	a single line box using	Color &	Clear it to Fill. */
+{
+    int	i;
+    char Lid[81];
+
+    Dwrite(Left, Top, Color, "Ú"); Dwrite(Right, Top, Color, "¿");
+    Dwrite(Left, Bottom, Color,	"À"); Dwrite(Right, Bottom, Color, "Ù");
+    *Lid = NULL; PadRight(Lid, 'Ä', Right - Left - 1);
+    Dwrite(Left+1, Top,	Color, Lid); Dwrite(Left+1, Bottom, Color, Lid);
+    for	(i= Top	+ 1; i < Bottom; i++) {
+	Dwrite(Left, i, Color, "³"); Dwrite(Right,	i, Color, "³");	}
+    ClrBox(++Left, ++Top, --Right, --Bottom, Fill);
+}
+
+-------------------------------------------------------------------------
+
+>CcolorSet.  Change the	Color of a Column of Characters.	 [CGU-273]
+
+void CcolorSet(int X, int Y, int Color,	int N)
+{ while	(N--) if (Y < 26) SetAttr(X, Y++, Color); }
+
+-------------------------------------------------------------------------
+
+>CgaSnowFence.  Activate ReTrace Waiting on Video RAM Access.
+
+void CgaSnowFence(void)	{ SnowStop++; }
+
+-------------------------------------------------------------------------
+
+>Clr.  Clear Entire Screen to a	Specified Color.
+
+#define	Clr(x)			(ClrBox(1, 1, 80, 25, x))
+
+-------------------------------------------------------------------------
+
+>ClrTo.  Clears	a Row to a Specified Point.
+
+void ClrTo(int X, int Color)
+/* Clear from the current cursor location thru X. */
+{
+    int	xx, yy;
+	
+    Getxy(&xx, &yy); if	(X < xx) return; Scroll(xx, yy,	X, yy, Color, 0, 0);
+}
+
+-------------------------------------------------------------------------
+
+>ClrBox.  Clear	a Retangular Area to a Specified Color.
+
+#define	ClrBox(a,b,c,d,x)	(Scroll(a, b,	c, d, x, 0, 0))
+
+-------------------------------------------------------------------------
+
+>CursorBwd.  Left Arrow	Action w/ Wrap Upwards.			  [CGU-273]
+
+void CursorBwd(int N)
+/* Move	the cursor N cols to the left */
+{
+    int	xx, yy;
+
+    Getxy(&xx, &yy);
+    if ((xx -= (N % 80)) < 1) {	xx -= 80; if (--yy < 1)	yy = 25; }
+    Gotoxy(xx, yy);
+}
+
+-------------------------------------------------------------------------
+
+>CursorDn.  Down Arrow Action w/ Wrap.				  [CGU-273]
+
+void CursorDn(int N)
+/* Move	the down N rows	& wrap to top if the cursor is on the last row */
+{
+    int	xx, yy;
+    
+    Getxy(&xx, &yy); if	((yy +=	(N % 25)) > 25)	yy -= 25; Gotoxy(xx, yy);
+}
+
+-------------------------------------------------------------------------
+
+>CursorFwd.  Right Arrow Action	w/ Wrap	Downward.		  [CGU-273]
+
+void CursorFwd(int N)
+/* Move	the cursor N cols to the right */
+{
+    int	xx, yy;
+
+    Getxy(&xx, &yy);
+    if ((xx += (N % 80)) > 80) { xx = 1; if (++yy > 25)	yy = 1;	}
+    Gotoxy(xx, yy);
+}
+
+-------------------------------------------------------------------------
+
+>CursorNL.  Perform a CR/LF Action w/ Wrap.			  [CGU-273]
+
+void CursorNL(int N) 
+/* Move	the cursor to the beginning of the next	row  */
+{
+    int	xx, yy;
+    
+    Getxy(&xx, &yy); if	((yy +=	(N % 25)) > 25)	yy = 1;	Gotoxy(0, yy);
+}
+
+-------------------------------------------------------------------------
+
+>CursorUP.  Up Arrow Aaction w/	Wrap.				  [CGU-273]
+
+void CursorUP(int N)
+/* Move	the cursor N rows up */
+{
+    int	xx, yy;
+
+    Getxy(&xx, &yy); if	((yy -=	(N % 25)) < 1) yy = 25;	Gotoxy(xx, yy);
+}
+
+-------------------------------------------------------------------------
+
+>DputChr.  Direct Write	a Character at Cursor w/ Update.
+
+void DputChr(char ch, int Color)
+{
+    int	xx, yy;
+
+    Getxy(&xx, &yy); Vpoke(Vaddr(xx,yy), ch + (Color <<	8)); CursorFwd(1);
+}
+
+-------------------------------------------------------------------------
+
+>Dread.  Copy N	Characters to a	String Starting	at (X,Y).
+
+void Dread(int X, int Y, char *Text, int N)
+{
+    int	Addr;
+
+    Addr = Vaddr(X, Y);
+    for	(*Text = NULL; N-- && X++ < 80;	*Text =	NULL, Addr += 2)
+	*Text++	= Vpeek(Addr) &	0xFF;
+}
+
+-------------------------------------------------------------------------
+
+>Dwrite.  Paint	a String at X,Y	w/ Color w/ Update.
+  
+void Dwrite(int	X, int Y, int Color, char *Text)
+{
+    int	 addr;
+
+    Color = Color << 8;	Gotoxy(X, Y); CursorFwd(strlen(Text));
+    for	(addr =	Vaddr(X, Y); *Text; addr += 2)
+       Vpoke(addr, (*Text++ & 0xFF) + Color);
+}
+
+-------------------------------------------------------------------------
+
+>DwriteEnd.  Dwrite w/ Pad to Fill "n" Spaces.
+
+void DwriteEnd(int X, int Y, int Color,	char *Text, int	N)
+{
+    int	 addr;
+
+    Color = Color << 8;	Gotoxy(X, Y); CursorFwd(strlen(Text));
+    for	(addr =	Vaddr(X, Y); *Text; addr += 2, --N)
+       Vpoke(addr, (*Text++ | Color));
+    for	(Color |= ' '; N--; addr += 2) Vpoke(addr, Color);
+}
+
+-------------------------------------------------------------------------
+
+>ExpandTabs.  Explode Tabs into	Spaces ala X3.64/DEC/DOS.
+
+void ExpandTabs(char *Text)
+{
+    int	i;
+    
+    for	(i = 0;	Text[i]; i++)
+       if (Text[i] IS HT) { 
+	  Text[i++] = SPACE; OpenStr(Text + i, (8 - (i % 8)) % 8); }
+}
+
+-------------------------------------------------------------------------
+
+>FileExists.  TRUE if File is Found.			       [CGU-273]
+
+int FileExists(char *FileName)
+/* Check to see	of a Find exists. RETURN 1 if exist 0 if not. */
+{
+    struct ffblk fb;
+	
+    return !findfirst(FileName,	&fb, 0);
+}
+
+-------------------------------------------------------------------------
+
+>GetaKey.  Wait	for a Keystroke	in a List (or Esc).		[CGU-273]
+
+int GetaKey(unsigned char *List, int CaseLess)
+/* Wait	until one of the charaacters in	the list (or Esc) is pressed. */
+{
+    int	c;
+    
+    if (CaseLess) strupr(List);
+    do {
+       c = Kbq_read(); if (CaseLess) c = toupper(c);
+    } while (c != 27 &&	strchr(List, c)	== NULL);
+    return c;
+}
+
+-------------------------------------------------------------------------
+
+>GetAttr.  Report the Color (attribute)	of Chr at (X, Y).
+
+#define	GetAttr(x,y)		(Vpeek(Vadr(X, Y)) >> 8)
+
+-------------------------------------------------------------------------
+
+>GetLineN.  Pull a Specified Line from a Text File.
+
+   Valid Line Numbers range 1 -	32767.
+   Returns TRUE	if Line	Exists.	 Sets Line = "~" & Returns FALSE otherwise.
+   To Open/ReOpen File:	GetLineN(FileName, 0);
+   To Close File:	GetLineN(NULL, 0);
+
+int GetLineN(char *Line, int Which1)
+{
+    static int LastKnownLine	= 0;
+    static int LineInc		= 1;
+    static int NextLine		= 0;
+    static int EOFatLine	= 32500;
+    static long	Lines[501];	/* List	of File	Jump Pointers */
+    static FILE	*fp = NULL;
+    int	c, i, j;
+    char *tp1;
+
+ /* IF Initialize/Close	*/
+    if (Which1-- < 1) {
+       if (fp != NULL) fclose(fp); EOFatLine = 32500;
+       NextLine	= LastKnownLine	= 0; LineInc = 1; Lines[0] = 0L; 
+       if (Line	!= NULL	&& *Line && (fp	= fopen(Line, "r")) IS NULL) 
+	  return FALSE;
+       return TRUE;
+     }
+     
+ /* If Within Known Range */
+    if (Which1 <  0 || Which1 >= EOFatLine) { 
+       strcpy(Line,"~"); return	FALSE; }
+    if (Which1 < LastKnownLine)	{
+       if (Which1 != NextLine) {
+	  i = Which1 / LineInc;	fseek(fp, Lines[i], SEEK_SET);
+	  i = Which1 % LineInc;
+       } else i	= 0;
+       for ( ; i >= 0; i--) fgets(Line,	255, fp);
+       Line[strlen(Line)-1] = NULL; NextLine = ++Which1;
+       return TRUE;
+    }
+
+ /* Not	in Known Range */
+    i =	LastKnownLine /	LineInc;
+    if (Which1 != NextLine) {
+       fseek(fp,Lines[i],SEEK_SET); LastKnownLine = i *	LineInc; }
+    while (LastKnownLine <= Which1) {
+       if (fgets(Line, 255, fp)	IS NULL) {
+	  EOFatLine=LastKnownLine; strcpy(Line,	"~"); return FALSE; }
+       if (++LastKnownLine % LineInc IS	0) {
+	  Lines[++i] = ftell(fp);
+	  if (i	IS 500)	{		/* OverFlow -->	Crunch List */
+	     LineInc *=	2; for (i = 1; i <= 250; i++) Lines[i] = Lines[2*i];
+	     i = 250;
+	  }
+       }
+    }
+    Line[strlen(Line)-1] = NULL; NextLine = LastKnownLine; return TRUE;
+}
+
+---------------------------------------------------------------------------
+
+>GetLongDate.  Report Today as YYMMDD.			       [CGU-273]
+
+long int GetLongDate(void)
+/* Return: The current date in the format YYMMDD. */
+{
+    struct date	today;
+    char Text[40];
+
+    getdate(&today);
+    sprintf(Text, "%2.2d%2.2d%2.2d", today.da_year - 1900,
+       today.da_mon, today.da_day);
+    return atol(Text);
+}
+
+-------------------------------------------------------------------------
+
+>GetxKey.  Report a Keystroke as either	ascii or ScanCode * 256.  [CGU-273]
+
+unsigned int GetxKey(void)
+/* return an ascii value or 256	* ScanCode */
+{
+    union REGS rg;
+
+    while (1) {
+       rg.h.ah = 1; int86(0x16,	&rg, &rg);
+       if (rg.x.flags &	0x40) {	int86(0x28, &rg, &rg); continue; }
+       rg.h.ah = 0; int86(0x16,	&rg, &rg);
+       if (rg.h.al == 0) return	rg.h.ah	<< 8; else return rg.h.al;
+    }
+}
+
+-------------------------------------------------------------------------
+
+>Getxy.  Returns the Current Cursor Location & TRUE if Visible.	 [CGU-273]
+
+int Getxy(int *X, int *Y)
+{
+    union REGS rg;
+
+    rg.h.bh = 0; rg.h.ah = 3; int86(0x10, &rg, &rg);
+    *X = rg.h.dl + 1; *Y = rg.h.dh + 1;
+    return !(rg.h.ch & 0x20);		/* True if Cd_Cursor */
+}
+
+-------------------------------------------------------------------------
+
+>GetFileSize.  Report File Size	in Bytes or EOF.	       [CGU-273]
+
+long GetFileSize(char *FileName)
+{
+    struct ffblk fb;
+
+    if(!findfirst(FileName, &fb, 0)) return (fb.ff_fsize); else	return (-1);
+}
+
+-------------------------------------------------------------------------
+
+>Gotoxy.  Relocate the Cursor to (X, Y).			 [CGU-273]
+
+void Gotoxy(X, Y)
+/* RePosition cursor to	(X, Y) */
+{
+    union REGS rg;
+
+    rg.h.ah = 2; rg.h.dh = --Y;	rg.h.dl	= --X; rg.h.bh = 0;
+    int86(0x10,	&rg, &rg);
+}
+
+-------------------------------------------------------------------------
+
+>HideCursor.  Make Cursor Invisible & Report if	it Was ON.
+
+int HideCursor(void)
+/* Turn	the cursor off */
+{
+    int	Visible;
+    union REGS rg;
+
+    rg.h.bh = 0;     rg.h.ah = 3; int86(0x10, &rg, &rg);
+    if ((Visible = !(rg.h.ch & 0x20)) != 0) {
+       rg.h.ch |= 0x20;	rg.h.ah	= 1; int86(0x10, &rg, &rg); }
+    return Visible;
+}
+
+-------------------------------------------------------------------------
+
+>InsChr.  Post a Character in Front of a String.
+
+#define	InsChr(x,y)		(PadLeft(x, y, strlen(x) +	1))
+
+-------------------------------------------------------------------------
+
+   Kbq_x() are taken from "Controlling The Keyboard Buffer" by Steven Gruel
+(The C Users Journal 7/90, pgs 85-6) w/	modifactions by	EK to return Keys.h
+values for Extented Characters.	 These can be used in TSRs, unlike the 
+routines in <conio.h>.
+
+---> Background, the Keyboard Queue consists of	16 (16 bit) words located at
+0x40:0x1E.  It is a Circular Buffer w/ Read Pointer at 0x40:0x1A (KBQRD)
+and Write Pointer at 0x40:0x1C (KBQWRT).
+
+#include <dos.h>
+#define	KBQSEG	0x40
+#define	KBQRD	0x1A
+#define	KBQWRT	0x1C
+#define	KBQBTM	0x1E
+#define	KBQTOP	0x3E
+
+>Kbq_flush.  Zip Contents of Keyboard Queue.
+
+void Kbq_flush(void) { poke(KBQSEG, KBQWRT, peek(KBQSEG, KBQRD)); }
+
+-------------------------------------------------------------------------
+
+>Kbq_poll.  A getch() w/ Keys.h	Reporting.  No Wait (returns 0)
+
+int Kbq_poll(void)
+{			/* Returns chr, Keys.h code	or Zero.  No Wait. */
+    if (peek(KBQSEG, KBQWRT) ==	peek(KBQSEG,KBQRD)) return 0;
+    return Kbq_read();
+}
+
+-------------------------------------------------------------------------
+
+>Kbq_read.  A getch() w/ Keys.h	Reporting.  Waits for User.
+
+int Kbq_read(void)
+{
+    int	c = 0;
+    union REGS rg;
+
+    do {
+       rg.h.ah	= 1; int86(0x16, &rg, &rg);
+       if (rg.x.flags &	0x40) {	int86(0x28, &rg, &rg); continue; }
+       rg.h.ah = 0; int86(0x16,	&rg, &rg);
+       if (rg.h.al == 0) c = rg.h.ah | 128; else c = rg.h.al;
+    } while (c == 0);
+    return(c);
+}
+
+-------------------------------------------------------------------------
+
+>Kbq_snoop.  Reports Nth Chr$ ala Keys.h.  Queue is Not	Altered.
+
+int Kbq_snoop(int Which1)
+{	  /* Report the	"Nth" Keystroke	in Queue.  (w/o	Removal). */
+    int	i, Fill, Empty,	Keystroke;
+
+    Fill = peek(KBQSEG,	KBQWRT);  Empty	= peek(KBQSEG,KBQRD);
+    if (Fill ==	Empty) return 0;
+    if ((i = Fill - Empty) < 0)	i += 32; if ((Which1 *=	2) > i)	return 0;
+    if ((i = Empty + Which1 - 2) >= KBQTOP) i -= 32;
+    Keystroke =	peek(KBQSEG, i);
+    if ((Keystroke & 127) == 0)	return ((Keystroke >> 8) | 128);
+    return (Keystroke &	127);
+}
+
+-------------------------------------------------------------------------
+
+>Kbq_stuff.  Stuffs a Keys.h Keypunch into the Keyboard	Queue.
+
+int Kbq_stuff(unsigned char ch)
+{
+ /* Shove a Keystroke Into Keyboard Queue. */
+    int	Fill, KeyStroke;
+
+    if (!ch) return 0;
+    if (ch < 128) KeyStroke = ch; else KeyStroke = (ch & 127) << 8;
+    Fill = peek(KBQSEG,	KBQWRT); poke(KBQSEG, Fill, KeyStroke);
+    if ((Fill += 2) >= KBQTOP) Fill = KBQBTM;
+    if (Fill ==	peek(KBQSEG,KBQRD)) return 0;	/* Full */
+    poke(KBQSEG, KBQWRT, Fill);	return 1;
+}
+
+-------------------------------------------------------------------------
+
+>Kbq_tally.  Reports 0-15 Keypunches Waiting in	Queue.
+
+int Kbq_tally(void)
+{	/* Report Number of Keystrokes in Queue. */
+    int	i;
+
+    i =	(peek(KBQSEG, KBQWRT) -	peek(KBQSEG,KBQRD)) / 2;
+    if (i < 0) return i	+ 16;  else return i;
+}
+
+-------------------------------------------------------------------------
+
+>LPrintChr.  Print a character on a Specifed printer.		[CGU-273]
+
+int LPrintChr(char ch, int lptnum) { return biosprint(0, ch, --lptnum) & 0x29; }
+
+-------------------------------------------------------------------------
+
+>LPreset.  Reset the Specified Printer.				[CGU-273]
+
+int LPreset(int	lptnum)	{ return !(biosprint(1,	0, --lptnum) & 0x29); }
+
+-------------------------------------------------------------------------
+
+>LPbusy.  Check	Busy Flag for Specified	Printer.		[CGU-273]
+
+int LPready(int	lptnum)	{ return !(biosprint(2,	0, --lptnum) & 0x40); }
+
+-------------------------------------------------------------------------
+
+>LPrintStr.  Lay down a	String on a Printer (no	CR/LF).		[CGU-273]
+
+int LPrintStr(char *str, int lptnum)
+{
+    for	(lptnum--; *str; str++)
+       if (biosprint(0,	*str, lptnum) &	0x29) return 0;
+    return 1;
+}
+
+-------------------------------------------------------------------------
+
+>LTrim.  Crop WhiteSpace from the Front	of a String.
+
+#define	LTrim(x)		(TrimStr(x, 1))
+
+-------------------------------------------------------------------------
+
+>MkAskBox.  Construct a	Query Box on the CRT w/	optional Shadow	& Save.
+
+void MkAskBox(char *FootPrint, int X, int Y, int Width,	int Tall, char Shadow,
+    char *TopTitle, char *FootTitle, char *Prompt, BYTE	Color)
+{
+    int	Xc, Xsh, Xg, Y1, X1;
+
+ /* Handle Shadow */
+    X1 = X + Width - 1;	Y1 = Y + Tall -	1; Xg =	Xsh = X;
+    if (Y+Tall > 25);
+    else if (Shadow IS 'L' && X	> 1)   { Xsh--;	Xg--; Y1++; }
+    else if (Shadow IS 'R' && X	< 80)  { Xsh++;	X1++; Y1++; }
+
+ /* Build Window w/ Titles */
+    HideCursor(); if (FootPrint	!= NULL) SaveBox(Xg, Y,	X1, Y1,	FootPrint);
+    Box(X, Y, (X1 = X+Width-1),	(Y1 = Y+Tall-1), Color,	Color);
+    if (Shadow)	MkShadow(X, Y, X1, Y1, Shadow);
+    if (*TopTitle) Dwrite(X+(Width-strlen(TopTitle)+1)/2, Y, Color, TopTitle);
+    if (*FootTitle)
+       Dwrite (X+(Width-strlen(FootTitle)+1)/2,	Y1, Color, FootTitle);
+    if (*Prompt) Dwrite(X+1, Y+1, Color, Prompt); else Gotoxy(X+1, Y+1);
+    ShowCursor(0);
+}
+
+-------------------------------------------------------------------------
+
+>MkShadow.  Create the illusion	of a R/L Shadow.		 [CGU-273]
+
+void MkShadow(int Left,	int Top, int Right, int	Bottom,	char Which1)
+/* Create the illusion of a shadow under the specified window */
+{
+    int	X, Y, Z;
+
+    if (++Bottom > 25) return;
+    if (Which1 == 'L' && --Left	< 1) return;
+    if (Which1 != 'L' && ++Right > 80) return;
+    if ((Z = Bottom - Top++) < 1) return;
+    if (Which1 == 'L') CcolorSet(Left, Top, 0, Z);
+    else CcolorSet(Right, Top, 0, Z);
+    if ((Z = Right - Left) < 1)	return;
+    RcolorSet(Left, Bottom, 0, Z);
+}
+
+-------------------------------------------------------------------------
+
+>NewExt.  Create a New File Name from an Old One & a New .Ext
+
+void NewExt(char *Old, char *New, char *Ext)
+{
+    char *tp1;
+
+    strcpy(New,	Old); if ((tp1 = strrchr(New, DOT)) != NULL) *tp1 = NULL;
+    if (!*Ext) return;
+    strcat(New,	"."); if (*(tp1	= Ext) IS DOT) tp1++; strcat(New, tp1);
+}
+
+-------------------------------------------------------------------------
+
+>OpenStr.  SHift Text Right, Padd w/ Spaces, Retain Everything.
+
+#define	OpenStr(x,y)		(PadLeft(x, SPACE, strlen(x) + y))
+
+-------------------------------------------------------------------------
+
+>PadEnds.  Center Text by Alternate Fore/Aft Pads.
+
+void PadEnds(char *Text, int ch, int N)
+{
+   if (*Text) PadLeft(Text, ch,	(N + strlen(Text)) / 2);
+   PadRight(Text, ch, N);
+}
+
+-------------------------------------------------------------------------
+
+>PadLeft.  PreAppend enough of a Specified Chr to make a Specified Length.
+
+void PadLeft(char *Text, int ch, int N)
+{
+    if (N > strlen(Text)) {
+       strrev(Text); PadRight(Text, ch,	N); strrev(Text); }
+}
+
+-------------------------------------------------------------------------
+
+>PadRight.  Append enough of a Specified Chr to	make a Specified Length.
+
+void PadRight(char *Text, int ch, int N)
+{
+    if ((N -= strlen(Text)) > 0) {
+       for (Text += strlen(Text); N--; ) *Text++ = ch; *Text = NULL; }
+}
+
+-------------------------------------------------------------------------
+
+>PopHelp.  Pop Up Help Window (60 Chr Wide) w/ MORE & PgUp.
+
+void PopHelp(char **PopHelpPtr)
+{
+    int	i, j, xx, yy, Flag;
+    char   **dp, FootPrint[2810];
+
+    Getxy(&xx, &yy);
+    for	(i = 2,	dp = PopHelpPtr; *dp; dp++) i++; if (i > 22) i = 22;
+    Flag = HideCursor();
+    MkAskBox(FootPrint,	5, 2, 60, i, 'L', "", "[ Hit Any Key ]", "", 0x0A);
+    HideCursor();
+    for	(dp = PopHelpPtr, j = 3; *dp; dp++) {
+       Dwrite(6, j, 0x0A, *dp);
+       if (++j IS 22 ||	dp[1] IS NULL) {
+	  if (dp[1] !=	NULL) Dwrite(6,	j, 0x0A, "--- More --- ");
+	  switch (Kbq_read()) {
+	  case	ESC:  j	= EOF; break;
+	  case PGUP:
+	     if	((dp -=	18) < PopHelpPtr + 10) dp = PopHelpPtr + 9;
+	  default:   if (dp[1]	!= NULL) dp -= 10;
+	  }
+	  if (j IS EOF) break;	j = 3; ClrBox(6, 3, 63,	22, 0x0A);
+       }
+    }
+    ZapAskBox(FootPrint, 5, 2, 60, i, 'L'); Gotoxy(xx, yy);
+    if (Flag) ShowCursor(0);
+}
+
+-------------------------------------------------------------------------
+
+>Query.  A User	Interactive "Dialogue" Box. 
+
+CaseLess Flag: 0:Nml, 1:CaseLess, -1:Numeric Only, -2:CaseLess/NoSpaces.
+
+int Query(char *Text, char *TopTitle, int CaseLess, BYTE Color,
+   char	**Help2Pop)
+{
+    int	c, xx, yy;
+    char *tp1, FootPrint[488];
+
+ /* Establish Window */
+    tp1	= Text;	Getxy(&xx, &yy);
+    MkAskBox(FootPrint,	5, 10, 60, 3, 'L', TopTitle,
+	  "[ <Esc> to Cancel ]", Text,	Color);
+    while ((c =	Kbq_read()) != CR) {
+       if (CaseLess) c = toupper(c);
+       if (c IS	ESC) { *Text = NULL; Text[1] = ESC; break; }
+       else if (c IS BS) {
+	  if (tp1 IS Text) {
+	     if (!strlen(Text)) continue; tp1 += strlen(Text);	}
+	  tp1--; c = NULL; }
+       else if (c IS F1	&& Help2Pop != NULL) { PopHelp(Help2Pop); continue; }
+       else if (c IS F2) c = AnyCharacter();
+       else if (CaseLess IS -1)	{ if (!isdigit(c)) continue; }
+       else if (CaseLess IS -2 && c IS SPACE) continue;
+       else if (!iscntrl(c) && isascii(c));
+       else continue;
+       if (c &&	strlen(Text) < 57) *tp1++ = c; *tp1 = NULL;
+       DwriteEnd(6, 11,	Color, Text, 57);
+    }
+    ZapAskBox(FootPrint, 5, 10,	60, 3, 'L'); Gotoxy(xx,	yy); ShowCursor(1);
+    return !(!*Text && Text[1] IS ESC);
+}
+
+-------------------------------------------------------------------------
+
+>RcolorSet.  ReColor a Row of Text N characters	Long.		 [CGU-273]
+
+void RcolorSet(int X, int Y, int Color,	int N)
+{
+    int	addr;
+
+    Color <<= 8;
+    for	(addr =	Vaddr(X, Y); N--; addr += 2)
+	Vpoke(addr, Vpeek(addr)	& 0xFF + Color);
+}
+
+-------------------------------------------------------------------------
+
+>Remove.  Zip all apperances of	a Specified Chr.
+
+void Remove(char *Text,	int ch)
+{ while	((Text = strchr(Text, ch)) != NULL) strcpy(Text, Text +	1); }
+
+-------------------------------------------------------------------------
+
+>RepeatChr.  Build a String of Specified Length	from a Specified Chr.
+
+void RepeatChr(char *Target, int ch, int N)
+{ *Target = NULL; PadRight(Target, ch, N); }
+
+-------------------------------------------------------------------------
+
+>RestoreBox.  Restore an Area of the CRT from an Array.
+
+void RestoreBox(int Left, int Top, int Right, int Bottom, char *FootPrint)
+{
+    int	i, X, Y, Addr;
+
+    for	(Y = Top; Y <= Bottom; Y++) {
+       Addr = Vaddr(Left, Y);
+       for (X =	Left; X++ <= Right; Addr += 2) {
+	  i = *FootPrint++ & 0xFF; i |= *FootPrint++ << 8; Vpoke(Addr,	i); }
+    }
+}
+
+-------------------------------------------------------------------------
+
+>RTrim.  Aft Crop WhiteSpace from a String.
+
+#define	RTrim(x)		(TrimStr(x, 2))
+
+-------------------------------------------------------------------------
+
+>Sar.  Search &	Replace	one SubStr w/ Another N	times.
+
+int Sar(char *Text, char *This,	char *That, int	StopAfter)
+{
+    int	i, j, k, n = 0;
+
+    if (!StopAfter || (i = strlen(This)) IS 0) return 0; j = strlen(That);
+    if (strstr(That, This) != NULL) return 0;
+    for	(Text =	strstr(Text, This); n <	StopAfter && Text != NULL; n++)	{
+       strcpy(Text, Text + i);
+       if (j) {	Strrcpy(Text+j,	Text); memcpy(Text, That, j); }
+       Text = strstr(Text, This);
+    }
+    return n;
+}
+
+-------------------------------------------------------------------------
+
+>SaveBox.  Grab	a Portion of the CRT into an Array.
+
+void SaveBox(int Left, int Top,	int Right, int Bottom, char *FootPrint)
+{
+    int	i, X, Y, Addr;
+
+    for	(Y = Top; Y <= Bottom; Y++) {
+       Addr = Vaddr(Left, Y);
+       for (X =	Left; X++ <= Right; Addr += 2) {
+	  *FootPrint++ = (i = Vpeek(Addr)) & 0xFF;
+	  *FootPrint++	= i >> 8;
+       }
+    }
+}
+
+-------------------------------------------------------------------------
+
+>Scroll.  Scroll a Box Up/Down N Lines.			       [CGU-273]
+
+void Scroll(int	Left, int Top, int Right, int Bottom, int Color, int N,	
+   int Flag)
+{
+   union REGS rg;
+
+   rg.h.bh = Color; rg.h.cl = --Left; rg.h.ch =	--Top; rg.h.dl = --Right;
+   rg.h.dh = --Bottom; rg.h.al = N; rg.h.ah = 7	- !Flag; int86(0x10,&rg,&rg);
+}
+
+-------------------------------------------------------------------------
+
+>SetAttr.  Set the Cell	at X, Y	to Color.
+
+void SetAttr(int X, int	Y, int Color)
+{
+    int	Addr;
+  
+    Addr = Vaddr(X, Y);	
+    Vpoke(Vaddr(X, Y), (Vpeek(Addr) & 0xFF) | (Color <<	8));
+}
+
+-------------------------------------------------------------------------
+
+>SetVideoMode.  Change the Current CRT Display Mode.		[CGU-273]
+
+void SetVideoMode(int Mode)
+{
+    union REGS rg;
+    
+    rg.h.ah = 0x00; rg.h.al = Mode; int86(0x10,	&rg, &rg);
+}
+
+-------------------------------------------------------------------------
+
+>ShowCursor.  Unhide/Fatten/UnFattten Blinking Cursor.
+
+void ShowCursor(int Fat)
+{
+    static int Virgin =	0;
+    union REGS rg;
+
+    rg.h.bh = 0; rg.h.ah = 3; int86(0x10, &rg, &rg);	
+    if (!Virgin) Virgin	= rg.h.ch;
+    rg.h.ah = 1; rg.h.ch = 0; if (!Fat)	rg.h.ch	= Virgin;
+    rg.h.ch &= 0x1F; int86(0x10,&rg,&rg);
+}
+
+-------------------------------------------------------------------------
+
+>Strrcpy.  A strcpy run	Tail First.
+
+void Strrcpy(char *Target, char	*Source)
+/* Target may be Inside	Source */
+{
+    int	N;
+
+    for	(N = strlen(Source), Source += N, Target += N++; N--; )
+       *Target-- = *Source--;
+}
+
+-------------------------------------------------------------------------
+
+>Tally.  Report	Number of a Specified Chr in a String.
+
+int Tally(char *Text, int ch)
+{
+    int	n;
+    
+    for(n = 0; (Text = strchr(Text, ch)) != NULL; n++) Text++;
+    return n;
+}
+
+-------------------------------------------------------------------------
+
+>TisHelp.  Access a Text-Index Scheme "Help" File.
+
+   TIS is a simple idea	(this Manual is	done that way) using a Flag character 
+at the Left Margin (">") to denote Topic Keys.	Vu.Exe can create a ".LST" 
+file of	these keys as a	"Select	List".	(".  " delimits	the Topic Key).
+
+   To Use TisHelp, strcpy() into the extern char HelpFileName[81] the name of 
+the File w/ your Help text.  Prior to calling TisHelp, strcpy()	the Topic Key 
+into the extern	char HelpTag[20].
+
+   Some	routines use a "HelpKey" instead of trapping F1	directly.  For these, 
+set the	extern int HelpKey to some appropriate value, such as HelpKey =	F1;
+
+
+char HelpFileName[81], HelpTag[20];
+int HelpKey = 0;
+
+void TisHelp(void)
+{
+    char Cmd[128];
+
+    if (!*HelpFileName)	return;	Trim(HelpTag);
+    sprintf(Cmd, "VU /C1F301E /F \">%s\" %s", HelpTag, HelpFileName); 
+    system(Cmd);
+}
+
+-------------------------------------------------------------------------
+
+>TMu.  Pop a Menu Box w/ Up/Down Wrap, HiLite &	Hot Keys.
+int  TMu(char **Mu, int	X, int Y, long Colors, int Border);
+
+char *Mu[] = {
+  " Menu #1  +	[ User Menu #1 ]",
+/*1234567HRM123456789012345678 -------> Ruler Line for Drop Menues */
+	  "1A+	   Option 1	",
+	  "2B+	   Option 2	",
+	  "3C+	   Option 3	",
+	  "	   --------	",
+	  "4D+	   Option 4	",
+	  "5E+	   Option 5	",
+	  "6F+	   Option 6	",
+	  NULL };
+
+   How it Works:  TMu counts the number	of Option Entries in the Menu Array
+(seven in Mu[] above).	It then	counts the Characters in First Option &	Pops
+an AskBox in the Color "Border"	>> 8.  ("Grey Out" is "Border" & 0xFF).
+
+   The "[]" and	all text between is pulled from	the Zeroth Option Line and
+used as	the Title for this Menu.
+
+   Text	from the Option	Lines is Painted into the AskBox according to
+"Colors", HiLiting the First Line.  <0x1F4E17 prints Bright White on Blue 
+using Bright Yellow on Red as the HiLite and Dark Grey on Blue as "GrayOut">.  The 
+First Three Characters are Skipped.
+
+   User	Input is used to relocate the HiLite Bar (it Wraps) until either
+<Enter>	is pressed or a	keystroke matching one of the "Hot Keys" listed	at
+the beginning of each Option Line.
+
+   Only	those Options w/ "+" as	their Third (Mask) Character can be Selected.
+
+   On matching a Hot Key or getting a valid Selection, TMu Zips	the Menu Box 
+and returns the	Second Character on the	Selected Line (or 0 on <Esc>).	For 
+the Above Mu[],	hitting	"4" or punching	<Enter>	with "Option 4"	HiLited	would 
+return "D".
+
+   If F1 is pressed, the First 10 Characters of	Mu[0] are passed to TisHelp
+as a Tag.  TisHelp Crops Leading/Trailing Spaces on the	Tag before seaching.
+
+---------
+
+   "Gray Out" Masking:	The Third (Mask) character on each Option Line 
+specifies whether the Option is	Selectable.  A "+" means it is.	 A "-" means 
+it isn't (it is	curently "Greyed Out").	 Blanks	never Grey Out or Select.
+
+   If the eleventh character of	the Zeroth Line	is not a "+", the entire Menu 
+is "Greyed Out"	and no selections can be made (only <Esc> works>.
+
+---------
+
+   The maximum number of Options is 21 (22 w/o TBar).  If TBar is Used,	the
+Above Mu[] can be used as a Guide.  Max	Option Text Width otherwise is 77.
+Menu Boxes Shadow Right.
+
+int TMu(char **Mu, int X, int Y, long Color, int Border)
+{
+    int	ch, i, xx, yy, Flag, GreyOut, HiLite, Lit, Selected, Z;
+    char *FootPrint;
+    extern char	HelpTag[20];
+
+ /* Save Cursor, Calculate Menu	Size & Get Colors */
+    Getxy(&xx, &yy); Flag = HideCursor(); if (Mu[0][10]	IS '+')	Border >>= 8;
+    GreyOut = Color & 0xFF; Color >>= 8; HiLite	 = Color & 0xFF; Color >>= 8;
+    if (Mu[0][10] IS '-') Color	= GreyOut;
+    for	(Z = 1;	Mu[Z+1]	!= NULL	; Z++);
+    if ((FootPrint = (char *) malloc(strlen((Mu[1]) + Z+3) * 2)) IS NULL)
+       return 0;
+
+ /* Build a Drop Box Menu */
+    MkAskBox(FootPrint,	X, Y, strlen(Mu[1])-1, Z+2, 'R',
+       (char *)	strchr(*Mu, '['), "[<Esc> to Cancel]", "", Border);
+    for	(i = 0;	i++ < Z; )
+	if (Mu[i][2] IS '-') Dwrite(X+1, Y+i, GreyOut,	Mu[i]+3);
+	else Dwrite(X+1, Y+i, Color, Mu[i]+3);
+    Lit	= Selected = 1;	Dwrite(X+1, Y+1, HiLite, Mu[1]+3); HideCursor();
+
+ /* Querry User	*/
+    do {
+       if (Selected != Lit) {
+	  if (Mu[Lit][2] IS '-') Dwrite(X+1, Y+Lit, GreyOut, Mu[Lit]+3);
+	  else Dwrite(X+1, Y+Lit, Color, Mu[Lit]+3);
+	  Lit =	Selected; Dwrite(X+1, Y+Lit, HiLite, Mu[Lit]+3);
+       }
+       switch (ch = Kbq_read())	{
+       case F1:
+	  strncpy(HelpTag, Mu[0], 10); HelpTag[10] = NULL; TisHelp();
+	  break;
+       case DN:	  if (Selected++ IS Z) Selected	= 1; break;
+       case UP:	  if (Selected-- IS 1) Selected	= Z; break;
+       case FWD:
+       case BWD:
+       case ESC:  Selected = ch	= 0; break;
+       case CR:	  if (Mu[Selected][2] IS '+') ch = 0; break;
+       default:
+	  for (i = 0; ch != SPACE && i++ < Z; )
+	     if	(*Mu[i]	IS ch && Mu[i][2] IS '+') {
+		ch = 0;	Selected = i; break; }
+       }
+    } while (ch);
+
+ /* Clean Up & Split */
+    ZapAskBox(FootPrint, X, Y, strlen(Mu[1])-1,	Z+2, 'R'); free(FootPrint);
+    Gotoxy(xx, yy); if (Flag) ShowCursor(0);
+    return (!Selected || Mu[0][2] IS '-') ? 0 :	Mu[Selected][1];
+}
+
+-------------------------------------------------------------------------
+
+>TBarMu.  A 6-Zone Drop	Menu Bar w/ Title, Context Sensitive Help & Wrap.
+
+char **Tbar[] =	{ Mu1, Mu2, Mu3, Mu4, Mu5, Mu6,	NULL };
+
+   TBarMu shells over the TMu scheme above converting a	set of 1-6 ordinary 
+Mu[]'s into Drop Menus "Suspended" from	a Select Bar.
+
+   Colors for the Bar, its HiLite and the Border of Dropped Menues (so they
+will appear to be "attached") are set by "BarColors".  The Bar is constructed
+by clearing the	Top Row	on the CRT and writing in the first 10 Characters from
+the Zeroth Option on each Menu.	 The "Title" Post at Column 60.
+
+   The First "Hot Zone"	is HiLited.  Arrow Keys	shift the HiLite.  <Enter> or
+ drops	the Menu for that Hot Zone allowing a Selection	to be Made.  Hitting
+<Esc> "UnDrops"	a Menu or, if none is down, exits w/ a return value of ESC.
+
+   F1 Pops Help	w/ the TisHelpTag for the HiLited Menu.
+
+   When	a Valid	Selection is made on a Dropped Menu, it	returns	a non-zero
+value indicating which Option was Selected.  TBarMu adds the Hot Zone
+Number [1-6] (shifted left 8 places) to	this Return Value (Slot	#1 = 0x0100).  
+
+   If a	Mu[] is	"Greyed	Out", it will not Drop.	 "MuColor" is passed directly 
+to TMu() to control the	Drop Box Mu Colors.  "BarColor"	has the	same format 
+as MuColor: 0xNmHiGr where Nm is Normal, Hi is HiLite and Gr is	GreyOut.
+
+For Example: 0x2F4E27 displays a Green Bar with	Bright White lettering,	a Red 
+Select Bar with	Yellow lettering and Dark Grey on Green	for "Greyed Out" 
+options.
+
+
+int TBarMu(char	**TBar[], char *Title, long BarColor, long MuColor)
+{
+ /* Create & display a Menu Bar	(w/ Drop-Down Menues) &	Query User
+  * Returns: (Slot# << 8) + Tag	Byte or	ESC for	hit ESC	on Bar Level.
+  */
+    int	i, xx, yy;
+    int	HiLite,	GreyOut, Flag, Lit = 0,	Rtn, Slot = 0, Z;
+    char FootPrint[321];
+    extern char	HelpTag[20];
+
+ /* Build Menu Bar */
+    Getxy(&xx, &yy); Flag = HideCursor(); GreyOut = BarColor & 0xFF;
+    HiLite = (BarColor >>= 8) &	0xFF; BarColor >>= 8;
+    SaveBox(1, 1, 80, 1, FootPrint); Gotoxy(1,1); ClrTo(80, BarColor);
+    for	(Z = 0;	TBar[Z]	!= NULL; Z++) {
+       strncpy(HelpTag,	TBar[Z][0], 10); HelpTag[10] = NULL;
+       if (TBar[Z][0][10] IS '+') Dwrite(Z*10, 1, BarColor, HelpTag);
+       else Dwrite(Z*10, 1, GreyOut, HelpTag);
+       if (Z IS	5) break;
+    }
+    Dwrite(61, 1, BarColor, Title); RcolorSet(1, 1, HiLite, 10);
+
+ /* Scroll Right/Left &	Pop Drop Menue(s) */
+    for	(Rtn = 0; !Rtn;	) {
+       switch (Kbq_read()) {
+       case F1:
+	  strncpy(HelpTag, TBar[Lit][0], 10); HelpTag[10] = NULL; TisHelp();
+	  break;
+       case FWD: if (Slot++ IS Z) Slot = 0; break;
+       case BWD: if (Slot-- IS 0) Slot = Z; break;
+       case ESC: Rtn = ESC; break;
+       case DN:
+       case CR:
+	  if (TBar[Lit][0][10]	IS '+')	Rtn =
+	     TMu(TBar[Slot], 1+Slot*10,	2, MuColor, (BarColor << 8)+GreyOut);
+	  break;
+       }
+       if (Slot	!= Lit)	{
+	  if (TBar[Lit][0][10]	IS '+')	RcolorSet(1+Lit*10, 1, BarColor, 10);
+	  else RcolorSet(1+Lit*10, 1, GreyOut, 10);
+	  Lit =	Slot; RcolorSet(1+Lit*10, 1, HiLite, 10);
+       }
+    }
+
+ /* Clean Up & Split */
+    RestoreBox(1, 1, 80, 1, FootPrint);	Gotoxy(xx, yy);
+    if (Flag) ShowCursor(0); if	(Rtn IS	ESC) return ESC;
+    return Rtn + (++Slot << 8);
+}
+
+-------------------------------------------------------------------------
+
+>Trim.  Fore/Aft Crop WhiteSpeace from a String.
+
+#define	Trim(x)			(TrimStr(x, 0))
+
+-------------------------------------------------------------------------
+
+>TrimStr.  The Business	End of the "Trim Trio" of Macros.
+
+char *TrimStr(char *Text, int Flag)
+{
+    int	i;
+
+    if (Flag > 2 || Flag < 0 ||	!*Text)	Flag = 0;
+    if (!Flag || Flag >	1)
+       while ((i = strlen(Text)	- 1) >=	0 && isspace(Text[i])) Text[i] = NULL;
+    if (Flag < 2 && (i = strspn(Text, "	\t\n\f")) > 0) strcpy(Text, Text + i);
+    return Text;
+}
+
+-------------------------------------------------------------------------
+
+>Vpeek.  Directly Snatch 16 Bits from Video RAM.
+
+int Vpeek(unsigned adr)
+/* read	a character and	attribute from video RAM */
+{
+    if (!SnowStop) return peek(VSEG, adr);
+    asm	push ds;
+    _DX	= 986;			    /* video status port */
+    _DS	= VSEG;			    /* video segment address */
+    _SI	= adr;			    /* video character offset */
+    asm	cld;
+    
+    /* wait for	video retrace to start ----- */
+    do
+       asm in  al,dx;
+    while (_AL & 1);
+    
+    /* wait for	video retrace to stop */
+    do
+       asm in  al,dx;
+    while (!(_AL & 1));
+    asm	lodsb;			    /* get the character */
+    _BL	= _AL;
+    
+    /* wait for	video retrace to start */
+    do
+       asm in  al,dx;
+    while (_AL & 1);
+    
+    /* ait for video retrace to	stop */
+    do
+       asm in  al,dx;
+    while (!(_AL & 1));
+    asm	lodsb;			    /* get the attribute */
+    _BH	= _AL;
+    _AX	= _BX;
+    asm	pop ds;
+    return _AX;
+}
+
+-------------------------------------------------------------------------
+
+>Vpoke.  Directly Stuff	16 Bits	into Video RAM.
+
+void Vpoke(unsigned adr, unsigned chr)
+{
+    if (!SnowStop) poke(VSEG, adr, chr);
+    else    {
+       _DI = adr;	       /* offset of video character */
+       _ES = VSEG;	       /* video	segment	*/
+       asm cld;
+       _BX = chr;	       /* the attribute	and character */
+       _DX = 986;	       /* video	status port */
+       
+       /* ------ wait for video	retrace	to start ----- */
+       do
+	  asm in  al,dx;
+       while (_AL & 1);
+       
+       /* ------ wait for video	retrace	to stop	----- */
+       do
+	  asm in  al,dx;
+       while (!(_AL & 1));
+       _AL = _BL;
+       asm stosb;	       /* store	character */
+       
+       /* ------ wait for video	retrace	to start ----- */
+       do
+	  asm in  al,dx;
+       while (_AL & 1);
+       
+       /* ------ wait for video	retrace	to stop	----- */
+       do
+	  asm in  al,dx;
+       while (!(_AL & 1));
+       _AL = _BH;
+       asm stosb;	       /* store	attribute */
+    }
+}
+
+-------------------------------------------------------------------------
+
+>ZapAskBox.  Inverse of	MkAskBox.
+
+void ZapAskBox(char *FootPrint,int X,int Y,int Width,int Tall,char Shadow)
+{
+    int	X1, Y1;
+
+ /* Handle Shadow */
+    X1 = X + Width - 1;	Y1 = Y + Tall -	1;
+    if (Y+Tall > 25);
+    else if (Shadow IS 'L' && X	> 1)   { X--;  Y1++; }
+    else if (Shadow IS 'R' && X	< 80)  { X1++; Y1++; }
+
+ /* Zap	Window */
+    HideCursor(); RestoreBox(X,	Y, X1, Y1, FootPrint);
+}
+
+-------------------------------------------------------------------------
+
+===========================================================================
+
+>Mouse.h.  Text/Graphics Mouse Access via int86(0x33...).
+
+   Requires Linking w/ Graphics.Lib ON (even for text-only use).
+
+----------------------------------------------------------------------------
+
+>Mouse Buttons.  A Keys.h Style	Solution to Mouse Buttons.
+
+   The IBM ScanCode List has a few Holes in it (Codes which can	not be User 
+Generated).  In	Keys.h,	these are the "EK###" values.  Seven of	these have 
+been used in Mouse.h for Button	Selection/Reporting:
+
+    BTN_ANY	BTN_L	BTN_R	BTN_M	<--- For Both Selecting/Reporting.
+    BTN_LR	BTN_LM	BTN_MR	BTN_LMR <--- For Reporting Only.
+
+   Obviously, if your mouse has	only 2 buttons,	BTN_LMR	will never be 
+reported.
+
+----------------------------------------------------------------------------
+
+>HideMouse.  Remove the	Graphics Cursor	(usually an arrow).
+
+#define	HideMouse()		(MouseSwitch(0))
+
+----------------------------------------------------------------------------
+
+>Mouse.  The Generic Mouse Interrupt (33h) --> Access to Mouse Driver.
+
+void Mouse(int *A, int *B, int *C, int *D)
+{
+    union REGS rg;
+
+    rg.x.ax = *A; rg.x.bx = *B;	rg.x.cx	= *C; rg.x.dx =	*D;
+    int86(0x33,	&rg, &rg);
+    *A = rg.x.ax; *B = rg.x.bx;	*C = rg.x.cx; *D = rg.x.dx;
+}
+
+   Not very useful by itself, Mouse() is frequently used in published 
+programs as a crutch to	using int86(0x33...).  See CUJ Vol 9 No.4 (April 91)
+ppgs 46+ for an	example.
+
+---------------------------------------------------------------------------
+
+>MouseAtxy.  Report Mouse Location and Button Press Status.
+
+int MouseAtxy(int *X, int *Y)
+{
+    union REGS rg;
+
+    if (!MouseOK()) return 0;
+    rg.x.ax = 3; int86(0x33, &rg, &rg);	*X = rg.x.cx; *Y = rg.x.dx;
+    if (IsTextMode()) {	*X = (*X) / 8 +	1; *Y =	(*Y) / 8 + 1; }
+    else if (getmaxx() IS 319) (*X) /= 2;
+    return (rg.x.bx) ? Handles(-rg.x.bx) : 0;
+}
+
+---------------------------------------------------------------------------
+
+>MouseClicked.  True if	Specified Button was Clicked or	Keys.h for BTN_ANY.
+
+int MouseClicked(int Button)
+{
+    int	i, n = 0;
+    union REGS rg;
+
+    if (! _Mouse) return 0; i =	Handles(Button);
+    do { int86(0x28, &rg, &rg);	rg.x.ax	= 3; int86(0x33, &rg, &rg);
+    }  while (rg.x.bx);
+    if (i < 3) {
+       rg.x.ax = 6; rg.x.bx = i; int86(0x33, &rg, &rg);	n = (rg.x.bx > 0);
+    } else while (i--) {
+       n *= 2; rg.x.ax = 6; rg.x.bx = i; int86(0x33, &rg, &rg);
+       n -= (rg.x.bx > 0);
+    }
+    return (n <	0) ? Handles(n)	: n;
+}
+
+---------------------------------------------------------------------------
+
+>MouseClickedxy.  Report Location of Mouse on Last Click of Specified Button.
+
+int MouseClickedxy(int Button, int *X, int *Y)
+{
+    union REGS rg;
+    
+    if (!MouseOK() || (rg.x.bx = Handles(Button)) IS 3)	return 0;
+    rg.x.ax = 6; int86(0x33, &rg, &rg);
+    *X = rg.x.cx; *Y = rg.x.dx;
+    if (IsTextMode()) {	*X = (*X) / 8 +	1; *Y =	(*Y) / 8 + 1; }
+    else if (getmaxx() IS 319) (*X) /= 2;
+    return (rg.x.bx) ? Handles(-rg.x.bx) : 0;
+}
+
+---------------------------------------------------------------------------
+
+>MouseDeltaxy.  Report Mouse Motion since Last Check.
+
+void MouseDeltaxy(int *X, int *Y)
+{
+    int	Dx, Dy;
+    union REGS rg;
+
+    if (!MouseOK()) { *X = *Y =	0; return; }
+    rg.x.ax = 0x1B; int86(0x33,	&rg, &rg); Dx =	rg.x.bx; Dy = rg.x.cx;
+    rg.x.ax = 0x0B; int86(0x33,	&rg, &rg); 
+    *X = (rg.x.cx * Dx)	/ 8; *Y	= (rg.x.dx * Dy) / 8; 
+    if (IsTextMode()) {	*X = (*X) / 8 +	1; *Y =	(*Y) / 8 + 1; }
+    else if (getmaxx() IS 319) (*X) /= 2;
+}
+
+---------------------------------------------------------------------------
+
+>MouseOK.  True	if Mouse Driver	is Installed and Responding.
+
+int MouseOK(void) { return _Mouse; }	/*	Set/Cleared by MouseReSet() */
+
+---------------------------------------------------------------------------
+
+>MousePageSet.  Select which Video Page	the Mouse be Active.
+
+void MousePageSet(int Which1)
+{
+      union REGS rg;
+      
+      rg.x.ax =	0x1D; rg.x.bx =	Which1;	int86(0x33, &rg, &rg);
+}
+
+---------------------------------------------------------------------------
+
+>MouseReSet.  Reset Mouse Driver & Physical Mouse.
+
+int MouseReSet(void)
+/*  Resets the mouse.  Returns # of Buttons if Present or 0 if No Mouse. */
+{
+    union REGS rg;
+
+    rg.x.ax = 0; int86(0x33, &rg, &rg);	if (rg.x.ax IS 0) return 0;
+    _Mouse = 1;	MouseSwitch(-1);
+    return (rg.x.bx IS 0) ? 2 :	(rg.x.bx IS 3) ? 3 : 1;
+}
+
+---------------------------------------------------------------------------
+
+>MouseSpeed.  Set Mouse	Sensitivity & Ballistic	Action.
+
+void MouseSpeed(int Dx,	int Dy,	int Zoom)
+{
+      union REGS rg;
+      
+      rg.x.ax =	0x1A; rg.x.bx =	Dx; rg.x.cx = Dy; rg.x.dx = Zoom;
+      int86(0x33, &rg, &rg);
+}
+
+Notes:
+    1. Dx & Dy are in "Mouse Tics" ("mickeys") / ( 8 Pixels).  In other	
+       words, the fastest rate is one text character cell/mickey.
+    2. Dx & Dy default to 8 & 16, respectively.	 Large Numbers Move Slower.
+    3. Zoom is the mickeys/second above	which the Mouse	moves Double Speed.
+    4. Zoom defaults to	64 mickeys/second.
+    5. This "Mickey Mouse" business was	created	by MicroSoft.
+
+---------------------------------------------------------------------------
+
+>MouseSwitch.  The Business End	of HideMouse/ShowMouse.
+
+int MouseSwitch(int Flag)
+{
+    union REGS rg;
+    static int Cd_mouse	= 1;
+
+    if (Flag IS	-1) Cd_mouse = 0;
+    if (!Flag && !Cd_mouse) return 0;
+    if (Flag &&	Cd_mouse) return 1;
+    rg.x.ax = 1	+ !Flag; int86(0x33, &rg, &rg);	Cd_mouse = !Cd_mouse;
+    return !Cd_mouse;
+}
+
+---------------------------------------------------------------------------
+
+>MouseToxy.  Relocate the Mouse	Cursor.
+
+void MouseToxy(int X, int Y)
+{
+    union REGS rg;
+    
+    if (!MouseOK()) { if (IsTextMode())	Gotoxy(X, Y); return; }
+    if (IsTextMode()) {	rg.x.cx	= --X *	8; rg.x.dx = --Y * 8; }
+    else {
+       if (getmaxx() ==	319) X *= 2;	/*	Adjust for virtual coordinates */
+       rg.x.cx = X; rg.x.dx = Y; 
+    }
+    rg.x.ax = 4; int86(0x33, &rg, &rg);
+}
+
+---------------------------------------------------------------------------
+
+>MouseTrap.  True if mouse Cursor is Inside a Specified	Rectangle.
+
+int MouseTrap(int Left,	int Top, int Right, int	Bottom)
+{
+    int	X, Y;
+    
+    if (MouseOK()) MouseAtxy(&X, &Y); else return 0;
+    return((X >= Left && X <= Right && Y >= Top	&& Y <=	Bottom)	? 1 : 0);
+}
+
+---------------------------------------------------------------------------
+
+>MouseWait4User.  A Kbq_read() for the Mouse.
+
+int MouseWait4User(void)
+{
+    int	c, X, Y;
+
+    if (IsTextMode()) {	Getxy(&X, &Y); MouseToxy(X, Y);	}
+    for	(c = 0;	!c; )
+       if (!(c = Kbq_poll()) &&	!(c = MouseClicked(BTN_ANY)) &&
+	  IsTextMode())	{ MouseAtxy(&X,	&Y); Gotoxy(X, Y); }
+    return c;
+}
+
+---------------------------------------------------------------------------
+
+>ShowMouse.  Display the Graphics Cursor (usually an arrow).
+
+#define	ShowMouse()		(MouseSwitch(1))
+
+============================================================================
+
+>Rampage.h.  Transparently Handle a File & RAM Editing Buffer.
+
+   This	routine	isn't for light	weights.  It can manage	up to a	full page 
+(64K) of DOS RAM and edit text files up	to 32K Lines in	length (500+ printed 
+pages).
+
+   Only	the LARGE model	is supported (far pointers in the SMALL	model get 
+crazy).	 Rampage.h provides access to the "Engine" via a set of	Macros.	 
+Nothing	fancy and you may well want to change their Names, expand them into
+functions or whatever.
+
+   Default RAM Page size is 64K, but this can be altered by setting 
+"extern	long SizeOfRamPage" to something smaller, especially if	your line 
+lengths	are short and your RAM is too.
+
+   Lines larger	than 255 characters get	cropped.  It is	assumed	that the 
+Fetch Buffer you pass in is large enough to hold your longest line (or the 255 
+character stub).
+
+   A lot goes on inside	the Engine (See	Rampage.c for details).	 Fromt the 
+Outside, it acts pretty	much as	you would expect.  
+
+   About the only "Surprise" is	when you "Push"	a long line (longer than seen
+before)	or the RAM Page	gets full.  Both of those cause	the Enginer to "Go 
+Away" for a while, saving what you have	done and freeing up the	RAM Page for 
+more work.
+   
+============================================================================
+
+>Close.  Save Your Changes, Close the File, Free all Allocated RAM.
+
+#define	Close()			(Rampage("Close", NULL, 1))
+
+----------------------------------------------------------------------------
+
+>CloseNoSave.  Discard UnSaved Edits, Close File, Free Allocated RAM.
+
+#define	CloseNoSave()		(Rampage("Close", NULL, 2))
+
+----------------------------------------------------------------------------
+
+>DeleteLine.  Snip Out & Discard a Specified Line.
+
+#define	DeleteLine(x)		(Rampage("Delete", NULL,	x))
+
+----------------------------------------------------------------------------
+
+>Fetch.  Get a Specified Line of Text as a String.
+
+#define	Fetch(x,y)		(Rampage("Fetch", x, y))
+
+----------------------------------------------------------------------------
+
+>Load.  Find, Open and Prepare a File for Action.  (Save Previous Edits)
+
+#define	Load(x)			(Rampage("Load", x, 1))
+
+----------------------------------------------------------------------------
+
+>LoadNoSave.  Find, Open and Prepare a File for	Action.	 (Trash	Old Edits)
+
+#define	LoadNoSave(x)		(Rampage("Load",	x, 2))
+
+----------------------------------------------------------------------------
+
+>Push.  Place an Altered Line into the RAM Page.
+
+#define	Push(x,y)		(Rampage("Push", x, y))
+
+----------------------------------------------------------------------------
+
+>Save.  Post Edits held	in the RAM Page	into the File.
+
+#define	Save()			(Rampage("Save", NULL,	1))
+
+Note: The Old (unaltered) File becomes a ".BAK", and a new File	is created 
+from the contents of the Old File and the RAM Page, which is then cleared.
+
+----------------------------------------------------------------------------
+
+>SaveAs.  Save Your Edits, Shell Out & Copy to a New Name & Load That.
+
+#define	SaveAs(x)		(Rampage("Save", x, 2))
+
+----------------------------------------------------------------------------
+

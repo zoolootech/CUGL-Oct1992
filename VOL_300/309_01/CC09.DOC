@@ -1,0 +1,2356 @@
+
+                              6809 C Compiler for MSDOS
+
+Table of Contents
+
+Pg Topic
+1   Introduction
+    Data types
+    Storage Classes
+2   Primaries
+    Unary Integer operators
+    Binary Integer operators
+3   Logical operators
+    Conditional operator
+    Assignment operators
+    Comma operator
+4   Program control
+    Initialization
+5   Embedded compiler commands
+6   Compiler reserved keywords
+    Command Line options
+7   Libary files
+    Sample compilation
+8   Linking
+    Optimization
+9   Sample Program
+11  CC09 Runtime Libraries
+14  ACIA.H
+18  CTYPE.H
+24  DIOBOARD.H
+26  HERCS.H
+30  MCRDRV.H
+31  MEMORY.H
+35  PRINTER.H
+36  SERIAL.H
+40  STRINGS.H
+43  POD Software
+44  Creating Interrupt Routines
+45  Initialization code
+    Power Reset Vector
+    Origin of C Code
+    Stack initialization and entry to c main function
+46  STARTUP.H
+    Data Variables
+47  TSTACIA.C
+48  TSTCTYPE.C
+49  TSTDIO.C
+50  TSTHERCS.C
+    TSTMCRDR.C
+51  TSTMEMOR.C
+53  TSTPRINT.C
+    TSTSERIA.C
+54  TSTSTRIN.C
+
+Appendix A
+55  Using AS9
+
+6809 C Compiler (MSDOS) Documentation
+
+INTRODUCTION
+This compiler is the small C compiler written by Ron Cain and published in Dr.
+Dobb's #45 (May '80). The compiler was modified for the 6809 CPU and also
+enhanced by Dieter H. Flunkert.  Some help was taken from J. E. Hendrix's
+version of the small C compiler and articles from DDJ.
+
+The compiler has been modified to run under MSDOS by Brian Brown, and
+generates an assembly language output file. The runtime libraries have been
+added by Brian Brown. This compiler accepts a subset of standard C.
+
+
+DATA TYPES
+The data types supported are...
+
+ char c;     character
+ char *c;    pointer to character
+ char c[n];  character array
+ int i;      16 bit integer
+ int *i;     pointer to integer
+ int i();    function returning integer
+ int i[n];   integer array
+
+
+STORAGE CLASSES
+ automatic       This class is the default. It is possible to specify it
+                 explicitly, but the preprocessor strips it out (it is #define
+                 automatic).
+
+ static          Supported for LOCAL variables only.
+
+ register        This class is known only by the preprocessor which strips it
+                 out.
+
+ extern          Supported.
+
+ typedef         Not supported.
+
+Structures, multidimensional arrays, unions, and more complex types like
+"int    **i" are not included.
+
+
+PRIMARIES
+  array[expression]
+  function(arg1,arg2,...,argn)
+  constant
+  decimal integer
+  quoted string    ("sample string")
+  primed character ('a'  or  'Z')
+  local variable
+  global variable
+also literals like '\n', '\b' etc.
+
+ Each variable must be declared before it is used.
+
+
+UNARY INTEGER OPERATORS
+  -  minus
+  *  indirection (points to object)
+  &  address of
+  ++ increment, either prefix or suffix
+  -- decrement, either prefix or suffix
+  ÿ7E  complement
+  !  not
+
+
+BINARY INTEGER OPERATORS
+  +  addition
+  -  subtraction
+  *  multiplication
+  /  division
+  %  mod, remainder from division
+  |  inclusive or
+  ^  exclusive or
+  &  logical and
+  == equal
+  != not equal
+  <  less than
+  <= less than or equal
+  >  greater than
+  >= greater than or equal
+  << left shift
+  >> arithmetic right shift
+
+
+LOGICAL OPERATORS
+  &&  logical and operator
+  ||  logical or operator
+
+
+CONDITIONAL OPERATOR
+  ? : Supported
+
+
+ASSIGNMENT OPERATORS
+  lvalue = expression
+  lvalue += expression
+  lvalue -= expression
+  lvalue *= expression
+  lvalue /= expression
+  lvalue %= expression
+  lvalue >>= expression
+  lvalue <<= expression
+  lvalue &= expression
+  lvalue ^= expression
+  lvalue |= expression
+
+
+COMMA OPERATOR
+  Supported.
+
+
+PROGRAM CONTROL
+  if(expression) statement;
+  if(expression) statement; else statement;
+  while(expression) statement;
+  do statement; while(expression);
+  for(expression_1;expression_2;expression_3) statement;
+   (where the expressions _1,_2,_3 are optional)
+  switch(expression) statement;
+  case constant-expression : expression;
+  default: expression;
+  break;
+  continue;
+  return;
+  return expression;
+  ;        /* null statement */
+  {statement;statement;   ...   statement;}  /* compound statement */
+
+ NOT INCLUDED: goto and labels.
+
+
+INITIALIZATION
+Global and local static variables are by default initialized to zero. It is
+possible to assign these variables an initial value.
+
+ examples: char c = 'a'   /* c has now the value of 'a' */
+  int i = 1;   /* i contains now the value 1 */
+
+  char c[80] = "this is a string";
+                    /* the array of characters are initialized
+      with the text and the rest of the array is
+      zero */
+
+  int i[10] = 1,2,3;  /* i[0] = 1, i[1] = 2, i[2] = 3
+      the rest will be zero */
+
+   int i[] = 1,2,3;  /* same as above, but the length of the
+      array will be 4, it is the same as:
+      int i[4] = 1,2,3,0 */
+
+DO NOT USE GLOBAL STATIC VARIABLES (There is a bug in the compiler)
+
+
+EMBEDDED COMPILER COMMANDS
+ #define name [string]  "name" is replaced by "string" hereafter. If no
+     "string" is given only the MACRO name is defined.
+
+ #ifdef name   checks whether the name is currently defined in the
+     preprocessor; that is, whether it has been defined with #define name.
+
+ #ifndef name   A control line of the form checks whether the identifier is
+     currently undefined in the pre-processor.
+
+ All forms are followed by an arbitrary number of lines, possibly containing a
+ control line
+
+ #else             and then by a control line
+ #endif
+
+ #include filename      compiler gets source code from another file (can't be
+                        nested)
+
+ #asm                   assembly statement code between these two directives
+       ....             is passed directly to the assembler.
+       ...
+ #endasm
+
+ #data    defines a ram data segment. Do not use for initialised data. It 
+          inserts an assembler directive specifying the .area as RAMDATA
+ #code    defines a code segment. The assembler directive inserted is .area
+          ROMCODE
+ #const   defines a rom data segment. Use for initialised data. It inserts the
+          assembler directive .area ROMDATA
+
+COMPILER RESERVED KEYWORDS
+ asm         automatic  break
+ code        char       case
+ const       extern     continue
+ data        int        default
+ define      register   do
+ else        static     else
+ endasm      for
+ endif       if
+ ifdef       switch
+ ifndef      return
+ include     while
+
+
+
+COMMAND LINE OPTIONS
+When the compiler is run, it reads one C source file and produces one assembly
+language output file. The format of the compiler command line is:
+
+  cc09 input_file.c [output_file] [options]
+
+ Each option is a minus sign followed by a letter:
+
+  -c includes the C source code as comments in the compiler generated assembly
+     code.
+
+  -m display function headers as they are compiled.
+
+  -o optimisation on
+
+  -z generate code for AS9 assembler
+
+
+(Default: Generates code for AS6809 assembler)
+
+If no output file is specified, the console screen will be used. In this case
+options are invalid. If you desire to see the effect of the options on the
+console screen, use the following command format by specifying the output file
+as the console device,
+
+  cc09  source.c  stdout -c -o -m
+
+
+LIBRARY FILES
+  C.REL    This is a relocatable object file for handling switch and
+           multiply/divide instructions. It is included at link time. If
+           generating code for an assembler other than AS6809, use the file 
+           C.ASM and assemble it along with the C Compiler output file.
+
+ The following routines are included at compile time, using the
+
+   #include filename
+
+ directive.
+
+ ACIA.H     Routines for controlling the ACIA serial port.
+ CTYPE.H    Functions for character handling and data conversion between
+            character strings and integers.
+ HERCS.H    Routines for controlling a hercs card.
+ MCRDRV.H   Magnetic Card Reader routines.
+ MEMORY.H   Memory manipulation routines.
+ SERIAL.H   The IBM-PC serial card functions.
+ STARTUP.H  All programs should include this header file, as it contains the
+            startup code required before main executes.
+ STRINGS.H  String handling functions.
+
+
+
+SAMPLE COMPILATION
+
+  cc09 test.c test.asm -c
+
+ This line causes the compiler to compile the input file test.c and write the
+generated code with the c-text interleaved to the output file test.asm.  Any
+errors are displayed on the screen.
+
+ Control C will abort the compiler.
+
+ Assembling
+
+  as6809  -los test
+
+ This command causes the file TEST.ASM to be assembled, generating a .lst
+(list), .rel (object), and .sym (symbol) file. The .rel file consists of four
+segments which can be combined with other segments of the same name at link
+time to create a loadable module.
+
+
+LINKING
+
+  aslink -c
+
+invokes the relocatable linker, which allows the user to specify the base
+address of the various segments within the modules. It may be driven from the
+keyboard (-c option) or from a .lnk file (-f option). The following commands
+in bold are the users response to link the files and create a loadable module.
+
+ aslink>> -s                   generate a motorola s record (.s19)
+ aslink>> -m                   generate a map file (.map)
+ aslink>> -x                   specify hexadecimal in map file
+ aslink>> tsthercs             use tsthercs.rel
+ aslink>> c                    use c.rel
+ aslink>> -bRAMDATA=0h0000     specify 0 as start of data segment
+ aslink>> -bROMCODE=0hc000     specify c000 as start of code segment
+ aslink>>
+
+In this instance, the base address of the const or ROMDATA segment will be  
+the next location after the end of the ROMCODE or code segment.
+
+
+OPTIMIZATION
+The compiler can produce optimized code, which reduces the compiler output 
+code by 15% to 20%. This is achieved by peephole optimization.
+
+ The optimizer is invoked at compile time by:
+
+  cc09 inputfile [outputfile] -o
+
+If you omit the output file specification, the output is directed to the
+terminal.
+
+
+SAMPLE PROGRAM DEMONSTRATION
+The following program works with CIT's 6809 board, and programs a Hercules 
+monochrome card.
+
+
+/* tsthercs.c */
+#include startup.h
+#include hercs.h
+
+#code
+
+main()
+{
+        int value;
+        char data, *memory;
+
+        initvideo();
+        home();
+        clrscr();
+        memory = 0xC000;
+        while(1) {
+                writeln("Hello there");
+
+                value = 1234;
+                writeint( value );
+                writeln(" ");
+
+                value = -12345;
+                writeint( value );
+                writeln(" ");
+
+                data = 0xfe;
+                writehexbyte( data );
+                writeln(" ");
+
+                writeln("Contents of memory locations C000 -->");
+                for( value = 0; value < 32; value++ )
+                        writehexbyte( memory[value] );
+                writeln(" ");
+
+                writeattr("Bold text", BOLD);
+                writeln(" ");
+                writeattr("Underlined text", UNDERLINE);
+                writeln(" ");
+                writeattr("Reversed text", REVERSE);
+                writeln(" ");
+                writeattr("Blinking text", BLINKING);
+                writeln(" ");
+        }
+}
+
+The file is compiled using the command
+
+  cc09  tsthercs.c tsthercs.asm -c
+
+The assembly file generated by the compiler is converted into a relocatable
+object file by the assembler.
+
+  as6809 -los tsthercs
+
+The linker combines the .rel files together generating a load module.
+
+  aslink -c
+  aslink>> -s
+  aslink>> -m
+  aslink>> -x
+  aslink>> tsthercs
+  aslink>> c
+  aslink>> -bRAMDATA=0
+  aslink>> -bROMCODE=0hc000
+  aslink>> 
+
+
+The file tsthercs.s19 is then downloaded to EPROM programmer or target system
+via the POD software.
+
+  pod tsthercs.s19
+
+  MON> r
+  MON> h
+  MON> i
+  MON> l
+  MON> g
+
+
+
+CC09 RUNTIME LIBRARY
+These files are incorporated using the #include statement, and include source
+code routines for runtime support of I/O peripheral devices.
+
+ ACIA.H
+  aciastatus()  returns status (char) from ACIA
+  getchne()     returns a character from ACIA, non-echo
+  getchar()     returns a character from ACIA and echoes
+  getint()      reads an integer from ACIA
+  gets()        reads a string from ACIA
+  initacia()    initialises ACIA on 6809 card
+  kbhit()       checks for recieved character
+  putchar()     writes a character to ACIA
+  putint()      writes integer to ACIA
+  putnl()       writes CR/LF to ACIA
+  puts()        writes string to ACIA followed by CR/LF
+
+
+ CTYPE.H
+  isalnum()  checks for alphanumeric (isalpha | isdigit)
+  isalpha()  checks for alphabetic 'A'-'Z' and 'a'-'z'
+  isascii()  checks for ascii 0x00-0x7f
+  iscntrl()  checks for control character 0x00-0x1f
+  isdigit()  checks for digit '0'-'9'
+  isgraph()  checks for printable character exluding spaces
+  islower()  checks for lowercase 'a'-'z'
+  isprint()  iscntrl || isspace
+  ispunct()  checks for punctuation
+  isspace()  checks for tabs and spaces
+  isupper()  checks for 'A'-'Z'
+  isxdigit()  checks for '0'-'9' and 'A'-'F'
+  toascii()  masks off bit 7
+  tolower()  converts to lowercase
+  toupper()  converts to uppercase
+  atoi()     converts a string to an integer
+  itoa()     converts an integer to a string
+
+
+ DIOBOARD.H
+  initdio()    initialises DIO card
+  readanalog() reads value (0-255) from an analog channel
+  readkey()    scans key matrix
+  readswitches() reads toggle switches
+  writeleds()  writes to the leds
+  writeseg()   writes to seven segment display
+
+
+ HERCS.H
+  clrscr()     clears video memory and homes cursor
+  gotoxy()     sets cursor
+  home()       sets cursor at 0,0
+  initvideo()  initialises hercs card
+  scrollup()   scrolls entire screen up one line
+  write        write a string
+  writeattr    write a string with attribute
+  writecharattr write a character and its attribute
+  writeint     write an integer
+  writehexbyte write a character as two hex bytes
+  writeln      write a string plus \n
+
+
+ MEMORY.H
+  getvect()  read an interrupt vector setting
+  peek()     read a memory location
+  poke()     write to a memory location
+  memcmp()   compare two memory areas for equality
+  memcpy()   copy from one memory area to another
+  memmov()   move from one memory area to another
+  memrev()   copy memory areas in reverse order
+  memset()   fill a memory block
+  setvect()  set an interrupt vector
+
+
+ MCRDRV.H
+  initmcr()    initializes the PPI on Hugh's digital board
+  sensecard()  senses if a card is in the MCR
+  readcard()   reads a card connected to the 8255 PPI
+  decodecard() attempts to decode the card info
+
+
+ PRINTER.H
+  initprn()    initialises printer port on HERCS card
+  prnchar()    print a character
+  prnstatus()  read printer status
+
+
+ SERIAL.H
+  init8250()   initialises COM1 (PC serial card) to 9600,n,8,1
+  pcgetchar()  gets character from COM1, echoes to COM1
+  pcgetchne()  gets character from COM1, non-echo
+  pcgetint()   read integer from COM1
+  pcgets()     read string from COM1
+  pckbhit()    checks for recieve character from COM1
+  pcputchar()  outputs character to COM1
+  pcputint()   outputs integer as a string to COM1
+  pcputs()     outputs string to COM1, appends CR/LF
+  pcstatus()   returns LSR status of 8250
+
+
+ STRINGS.H
+  strcat()   appends one string on the end of another
+  strcmp()   compares two strings for equality
+  strcpy()   copy one string into another
+  stricmp()  compare two strings, ignore case
+  strlen()   determine length of string
+  strncat()  catenate two strings for n characters
+  strncmp()  compare two strings for n characters
+  strncpy()  copy a string for n characters
+  strrev()   reverses a string
+
+
+
+ ACIA.H provides the following routines,
+
+
+------------------------------------------------------------------------------
+aciastatus()  returns status of on-board ACIA
+------------------------------------------------------------------------------
+  example,
+
+  char status;
+  status = aciastatus();
+
+  The status bits are B0 Recieve Data Register Full
+                      B1 Transmit Data Register Empty
+                      B2 Data Carrier Detect
+                      B3 Clear To Send
+                      B4 Framing Error
+                      B5 Reciever Overrun
+                      B6 Parity Error
+                      B7 Interrupt Request
+
+
+-----------------------------------------------------------------------------
+getchar()           reads character from ACIA, echoes back to terminal
+-----------------------------------------------------------------------------
+  example,
+
+  char ch;
+  puts("1  Word Processor");
+  puts("2  Exit to OS\n");
+  puts("Enter choice-->");
+  ch = getchar();
+  switch( ch ) {
+
+
+------------------------------------------------------------------------------
+getchne()           reads character from ACIA, does NOT ECHO
+-----------------------------------------------------------------------------
+  example,
+
+  char ch;
+  puts("Press spacebar to contine");
+  ch = getchne();
+  while( ch != ' ' )
+   ch = getchne();
+
+
+------------------------------------------------------------------------------
+getint()            reads integer from ACIA
+------------------------------------------------------------------------------
+  example,
+
+  int number;
+  number = getint();
+
+
+ACIA ROUTINES
+------------------------------------------------------------------------------
+gets()              reads a string from the ACIA, null terminates
+------------------------------------------------------------------------------
+  example,
+
+  char buffer[80];
+  gets( buffer );
+
+
+------------------------------------------------------------------------------
+initacia()          initialises ACIA to 9600,n,8,1
+------------------------------------------------------------------------------
+  example,
+
+  initacia();
+  puts("Hello and welcome");
+
+
+-----------------------------------------------------------------------------
+kbhit()             check for character available, returns 1 if character
+                    ready,  returns 0 if no character available
+-----------------------------------------------------------------------------
+
+  example,
+
+  char ch;
+  initacia();
+  while( kbhit() == 0 )
+   ;
+  ch = getchar();
+
+
+-----------------------------------------------------------------------------
+putchar(data)       writes a character to ACIA
+char data;
+ ------------------------------------------------------------------------------
+  example,
+
+  char ch;
+  ch = 'Z';
+  putchar('A');
+  putchar(ch);
+
+
+ACIA ROUTINES
+
+------------------------------------------------------------------------------
+putint(value)       writes integer to ACIA
+int value;
+------------------------------------------------------------------------------
+  example,
+
+  int number;
+  number = 1234;
+  putint( number ); putnl();
+
+
+------------------------------------------------------------------------------
+putnl(value)        writes CR/LF to ACIA
+int value;
+------------------------------------------------------------------------------
+  example,
+
+  int number;
+  number = 1234;
+  putint( number ); putnl();
+
+
+------------------------------------------------------------------------------
+puts(string)        writes a string to ACIA, followed by CR/LF
+char *string;
+------------------------------------------------------------------------------
+  example,
+
+  puts("Hello and welcome.");
+
+  puts() accepts the following special characters.
+   \n newline
+   \r carriage return
+   \t tab
+   \v vertical tab
+   \\ backslash
+   \" quote
+   \' single quote
+
+
+
+CTYPE.H       The following routines are implemented as functions.
+
+
+------------------------------------------------------------------------------
+isalnum(ch)         checks for alpanumeric, A-Z, a-z and 0-9
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = '0';
+  if( isalnum(ch) )
+   writeln("character is alphanumeric");
+
+
+------------------------------------------------------------------------------
+isalpha(ch)         checks for alphabetic, A-Z, a-z
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = 'l';
+  if( isalpha(ch) )
+   writeln("character is alphabetic");
+
+
+------------------------------------------------------------------------------
+isascii(ch)         checks for ascii, 0x00 - 0x7f
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = 0xf3;
+  if( isascii(ch) )
+   writeln("character is ascii");
+  else
+   writeln("character is not ascii");
+
+
+------------------------------------------------------------------------------
+iscntrl(ch)         checks for a control code, 0x00 - 0x1f
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  if( iscntrl(ch) )
+    writeln("Control keys not accepted.");
+
+
+CTYPE.H routines
+
+------------------------------------------------------------------------------
+isdigit(ch)         checks for a digit 0-9
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  writeln("Enter a non-digit.");
+  ch = getchar();
+  while( !isdigit(ch) )
+    ch = getchar();
+
+
+------------------------------------------------------------------------------
+isgraph(ch)         checks for a printable character, excluding a space
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  if( isgraph(ch) )
+   prnchar(ch);  /*print it*/
+
+
+------------------------------------------------------------------------------
+islower(ch)         checks for lowercase
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = 'l';
+
+  if( islower(ch) )
+   toupper(ch); /*convert to uppercase*/
+
+
+------------------------------------------------------------------------------
+isprint(ch)         checks for a printable character 0x20-0x7e
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  if( isprint(ch) )
+    prnchar(ch);  /*print character*/
+
+
+ CTYPE.H routines
+
+------------------------------------------------------------------------------
+ispunct(ch)         checks for punctuation characters (iscntrl | isspace)
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  if( ispunct(ch) )
+    puts("Punctuation sysmbols not accepted.");
+
+
+------------------------------------------------------------------------------
+isspace(ch)         checks for space, tab, /r, /n, /v, formfeed
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  while( isspace(ch) )
+   ch = getchar();
+
+
+------------------------------------------------------------------------------
+isupper(ch)         checks for uppercase
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  if( isupper(ch) )
+   toupper(ch);  /*convert to uppercase*/
+
+
+------------------------------------------------------------------------------
+isxdigit(ch)        checks for a hexidecimal digit
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  whilef( !isxdigit(ch) )
+  {
+   puts("Please enter a hex digit");
+   ch = getchar();
+  }
+
+
+
+ CTYPE.H routines
+
+
+------------------------------------------------------------------------------
+toascii(ch)         converts a character to ascii
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+
+  ch = getchar();
+  ch = toascii(ch);
+
+
+------------------------------------------------------------------------------
+tolower(ch)         converts character to lowercase
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20], *ptr;
+
+  strcpy( buff, "HELLO AND WELCOME");
+  ptr = buff;
+  while( *ptr++ )
+   *ptr = tolower(*ptr);
+
+
+------------------------------------------------------------------------------
+toupper(ch)         converts character to uppercase
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20], *ptr;
+
+  strcpy( buff, "Hello and welcome");
+  ptr = buff;
+  while( *ptr++ )
+   *ptr = toupper(*ptr);
+
+
+------------------------------------------------------------------------------
+int atoi(string)    converts a string to an integer
+char *string;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+  int x;
+
+  strcpy(buff, "1234");
+  x = atoi(buff);
+
+
+CTYPE.H Routines
+
+------------------------------------------------------------------------------
+itoa(value, buffer)  converts an integer to a string
+int value;
+char *buffer;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+  int x;
+
+  x = 200;
+  itoa(x, buff);
+
+
+DIOBOARD.H
+The following routines interface to CIT's DIOBoard and associated panel, which
+also needs +12v to work correctly.
+
+
+------------------------------------------------------------------------------
+initdio()           initialises DIO Board
+------------------------------------------------------------------------------
+  example,
+
+  initdio();
+
+
+------------------------------------------------------------------------------
+readanalog()        reads analog channel value
+------------------------------------------------------------------------------
+  example,
+
+  char chn0;
+  int millivolts;
+
+  chn0 = readanalog( 0 );
+  millivolts = chn0 * 20;
+
+
+------------------------------------------------------------------------------
+readkey()           scans key matrix, returning '0' - 'F'
+------------------------------------------------------------------------------
+  example,
+
+  char key;
+  key = readkey();
+  if( key == '0' ) { 
+
+
+------------------------------------------------------------------------------
+readswitch()        reads switches from DIO panel
+------------------------------------------------------------------------------
+  example,
+
+  char switches;
+  switches = readswitch();
+  if( switches & 1 ) {   /* select D0 */
+
+
+------------------------------------------------------------------------------
+writeleds(val)      writes to the leds on DIO panel
+char val;
+------------------------------------------------------------------------------
+  example,
+
+  char leds;
+  leds = 0xff;   /* turn on all leds */
+  writeleds( leds );
+
+
+DIOBOARD Routines
+
+------------------------------------------------------------------------------
+writeseg(seg)       writes to the seven segment display '0' to 'f'
+char seg;
+------------------------------------------------------------------------------
+  example,
+
+  char seg;
+  seg = 'f';   /* display F on seven seg display */
+  writeseg( seg );
+
+
+HERCS.H
+uses the following GLOBAL variables,
+  char cursx, cursy;
+
+ and provides the following routines,
+
+
+------------------------------------------------------------------------------
+clrscr()            clears video memory
+------------------------------------------------------------------------------
+  example,
+
+  clrscr();
+
+
+------------------------------------------------------------------------------
+gotoxy(x,y)         positions cursor at x,y co-ordinates
+int x, y;
+------------------------------------------------------------------------------
+  example,
+
+  gotoxy( 10, 20 );
+
+
+------------------------------------------------------------------------------
+home()              positions cursor at 0,0
+ ------------------------------------------------------------------------------
+  example,
+
+  home();
+
+
+------------------------------------------------------------------------------
+initvideo()         initialises hercs card for text mode
+------------------------------------------------------------------------------
+  example,
+
+  initvideo();
+
+
+------------------------------------------------------------------------------
+scrollup()          scrolls video up one line, leaves cursor at 0,24
+------------------------------------------------------------------------------
+  example,
+
+  scrollup();
+
+
+HERCS Routines
+
+-----------------------------------------------------------------------------
+write(string)       writes a null terminated string to the video
+char *string;       starting at current cursor position.
+------------------------------------------------------------------------------
+  example,
+
+  write("hello and welcome");
+
+
+------------------------------------------------------------------------------
+writeattr(string, attr)   writes a null terminated string to the
+char *string, attr;       video starting at current cursor position.
+------------------------------------------------------------------------------
+  example,
+
+  writeattr("hello and welcome", NORMAL);
+
+see function writecharattr() for a description of the string attributes.
+
+
+------------------------------------------------------------------------------
+writecharattr(ch, attrib)  writes character and attribute to current
+char ch, attrib;           cursor position, updates cursor after write
+------------------------------------------------------------------------------
+  example,
+
+  char ch, attr;
+
+  ch = 'A';
+  attr = 0x07;
+  writecharattr( ch, attr );
+
+ The following video attributes are also defined in HERCS.H
+  BLINKING
+  BOLD
+  NORMAL
+  REVERSE
+  UNDERLINE
+
+  example,  writecharattr( 'Z', BLINKING );
+
+
+------------------------------------------------------------------------------
+writeln(string)     writes a null terminated string to the video starting at
+char *string;       current cursor position, followed by a newline.
+------------------------------------------------------------------------------
+  example,
+
+  writeln("hello and welcome");
+
+
+ HERCS.H Routines
+
+
+------------------------------------------------------------------------------
+writehexbyte(data)  writes the character as ascii hex bytes at current
+char data;          cursor location.
+------------------------------------------------------------------------------
+  example,
+
+  char data;
+  data = 0xfe;
+  writehexbyte( data );
+
+
+------------------------------------------------------------------------------
+writeint(value)     writes an integer value to current cursor
+int value;          position
+------------------------------------------------------------------------------
+  example,
+
+  int sum;
+  sum = 1234;
+  gotoxy( 10,20 );
+  writeint( sum );
+
+
+
+MCRDRV.H
+These routines control a magnetic card reader attatched to the DIO board via
+PORT C.
+
+------------------------------------------------------------------------------
+initmcr()           initializes the magnetic card reader (8255 PPI)
+------------------------------------------------------------------------------
+ example,
+  initmcr();
+
+
+------------------------------------------------------------------------------
+sensecard()         returns 1 if a card is inserted into the reader
+------------------------------------------------------------------------------
+ example,
+  initmcr();
+  while( sensecard() == 0 )
+   ;
+
+
+------------------------------------------------------------------------------
+readcard()          reads the card inserted in the reader
+------------------------------------------------------------------------------
+ example,
+  initmcr();
+  while( sensecard() == 0 )
+   ;
+  readcard();
+
+
+------------------------------------------------------------------------------
+decodecard()        decodes the card
+------------------------------------------------------------------------------
+ example,
+  char card[81];
+  initmcr();
+  while( sensecard() == 0 )
+   ;
+  readcard();
+  if( decodecard(card) ) {
+   write("The card is -->");
+   writeln( card );
+  }
+
+
+MEMORY.H
+The following routines provide for memory manipulation.
+
+
+------------------------------------------------------------------------------
+ getvect(vector)   returns address stored in interrupt vector
+ int *vector;
+------------------------------------------------------------------------------
+  example,
+
+  int oldintvect;
+
+  oldintvect = getvect( 0xfffa );
+
+
+------------------------------------------------------------------------------
+ peek(address)   returns byte at memory location
+ char *address;
+------------------------------------------------------------------------------
+  example,
+  
+  char ch;
+  ch = peek( 0x1000 );
+
+
+------------------------------------------------------------------------------
+ poke(address,value)  writes value to memory location
+ char *address;
+ char value;
+------------------------------------------------------------------------------
+  example,
+
+  int x;
+  for( x = 0x1000; x <= 0x1ffff; x++ )
+   poke( x, 0xA5 );
+
+
+------------------------------------------------------------------------------
+memchr(src,chr,len)  searches area pointed to by src of len bytes for
+char *src, chr;      chr returning an int (which can be used as a char *)
+int len;
+------------------------------------------------------------------------------
+  example,
+
+  char *ptr, *src, ch;
+  int length;
+
+  ch = 'A';
+  length = 0x1000;
+  src = 0x2000;
+  ptr = memchr(src,ch,length);
+  if( ptr == 0 )
+   puts("Not found.");
+
+
+
+MEMORY.H Routines
+
+------------------------------------------------------------------------------
+ memcmp(lhs,rhs,len)  compares two memory areas for equality
+ char *lhs, *rhs;
+ int len;
+------------------------------------------------------------------------------
+  example,
+
+  int equal;
+
+  equal = memcmp(0x200,0x300,0x20);
+  if( equal == 0 )
+   puts("the blocks are the same.");
+
+
+------------------------------------------------------------------------------
+ memcpy(dest,src,len)  copies len bytes from src to dest
+ char *dest, *src;
+ int len;
+------------------------------------------------------------------------------
+ example,
+
+  memcpy( 0x1000, 0x2000, 100 );
+
+
+------------------------------------------------------------------------------
+ memmov(dst,src,len)  copies len bytes from src to dst
+ char *dst, *src;
+ int len;
+------------------------------------------------------------------------------
+  example,
+
+  memmov( 0x1000, 0x2000, 100 );
+
+
+------------------------------------------------------------------------------
+ memrev(dst,src,len)  copies len bytes from src to dst, in reverse order
+ char *dst, *src;
+ int len;
+------------------------------------------------------------------------------
+  example,
+
+  memrev( 0x1000, 0x2000, 100 );
+
+
+------------------------------------------------------------------------------
+ memset(dst,chr,len)  fills dst with chr for len bytes
+ char *dst, chr;
+ int len;
+------------------------------------------------------------------------------
+  example,
+
+  memset( 0x1000, 0x33, 100 );
+
+
+ MEMORY.H routines
+
+
+------------------------------------------------------------------------------
+ setvect(vector,function)   sets interrupt vector to address of
+ int *vector, *function;     function name
+------------------------------------------------------------------------------
+  example,
+
+  inthandler()  {
+  #asm
+   rti
+  #endasm
+  }
+
+  main() {
+   setvect(0xfffa, inthandler);
+   while( 1 ) ;
+  }
+
+
+ PRINTER.H
+ provides the following routines to control the printer port on a HERCS card.
+
+
+------------------------------------------------------------------------------
+ initprn()   initialises printer port on HERCS card
+------------------------------------------------------------------------------
+  example,
+
+  initprn();
+
+
+------------------------------------------------------------------------------
+ prnchar()   writes a character to the printer port on HERCS card
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+  ch = 'Z';
+  initprn();
+  prnchar('A');
+  prnchar( ch );
+
+
+------------------------------------------------------------------------------
+ prnstatus()   returns status of printer port on HERCS card
+------------------------------------------------------------------------------
+  example,
+
+  char status;
+  status = prnstatus();
+
+
+  The bits of status are  B0 Time Out
+       B1 Unused
+       B2 Unused
+       B3 I/O Error
+       B4 Selected
+       B5 Out of Paper
+       B6 Acknowledge
+       B7 Busy
+
+
+ SERIAL.H
+ provides the following routines. The PC serial card requires +12v and -12v.
+
+
+------------------------------------------------------------------------------
+ init8250()   initialises PC-Serial Card to 9600,n,8,1
+------------------------------------------------------------------------------
+  example,
+
+  init8250();
+
+
+------------------------------------------------------------------------------
+ pcgetchar()   reads character from COM1, echoes back to terminal
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+  pcputs("1  Word Processor");
+  pcputs("2  Exit to OS");
+  pcputs("Enter choice-->");
+  ch = pcgetchar();
+  switch( ch ) {
+
+
+------------------------------------------------------------------------------
+ pcgetchne()   gets character from COM1, non-echo
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+  pcputs("Press spacebar to contine");
+  ch = pcgetch();
+  while( ch != ' ' )
+   ch = pcgetch();
+
+
+------------------------------------------------------------------------------
+ pcgets()   reads string from COM1, echoes back to terminal
+------------------------------------------------------------------------------
+  example,
+
+  char buffer[80];
+  pcgets( buffer );
+
+
+------------------------------------------------------------------------------
+ pcgetint()   reads integer from COM1, echoes back to terminal
+------------------------------------------------------------------------------
+  example,
+
+  int temp;
+  temp = pcgetint();
+
+
+ SERIAL.H routines
+
+
+------------------------------------------------------------------------------
+ pckbhit() check for character available, returns 1 if character ready,
+  returns 0 if no character available
+------------------------------------------------------------------------------
+
+  example,
+
+  char ch;
+  init8250();
+  while( pckbhit() == 0 )
+   ;
+  ch = pcgetchar();
+
+
+------------------------------------------------------------------------------
+ pcputchar(data)  writes a character to COM1
+ char data;
+------------------------------------------------------------------------------
+  example,
+
+  char ch;
+  ch = 'Z';
+  pcputchar('A');
+  pcputchar(ch);
+
+
+------------------------------------------------------------------------------
+ pcputint(value)  writes an integer value to COM1
+ int value;
+------------------------------------------------------------------------------
+  example,
+
+  int value;
+  value = 1223;
+  pcputint( value );
+
+
+------------------------------------------------------------------------------
+ pcputs(string)  writes a string to COM1, followed by CR/LF
+ char *string;
+------------------------------------------------------------------------------
+  example,
+
+  pcputs("Hello and welcome.");
+
+  puts() accepts the following special characters.
+   \n newline
+   \r carriage return
+   \t tab
+   \v vertical tab
+   \\ backslash
+   \" quote
+   \' single quote
+
+ SERIAL.H routines
+
+
+------------------------------------------------------------------------------
+ pcstatus()   returns Line Status Register status of COM1
+------------------------------------------------------------------------------
+  example,
+
+  char status;
+  status = pcstatus();
+
+
+  The associated bits are
+   B0 Data Ready
+   B1 OverRun Error
+   B2 Parity Error
+   B3 Framing Error
+   B4 Break Interrupt
+   B5 Transmit Buffer Empty
+   B6 TX Shift Register Empty
+   B7 0
+
+
+
+ STRINGS.H
+ provides the following routines,
+
+
+------------------------------------------------------------------------------
+ strcat(string1, string2)   concatenates string2 onto the end of
+ char *string1, *string2;   string1
+------------------------------------------------------------------------------
+  example,
+
+  char buff1[40], buff2[20];
+
+  strcpy(buff1, "Hello ");
+  strcpy(buff2, "and welcome.");
+  strcat(buff1, buff2);
+
+
+------------------------------------------------------------------------------
+ strcmp(string1, string2)  compares two strings for equality.
+ char *string1, *string2;   returns 0 if strings are equal, 1 otherwise
+------------------------------------------------------------------------------
+  example,
+
+  if( strcmp("hello", "hello") == 0)
+   puts("Both strings are the same.");
+
+
+------------------------------------------------------------------------------
+ strcpy(string1, string2)   copies string2 into string1
+ char *string1, *string2;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+
+  strcpy(buff, "Hello and welcome.");
+
+
+------------------------------------------------------------------------------
+ stricmp(str1,str2)    compares two strings for equality, 
+ char *str1,*str2;    ignoring case. returns 0 if equal, 1 otherwise
+------------------------------------------------------------------------------
+  example,
+
+  if( stricmp("HELLO","hello") == 0)
+   puts("Both strings are the same.");
+
+
+ STRINGS.H routines
+
+------------------------------------------------------------------------------
+ strlen(str)     returns length of string
+ char *s;
+------------------------------------------------------------------------------
+  example,
+
+  int x,
+
+  x = strlen("Hello and welcome.");
+  printf("The length of the string is %d\n", x);
+
+
+------------------------------------------------------------------------------
+ strncat(str1,str2,n)   appends n characters of string2 onto the 
+ char *str1, *str2;    end of string1.
+ int n;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+
+  strcpy(buff, "Hello");
+  strncat(buff, "and welcome", 3 );
+
+
+------------------------------------------------------------------------------
+ strncmp(str1,str2,n)   compares n characters of string2 against
+ char *str1, *str2;    string1. returns 0 if equal, 1 otherwise
+ int n;
+------------------------------------------------------------------------------
+  example,
+
+  if( strncmp("hello1", "hello2", 5) == 0)
+   puts("Both strings are the same.");
+
+
+------------------------------------------------------------------------------
+ strncpy(str1,str2,n)   copies n characters of string2 into string1.
+ char *str1, *str2;
+ int n;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+
+  strncpy(buff, "Hello and welcome", 5);
+
+
+STRING.H Routines
+
+------------------------------------------------------------------------------
+ strrev(string)    reverses the characters in a string
+ char *string;
+------------------------------------------------------------------------------
+  example,
+
+  char buff[20];
+
+  strcpy(buff,"Hello and welcome.");
+  strrev(buff);
+  writelnstr(buff,0x07);
+
+
+POD Software
+This software is useful for downloading code directly into the target systems
+memory. It requires the use of the POD hardware, which connects to CIT's
+Digital I/O board via a ribbon cable. The other part of the POD unit plugs
+directly across the target processor.
+
+
+When invoking the POD software, it accepts a command line argument which
+specifies the download software (Motorola S1 record file).
+
+
+$ pod filename.bin
+MS-DOS POD Hardware, Version 1.02
+
+ MON:>
+ Options are:
+ ============
+
+     Halt The Processor  ......... "H" or "h"
+     Reset The Processor ......... "R" or "r"
+     Initialize the POD  ......... "I" or "i"
+     Load The Program    ......... "L" or "l"
+     Verify The Program  ......... "V" or "v"
+     Run The Processor   ......... "G" or "g"
+     Display Memory      ......... "D" or "d"
+     Set Memory          ......... "S" or "s"
+     Quit the Monitor    ......... "Q" or "q"
+
+
+ MON:>
+
+
+The normal sequence of options will be
+
+ R
+ I
+ L
+ G
+
+
+If code for the processors RESET vector is not included, it will be necessary to set the reset vector manually using the S option before executing G.
+
+
+
+CREATING INTERRUPT ROUTINES
+Though the compiler does not accept functions of type interrupt, these can
+easily be created. Consider the following code which handles the SWI vector.
+
+
+#include startup.h
+#include hercs.h
+#include memory.h
+
+#code
+
+swihandler()
+{
+        writeln("Entered SWI routine.");
+#asm    rti
+#endasm
+}
+
+main()
+{
+        int loop;
+        initvideo();
+        home();
+        clrscr();
+        setvect( 0xfffa, swihandler );
+        writeln("TESTING SWI HANDLER FOR FIVE ITERATIONS");
+        for( loop = 0; loop < 5; loop++ )   {
+#asm
+           swi
+#endasm
+        }
+}
+
+
+INITIALIZATION CODE
+Target code normally resides within specific memory areas, such as EPROM. The 6809 processor board has memory mapped as
+
+
+ Address      Type              C Directive      Assembler Directive
+ 0000 - 7fff  Stack/data/code   #data            .area  RAMDATA (REL,CON)
+ C000 - ffff  Code/constants    #code            .area  ROMCODE (REL,CON)
+                                #const           .area  CONST   (REL,CON)
+
+
+
+
+POWER ON RESET VECTOR
+When power is turned on, or upon a RESET, the 6809 processor fetches the
+address of the next instruction from locations fffe and ffff. The address of
+the instruction (which is normally the startup code for the C program) should
+be included into the C source.
+
+
+#asm .area _CODE (ABS,OVR)
+   .org 0hfffe
+   .dw  0hC000
+#endasm
+
+
+This is automatically inserted by the header file startup.h
+
+
+
+ORIGIN OF C CODE
+This can be handled using the header file startup.h which defines relocatable
+segments for the assembler/linker tools. The base address of the C code is
+specified when running aslink, using the format
+
+  -bROMCODE=0h....
+
+
+
+STACK INITIALIZATION AND ENTRY TO C MAIN FUNCTION
+The C compiler does not initialize the stack or provide for the processor to
+automatically start execution at the main function. The code to perform this
+is handled by the header file startup.h
+
+
+
+STARTUP.H
+The header file startup.h
+ - initialises the reset vector to 0hc000
+ - initialises the stack pointer to 0h7000
+ - jumps to main
+
+A user can alter the values of the stack location and entry addresses to suit
+their own requirements.
+
+
+
+DATA VARIABLES
+The data variables supported are
+
+ uninitialised globals - reside in RAMDATA and can be modified
+ initialised globals - reside in ROMDATA, cannot be modified
+ uninitialised locals - reside on the stack with each function
+
+
+The #data directive defines variables of type RAMDATA.
+
+The #const directive defines variables of type ROMDATA. This is ideal for
+lookup tables etc.
+
+
+BEWARE
+
+ #const
+ int videoregs[16] = { 10,20,86,7,8,0,0 };
+
+ modify()
+ {
+  videoregs[5] = 7;  /* won't work, trying to alter rom */
+
+
+
+TEST ROUTINES FOR THE VARIOUS HEADER DRIVERS
+
+
+/* TSTACIA.C  connect terminal to on-board ACIA */
+#include startup.h
+#include acia.h
+
+#code
+main()
+{
+        int temp, loop;
+        char data, buffer[80];
+
+        initacia();
+        puts("initialising acia to 9600,n,8,2");
+        while(1) {
+                puts("Hello there  TESTING ACIA.H ROUTINES");
+                puts("Entering terminal routine now, Press @ to escape");
+                data = getchar();
+                while( data != '@' )  data = getchar();
+
+                puts(" ");
+                puts("Checking for keypress");
+                while( kbhit() == 0 )          puts("No key pressed.");
+                puts("The keypress was --->"); data = getchar();
+                puts(" ");
+
+                puts("Testing getchne() routines, NONECHO, type @ to exit");
+                loop = 0;
+                data = getchne();
+                while( data != '@' )    {
+                        buffer[loop] = data;
+                        data = getchne();
+                        loop++;
+                }
+                buffer[loop] = '\0';
+                puts("What you typed was ");
+                puts( buffer );
+
+                puts("Testing puts character handling routines");
+                puts("\fform feed");
+                puts("\\backslash");
+                puts("\ttab space");
+                puts("\rcarriage return");
+                puts("\nnewline");
+                puts("Hello\bo backspace");
+                puts("\' single quote");
+
+                puts("Testing putint() routine for 1 to 10");
+                for( temp = 1; temp <= 10; temp++ )
+                        putint( temp );
+                putnl();
+
+                puts("Enter in a string of characters ");
+                gets( buffer );
+                puts("The string you typed was ");
+                puts( buffer );
+
+                puts("Enter a numeric integer");
+                temp = getint();
+                puts("The number you entered was ");
+                putint( temp ); putnl();
+
+                data = aciastatus();
+                puts("The status of the ACIA is");
+                buffer[0] = ((data & 0xf0) >> 4) + '0';
+                buffer[1] = (data & 0x0f) + '0';
+                if( buffer[0] > '9' ) buffer[0] = buffer[0] + 7;
+                if( buffer[1] > '9' ) buffer[1] = buffer[1] + 7;
+                buffer[2] = '\0';
+                puts( buffer );
+        }
+}
+
+/* TSTCTYPE.C  connect HERCS card and monitor */
+#include startup.h
+#include hercs.h
+#include ctype.h
+
+#code
+main()
+{
+   char buff[20], ch;
+   int value;
+
+   initvideo();        home();
+   clrscr();           writeln("Hello there");
+
+   ch = 0x20;
+   if( isascii(ch) ) writeln("ch=0x20 isascii");
+   ch = 0x83;
+   if( isascii(ch) ) writeln("ch=0x83 isascii");
+   else writeln("ch=0x83 is not ascii");
+
+   ch = 0x00;
+   if( iscntrl(ch) ) writeln("ch=0x00 iscntrl" );
+   ch = 0x56;
+   if( iscntrl(ch) ) writeln("ch=0x56 iscntrl" );
+   else writeln("ch=0x56 is not cntrl" );
+
+   ch = '0';
+   if( isdigit(ch) ) writeln("ch='0' isdigit" );
+   ch = 'A';
+   if( isdigit(ch) ) writeln("ch='A' isdigit" );
+   else writeln("ch='A' is not digit" );
+
+   ch = '0';
+   if( isgraph(ch) ) writeln("ch='0' isgraph" );
+   ch = ' ';
+   if( isgraph(ch) ) writeln("ch=' ' isgraph" );
+   else writeln("ch=' ' is not graph" );
+
+   ch = 'a';
+   if( islower(ch) ) writeln("ch='a' islower" );
+   ch = 'A';
+   if( islower(ch) ) writeln("ch='A' islower" );
+   else writeln("ch='A' is not lower" );
+
+   ch = '0';
+   if( isprint(ch) ) writeln("ch='0' isprint" );
+   ch = 0x19;
+   if( isprint(ch) ) writeln("ch=0x19 isprint" );
+   else writeln("ch=0x19 is not print" );
+
+   ch = ' ';
+   if( ispunct(ch) ) writeln("ch=' ' ispunct" );
+   ch = 'A';
+   if( ispunct(ch) ) writeln("ch='A' ispunct" );
+   else writeln("ch='A' is not punct" );
+
+   ch = ' ';
+   if( ispunct(ch) ) writeln("ch=' ' ispunct" );
+   ch = 'A';
+   if( ispunct(ch) ) writeln("ch='A' ispunct" );
+   else writeln("ch='A' is not punct" );
+
+   ch = 0x0a;
+   if( isspace(ch) ) writeln("ch=0x0a isspace" );
+   ch = 'A';
+   if( isspace(ch) ) writeln("ch='A' isspace" );
+   else writeln("ch='A' is not space" );
+
+   ch = 'A';
+   if( isupper(ch) ) writeln("ch='A' isupper" );
+   ch = 'a';
+   if( isupper(ch) ) writeln("ch='a' isupper," );
+   else writeln("ch='a' is not upper" );
+
+   ch = 'A';
+   if( isxdigit(ch) ) writeln("ch='A' isxdigit" );
+   ch = 'S';
+   if( isxdigit(ch) ) writeln("ch='S' isxdigit," );
+   else writeln("ch='S' is not xdigit" );
+
+   ch = 'A';
+   if( isupper(ch) ) writeln("ch='A' isupper" );
+   ch = 'a';
+   if( isupper(ch) ) writeln("ch='a' isupper," );
+   else writeln("ch='a' is not upper" );
+
+   ch = 'A';
+   if( isalnum(ch) ) writeln("ch='A' isalnum" );
+   ch = '!';
+   if( isalnum(ch) ) writeln("ch='!' isalnum," );
+   else writeln("ch='!' is not alnum" );
+
+   ch = 'A';
+   if( isalpha(ch) ) writeln("ch='A' isalpha" );
+   ch = '0';
+   if( isalpha(ch) ) writeln("ch='0' isalpha," );
+   else writeln("ch='0' is not alpha" );
+
+   ch = 0xcf;                 ch = toascii(ch);
+   write("ch = ");            writecharattr( ch, 7);
+   writeln(" ");
+
+   ch = 'A';                  ch = tolower(ch);
+   writecharattr( ch, 7);     writeln(" ");
+
+   ch = 'a';                  ch = toupper(ch);
+   writecharattr(ch,7);       writeln(" ");
+
+   value = 0;                 value = atoi("1234");
+   itoa( value, buff );       writeln(buff);
+
+   while(1)
+      ;
+}
+
+
+/* TSTDIO.C  requires use of DIO card, +12V, +5V,  also HERCS card and monitor */
+#include startup.h
+#include hercs.h
+#include ctype.h
+#include dioboard.h
+
+#code
+main()
+{
+   char temp, ch, sw, analog, buffer[20];
+   int volts, v1;
+
+   initvideo();       home();         clrscr();
+   ch = '0';          temp = 0;       initdio();
+   while( 1 )   {
+      write("Writing to leds --->");  writehexbyte( temp );  writeln(" ");
+      writeleds( temp );              temp++;
+
+      write("Writing to seven segment display --->");
+      writecharattr( ch, NORMAL);     writeln(" ");
+      writeseg( ch );                 ch++;
+      if( ch == 0x3a ) ch = 'A';      if( ch == 'G' ) ch = '0';
+
+      write("The value read from the switches is --->");
+      sw = readswitch();  writehexbyte( sw );   writeln(" ");
+
+      write("The value read from analog channel 0 is --->");
+      analog = readanalog( 0 );
+      writehexbyte(analog);  writeln(" ");
+      v1 = analog & 0xff;
+      volts = v1 * 20;
+      itoa( volts, buffer );
+      write("which represents "); write( buffer );
+      writeln(" millivolts");
+
+      write("The key pressed was --->");    ch = readkey();
+      writecharattr( ch, BOLD);             writeln(" ");
+   }
+}
+
+/* TSTHERCS.C  requires hercs/monochrome adapter and monitor */
+#include startup.h
+#include hercs.h
+
+#code
+main()
+{
+   int value;
+   char data, *memory;
+
+   initvideo();        home();        clrscr();       memory = 0xC000;
+   while(1) {
+      writeln("Hello there");         value = 1234;   writeint( value );
+      writeln(" ");
+
+      value = -12345;                 writeint( value );
+      writeln(" ");
+
+      data = 0xfe;                    writehexbyte( data );
+      writeln(" ");
+
+      writeln("Contents of memory locations C000 -->");
+      for( value = 0; value < 32; value++ )    writehexbyte( memory[value] );
+      writeln(" ");
+
+      writeattr("Bold text", BOLD);                writeln(" ");
+      writeattr("Underlined text", UNDERLINE);     writeln(" ");
+      writeattr("Reversed text", REVERSE);         writeln(" ");
+      writeattr("Blinking text", BLINKING);        writeln(" ");
+  }
+}
+
+
+
+/* TSTMCRDR.C, requires Hercs card and monitor, DIO board (+12v), MCR */
+#include startup.int
+#include hercs.h
+#include mcrdrv.h
+
+#code
+main()
+{
+   char res[81];
+   initvideo();        initmcr();        clrscr();
+   writeln("Testing MCRDRV.H routines");
+   while( 1 )  {
+      writeln("Insert card in MCR slot");
+      if( sensecard() )  {
+          readcard();
+          if( decodecard( res ))  {
+              write("And the card was ---->");
+              write(res);     writeln(" ");
+          }
+          else writeln("Can't decode card");
+      }
+   }
+}
+
+
+/*TSTMEMORY.C, requires hercs card and monitor */
+#include startup.h
+#include hercs.h
+#include memory.h
+
+#code
+swihandler()
+{
+   writeln("Entered SWI routine.");
+#asm   rti
+#endasm
+}
+
+main()
+{
+   int vector, temp, loop;
+   char data, *memory, *src, *dst, source[20], destination[20];
+
+   initvideo();        home();        clrscr();
+   while(1) {
+      writeln("Hello there  TESTING MEMORY.H ROUTINES");
+      vector = getvect(0xfffe);
+      write("Interrupt vector at $fffe is --->");
+      data = (vector & 0xff00) >> 8;      writehexbyte(data);
+      data = (vector & 0x00ff);           writehexbyte(data);
+      writeln(" ");
+
+      write("Peek of $C000 is --->");     data = peek( 0xC000 );
+      writehexbyte(data);                 writeln(" ");
+      write("Peek of $C001 is --->");     data = peek( 0xC001 );
+      writehexbyte(data);                 writeln(" ");
+
+      writeln("Poking memory $1000 with 00 to $0f");
+      memory = 0x1000;
+      for( temp = 0; temp < 16; temp++ )   {
+         data = temp & 0xff;              poke(memory + temp, data);
+      }
+
+      write("Memory $1000 to $100F = ");
+      for( temp = 0; temp < 16; temp++)    {
+         data = peek( memory + temp );    writehexbyte( data );
+      }
+      writeln(" ");
+
+      writeln("Memchr searching for $04 starting at $1000");
+      src = memchr( 0x1000, 4, 16 );
+      if( src == 0 ) writeln("NOT FOUND");
+      else {
+          write("Value found at location ");
+          writehexbyte( (src & 0xff00) >> 8);
+          writehexbyte( (src & 0x00ff) );    writeln(" ");
+      }
+
+      writeln("Memchr searching for $04 starting at $1005");
+      src = memchr( 0x1005, 4, 16 );
+      if( src == 0 ) writeln("NOT FOUND");
+      else {
+          write("Value found at location ");
+          writehexbyte( (src & 0xff00) >> 8);
+          writehexbyte( (src & 0x00ff) );    writeln(" ");
+      }
+
+      write("Memcmp comparing $1000 and $1000 for 10bytes");
+      temp = memcmp( 0x1000, 0x1000, 10);
+      if( temp == 0 ) writeln(" is the same:::::");
+      else writeln(" is different:::::");
+
+      write("Memcmp comparing $1000 and $1004 for 10bytes");
+      temp = memcmp( 0x1000, 0x1004, 10);
+      if( temp == 0 ) writeln(" is the same:::::");
+      else writeln(" is different:::::");
+
+      writeln("Memmove from $1000 to $2000 for 10 bytes");
+      memmov( 0x2000, 0x1000, 10);
+      memory = 0x2000;
+      writeln("Memory at $2000 ---> ");
+      for( temp = 0; temp < 10; temp++)  {
+         data = peek( memory + temp );   writehexbyte( data );
+      }
+      writeln(" ");
+
+      writeln("MemRev from $1000 to $2000 for 10 bytes");
+      memrev( 0x2000, 0x1000, 10);
+      memory = 0x2000;
+      writeln("Memory at $2000 ---> ");
+      for( temp = 0; temp < 10; temp++)  {
+         data = peek( memory + temp );   writehexbyte( data );
+      }
+      writeln(" ");
+
+      writeln("MemSet starting at $2000 for 10 bytes with $A5");
+      memset( 0x2000, 0xa5, 10);
+      memory = 0x2000;
+      writeln("Memory at $2000 ---> ");
+      for( temp = 0; temp < 10; temp++)  {
+         data = peek( memory + temp );   writehexbyte( data );
+      }
+      writeln(" ");
+
+      writeln("Setvect of $fffa/b to main");
+      setvect( 0xfffa, main );
+      vector = getvect(0xfffe);
+      write("Interrupt vector at $fffa/b is --->");
+      data = (vector & 0xff00) >> 8;     writehexbyte(data);
+      data = (vector & 0x00ff);          writehexbyte(data);
+      writeln(" ");
+
+      setvect( 0xfffa, swihandler );
+      writeln("TESTING SWI HANDLER FOR FIVE ITERATIONS");
+      for( loop = 0; loop < 5; loop++ )  {
+#asm
+         swi
+#endasm
+      }
+   }
+}
+
+
+/* TSTPRINT.C, requires hercs card + monitor */
+#include startup.h
+#include hercs.h
+#include printer.h
+
+#const
+char msg[30] = "controlling a printer";
+
+#code
+main()
+{
+   char *ptr, status;
+   initvideo();        clrscr();        writeln("initialising printer");
+   initprn();
+   ptr = msg;          status = prnstatus() & 128;
+   while( status == 0 )  {
+      status = prnstatus() & 128;      write("printer busy -->");
+   }
+
+   while(1)   {
+      ptr = msg;
+      while( *ptr ) {
+         writecharattr(*ptr, BOLD);     prnchar( *ptr );     ptr++;
+      }
+      prnchar( 10 ); prnchar( 13 );
+   }
+}
+
+
+
+/* TSTSERIAL.C requires serial card, (+-12v) */
+#include startup.h
+#include serial.h
+
+#code
+main()
+{
+   int temp, loop;
+   char data, buffer[80];
+
+   init8250();    pcputs("initialising com1 to 9600,n,8,1");
+   while(1) {
+      pcputs("Hello there  TESTING SERIAL.H ROUTINES");
+      pcputs("Entering terminal routine now, Press @ to escape");
+      data = pcgetchar();
+      while( data != '@' )  data = pcgetchar();
+      pcputs(" ");
+
+      pcputs("Checking for keypress");
+      while( pckbhit() == 0 )  pcputs("No key pressed.");
+      pcputs("The keypress was --->");
+      data = pcgetchar();      pcputs(" ");
+
+      pcputs("Testing pcgetchne() routines, NONECHO, type @ to exit");
+      loop = 0;                data = pcgetchne();
+      while( data != '@' )  {
+         buffer[loop] = data;  data = pcgetchne();  loop++;
+      }
+      buffer[loop] = '\0';
+      pcputs("What you typed was ");  pcputs( buffer );
+
+      pcputs("Testing puts character handling routines");
+      pcputs("\fform feed");          pcputs("\\backslash");
+      pcputs("\ttab space");          pcputs("\rcarriage return");
+      pcputs("\nnewline");            pcputs("Hello\bo backspace");
+      pcputs("\' single quote");
+
+      pcputs("Testing putint() routine for 1 to 10");
+      for( temp = 1; temp <= 10; temp++ )     pcputint( temp );
+      pcputs(" ");
+
+      pcputs("Enter in a string of characters ");      pcgets( buffer );
+      pcputs("The string you typed was ");             pcputs( buffer );
+
+      pcputs("Enter a numeric integer");               temp = pcgetint();
+      pcputs("The number you entered was ");           pcputint( temp );
+      pcputs(" ");
+
+      data = pcstatus();
+      pcputs("The status of the ACIA is");
+      buffer[0] = ((data & 0xf0) >> 4) + '0';
+      buffer[1] = (data & 0x0f) + '0';
+      if( buffer[0] > '9' ) buffer[0] = buffer[0] + 7;
+      if( buffer[1] > '9' ) buffer[1] = buffer[1] + 7;
+      buffer[2] = '\0';               pcputs( buffer );
+   }
+}
+
+
+/* TSTSTRING.C requires hercs card and monitor */
+#include startup.h
+#include hercs.h
+#include strings.h
+
+#code
+main()
+{
+   char data, source[80], destination[80];
+   int length;
+
+   initvideo();        home();        clrscr();
+   while(1) {
+      writeln("TESTING STRING.H ROUTINES");
+      strcpy( destination, "String copy works");
+      write("testing strcpy function -->");
+      writeln( destination );
+
+      strcpy( source, " and so does strcat.");
+      strcat( destination, source );
+      write("testing strcat function -->");
+      writeln( destination );
+
+      length = strlen( destination );
+      write("The length of the dest string is -->");
+      writeint( length );                writeln(" ");
+
+      strcpy( destination, "123456789");
+      strrev( destination );
+      write("The dest string reversed is --->");
+      writeln( destination );
+
+      strcpy( destination, "1234567890");
+      strrev( destination );
+      write("The dest string reversed is --->");
+      writeln( destination );
+
+      strcpy( destination, "hello there");
+      strcpy( source, "HEllo. My name is");
+      if( stricmp( destination, source ) == 0 )
+          writeln("hello there and HEllo. My name with stricmp failed.");
+      else
+          writeln("stricmp() detected difference in hello there and Hello. My\
+                   name is");
+
+      strcpy( destination, "hello");
+      strcpy( source, "HEllo");
+      if( stricmp( destination, source ) == 0 )
+          writeln("hello and HEllo with stricmp works");
+      else writeln("problem in stricmp()");
+
+      strcpy( destination, "HELLO1");
+      strcpy( source, "HELLO2");
+      if( strncmp( destination, source, 5) == 0 )
+          writeln("HELLO1 and HELLO2 for 5 chars works with strncmp");
+      else writeln("problem in strncmp()");
+
+      strcpy( destination, "HELLO1");
+      strcpy( source, "HELLO2");
+      if( strncmp( destination, source, 6) == 0 )
+          writeln("HELLO1 and HELLO2 for 6 chars failed with strncmp");
+      else writeln("problem in strncmp() detected HELLO1 and HELLO2 as same");
+
+      strcpy( destination, "Hello and ");
+      strncat( destination, "welcome to the MC6809", 9);
+      writeln("Using strncat it should print Hello and welcome t");
+      writeln( destination );
+
+      writeln("Using strncpy it should now add o the MC6809");
+      strncpy( destination, "o the MC6809's C", 12);
+      writeln( destination );
+
+      writeln(" " );
+   }
+}
+
+
+APPENDIX A USING THE CCOMPILER WITH AS9
+
+1. Include the following as the first line of your source.
+
+  #define  AS9  1
+  #include startup.h
+
+
+NOTE: The symbol AS9 must be defined as non-zero before the inclusion of the
+startup.h header file.
+
+
+2. To run the assembler, type
+
+  AS9  cfile.asm  c.asm > cfile.lst
+
+
+ which generates a file called m.out which consists of motorola S records.
+
+
+3. Refer to detailed instructions in the AS9 manual for assembler directives
+   and their format.
+

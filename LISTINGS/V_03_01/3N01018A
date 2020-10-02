@@ -1,0 +1,251 @@
+/* tech.c
+   An "international" sort example program.
+   Author:   Peter Gulutzan, Ocelot Computer Services Inc. (403) 421-4187
+   Date:     March 17, 1991
+   For:      TECH Specialist
+   Language: C (tested with Borland C++ and Zortech C++ compilers)
+             (If compiling with Zortech: remove the "#include <mem.h>" line)
+   Remarks:  This program will ask the alphabet to use.  Then it opens the
+             file INPUT.TXT, translates the strings in it to coded
+             tags, sorts with the standard qsort() routine supplied by the
+             compiler manufacturer, and outputs to file OUTPUT.TXT.
+   Limits:   Tags are chopped to be a maximum 20-character size: MAXTAGSIZE.
+             Only Characters are sorted.  Digits and punctuation go low.
+             The maximum number of tags is 1000: MAXTAGS.
+             Qsort() requires that all the tags be in RAM.
+   Note:     This only covers a few sets (French, Danish, German, Polish
+             and Spanish) to show how it can be done. */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <mem.h>        /* Remove this line if compiling with Zortech */
+
+#define MAXTAGS         1000
+#define MAXTAGSIZE      20
+#define M               (MAXTAGSIZE)
+
+#define FRENCH  0
+#define DANISH  1
+#define GERMAN  2
+#define POLISH  3
+#define SPANISH 4
+
+/* Definitions of plain-text equivalents.
+   Note how we leave interstices, e.g. A=3, B=6, C=9 etc. */
+#define __      1                               /* "unknown" or blank */
+#define A_      __+2
+#define B_      A_+3
+#define C_      B_+3
+#define D_      C_+3
+#define E_      D_+3
+#define F_      E_+3
+#define G_      F_+3
+#define H_      G_+3
+#define I_      H_+3
+#define J_      I_+3
+#define K_      J_+3
+#define L_      K_+3
+#define M_      L_+3
+#define N_      M_+3
+#define O_      N_+3
+#define P_      O_+3
+#define Q_      P_+3
+#define R_      Q_+3
+#define S_      R_+3
+#define T_      S_+3
+#define U_      T_+3
+#define V_      U_+3
+#define W_      V_+3
+
+#define X_      W_+3
+#define Y_      X_+3
+#define Z_      Y_+3
+
+  /* The first 128 characters are always the same as defined in  7-bit ASCII.
+     Note how we use leave interstices, e.g. A=3, B=6, C=9, etc. */
+  char base[128]=  {0,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  A_,  B_,  C_,  D_,  E_, 
+                   G_,  H_,  I_,  J_,  K_,  L_,  M_,  N_,  O_,  P_,
+                   P_,  Q_,  R_,  S_,  T_,  U_,  V_,  W_,  X_,  Y_, 
+                   Z_,  __,  __,  __,  __,  __,  __,  A_,  B_,  C_, 
+                   D_,  E_,  F_,  G_,  H_,  I_,  J_,  K_,  L_,  M_, 
+                   N_,  O_,  P_,  Q_,  R_,  S_,  T_,  U_,  V_,  W_, 
+                   X_,  Y_,  Z_,  __,  __,  __,  __,  __};
+  /* Extended characters for French (assumes code page 437) */
+  char _fren[128]={C_,  U_, 
+                   E_,  A_,  A_,  A_,  A_,  C_,  E_,  E_,  E_,  I_, 
+                   I_,  I_,  A_,  A_,  E_,  __,  __,  O_,  O_,  O_, 
+                   U_,  U_,  Y_,  O_,  U_,  __,  __,  __,  __,  __, 
+                   A_,  I_,  O_,  U_,  N_,  N_,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __};
+  /* Extended characters for Danish (assumes code page 865)
+     NB: Some provision is made for other Scandinavian sets, e.g. 231
+     would be the Icelandic thorn if you were using code page 861. */
+  char _dani[128]={C_,  U_,
+                   E_,  A_,5+Z_,  A_,4+Z_,  C_,  E_,  E_,  E_,  I_, 
+                   I_,  I_,5+Z_,4+Z_,  E_,2+Z_,2+Z_,  O_,6+Z_,  O_, 
+                   U_,  U_,  Y_,6+Z_,  U_,3+Z_,  __,3+Z_,  __,  __, 
+                   A_,  I_,  O_,  U_,  N_,  N_,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,1+Z_,1+Z_,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __};
+  /* Extended characters for Spanish (assumes code page 437) */
+  char _span[128]={C_,  U_,
+                   E_,  A_,  A_,  A_,  A_,  C_,  E_,  E_,  E_,  I_, 
+                   I_,  I_,  A_,  A_,  E_,  __,  __,  O_,  O_,  O_, 
+                   U_,  U_,  Y_,  O_,  U_,  __,  __,  __,  __,  __, 
+                   A_,  I_,  O_,  U_,1+N_,1+N_,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  __,  __,  __,  __,  __};
+  /* Extended characters for Polish (assumes code page 852) */
+  char _poli[128]={C_,  U_,
+                   E_,  A_,  A_,  U_,1+C_,  C_,1+L_,  E_,  O_,  O_, 
+                   I_,1+Z_,  A_,1+C_,  E_,  L_,  L_,  O_,  O_,  L_, 
+                   L_,1+S_,1+S_,  O_,  U_,  T_,  T_,1+L_,  X_,  C_, 
+                   A_,  I_,1+O_,  U_,1+A_,1+A_,  Z_,  Z_,1+E_,1+E_, 
+                   __,1+Z_,  C_,  S_,  __,  __,  __,  __,  __,  __, 
+                   __,  A_,  A_,  E_,  S_,  __,  __,  __,  __,2+Z_, 
+                 3+Z_,  __,  __,  __,  __,  __,  __,  __,  A_,  A_, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  D_,  D_, 
+                   D_,  E_,  D_,  N_,  I_,  I_,  E_,  __,  __,  __, 
+                   __,  T_,  U_,  __,1+O_,  __,  O_,  N_,  N_,  N_, 
+                   S_,  S_,  R_,  U_,  R_,  U_,  Y_,  Y_,  T_,  __, 
+                   __,  __,  __,  __,  __,  __,  __,  __,  __,  __, 
+                   __,  U_,  R_,  R_,  __,  __};
+
+  char code_set[256];           /* e.g. = base + lan00 sets. */
+  unsigned int language;        /* 0=FRENCH, 1=DANISH, 2=SPANISH, etc. */
+
+int comp_function (const void *a, const void *b);
+int getline(FILE *fp,char *a,const unsigned int b);
+void translate (char *s,char *t,unsigned int language,const unsigned int b);
+void putline (FILE *fp,char *s);
+
+int main ()
+{
+  unsigned int i,j;
+  FILE *fopen(),*ifp,*ofp;
+  char tagarray[MAXTAGS * (MAXTAGSIZE+4)];
+  char s[255];
+  char *t;
+
+  language=get_language();                              /* Get language */
+  memcpy(code_set,base,128);                            /* Create code set */
+  switch (language) {
+    case FRENCH: memcpy(code_set+128,_fren,128); break;
+    case DANISH: memcpy(code_set+128,_dani,128); break;
+    case GERMAN: memcpy(code_set+128,_fren,128); break;
+    case POLISH: memcpy(code_set+128,_poli,128); break;
+    case SPANISH: memcpy(code_set+128,_span,128); break; }
+  ifp=fopen("INPUT.TXT","r");                           /* Open input file */
+  for (i=0,t=tagarray; i<MAXTAGS; ++i,t+=MAXTAGSIZE+4) {/* Loop: */
+    t+=M; *((long int *) t)=ftell(ifp); t-=M;           /* Save orig pos */
+    if (getline(ifp,s,sizeof(s))<0) break;              /* Read. stop @eof */
+    translate(s,t,language,MAXTAGSIZE); }               /* Codify. */
+  if (i==MAXTAGS) printf("Only sorting 1000 records\n");
+  qsort((void *)tagarray,i,MAXTAGSIZE+4,comp_function); /* Standard sort! */
+  ofp=fopen("OUTPUT.TXT","w");                          /* Open output file */
+  for (j=0,t=tagarray; j<i; ++j,t+=MAXTAGSIZE+4) {      /* For each tag */
+    t+=M; fseek(ifp,*((long int *) t),0); t-=M;         /* Find original */
+    getline(ifp,s,sizeof(s));                           /* Read original */
+    putline(ofp,s); }                                   /* Write new */
+  printf("Done.\n");
+  return (0); }
+
+
+int get_language ()
+{
+  int i;
+
+  for (;;) {
+    printf("Alphabets\n");
+    printf("---------\n");
+    printf("(0) French\n");
+    printf("(1) Danish\n");
+    printf("(2) German\n");
+    printf("(3) Polish\n");
+    printf("(4) Spanish\n");
+    printf("Enter a number corresponding to one of the above alphabets:");
+    scanf("%d",&i);
+    if (i>=0 && i<=4) return (i); } }
+
+int getline (FILE *fp,char *a,const unsigned int b)
+{
+  unsigned int i;
+  int c;
+
+  for (i=0;; ++i) {
+    c=getc(fp);
+    if (c==EOF) return (-1);
+    if (c=='\n') break;
+    if (i<b) *(a++)=c; }
+  *a='\0';
+  return (0); }
+
+void translate (char *s,char *t,unsigned int language,const unsigned int b)
+{
+  unsigned int i;
+
+  for (i=0; i<b-1;++i) {
+    if ( (*t=code_set[(unsigned char) *(s++)])=='\0') break;
+    if (i>0) {
+      switch (language) {                               /* digraph tests */
+        case SPANISH:
+          if (*t==L_ && *(t-1)==L_) *(t-1)=1+L_;                /* LL? */
+          else if (*t==H_ && *(t-1)==C_) *(t-1)=1+C_;           /* CH? */
+          else ++t;
+          break;
+        case GERMAN:
+          if ((unsigned char) *(s-1)==225) *(t-1)=*(t++)=S_;    /* eszet? */
+          ++t;
+          break;
+        default:
+          ++t;
+          break; } }
+    else ++t; }
+  *t='\0'; }
+
+int comp_function (const void *a,const void *b)
+{
+  return (strcmp(a,b)); }
+
+void putline (FILE *fp,char *s)
+{
+  int   c;
+
+
+  for (;;) {
+    c=*(s++);
+    if (c=='\0') {
+      putc('\n',fp);
+      break; }
+    putc(c,fp); } }
+/* End of File */

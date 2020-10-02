@@ -1,0 +1,187 @@
+#include <stdio.h>
+
+#include "fsm.h"
+
+#define DEBUG 1
+
+int state;
+int token;
+int lex_val;
+FILE *infile, *outfile;
+
+int count; /* how many spaces have I seen */
+
+void report(void)
+{
+printf("\nState=%d, input=%d char=",state,token);
+}
+
+/* a nasty kludge to get end of line markers */
+void putcr(int c, FILE *stream)
+{
+switch (c){
+  case '\n': putc(0x0d,stream);
+             putc(0x0a,stream);
+             break;
+  case 0x0d: break;
+  default:   putc(c,stream);
+  }
+}
+
+int next_token(void)
+{
+do {
+   switch (lex_val=getc(infile)){
+     case '-':  return CAP;
+     case ' ':  return SPACE;
+     case 0x0a: lex_val = '\n';
+                return NL;
+     case 0x0d: break; 
+        /*avoids 0d 0d 0a output */
+     case EOF:  lex_val = 0x1a;
+                return FEND;
+     default:   if (toupper(lex_val) == lex_val) return CAP;
+                else return OTHER;
+     }
+   } while (lex_val == 0x0d);
+return FORBID;
+}
+
+
+void usage(void)
+{
+printf("\nUSAGE: demo1 infile outfile");
+exit();
+}
+
+void skip(void)
+{ return; }
+
+void echo(void)
+{
+#ifdef DEBUG
+if ((lex_val < ' ') || (lex_val > 'z')) putchar ('.');
+else putchar(lex_val);
+printf(" %2.2x",lex_val);
+#endif
+putcr(lex_val,outfile);
+count = 0;
+}
+
+void fault(void)
+{
+printf("\nInternal error ");
+report();
+putchar(lex_val);
+exit();
+}
+
+void tally(void)
+{
+count += 1;
+}
+
+void markg(void)
+{
+putcr('\n',outfile);
+putc(lex_val,outfile);
+count = 0;
+}
+
+void smarkg(void)
+{
+putcr('\n',outfile);
+while(count--) putc(' ',outfile);
+putc(lex_val,outfile);
+count = 0;
+}
+
+void zero(void)
+{
+count = 0;
+}
+
+
+void secho(void)
+{
+putc(' ',outfile);
+putcr(lex_val,outfile);
+
+#ifdef DEBUG
+printf(" %x", lex_val);
+#endif
+
+count = 0;
+}
+
+void init_fsm(int argc, char **argv)
+{ 
+if (argc < 3) { 
+    usage(); /* exit from there */
+    } 
+if ((infile = fopen(argv[1],"r"))== NULL){
+    printf("Can't open %s",argv[1]);
+    exit();
+    }
+if ((outfile = fopen(argv[2],"w")) == NULL){
+    printf("Can't open %s", argv[2]);
+    exit();
+    }
+
+/*initialize counter*/
+count = 0;
+
+}
+
+void fini_fsm(int argc, char **argv)
+{ 
+fclose(infile);
+fclose(outfile);
+}
+
+struct trans s_table[][MAX_ALPH]={
+   { /*Start*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SETEXT , echo },
+      { /*space */ START  , skip },
+      { /*fend  */ END    , skip },
+      { /*NL    */ START  , skip },
+      { /*other */ SETEXT , echo } },
+   { /*setext*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SETEXT , echo },
+      { /*space */ SESPC  , skip },
+      { /*fend  */ END    , skip },
+      { /*NL    */ LNEWG  , echo },
+      { /*other */ SETEXT , echo } },
+   { /*sespc*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SETEXT , secho},
+      { /*space */ SESPC  , skip },
+      { /*fend  */ END    , skip },
+      { /*NL    */ LNEWG  , echo },
+      { /*other */ SETEXT , secho} },
+   { /*secode*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SECODE , echo },
+      { /*space */ SECODE , echo },
+      { /*fend  */ END    , skip },
+      { /*NL    */ LNEWG  , echo },
+      { /*other */ SECODE , echo } },
+   { /*lnewg*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SETEXT , echo },
+      { /*space */ NGMARK , tally},
+      { /*fend  */ END    , skip },
+      { /*NL    */ NGMARK , zero },
+      { /*other */ SETEXT , echo } },
+   { /*ngmark*/
+      { /*empty*/  FORBID,  fault},
+      { /*CAP   */ SETEXT , markg},
+      { /*space */ NGMARK , tally},
+      { /*fend  */ END    , skip },
+      { /*NL    */ NGMARK , zero },
+      { /*other */ SECODE , smarkg} }
+
+   };
+ 

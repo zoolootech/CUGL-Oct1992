@@ -1,0 +1,389 @@
+#include <stdio.h>
+#include <fcntl.h>
+#include <termio.h>
+#include <signal.h>
+#include "sc.h"
+
+#define BUFFERSIZE 1024
+
+static int devicefd; /* file descriptor for special file */
+static char devicefn[80];       /* special file name */
+static char buffer[BUFFERSIZE];
+static struct termio tbufsave;
+static BOOLEAN ioctl_done = FALSE;
+static BOOLEAN alarmflag;   /* set when alarm goes off */
+
+/* -1 cast to ptr to int fcn */
+#define BADSIG (void (*)())-1
+
+/*
+	From Marc J. Rochkinds book, Advanced Unix Programming,
+	published by Prentice Hall, Inc.  Used with permission.
+*/
+static void syserr(msg)
+char *msg;						/* message to be printed */
+{
+	extern int errno, sys_nerr;
+	extern char *sys_errlist[];
+
+	fprintf(stderr, "ERROR: %s (%d", msg, errno);
+	if (errno > 0 && errno < sys_nerr)
+		fprintf(stderr, "; %s)\n", sys_errlist[errno]);
+	else
+		fprintf(stderr, ")\n");
+	exit(1);
+}
+
+/*
+	From Marc J. Rochkinds book, Advanced Unix Programming,
+	published by Prentice Hall, Inc.  Used with permission.
+*/
+static void fatal(f, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
+char *f, *a1, *a2, *a3, *a4, *a5, *a6, *a7, *a8, *a9, *a10;
+{
+	char s[120];
+	strcpy(s, "FATAL: ");
+	strcat(s, f);
+	strcat(s, "\n");
+	fprintf(stderr, s, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+	exit(1);
+}
+
+static void sc_log(f, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10)
+char *f, *a1, *a2, *a3, *a4, *a5, *a6, *a7, *a8, *a9, *a10;
+{
+	static FILE *out = NULL;
+	if (out == NULL) {
+		unlink("sc_log_file");
+		out = fopen("sc_log_file", "w");
+		setbuf(out, NULL);
+	}
+	fprintf(out, f, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10);
+}
+
+/*
+	attempt to create lock file, return TRUE if successful, 
+	FALSE if not
+*/
+static BOOLEAN sc_lock()
+{
+    char fn[30];
+    int x;
+    FILE *f;
+    for (x = strlen(devicefn); devicefn[x] != '/'; --x)
+		;
+    sprintf(fn, "/usr/spool/uucp/LCK..%s", &devicefn[x + 1]);
+	sc_log("Lock filename = %s\n", fn);
+    if ((f = fopen(fn, "r")) != NULL ) {
+		sc_log("Lock file already exists\n");
+		return(FALSE);
+    }
+    if ((f = fopen(fn, "w")) == NULL ) {
+		sc_log("Error: Cannot create lock file\n");
+		return(FALSE);
+    }
+    if (fclose(f))
+		syserr("fclose");
+	sc_log("Lock file created\n");
+	return(TRUE);
+}
+
+/*
+	function to remove lock file if received SIGINT or SIGQUIT
+*/
+static void sc_int()
+{
+	/*
+	do whatever else must be done to clean up after your
+	application
+	*/
+	sc_cleanup();
+	exit(1);
+}
+
+/*
+	returns TRUE if device was opened, FALSE if device could not 
+	be opened.
+	The method for putting the device in raw mode came from
+	Marc J. Rochkinds book, Advanced Unix Programming,
+	published by Prentice Hall, Inc.  Used with permission.
+*/
+BOOLEAN sc_open(device, baud_rate, data_bits, stop_bits, parity)
+char *device;
+int baud_rate;
+int data_bits;
+int stop_bits;
+char parity;
+{
+	char *errstr;
+	struct termio tbuf;
+	if (signal(SIGINT, sc_int) == BADSIG)
+		syserr("signal");
+	if (signal(SIGQUIT, sc_int) == BADSIG)
+		syserr("signal");
+	if (signal(SIGTERM, sc_int) == BADSIG)
+		syserr("signal");
+	strcpy(devicefn, device);
+	if (! sc_lock()) {
+		sc_log("Error: sc_lock returned FALSE\n");
+		return(FALSE);
+	}
+	if ((devicefd = open(device, O_RDWR)) < 0) {
+		sc_log("Error: Cannot open device %s\n", device);
+		sc_cleanup();
+		return(FALSE);
+	}
+	if (ioctl(devicefd, TCGETA, &tbuf) == -1)
+		syserr("ioctl (first call to ioctl)");
+	ioctl_done = TRUE;
+	tbufsave = tbuf;
+	tbuf.c_iflag &= 
+	  ~ (PARMRK | INPCK | INLCR | ICRNL | IUCLC | BRKINT);
+	tbuf.c_iflag |= (ISTRIP | IXON | IXANY | IXOFF);
+	tbuf.c_oflag &= ~OPOST;
+	tbuf.c_lflag &= ~(ICANON | ISIG | ECHO);
+	tbuf.c_cflag = 0;
+	tbuf.c_cc[4] = 1;
+	tbuf.c_cc[5] = 1;
+	switch(baud_rate) {
+	case 300:
+		tbuf.c_cflag |= B300;
+		break;
+	case 1200:
+		tbuf.c_cflag |= B1200;
+		break;
+	case 2400:
+		tbuf.c_cflag |= B2400;
+		break;
+	case 4800:
+		tbuf.c_cflag |= B4800;
+		break;
+	case 9600:
+		tbuf.c_cflag |= B9600;
+		break;
+	default:
+		errstr = "Error: Invalid baud rate\n";
+		sc_log(errstr);
+		sc_cleanup();
+		fatal(errstr);
+	}
+	switch(data_bits) {
+	case 7:
+		tbuf.c_cflag |= CS7;
+		break;
+	case 8:
+		tbuf.c_cflag |= CS8;
+		break;
+	default:
+		errstr = "Error: Invalid number of data bits\n";
+		sc_log(errstr);
+		sc_cleanup();
+		fatal(errstr);
+	}
+	switch(stop_bits) {
+	case 1:
+		break;
+	case 2:
+		tbuf.c_cflag |= CSTOPB;
+		break;
+	default:
+		errstr = "Error: Invalid number of stop bits\n";
+		sc_log(errstr);
+		sc_cleanup();
+		fatal(errstr);
+	}
+	switch(parity) {
+	case 'E':
+		tbuf.c_cflag |= PARENB;
+		break;
+	case 'O':
+		tbuf.c_cflag |= PARENB;
+		tbuf.c_cflag |= PARODD;
+		break;
+	case 'N':
+		break;
+	default:
+		errstr = "Error: Invalid parity\n";
+		sc_log(errstr);
+		sc_cleanup();
+		fatal(errstr);
+	}
+	tbuf.c_cflag |= CREAD;
+	tbuf.c_cflag |= HUPCL;
+	tbuf.c_cflag |= CLOCAL;
+	if (ioctl(devicefd, TCSETAF, &tbuf) == -1)
+		syserr("ioctl (second call to ioctl)");
+	return(TRUE);
+}
+
+/*
+close the device
+*/
+void sc_close()
+{
+	sc_log("Closing the device\n");
+	sc_cleanup();
+	if (close(devicefd) < 0)
+		syserr("close");
+}
+
+/*
+returns TRUE if CONNECTed to the remote system
+*/
+BOOLEAN sc_dial(phone_number)
+char *phone_number;
+{
+	char *errstr;
+	char s[200];
+	int x;
+	BOOLEAN b;
+	sc_log("Attempting to get attention of modem\n");
+	sc_write("ATH\r");
+	if (! sc_read(buffer, sizeof(buffer), 4, "OK")) {
+		sc_log("Attempting to get attention of modem\n");
+		sc_write("ATH\r");
+		if (! sc_read(buffer, sizeof(buffer), 4, "OK")) {
+			sc_log("Attempting to get attention of modem\n");
+			sc_write("+++");
+			if (! sc_read(buffer, sizeof(buffer), 4, "OK")) {
+				sc_log("Attempting to get attention of modem\n");
+				sc_write("ATH\r");
+				if (! sc_read(buffer, sizeof(buffer), 4, "OK")) {
+					errstr = 
+					  "Error: could not get attention of modem\n";
+					sc_log(errstr);
+					return(FALSE);
+				}
+			}
+		}
+	}
+	sc_log("Got attention of modem\n");
+	sc_log("Dialing phone number (%s)\n", phone_number);
+	sprintf(s, "ATDT%s\r", phone_number);
+	sc_write(s);
+	b = sc_read(buffer, sizeof(buffer), 30, "CONNECT");
+	if (!b) {
+		errstr = "Error: Did not get CONNECT\n";
+		sc_log(errstr);
+		sc_hangup();
+		return(FALSE);
+	}
+	sc_log("Got CONNECT\n");
+	return(TRUE);
+}
+
+/*
+hangup the modem
+*/
+void sc_hangup()
+{
+	char ch;
+	int x, stat;
+	BOOLEAN b;
+	sc_log("Hanging up\n");
+	buffer[0] = '\0';
+	sc_log("Attempting to get attention of modem\n");
+	sc_write("+++");
+	if (sc_read(buffer, sizeof(buffer), 4, "OK"))
+		sc_log("Got attention of modem\n");
+	else {
+		sc_write("+++");
+		if (sc_read(buffer, sizeof(buffer), 4, "OK"))
+			sc_log("Got attention of modem\n");
+	}
+	sc_write("ATH\r");
+	if (sc_read(buffer, sizeof(buffer), 4, "OK"))
+		sc_log("Successful hangup\n");
+	sc_write("ATH\r");
+	if (sc_read(buffer, sizeof(buffer), 4, "OK"))
+		sc_log("Successful hangup\n");
+}
+
+static void sc_alarm()
+{
+	alarmflag = TRUE;
+}
+
+/*
+returns TRUE if pattern was found, FALSE if time ran out
+*/
+BOOLEAN sc_read(buffer, len, seconds, pattern)
+char *buffer;
+int len;
+int seconds;    /* number of seconds to wait if we don't get 
+				   the correct pattern */
+char *pattern;
+{
+	char *errstr;
+	int c, sl, x, status;
+	sl = strlen(pattern);
+	alarmflag = FALSE;
+	c = x = 0;
+	if (signal(SIGALRM, sc_alarm) == BADSIG)
+		syserr("signal");
+	alarm(seconds);
+	while(TRUE) {
+		if (x == len - 1) {
+			errstr = "Error: Buffer overflow\n";
+			sc_log(errstr);
+			sc_cleanup();
+			fatal(errstr);
+		}
+		status = read(devicefd, &buffer[x], 1);
+		if (status <= 0 || alarmflag == TRUE) {
+			alarm(0);
+			sc_log(
+			  "Error: Pattern not matched in allotted time\n");
+			return(FALSE);
+		}
+		buffer[x] &= 0177;
+		buffer[x + 1] = '\0';
+		if (pattern[c] == buffer[x])
+			++c;
+		else
+			c = 0;
+		if (c == sl) {
+			alarm(0);
+			return(TRUE);
+		}
+		++x;
+	}
+}
+
+/*
+Write a string to the device
+*/
+void sc_write(s)
+char *s;
+{
+	int x;
+	x = strlen(s);
+	if (write(devicefd, s, (unsigned)x) <= 0)
+		syserr("write");
+	/*
+	Another method for writing this function when it is
+	neccessary to slow down the rate at which characters 
+	are sent:
+	*/
+	/*
+	for(x = 0; s[x] != '\0'; ++x) { 
+		if (write(devicefd, &s[x], 1) <= 0)
+			syserr("write");
+		nap(20L);
+	}
+	*/
+}
+
+void sc_cleanup()
+{
+	int x;
+	char fn[60];
+	if (ioctl_done)
+		if (ioctl(devicefd, TCSETAF, &tbufsave) == -1)
+			syserr("ioctl3");
+	for (x = strlen(devicefn); devicefn[x] != '/'; --x);
+	sprintf(fn, "/usr/spool/uucp/LCK..%s", &devicefn[x + 1]);
+	if (unlink(fn))
+		syserr("unlink");
+}
+

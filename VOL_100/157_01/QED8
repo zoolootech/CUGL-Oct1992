@@ -1,0 +1,233 @@
+/*  VERSION 0057  (DATE: 28/04/87)  (TIME: 23:01)  */
+/*
+	e (qed) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	Modified: Aug-Dec	1984:	BDS-C 'e'(vers 4.6a) to 'qe' (J.W. Haefner)
+			  March		1985:	BDS-C 'qe' to DeSmet-C 'qed' (J.W. Haefner)
+
+	FILE: qed8
+
+	FUNCTIONS: loc,gettext,getline,inject,deltp,puttext,readtext,getc,
+			opentext,balloc,error
+
+	PURPOSE: get and put text lines into and out of storage
+
+*/
+
+#include "qed.h"
+
+loc(line,move)	/*returns line+move, adjusted to be within text*/
+int line, move;
+{
+	int y,nl;
+
+	if ( (y=line+move) < 1) y=1;
+	if (lastl == UNKNOWN && y > lastread) readtext(y);
+	if (y > lastl) return lastl;
+	return y;
+}
+
+gettext(line)	/*makes 'line' the current line*/
+int line;
+{
+	char *getline();
+
+	strcpy(text,getline(line));
+	cline=line;
+}
+
+char *getline(line)	/*returns address of text of line 'line' and updates*/
+int line;
+		  	  		/*page usage*/
+{
+	int slot;
+
+	line=loc(line,0);
+	if ( (slot=pageloc[tp[line].page]) <= 0)
+		slot=swappin(tp[line].page);
+	if (usage[slot] > FREE) usage[slot]=++clock;
+	return slotaddr[slot] + tp[line].moffset;
+}
+
+inject(line,txt)	/* inserts 'txt' after 'line',split big files */
+int line;
+char *txt;
+{
+	int l, p, balloc();
+	struct addr anaddr;
+	char tempn[FILELEN],split;
+
+	if ( &tp[lastread+2] >= slotaddr[tppages]) {
+		/*need another slot to store tp's in */
+ 		if (tppages+2 >= slotsinmem) {   /*org: "tppages+2"*/
+			/*error("Too many lines of text");*/
+			if(expert)xprtmess("Too many lines. Split? ");
+			else putmess("Too many lines of text. Split file? ");
+			if((split=getlow())=='n') return FAIL;
+			else {
+			    do {
+  				  if(expert)xprtmess("File: ");
+  				  else putmess("Split file name: ");
+  				  scans(name,15);
+  			    } while ( (!exists(name)) || (fcreat(name,fbuf)==FAIL) );
+  			    writefile(1,line-2,name,name,NO);
+				/*if(exists(name)) writefile(1,line-2,name,name,NO);*/
+				  /*delete lines just saved*/
+				deltp(1,line-2);
+				changed=YES;
+				l=strlen(getline(1));
+				  /*recover used tp space*/
+				  /*assume two hanging lines fit in one page*/
+				strcpy((slotaddr[1]),getline(1));
+				strcpy((slotaddr[1]+l+1),getline(2));
+				  /*loc of the two lines*/
+				tp[1].moffset=0;
+				tp[1].page=1;
+				tp[2].moffset=l+1;
+				tp[2].page=1;
+				  /*start of next spot in current page*/
+				allocp=l+strlen(slotaddr[1]+tp[2].moffset)+3;
+				tppages=1;
+				newpage=1;
+				pageloc[0]=0;
+				pageloc[1]=1;
+				npaddr=slotaddr[1];
+				usage[0]=NOTAVAIL;
+				usage[1]=INUSE;
+				for(l=2;l<slotsinmem;l++) usage[l]=FREE;
+				close(pagefd);
+				pagefd=NOFILE;
+				funlink(pagingfile);
+				line=lastread=2;
+				inbuf[inbufp++]=tran[BOFKEY];	/*goto beginning of file*/
+				goto noswap;
+			}
+		}
+		if (usage[tppages] == NOTAVAIL) /*ie page is being alloc'ed into*/
+			allocp=PAGESIZE+1; /*force alloc into new page*/
+		swapout(tppages);
+		usage[tppages++]=NOTAVAIL;
+		}
+noswap:
+	if (++line < ++lastread)
+		  /*movmem(&tp[line],&tp[line+1],(lastread-line)*sizeof(anaddr));*/
+		_move((lastread-line)*sizeof(anaddr),&tp[line],&tp[line+1]);
+	tp[line].moffset=p=balloc(1+strlen(txt));
+	tp[line].page=newpage;
+	strcpy(p+npaddr,txt);
+	if (lastl != UNKNOWN)lastl++;
+	return line;
+}
+
+deltp(from,num)	/*deletes 'num' lines from 'from' onwards by shifting pointers*/
+int from, num;
+{
+	struct addr anaddr;
+
+/*movmem(&tp[from+num],&tp[from],(lastread+1-(from+num))*sizeof(anaddr));*/
+	_move((lastread+1-(from+num))*sizeof(anaddr),&tp[from+num],&tp[from]);
+	if (lastl != UNKNOWN) lastl-=num;
+	lastread-=num;
+	if (lastl < 1)lastl=1;
+	if (lastread < 1)lastread=1;
+}
+
+puttext()	/*replaces cline's text if it has been altered*/
+{
+	int p, cp, balloc();
+
+	if (altered) {
+		if (!trail) {
+			for (cp=strlen(text)-1; cp >= 0 && isspace(text[cp]);
+				 cp--) text[cp]='\0';
+			}
+		tp[cline].moffset=p=balloc(1+strlen(text));
+		tp[cline].page=newpage;
+		strcpy(p+npaddr,text);
+		altered=NO;
+		}
+}
+
+readtext(line)	/*reads file being edited into virtual memory until 'line'
+		  is read, or eof.  If eof, sets lastl to number of last line
+		  read.  File is assumed to be already open*/
+int line;
+{
+	char txt[LLIM], *t;
+	int i, c, l;
+
+	while (lastread < line) {
+		for (i=0, t=&txt[0]; i < LLIM &&
+#if CPM
+		   (
+		    ((c=egetc(textbuf)) >= ' ' && c != ENDFILE)
+			 ||
+			c != '\n' && c != DFAIL && c != ENDFILE
+#endif
+#if DOS2			/*28.iv.87: do not stop on ^Z*/
+			((c=egetc(textbuf)) != ENDFILE && c!='\n' && c!=DFAIL
+#endif
+		   ); i++)
+			    if (c) *(t++)=c;
+				else i--;
+		if (txt[i-1] == '\r') t--;
+		*t='\0';
+		if ( (l=inject(lastread,txt)) == FAIL) goto toomuch;
+		else if ((lastread=l)%100 == 0) putlineno(lastread);
+		if ( (goteof= ((c==ENDFILE) || (c==DFAIL))) ) goto eof;
+		}
+	return;
+
+eof: 
+	fclose(textbuf);
+toomuch: 
+	lastl=lastread;
+}
+
+opentext(name)	/*open the file being edited for reading*/
+char *name;
+{
+	if (fopen(name,textbuf) == FAIL) {
+			/* attempt to open with default extnsion added */
+		if (fopen(strcat(name,defext),textbuf) == FAIL) {
+			error("Can't open file");
+			name[0]='\0';
+			lastl=1;
+			return FAIL;
+			}
+		}
+	return YES;
+}
+
+balloc(n)	/*allocate and return the offset in newpage of a vector size n*/
+unsigned n;
+{
+	sint slot;
+
+	if (allocp  + n >= PAGESIZE) {
+		/*no room in current newpage; get another*/
+		if (pageloc[newpage] > 0)usage[pageloc[newpage]]=INUSE;
+		pageloc[++newpage]=slot=freememslot();
+		usage[slot]=NOTAVAIL;
+		allocp=0; 
+		npaddr=slotaddr[slot];
+		}
+	allocp+=n;
+	return allocp-n;
+}
+
+error(message)
+char *message;
+{
+	if (errmess != NULL) return;
+	gotoxy(32,0);
+	putstr(errmess=message);
+	resetcursor();
+	inbufp=0;
+}
+
+

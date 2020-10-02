@@ -1,0 +1,233 @@
+    1: /*
+    2:  * Listing 3 :
+    3:  * 
+    4:  * cview.c - a program to show in "real-time" the
+    5:  * display of a remote node's console.
+    6:  *
+    7:  * Written by : William Boyle
+    8:  * Date created : 20-Dec-87
+    9:  * Modified for inclusion in C User's Journal : 20-Aug-88
+   10:  *
+   11:  */
+   12: #include <stdio.h>       /* Standard i/o manifests */
+   13: #include <dev.h>     /* Device manifests */
+   14: #include <tcap.h>        /* TCAP manifests */
+   15: #include <task.h>        /* Task info. and control manifests */
+   16: #include <task_msgs.h>   /* Manifests for TASK_ADMIN (scheduler) */
+   17: #include <exc.h>     /* System exception definitions */
+   18: #include "sc_admin.h"    /* Local #defines for this application */
+   19: 
+   20: /*
+   21:  * These external variables are also defined in
+   22:  * the <magic.h> manifest file
+   23:  */
+   24: extern char Cmd_flags;
+   25: extern int Error_status;
+   26: extern unsigned My_nid;
+   27: 
+   28: /* Error messages for user */
+   29: #define ECREATE "Unable to create server task on node %3d\n"
+   30: #define EBADSEND "Failure to communicate with node %3d\n"
+   31: #define ECANTREAD "Failure to read display on node %3d\n"
+   32: #define EBADNODE "Invalid node id %3d\n"
+   33: #define ENOMEMORY "Not enough memory to run\n"
+   34: #define ENOVCS "Unable to establish VC to node %3d\n"
+   35: #define EUNKNOWN "CVIEW : Unknown Error\n"
+   36: 
+   37: /*
+   38:  * Embedded assembler code.
+   39:  * Return value is found in register AX, so
+   40:  * this function will return the current data segment.
+   41:  */
+   42: unsigned int my_seg()
+   43: {
+   44:   asm("   mov ax,ds");
+   45: }
+   46: 
+   47: /*
+   48:  * This does the work of displaying the requested remote
+   49:  * console.  It starts a reader task (/cmds/sc_admin) on
+   50:  * the remote node, requests it to determine the display
+   51:  * characteristics.  After the remote reader task replies
+   52:  * with the display characteristics (number of
+   53:  * rows/cols/attribute_bytes_per_character), it is
+   54:  * requested  to read the entire display.  When the remote
+   55:  * reader replies with the entire display buffer, this
+   56:  * function will put it on the viewer's terminal.  After
+   57:  * that, the show_console() function will continuously
+   58:  * loop, requesting any display changes from the remote
+   59:  * task until a key is pressed by the viewer.
+   60:  */
+   61: void show_console( nid )
+   62: int nid;
+   63: {
+   64:   int i, bytes;
+   65:   unsigned rows, cols, row_size;
+   66:   unsigned reply_status;
+   67:   unsigned max_size;
+   68:   int tid;          /* Task id of remote server task */
+   69:   register int vid; /* Virtual id of server task   */
+   70: 
+   71:   /* IPC message buffers */
+   72:   register DISP_MSG *rbuffer;
+   73:   DISP_MSG hbuffer;
+   74: 
+   75:   rbuffer = &hbuffer;
+   76: 
+   77:   /* Create server task on requested node. */
+   78:   tid = createl( NULL, nid, -1, 0, RUN_CONCURRENT,
+   79:                  9, NULL, NULL, NULL,
+   80:                  "/cmds/sc_admin", 0);
+   81: 
+   82:   /* Exit with error message if createl() fails. */
+   83:   if (Error_status)
+   84:     error(ECREATE, nid);
+   85: 
+   86:   /* Create VC to remote CPU */
+   87:   vid = vc_create(nid, tid, 0x8000);
+   88: 
+   89:   if (vid == 0 || vid == -1)
+   90:     error(ENOVCS, nid);
+   91: 
+   92:   /* Send message to remote task to get display info. */
+   93:   rbuffer->dtype = GET_DSP_INFO;
+   94:   reply_status = send( vid, rbuffer, rbuffer,
+   95:                        sizeof(DISP_MSG));
+   96: 
+   97: 
+   98:   /*
+   99:    * Check reply for errors.
+  100:    * A reply status of 0 means the remote task died,
+  101:    * -1 that the send was interrupted by an exception.
+  102:    */
+  103:   if (reply_status == 0 || reply_status == -1)
+  104:     error(EBADSEND, nid);
+  105:   if (rbuffer->dtype != OK)
+  106:     error(ECANTREAD, nid);
+  107: 
+  108:   /* Setup local variables */
+  109:   rows = rbuffer->drow;
+  110:   cols = rbuffer->dcol;
+  111:   bytes = rbuffer->dbytes;
+  112:   row_size = cols * bytes;
+  113:   max_size = sizeof(DISP_MSG) + ((rows + 1) * row_size);
+  114: 
+  115:   /*
+  116:    * Allocate new buffer with screen size info returned
+  117:    * from remote task
+  118:    */
+  119:   rbuffer = (DISP_MSG *)calloc(1, max_size);
+  120:   if (rbuffer == (DISP_MSG *)NULL)
+  121:     error(ENOMEMORY);
+  122: 
+  123:   /* Read complete screen */
+  124:   rbuffer->dtype = GET_ALL_DATA;
+  125:   reply_status = send(vid, rbuffer, rbuffer, max_size);
+  126: 
+  127:   /* Check reply for errors */
+  128:   if (reply_status == 0 || reply_status == -1
+  129:                         || rbuffer->dtype == NOT_OK)
+  130:     error(EBADSEND, nid);
+  131:   if (rbuffer->dtype != OK)
+  132:     error(ECANTREAD, nid);
+  133: 
+  134:   /* Display entire screen */
+  135:   for (i = 0; i < rows; i++)
+  136:     term_restore_image( i, 0,
+  137:                         &rbuffer->dbuffer[(i+1) * row_size],
+  138:                         rbuffer->dcol, my_seg());
+  139: 
+  140:   /* Set buffer for next row to start read */
+  141:   rbuffer->drow = rbuffer->dcol = 0;
+  142: 
+  143:   /*
+  144:    * Loop until a key is pressed, asking the server
+  145:    * for any changes to the remote display.
+  146:    */
+  147:   while (!char_waiting(stdin)) {
+  148: 
+  149:     /* Send message to reader to reply with any
+  150:      * changes to the display
+  151:      */
+  152:     rbuffer->dtype = GET_NXT_CHGS;
+  153:     reply_status = send( vid, rbuffer, rbuffer,
+  154:                          sizeof(DISP_MSG) + row_size);
+  155: 
+  156:     /* Check reply for errors */
+  157:     if (reply_status == 0 || reply_status == -1
+  158:                           || rbuffer->dtype == NOT_OK)
+  159:       error(EBADSEND, nid);
+  160:     if (rbuffer->dtype != OK)
+  161:       error(ECANTREAD, nid);
+  162: 
+  163:     /* No changes detected */
+  164:     /* Position local cursor to agree with remote */
+  165:     if (rbuffer->drow == -1) {
+  166:       rbuffer->drow = rbuffer->dcol = 0;
+  167:       term_cur(rbuffer->dstate.state_cursor_y,
+  168:            rbuffer->dstate.state_cursor_x);
+  169:     }
+  170:     /* Changes found, display changed row */
+  171:     /* Set next row to read on remote display */
+  172:     else {
+  173:       term_restore_image( rbuffer->drow, rbuffer->dcol,
+  174:           rbuffer->dbuffer + (rbuffer->dcol * bytes),
+  175:           cols - rbuffer->dcol, my_seg());
+  176:       rbuffer->drow++;
+  177:       rbuffer->dcol = 0;
+  178:     }
+  179:   }
+  180:   /* Flush input buffer */
+  181:   fflush(stdin);
+  182: 
+  183:   /* Kill remote task */
+  184:   set_exception(vid, 0x0100, EXC_KILL);
+  185: }
+  186: 
+  187: main(argc,argv)
+  188: int argc;
+  189: char *argv[];
+  190: {
+  191:   int nid;
+  192:   unsigned tty_options;
+  193:   
+  194:   /* Print usage message if incorrect # of arguments
+  195:    * or QUERY flag set
+  196:    */
+  197:   if (argc != 2) {
+  198:     printf("CVIEW : usage : cview <node>\n");
+  199:     exit(0);
+  200:   }
+  201: 
+  202:   nid = atoi(argv[1]);
+  203:   if (nid > 255 || nid < 0)
+  204:     error(EBADNODE, nid);
+  205: 
+  206:   /* Check for background operation.
+  207:    * This must run as a forground task.
+  208:    */
+  209:   if (Cmd_flags & (RUN_CONCURRENT | RUN_BACKGROUND))
+  210:     error("This program cannot be run in background.\n");
+  211: 
+  212:   /* Load terminal info structure, abort on failure */
+  213:   if (!term_load(stderr))
+  214:     error("Unable to load terminal definition.\n");
+  215: 
+  216:   /* Initialize shadow screen buffer */
+  217:   term_video_on();
+  218: 
+  219:   /* Make task unbreakable */
+  220:   unbreakable();
+  221: 
+  222:   /* Mask off terminal keyboard echo and edit */
+  223:   tty_options = get_option(stderr);
+  224:   set_option(stderr, tty_options & ~(ECHO | EDIT));
+  225: 
+  226:   /* Show remote console until key is pressed */
+  227:   show_console( nid );
+  228: 
+  229:   /* Reset tty options before exit */
+  230:   set_option(stderr, tty_options);
+  231: 
+  232:   exit(0);
+  233: }

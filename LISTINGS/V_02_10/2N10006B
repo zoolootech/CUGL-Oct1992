@@ -1,0 +1,36 @@
+;=============================================================================
+;
+;    C32RT0 -- Simple main program for WINMEM32-oriented 32-bit programs
+;
+;    Written by Walter Oney
+;
+;    Note: Define the symbol TGT (with a /d option in the MASM386 command
+;    line for this module) as the name of the target program.
+;
+;=============================================================================
+
+        name    c32rt0
+        .386
+        dosseg
+        .model  small,c
+        public  __acrtused              ; satisfies demand from compiled code
+__acrtused equ  1234h
+
+stack   segment dword use32 stack 'stack'
+        db      1024 dup (0)
+stack   ends
+
+        .data
+retaddr df      ?                       ; return addr to USE16 caller
+        dw      ?                       ; padding for 2d pop instr
+
+        .code
+astart  proc    far
+        pop     dword ptr retaddr       ; preserve 16:32 return addr
+        pop     dword ptr retaddr+4     ;   to our USE16 caller
+        extrn   TGT:near
+        call    TGT                     ; call target program
+        jmp     [retaddr]               ; return to original caller
+astart  endp
+
+        end     astart

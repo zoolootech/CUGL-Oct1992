@@ -1,0 +1,42 @@
+// simple.c - simple chunk allocator 
+
+#include <stdlib.h>
+
+class   Simple
+    {
+public:
+    Simple  *Next;
+    int     SomeData;
+    void    *operator new(size_t);
+    void    operator delete(void *, size_t);
+private:
+    enum    {PERCHUNK = 128};
+    static Simple *FreeList;
+    };
+
+void *Simple::operator new(size_t Size)
+    {
+    Simple  *Free   = FreeList;
+    if(Free)
+        FreeList    = FreeList->Next;
+    else
+        {
+        Free = (Simple *)new char[PERCHUNK*sizeof(Simple)];
+        FreeList    = Free;
+        for(int i = 1; i < PERCHUNK; ++i)
+            {
+            Free->Next  = Free + 1;
+            ++Free;
+            }
+        Free->Next  = 0;    // NULL terminator
+        Free        = FreeList;
+        }
+    return Free;
+    }
+
+void    Simple::operator delete(void *Pointer, size_t)
+    {
+    Simple  *This   = (Simple *)Pointer;
+    This->Next      = FreeList;
+    FreeList        = This;
+    }

@@ -1,0 +1,42 @@
+#pragma pack(1)         // leave no extra spaces
+ .
+ .
+Play_packet   plpack;   // request packet
+unsigned long start;    // starting sector
+unsigned long end;      // end sector
+void (_far *strategy)();     // strategy entry
+void (_far *intrpt)();       // interrupt entry
+unsigned char unit;     // sub-unit ID
+  .
+  .
+plpack.p_rh.rh_lth = sizeof plpack; // total lth
+plpack.p_rh.rh_sub_unit = unit;
+plpack.p_rh.rh_cc = 132;            // call code
+plpack.p_amode = 0;                 // high sierra mode
+plpack.p_start = start;
+plpack.p_numb = end - start;
+call_driver(&plpack, strategy, intrpt);  // request play
+if (plpack.p_rh.rh_stat & 0x8000)
+      { /* error on play */ }
+else
+      { /* play started OK */ }
+  .
+  .
+void call_driver(void *pp,
+                 void (_far *strat)(),
+                 void (_far *intr)())
+{
+unsigned long call_strat = (unsigned long) strat;
+unsigned long call_intr  = (unsigned long) intr;
+unsigned int packet = (unsigned int) pp;
+
+_asm {
+     push  ds
+     pop   es
+     mov   bx,packet           // point es:bx to packet
+     call  far ptr call_strat  // call strategy entry
+     call  far ptr call_intr   // call interrupt
+     }
+}
+/* End of File */ 
+

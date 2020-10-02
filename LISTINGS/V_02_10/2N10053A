@@ -1,0 +1,411 @@
+@cplus = //  VCR.CPP - VCR device driver class.<R>
+//      VCR::VCR - Constructor for VCR<R>
+//      VCR::~VCR - Destructor for VCR<R>
+//      VCR::SendCommand - Send command string to VCR<R>
+//      VCR::Stop - Puts the VCR into Stop mode.<R>
+//      VCR::Eject - Causes the tape to be ejected from the VCR.<R>
+//      VCR::Rewind - Places the VCR into full speed rewind.<R>
+//      VCR::FastForward - Places the VCR into full speed fast forward.<R>
+//      VCR::PlayFastReverse - Places the VCR into fast reverse play.<R>
+//      VCR::PlayFastForward - Places the VCR into fast forward play.<R>
+//      VCR::Still - Causes the VCR to Still on the current frame.<R>
+//      VCR::Record - Begin recording mode.<R>
+//      VCR::Play - Begins normal play mode.<R>
+//      VCR::ReversePlay - Begins normal reverse play mode;<R>
+//      VCR::StepForward - From a still frame, advance to next field.<R>
+//      VCR::StepReverse - From a still frame, step to previous field.<R>
+//      VCR::PowerToggle - Toggle VCR power.<R>
+<R>
+#include    "VCR.h"<R>
+<R>
+/******************************************************************<R>
+*   VCR::VCR - Constructor for VCR<R>
+*<R>
+*   Parameters:<R>
+*       int nNewPortAddress - default is address for COM1:<R>
+*<R>
+*   Class Variables Used:<R>
+*       SerialPort *spSerialPort;<R>
+*<R>
+*   Returns:<R>
+*       Nothing<R>
+*<R>
+*   Notes:<R>
+*       1.  Configures serial port to 9600 baud, 8 data bits,<R>
+*           no parity, and 1 stop bit.<R>
+*   Copyright:<R>
+*       Original code by William H. Roetzheim (619) 669-6970<R>
+*       Copyright (c) 1991 by William H. Roetzheim<R>
+*       All rights reserved.<R>
+*<R>
+**********************************************************************/<R>
+VCR::VCR (int nNewPortAddress)<R>
+{<R>
+    spSerialPort = new SerialPort (nNewPortAddress, "VCR");<R>
+    spSerialPort->>SetBaud (9600);<R>
+    spSerialPort->>SetBitsPerWord (8);<R>
+    spSerialPort->>SetStopBits (1);<R>
+    spSerialPort->>SetParity (NoParity);<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::~VCR - Destructor for VCR<R>
+*<R>
+*   Parameters:<R>
+*       None.<R>
+*<R>
+*   Class Variables Used:<R>
+*       Port *SerialPort
+
+@cplus = *<R>
+**********************************************************************/<R>
+VCR::~VCR ()<R>
+{<R>
+    delete spSerialPort;<R>
+}<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::SendCommand - Send command string to VCR<R>
+*<R>
+*   Parameters:<R>
+*       Str sCommandString - String to be output<R>
+*<R>
+*   Class Variables Used:<R>
+*       Port *SerialPort<R>
+*<R>
+**********************************************************************/<R>
+void VCR::SendCommand (Str sCommandString)<R>
+{<R>
+    // Send start of command string character<R>
+    spSerialPort->>OutChar (0x02);<R>
+<R>
+    // Send command string<R>
+    int     i;<R>
+    for (i = 0; i << sCommandString.Length (); i++)<R>
+    {<R>
+        spSerialPort->>OutChar (sCommandString.Slice (i));<R>
+    }<R>
+<R>
+    // Send end of command string character<R>
+    spSerialPort->>OutChar (0x03);<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Stop - Puts the VCR into Stop mode.<R>
+*<R>
+*   Notes:<R>
+*       1.  This will abort any command in process, and stop<R>
+*           any tape motion.<R>
+*<R>
+*       2.  This command should not normally be used to terminate<R>
+*           an assembly or insert edit.  Stop will immediately<R>
+*           stop the VCR, preventing a clean edit transition.  Use<R>
+*           Still instead to allow the VCR to establish proper<R>
+*           sync at the edit out point.<R>
+*<R>
+*       3.  The tape is left loaded on the head to allow quick<R>
+*           resynchronization after a new play command.<R>
+*<R>
+*       4.  Maximum command duration is 300 ms.<R>
+*<R>
+*       5.  Audio and video are immediately placed into passthrough.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Stop (void)<R>
+{<R>
+    SendCommand ("A@@");
+
+@cplus = }<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Eject - Causes the tape to be ejected from the VCR<R>
+*<R>
+*   Notes:<R>
+*       1.  Reception of this command will abort any command<R>
+*           in process, and eject the tape.  If no tape is<R>
+*           in the VCR, the command has no effect.<R>
+*<R>
+*       2.  After a tape has been ejected, it can only be reloaded<R>
+*           into the VCR manually.<R>
+*<R>
+*       3.  Maximum command duration is 5 seconds.<R>
+*<R>
+*       4.  Audio and video are immediately placed into passthrough.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Eject (void)<R>
+{<R>
+    SendCommand ("A@A");<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Rewind - Places the VCR into full speed rewind<R>
+*<R>
+*   Notes:<R>
+*       1.  This is the fastest way to position the tape in the<R>
+*           reverse direction.  No audio or video is output during<R>
+*           the rewind.<R>
+*<R>
+*       2.  This command cannot be used if high accuracy is required.<R>
+*           Since the tape is moved at high speed, minor errors in the<R>
+*           frame count will result every time this command is executed.<R>
+*           If high accuracy is required, the PlayFastReverse () command<R>
+*           must be used instead.<R>
+*<R>
+*       3.  Maximum command duration, 300 mSeconds to start rewinding.<R>
+*<R>
+*       4.  Audio and video are placed into passthrough.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Rewind (void)<R>
+{<R>
+    SendCommand ("A@B");<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::FastForward - Places the VCR into full speed fast forward<R>
+*<R>
+*   Notes:<R>
+*       1.  This is the fastest way to position the tape in the<R>
+*           forward direction.  No audio or video is output<R>
+*           during the fast forward.<R>
+*<R>
+*       2.  This command cannot be used if high accuracy is<R>
+*           required.  Since the tape is moved at high speed,
+
+@cplus = *           minor errors in the frame count will result every time<R>
+*           this command is executed.  If high accuracy is required,<R>
+*           the PlayFastForward () command must be used instead.<R>
+*<R>
+*       3.  Maximum command duration is 300 mSeconds to begin fast<R>
+*           forwarding.<R>
+*<R>
+*       4.  Audio and video are placed in passthrough.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::FastForward (void)<R>
+{<R>
+    SendCommand ("A@C");<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::PlayFastReverse - Places the VCR into fast reverse play<R>
+*<R>
+*   Notes:<R>
+*       1.  This mode moves the tape as fast as possible, while<R>
+*           still providing a video picture.  No audio is output<R>
+*           during the motion.<R>
+*<R>
+*       2.  This is the fastest way to move the tape in the reverse<R>
+*           direction and still maintain high tape count accuracy.<R>
+*<R>
+*       3.  The tape speed in this mode is 7X play (SP mode) or 21X<R>
+*           play (SLP mode).<R>
+*<R>
+*       4.  If very high accuracy is required, use of the CueToFrame ()<R>
+*           command is preferred, since abrupt tape stops may cause minor<R>
+*           count errors.  Allowing the tape to run off the beginning<R>
+*           may also cause errors in the tape count.<R>
+*<R>
+*       5.  Maximum command duration is 300 mSeconds to begin play.<R>
+*<R>
+*       6.  Video plays (with high speed noise bars), audio is muted.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::PlayFastReverse (void)<R>
+{<R>
+    SendCommand ("A@D");<R>
+}<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::PlayFastForward - Places the VCR into fast forward play<R>
+*<R>
+*   Notes:<R>
+*       1.  This mode moves the tape as fast as possible, while<R>
+*           still providing a video picture.  No audio is output<R>
+*           during the motion.<R>
+*<R>
+*       2.  This is the fastest way to move the tape in the forward<R>
+*           direction and still maintain high tape count accuracy.<R>
+*<R>
+*       3.  The tape speed in this mode is 7X play (SP mode) or 21X<R>
+*           play (SLP mode).<R>
+*
+
+@cplus = *       4.  If very high accuracy is required, use of the CueToFrame ()<R>
+*           command is preferred, since abrupt tape stops may cause minor<R>
+*           count errors.  Allowing the tape to run off the end<R>
+*           may also cause errors in the tape count.<R>
+*<R>
+*       5.  Maximum command duration is 300 mSeconds to begin play.<R>
+*<R>
+*       6.  Video plays (with high speed noise bars), audio is muted.<R>
+*<R>
+*<R>
+**********************************************************************/<R>
+void VCR::PlayFastForward (void)<R>
+{<R>
+    SendCommand ("A@E");<R>
+}<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Still - Causes the VCR to Still on the current frame<R>
+*<R>
+*   Notes:<R>
+*       1.  The VCR will always attempt to provide a clean picture<R>
+*           when executing this command.  To establish correct video<R>
+*           sync, up to three frames may be stepped through until<R>
+*           the picture is free of noise bars.  This command is also<R>
+*           useful for turning on the video at the completion of<R>
+*           a CueToFrame () command.<R>
+*<R>
+*       2.  Maximum duration is 300 mSeconds to execute the command,<R>
+*           but up to 1 second may be required to produce a noise<R>
+*           free picture.<R>
+*<R>
+*       3.  Video is displayed, audio is muted.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Still (void)<R>
+{<R>
+    SendCommand ("A@F");<R>
+}<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Record - Begin recording mode<R>
+*<R>
+*   Notes:<R>
+*       1.  Attempting to record on a tape which has the erasure<R>
+*           tab removed will cause the tape to be ejected from<R>
+*           the VCR.<R>
+*<R>
+*       2.  Maximum command time is 300 mSeconds.<R>
+*<R>
+*       3.  The audio and video being recorded are output.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Record (void)<R>
+{<R>
+    SendCommand ("A@H");<R>
+}
+
+@cplus = <R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::Play - Begin normal play mode<R>
+*<R>
+*   Notes:<R>
+*       1.  Four seconds are required until playback begins from a<R>
+*           full stop condition.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::Play (void)<R>
+{<R>
+    SendCommand ("A@J");<R>
+}<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::ReversePlay - Begins normal reverse play mode<R>
+*<R>
+*   Notes:<R>
+*       1.  Four seconds are required until playback begins from<R>
+*           a full stop condition.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::ReversePlay (void)<R>
+{<R>
+    SendCommand ("A@K");<R>
+}<R>
+<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::StepForward - From a still frame, advance to next field<R>
+*<R>
+*   Notes:<R>
+*       1.  A video frame consists of two fields.  This command<R>
+*           steps forward one field, so the frame counter advances<R>
+*           after every other field step.<R>
+*<R>
+*       2.  The VCR will automatically stop if left in still frame<R>
+*           longer than 5 minutes without moving the tape.<R>
+*<R>
+*       3.  This command requires 300 mSec. to execute.<R>
+*<R>
+*       4.  Video is output, audio is muted.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::StepForward (void)<R>
+{<R>
+    SendCommand ("A@L");<R>
+}<R>
+<R>
+<R>
+<R>
+<R>
+/******************************************************************
+
+@cplus = *   VCR::StepReverse - From a still frame, step to previous field<R>
+*<R>
+*   Notes:<R>
+*       1.  A video frame consists of two fields.  This command<R>
+*           steps backward one field, so the frame counter decreases<R>
+*           after every other field step.<R>
+*<R>
+*       2.  The VCR will automatically stop if left in still frame<R>
+*           longer than 5 minutes without moving the tape.<R>
+*<R>
+*       3.  This command requires 300 mSec. to execute.<R>
+*<R>
+*       4.  Video is output, audio is muted.<R>
+*<R>
+*<R>
+**********************************************************************/<R>
+void VCR::StepReverse (void)<R>
+{<R>
+    SendCommand ("A@M");<R>
+}<R>
+<R>
+<R>
+<R>
+<R>
+/******************************************************************<R>
+*   VCR::PowerToggle - Toggle VCR power.<R>
+*<R>
+*   Notes:<R>
+*       1.  This command toggles the VCR power on/off.  Turning the<R>
+*           VCR power off does not inhibit communication with the<R>
+*           VCR serial processor.<R>
+*<R>
+*       2.  RequestMode() can be used to determine if the VCR<R>
+*           power is currently off.<R>
+*<R>
+*       3.  Three seconds may be required to turn off the power if<R>
+*           it is in the play mode.<R>
+*<R>
+*       4.  Audio and video are muted.<R>
+*<R>
+**********************************************************************/<R>
+void VCR::PowerToggle (void)<R>
+{<R>
+    SendCommand ("ACM");<R>
+}<R>
+// End of File

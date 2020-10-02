@@ -1,0 +1,183 @@
+	YANC Version 1.0 -- Yet Another New Catalog program
+
+	Copyright (c) 1982 by Ken Presser
+		permission is hereby granted for the
+		free use of this program in any non-
+		commercial manner.  Specifically
+		prohibited is any resale for profit
+		of this program in any form.
+
+This program is based on several programs originally written by
+Ward Christensen and expanded upon by Lewis Moseley, Jr.  The
+program has been completely rewritten in C.  It is menu driven
+and incorporates all of the update and reporting functions in one
+program.  It is compatible with the original file structure of
+MAST.CAT but will modify the format to incorporate the user number
+and the file size.  It may therefore not be downward compatible
+with the existing catalog system programs.
+
+The program consists of 2 modules:
+	YANC10.C	- The program source file
+	H19.L		- A source library of routines specific
+			  to the Heath/Zenith H19 terminal.
+The dialect of C used is CW/C from The Code Works.  I will cover
+specifics of any special features used in a later section.  It
+should not be any trouble to modify this program to use other
+dialects or other terminals.
+
+Instructions for use:
+
+The system will display a menu of possible choices which is fairly
+self-explanatory however I will briefly cover them here.
+
+Update the master catalog with the above defaults:
+	This will take the volume on the Add-disk drive and
+	read its directory and update the file MAST.CAT on
+	the Master-disk drive.
+
+List the entire master catalog:
+	This will list the entire file MAST.CAT to the
+	terminal and optionally, the printer.  It uses a
+	two-up format.
+   n:xxxxxxxx.yyy  vvvvvvv.vvv  mmmK | n:xxxxxxxx.yyy  vvvvvvv.vvv mmmK
+	where	n is the user number
+		xxxxxxxx.yyy is the file name
+		vvvvvvv.vvv is the volume name
+		mmmK is the file size
+
+List specific files with a match key:
+	This will list files in the above format that match a
+	key which may contain wild card characters.  Valid
+	wild cards are * to match a whole file name or
+	extension and ? to match a single character.
+
+List a volume from the master catalog:
+	This will list files in the above format where the
+	volume name matches a key.  The key may contain
+	wild cards as above.
+
+List the disk directory:
+	This will list the directory of the disk mounted
+	on the Add-disk drive.  The format is three-up and
+	similar to the above with the volume name missing.
+	The file name is listed as Dn:xxxxxxxx.yyy, where
+	D is the drive identifier, n is the user number and
+	xxxxxxxx.yyy is the file name with extension.  This
+	function also reports the space used and available
+	on the disk.  The listing is in alphabetical order.
+
+Initialize the Master Catalog:
+	This function will ask for verification and then
+	will initialize the file MAST.CAT for you.  It asks
+	for the Exclude-files.  Those files which you do
+	not want included in the master catalog such as PIP
+	and STAT, etc.  As in the original programs, there
+	must be at least one Exclude-file.  If you want
+	everything to be in the catalog, you must enter a
+	dummy Exclude-file (I use DUMMY.XZX.)  Do not use
+	this function if you already have a MAST.CAT set up.
+
+Update the defaults:
+	When the system first comes up it has the following
+	defaults.  The Master-drive is 'A', the Add-drive is
+	'B' and the printer is 'off'.  Any of these can be
+	changed with this function.  The Master-drive is the
+	drive containing the file MAST.CAT.  The Add-drive is
+	the drive on which the disk to be cataloged resides.
+	If the printer is 'on', then all reporting functions
+	will direct their displays to the printer as well as
+	the terminal.  Note: The Master-drive may be equal
+	to the Add-drive for a single-drive system.
+
+Make a directory volume label:
+	Every disk to be cataloged must have a directory
+	volume label.  This is simply a (possibly null)
+	directory entry where the file name starts with
+	a '-'.  If you forgot to create this file before
+	you entered this program, this function will allow
+	you to create a null file with the volume name on
+	the Add-drive.
+
+Quit this program:
+	Exit the program and do CP/M warm boot.
+
+----------------------------------------------------------
+
+Internals:
+
+This program is written to make use of the H/Z19 terminal.
+Specifically it uses the cursor addressing feature and the reverse
+video to indicate the current selection.  It also uses the read-
+cursor location function.  It maps the up-arrow, down-arrow and the
+home keys to their escape code + 128.  It should not be any problem
+to recode the functions used in the include-file H19.L if your
+terminal supports these features.  If not, the use of the terminal
+special features is limited to the function menu().  This routine
+may be recoded to simply ask for a number indicating the users
+choice.  The function simply returns a number from 1 to 9 to indicate
+the choice made.
+
+CW/C supports a facility known as source libraries.  File H19.L is an
+example of such a library.  Basically the compiler keeps track of the
+need to include specific functions based on whether or not they have
+been referenced.  The directive 
+#ifneed name
+is used to selectively include the code between the #ifneed and #endif.
+If this facility is not available in your dialect of C simply remove
+the #ifneed, #endif pairs.  This will cause all of the routines to be
+included in the resulting com file.
+
+I tried to avoid using any CW/C specific functions.  The following is
+a brief description of any non-standard functions that I am aware of:
+
+cpm(bc,de)
+	This function takes as arguments the bc register pair and
+	the de register pair and returns the value in the A register.
+	In one instance I had to code the assembly routine hcpm(bc,de)
+	which is identical but returns the value of the hl register
+	pair.  CW/C prefixes its function names with a Q, thus the
+	label QHCPM in the assembly routine.
+chupper(c)
+	This is similar to the original toupper(c) function, with the
+	addition that it makes a range check.  It can be coded as
+	if (c >= 'a' && c <= 'z') return toupper(c);
+free(mark)
+	This function releases memory from 'mark' which is a pointer
+	variable back to the available memory pool.
+malloc(size)
+	This function gets memory from the available memory pool.  It
+	returns the address of a chunk of memory of 'size' bytes.
+setbuf(file,buffer)
+	This function tells the I/O routines to use 'buffer' as the
+	buffer for 'file'.  See setbsize().
+setbsize(file,size)
+	This function tells the I/O routines that the user supplied
+	buffer is 'size' bytes long.
+strcat(s1,s2)
+	This function copies s2 onto the end of s1.
+strcmp(s1,s2)
+	This function compares strings s1 and s2 and returns 0 if
+	they are equal, a negative number if s1<s2 and positive if
+	s1>s2.
+strlen(s)
+	This function returns the length of string s.
+strmov(dest,src)
+	This function move string 'src' to 'dest'.
+
+That about covers it.  Good luck converting and/or using this
+program.  One reason for writing this was to make it easier to
+modify by virtue of it being in a higher-level language.  Some
+of the custom touches that have been incorporated into it are
+things like the indented format for the printer listings that
+facilitate my 8 1/2 by 11 paper which I like to 3-hole punch and
+store in 3-ring binders.  Also the function to add the volume
+label file when I forget to put the blessed thing on the disk and
+attempt an update only to get an error message instead.  Feel
+free to add your own custom touches.  I would be interested in
+any bugs or conversion problems you may find.  Or if I can be of
+any help please contact me on the cpmig bulletin board on Compuserve
+Information Services.  I try to sign on at least once a week to
+look around.
+					Ken Presser
+bulletin board on Compuserve
+Information Services.  I try to s

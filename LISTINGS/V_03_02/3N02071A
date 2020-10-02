@@ -1,0 +1,129 @@
+'Demo of CALL INTERRUPT using mouse functions
+'       Noel Nyman   8/91 
+
+DEFINT A-Z
+'$INCLUDE: 'qb.bi' 
+DECLARE SUB Mouse (MouseFunction, Buttons, HorizPos, VertPos) 
+
+'declare variables passed to SUB Mouse()
+DIM MouseFunction, Buttons, HorizPos, VertPos, MinPos, MaxPos
+        
+'define global Booleans       
+TRUE = -1
+FALSE = NOT TRUE
+
+'define mouse functions
+Installed = 0           'check for mouse installed, reset
+Show = 1                'show cursor
+Hide = 2                'hide cursor
+GetPos = 3              'get mouse position and button status
+SetPos = 4              'set mouse cursor position
+                     
+GetPress = 5            'get button press info
+GetRelease = 6          'get buton release info
+SetHorizRange = 7       'set min/max horiz position
+SetVertRange = 8        'set min/max vert position
+SetGraphics = 9         'set graphics cursor block
+
+SetText = 10            'set text cursor
+ReadMotion = 11         'read motion counters
+SetMask = 12            'set user sub input mask
+PenOn = 13              'light pen emulation on
+PenOff = 14             'light pen emulation off
+
+Mickey = 15             'set mickey/pixel ratio
+CondOff = 16            'conditional off
+DoubleSpeed = 19        'set double speed threshold
+
+'--- main code starts here ---
+CLS
+PRINT "Demo of CALL INTERRUPT using mouse functions."
+PRINT
+
+'check for a mouse and mouse driver
+MouseFunction = Installed
+CALL Mouse(MouseFunction, 0, 0, 0)
+
+IF MouseFunction THEN
+        PRINT "Mouse installed."
+
+        'show the text cursor
+        MouseFunction = Show
+        CALL Mouse(MouseFunction, 0, 0, 0)
+
+        'limit mouse to the lower left of the screen
+        MouseFunction = SetHorizRange
+        MinPos = 0
+        MaxPos = 240
+        CALL Mouse(MouseFunction, 0, MinPos, MaxPos)
+
+        MouseFunction = SetVertRange
+        MinPos = 96
+        MaxPos = 176
+        CALL Mouse(MouseFunction, 0, MinPos, MaxPos)
+
+        'Get mouse position and button status, exit on right button down
+        PRINT
+        PRINT "To test, move the mouse and press the left button ..."
+        PRINT "     Press the right button to exit."
+
+        ExitDemo = FALSE
+        DO
+                'get mouse position and button status
+                MouseFunction = GetPos
+                CALL Mouse(MouseFunction, Buttons, HorizPos, VertPos)
+                        LOCATE 8, 1
+                        PRINT "Horizontal position: "; HorizPos
+
+                        LOCATE 9, 1
+                        PRINT "Vertical position:   "; VertPos
+
+                IF Buttons AND 1 THEN
+                        LOCATE 11, 1
+                        PRINT "Left Button down"
+                ELSE
+                        LOCATE 11, 1    'left button not down
+                        PRINT SPACE$(16)
+                END IF
+
+                IF Buttons AND 2 THEN
+                        LOCATE 12, 1
+                        PRINT "Right Button down"
+                        ExitDemo = TRUE
+                END IF
+
+        LOOP WHILE NOT ExitDemo
+       
+        LOCATE 14, 1
+        PRINT "Demo ended by right button press."
+
+        'turn mouse cursor off
+        MouseFunction = Hide
+        CALL Mouse(MouseFunction, 0, 0, 0)
+
+ELSE
+        PRINT "Mouse not installed."
+END IF
+
+END
+
+
+
+'Call mouse driver through interrupt H33. 
+
+SUB Mouse (MouseFunction, Buttons, HorizPos, VertPos) 
+
+   DIM Regs AS RegType
+   Regs.ax = MouseFunction
+   Regs.bx = Buttons
+   Regs.cx = HorizPos
+   Regs.dx = VertPos
+   CALL Interrupt(&H33, Regs, Regs)
+
+   'return variables from mouse driver
+   MouseFunction = Regs.ax
+   Buttons = Regs.bx
+   HorizPos = Regs.cx
+   VertPos = Regs.dx
+
+END SUB

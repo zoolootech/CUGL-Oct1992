@@ -1,0 +1,43 @@
+{ RdKey to replace Turbo Pascal's ReadKey with a
+  function that (1) doesn't require clearing before
+  reuse after a call that yields ch = #0 and (2)
+  differentiates pairs such as BackSpace and Ctrl-h.
+
+  Implemented in Pascal
+}
+interface
+
+type
+   KeyRec = record
+              ch : char;
+              sc : byte;
+            end;
+
+function RdKey(var Grabber : KeyRec)  : Char;
+
+implementation
+
+function RdKey{(var Grabber : KeyRec)  : Char};
+
+var
+   regs : registers;
+
+begin
+  regs.ah := 0;
+  intr($16,regs);
+  if regs.al <> 0 then         { ascii <> 0 }
+     with grabber do
+      begin
+        ch := char(regs.al);
+        sc := regs.ah;
+        RdKey := ch
+      end
+  else                         { ascii = 0 }
+     with grabber do
+      begin
+        ch := char(regs.ah);
+        sc := 0;
+        RdKey := Char(regs.al);
+      end;
+end;
+

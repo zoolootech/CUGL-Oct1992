@@ -1,0 +1,376 @@
+	title	Xtract field from and insert field into buffer
+	name	('XTRINS')
+	;
+	; This is intended for use with Microsoft 'M80' and 'L80'
+	;
+	.xlist	; turn off listing
+	.xcref	; turn off cross reference label 'reference' accumulation
+	;
+	;
+@CHK	macro	?DD	;; Used for checking range of 8-bit displacements
+	if (?DD gt 7FH) and (?DD lt 0FF80H)
+	  'Displacement Range Error - TDL LIB'	;;force an error
+	endif
+	endm
+	;
+LDED	macro	?NNNN	
+	  db	0EDH,5BH
+	  dw	?NNNN
+	endm
+	;
+LBCD	macro	?NNNN	
+	  db	0EDH,4BH
+	  dw	?NNNN
+	endm
+	;
+	;
+BIT	macro	?N,?R	
+	  db	0CBH,?N*8+?R+40H
+	endm
+	;
+SETB	macro	?N,?R
+	  db	0CBH,?N*8+?R+0C0H
+	endm
+	;
+RES	macro	?N,?R
+	  db	0CBH,?N*8+?R+80H
+	endm
+	;
+	;
+JMPR	macro	?N
+	  db	18H,?N-$-1
+	endm
+	;
+JRC	macro	?N
+	  db	38H,?N-$-1
+	endm
+	;
+JRNC	macro	?N
+	  db	30H,?N-$-1
+	endm
+	;
+JRZ	macro	?N
+	  db	28H,?N-$-1
+	endm
+	;
+JRNZ	macro	?N
+	  db	20H,?N-$-1
+	endm
+	;
+DJNZ	macro	?N
+	  db	10H,?N-$-1
+	endm
+	;
+	;
+RLCR	macro	?R	
+	  db	0CBH, 00H + ?R
+	endm
+	;
+RALR	macro	?R	
+	  db	0CBH, 10H+?R
+	endm
+	;
+RRCR	macro	?R	
+	  db	0CBH, 08H + ?R
+	endm
+	;
+RARR	macro	?R	
+	  db	0CBH, 18H + ?R
+	endm
+	;
+SLAR	macro	?R	
+	  db	0CBH, 20H + ?R
+	endm
+	;
+SRAR	macro	?R	
+	  db	0CBH, 28H+?R
+	endm
+	;
+SRLR	macro	?R	
+	  db	0CBH, 38H + ?R
+	endm
+	;
+	;
+	;
+	.cref	; re-enable cross reference 
+	.list	; re-enable listing
+	;
+	;
+	;++ **************************************************
+	;
+	; TO USE THIS ROUTINE:
+	;
+	;	M80 XTRINSLB=XTRINSLB		...Microsoft 'M80'
+	;	L80 XTRINSLB,XTRINSLB/N/E	...Microsoft 'L80'
+	;	REN BIOS.CRL=BIOS.COM
+	;
+	;	XTRINSLB.CRL WILL BE A 'C' COMPATIBLE RELOCATABLE FILE
+	;	WHICH CAN BE REQUESTED AT CLINK OR INTEGRATED
+	;	INTO YOUR LIBRARY WITH CLIB
+	;
+	;-- **************************************************
+	;
+MAGIC	equ	3F7H		;'C' PARAMETER PASSING BUFFER
+	;
+	aseg
+	org	100H
+	.phase	0
+	;
+ZERO:	dc	'INSERT'	; Name of insert function
+	dw	INSHEAD		; Location of insert function
+	dc	'XTRACT'	; Name of xtract function
+	dw	XTRHEAD		; Location of xtract function
+	;
+	db	80H		;END OF DIRECTORY ENTRIES
+	dw	FINIS - 100H	;POINTER TO NEXT AVAIL LOCATION IN FILE
+	ds	(512 -($-ZERO))	;PAD REST OF DIRECTORY
+	ds	5		;RESERVED FOR 'CLIB'
+	;
+	.dephase
+	;
+	page
+	;
+	;++ ****************************************
+	;
+	;$$ INSERT	-- Insert bit field into a byte array
+	;
+	;	Bits are numbered 1..N
+	;	Width may be 1..16
+	;
+	;	Storage format is:
+	;
+	;	       msb    lsb
+	;
+	;		8      1	first byte of array
+	;	       16      9
+	;		.      .
+	;		.      .
+	;		N      N-8	last byte of array
+	;
+	; insert(array,data,start,width)
+	;	char *array;
+	;	unsigned data;
+	;	char start,width;
+	;	{
+	;	  .
+	;	  .
+	;	  return 0;
+	;	}
+	;
+	;
+	; Warning:	array must be at least
+	;		(start+width)/8 bytes long
+	;
+	;-- ****************************************
+	;
+	.phase	$-100H
+	;
+INSHEAD:
+	db	0	; No external functions used
+	dw	INSTOP-INSERT	; length of function INSERT
+	;
+	.dephase
+	;
+	; Body of function INSERT
+	;
+	.phase	0
+	;
+INSERT:	LHLD	MAGIC	; HL = .(byte array)
+	LDED	MAGIC+2	; DE = data to be inserted
+	LBCD	MAGIC+4	;  C = starting bit number
+	LDA	MAGIC+6
+	MOV	B,A	;  B = field width in bits
+	DCR	C	; bit no. 1..256 -> 0..255
+	PUSH	H	; save pointer to array
+	LXI	H,1	; calculate data mask
+MSLUP:	DAD	H
+	DJNZ	MSLUP
+	DCX	H	; HL = 2**width -1
+	MOV	A,E
+	ANA	L	; mask the data to be inserted
+	MOV	E,A
+	MOV	A,D
+	ANA	H
+	MOV	D,A
+	MOV	A,H	; invert the mask so it can force zeroes
+	CMA
+	MOV	H,A
+	MOV	A,L
+	CMA
+	MOV	L,A
+	XTHL		; HL = .(array), stack = inverted mask
+	MOV	A,C	; calc byte offset
+	ANI	not 7
+	RRC
+	RRC
+	RRC
+	ADD	L
+	MOV	L,A
+	JRNC	ADOK
+	INR	H	; HL = .(three bytes of interest)
+ADOK:	MOV	A,C	; calc bit in byte i.e. bitno. mod 8
+	ANI	7
+	INR	A	; 0..7 -> 1..8
+	MOV	C,A	; save for right justify shift
+	MOV	B,A	; again for left justify shift
+	XCHG		; DE = .(bytes of interest)
+	XTHL		;stack = data to be inserted, HL = inverted mask
+	PUSH	H	; stack = inverted mask
+	INX	D	; get 3 byte of interest in H'L'A
+	INX	D
+	LDAX	D
+	MOV	H,A
+	DCX	D
+	LDAX	D
+	MOV	L,A
+	DCX	D
+	LDAX	D
+RJLUP:	ORA	A
+	DCR	C
+	JRZ	RJDUN	; Is right justification complete ?
+	RARR	H	; No
+	RARR	L
+	RAR
+	JRNC	RJLUP
+	SETB	7,H
+	JMPR	RJLUP
+	;
+RJDUN:	XCHG		; HL = .(bytes of interest), DE = rj data
+	XTHL		; HL = inverted mask, stack = .(bytes o i)
+	ANA	L
+	MOV	L,A
+	MOV	A,E
+	ANA	H
+	MOV	E,A
+	MOV	A,L	; D'E'A = rj field masked to zeroes
+	POP	H
+	XTHL		; HL = data to be inserted, stack = .(bytes o i)
+	ORA	L	; or in the data to be inserted
+	MOV	L,A
+	MOV	A,E
+	ORA	H
+	MOV	E,A
+	MOV	A,L
+			;B = shift count to re-justify as was originally
+LJLUP:	ORA	A
+	DCR	B
+	JRZ	LJDUN	; Is left justify complete ?
+	RAL		; No
+	RALR	E
+	RALR	D
+	JRNC	LJLUP
+	SETB	0,A
+	JMPR	LJLUP
+	;
+LJDUN:	POP	H	; Hl = .(bytes of interest)
+	MOV	M,A
+	INX	H
+	MOV	M,E
+	INX	H
+	MOV	M,D	; modified bytes of interest restored
+	LXI	H,0	; Function value returned
+	RET		; and exit
+INSTOP:
+	dw	0	; No non-intrinsic relocatable references
+	;
+	.dephase
+	;
+	page
+	;
+	;++ ****************************************
+	;
+	;$$ EXTRACT -- Extract a bit field from a
+	;	    -- multi-byte buffer
+	;
+	;	Bits are numbered 1..N
+	;	Width may be 1..16
+	;
+	;	Storage format is presumed to be:
+	;
+	;	       msb    lsb
+	;
+	;		8      1	first byte of array
+	;	       16      9
+	;		.      .
+	;		.      .
+	;		N      N-8	last byte of array
+	;
+	;
+	; xtract(array,start,width)
+	;	char *array;
+	;	char start,width;
+	;	{
+	;	.
+	;	.
+	;	return <extracted value>;
+	;	}
+	;
+	;
+	;-- ****************************************
+	;
+	.phase	$-100H
+	;
+XTRHEAD:
+	db	0
+	dw	XTRTOP-XTRACT
+	;
+	.dephase
+	;
+	.phase	0
+	;
+XTRACT:	LHLD	MAGIC	; HL =.(byte array)
+	LBCD	MAGIC+2	;  C = starting bit number
+	LDA	MAGIC+4	
+	MOV	B,A	;  B = field width in bits
+	DCR	C	; bit no.  1..N -> 0..(N-1)
+	MOV	A,C
+	ANI	not 7
+	RRC
+	RRC
+	RRC
+	MOV	E,A
+	MVI	D,0	; DE = byte offset
+	DAD	D	; HL = .(bytes containing bits of interest)
+	MOV	A,C
+	ANI	7
+	MOV	C,A	; C = bit number mod bytesize (i.e. 8)
+	INR	C	; 0..7 -> 1..8
+	XCHG		; DE = .(bytes of interest)
+	INX	D
+	INX	D	; Could be spread across 3 bytes
+	LDAX	D	; get them in H'L'A
+	MOV	H,A
+	DCX	D
+	LDAX	D
+	MOV	L,A
+	DCX	D
+	LDAX	D
+LOOP:	DCR	C	; Right justify in H'L'A
+	JRZ	JUSTDN	; Is right justification complete ?
+	SRAR	H	; No
+	RARR	L
+	RAR
+	JMPR	LOOP
+	;
+JUSTDN:	MOV	D,L
+	MOV	E,A	; max 16 bit field right justified in D'E
+	LXI	H,1	; Calculate the field width mask
+MSKLUP:	DAD	H
+	DJNZ	MSKLUP
+	DCX	H	; HL = 2**width -1
+	MOV	A,D
+	ANA	H
+	MOV	H,A
+	MOV	A,E
+	ANA	L
+	MOV	L,A	; HL = extracted value
+	RET
+	;
+XTRTOP:
+	dw	0
+	;
+	.dephase
+	;
+	;
+FINIS:	end	ZERO
+

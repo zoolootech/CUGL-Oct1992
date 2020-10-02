@@ -1,0 +1,262 @@
+	NAME	('EDCODE')	; Essential device code
+	INCLUDE DEQ.MAC
+
+	PUBLIC	CMDBYT,STATUS,CMDIO,QUIK.1,QUIK.2,ST.FL2
+	PUBLIC	ST.FLU,FLSD.U,FLSD.B,FLRD,FLDS,FLDR
+	PUBLIC	PORTD,PORTC
+PORTD:	DW	PORT.D	; Host program can overwrite
+PORTC:	DW	PORT.C	; port assignments
+	.Z80
+; The following three macros can be simplified when
+; customised for individual hardware
+; in a remake of dlibrary.
+;
+OUT32D	MACRO	; 32 data bits OUT
+	LD	L,C
+	LD	H,B
+	LD	BC,(PORTD)
+	OUT	(C),E
+	OUT	(C),D
+	OUT	(C),L
+	OUT	(C),H
+	ENDM
+
+IN32D	MACRO	; 32 data bits IN
+	LD	BC,(PORTD)
+	IN	H,(C)
+	IN	L,(C)
+	IN	D,(C)
+	IN	E,(C)
+	LD	C,L
+	LD	B,H
+	ENDM
+
+IO16D	MACRO
+	LD	BC,(PORTD)
+	ENDM
+
+; Start of "float" area
+F.neg:: EQUJPS	NXF,QUIK.1
+F.add:: EQUJPS	.FADD,ST.FLB
+F.sub:: EQUJPS	.FSUB,ST.FLB
+F.mul:: EQUJPS	.FMUL,ST.FLB
+F.div:: EQUJPS	.FDIV,ST.FLB
+; Start of "long" area
+L.neg:: EQUJPS	NXL,QUIK.1
+L.add:: EQUJPS	.LADD,ST.FLB
+L.sub:: EQUJPS	.LSUB,ST.FLB
+L.mul:: EQUJPS	.LMUL,ST.FLB
+L.div:: EQUJPS	.LDIV,ST.FLB
+;
+; To understand some of the following remarks,
+; you must understand the macro "EQUJPS"
+; in the file DEQ.MAC.
+;
+ST.FLB: 	; equ FLSD.B, FLRD, CMDIO, FLDR
+	EXX
+	POP	HL
+	POP	DE	; to alternate registers
+	POP	BC
+	PUSH	HL
+	OUT32D
+	EXX
+QUIK.1: 	; equ FLRD, CMDIO, FLDR
+	OUT32D
+QUIK.2: 	; equ CMDIO, FLDR
+	EX	AF,AF'
+	LD	A,(CMDBYT)
+	RES	7,A ; Reset device flag
+	LD	BC,(PORTC)
+	OUT	(C),A
+S.DEL:	LD	A,10Q ; delay set up
+DEL.1:	DEC	A
+	JP	NZ,DEL.1
+	LD	BC,(PORTC)
+	IN	A,(C)	; status byte
+	;	device busy ?
+	BIT	7,A
+	JP	NZ,S.DEL
+	LD	(STATUS),A
+	EX	AF,AF'	; byte to alt A
+FLDR:
+	IN32D
+	RET
+FLSD.U:
+	EXX
+	POP	HL
+	POP	DE	; to alternate registers
+	POP	BC
+	PUSH	BC
+	PUSH	DE
+	PUSH	HL
+	OUT32D
+	EXX
+	JP	(IX)
+FL2X:
+	POP	IY
+	POP	DE	; to regular registers
+	POP	BC
+	PUSH	IY
+FLSD.B:
+	EXX
+	POP	HL
+	POP	DE	; to alternate registers
+	POP	BC
+	PUSH	HL
+	OUT32D
+	EXX
+	JP	(IX)
+FLRD:
+	OUT32D
+	JP	(IX)
+FLDS:
+	EXX
+	POP	IY
+	IN32D
+	PUSH	BC
+	PUSH	DE
+	PUSH	IY
+	EXX
+	RET
+
+STATUS:	DB	0
+CMDBYT:	DB	0
+
+DNBUSY:		; device not busy
+	EX	AF,AF'
+	JP	SETDEL
+CMDIO:			; Command OUT, status IN
+	EX	AF,AF'
+	LD	A,(CMDBYT)
+	RES	7,A ; Reset device flag
+	LD	BC,(PORTC)
+	OUT	(C),A
+SETDEL:	LD	A,10Q ; delay set up
+DEL:	DEC	A
+	JP	NZ,DEL
+	LD	BC,(PORTC)
+	IN	A,(C) 	; status byte
+	;	device busy ?
+	BIT	7,A
+	JP	NZ,SETDEL
+	LD	(STATUS),A
+	EX	AF,AF' 	; byte to alt A
+	JP	(IX)
+
+ST.FLU:	EQUJPS	,FLSD.U,QUIK.2
+ST.FL2:	EQUJPS	,FL2X,FLRD,CMDIO,FL.PU2,FLDR
+FL.PU2:		; float/long - push 2
+	POP	IY	; save return address
+	PUSH	BC
+	PUSH	BC
+	PUSH	BC
+	PUSH	BC
+	PUSH	IY	; restore return address
+	JP	(IX)
+
+; Toolworks labels as entry points
+; int to float, and vice versa
+I..F::	EQUJPS	ITOF,SPSD.B,CMDIO,FLDS
+Hi.Bf:: EQUJPS	ITOF,SPRD,CMDIO,FLDR
+
+F..I::	EQUJPS	FTOI,FLSD.B,CMDIO,SPDS
+Bf.Hi:: EQUJPS	FTOI,FLRD,CMDIO,SPDR
+
+LDIY	MACRO	TARGET
+	LD	IY,TARGET
+	JP	H16.Bl
+	ENDM
+
+C..L::	LDIY	Hc.Bl## ; Linker will find these target labels
+U..L::	LDIY	Hu.Bl## ;  in the Toolworks Mathpak file
+I..L::	LDIY	Hi.Bl## ;    flibrary.rel
+
+H16.Bl:
+	EXX
+	POP	IX
+	POP	HL
+	PUSH	IX
+	LD	IX,RTLBL1
+	PUSH	IX
+	JP	(IY)
+RTLBL1:
+	POP	IX
+	PUSH	BC
+	PUSH	DE
+	PUSH	IX
+	EXX
+	RET
+; Single precision (SP) 16-bit code
+
+SPSD.U:
+	EXX
+	POP	DE
+	POP	HL
+	PUSH	HL
+	PUSH	DE
+	IO16D
+	OUT	(C),L
+	OUT	(C),H
+	EXX
+	JP	(IX)
+SPSD.B:
+	EXX
+	POP	DE
+	POP	HL
+	PUSH	DE
+	IO16D
+	OUT	(C),L
+	OUT	(C),H
+	EXX
+	JP	(IX)
+SPRD:
+	IO16D
+	OUT	(C),L
+	OUT	(C),H
+	JP	(IX)
+SPDR:
+	IO16D
+	IN	H,(C)
+	IN	L,(C)
+	RET
+SPDS:
+	EXX
+	POP	DE
+	IO16D
+	IN	H,(C)
+	IN	L,(C)
+	PUSH	HL
+	PUSH	DE
+	EXX
+	RET
+
+	.8080
+	END
+
+
+	END
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

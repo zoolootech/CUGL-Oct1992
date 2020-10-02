@@ -1,0 +1,54 @@
+#include <dos.h>
+writefc(int row, int col, int attr, char mch)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+{
+  extern int color, mono, cga, ega, scrseg, bios;
+  int   scrofs, *pattr, orow, ocol ,x;
+  char pchar;
+  char far *base;
+  char far *work;
+	if(mono) base=(char far *)0xb0000000;
+	else base=(char far *)0xb8000000;
+	if(bios) {
+  		get_cur(&orow,&ocol);
+        locate(row,col) ;
+		put_ca(mch,attr,1);
+		cur_rt();
+        locate(orow,ocol);
+        return(0);
+	}
+	scrofs = ((((row+1) * 160) - 160) + ((col+1) * 2)) - 2;
+	work = base + scrofs;
+	pchar = mch;
+	asm les bx,work
+	asm mov cl,pchar
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+		asm mov byte ptr es:[bx],cl
+	work++;
+	pchar = attr;
+	asm les bx,work
+	asm mov cl,pchar
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+		asm mov byte ptr es:[bx],cl
+	work++;
+	return(0);
+}
+

@@ -1,0 +1,41 @@
+#include <dos.h>
+swrite_c(int row, int col, char ch)
+/* This will do a direct video write of the character ch. It will be
+   placed at location row,col using attribute attr.
+*/
+{
+  extern int color, mono, cga, ega, scrseg, bios;
+  union REGS inregs, outregs;
+  int   scrofs, *pattr, orow, ocol ,x;
+  char pchar;
+  char far *base;
+  char far *work;
+	if(mono) base=(char far *)0xb0000000;
+	else base=(char far *)0xb8000000;
+	if(bios) {
+        locate(row,col) ;
+        inregs.h.bh=0x00;
+        inregs.h.ah=0x0a;
+        inregs.h.al=ch;
+        inregs.x.cx=0x01;
+		int86(0x10,&inregs,&inregs);
+        return(0);
+	}
+	scrofs = ((((row+1) * 160) - 160) + ((col+1) * 2)) - 2;
+	work = base + scrofs;
+	pchar = ch;
+	asm les bx,work
+	asm mov cl,pchar
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+	asm mov byte ptr es:[bx],cl
+	return(0);
+}
+

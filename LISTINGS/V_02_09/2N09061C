@@ -1,0 +1,40 @@
+rBEGIN
+OPEN Master;
+OPEN Update;
+
+WHILE FETCH Update.*
+DO BEGIN
+   CASE UpdateList.action
+    "A": BEGIN
+         WHILE (Master.key < Update.key)
+         DO FETCH Master.*;
+         INSERT Update.* INTO Master;
+         END;
+
+    "B": BEGIN /* Position to old record in master file */
+         WHILE (Master.key < Update.key)
+         DO FETCH Master.*;
+         END;
+   
+    "C": BEGIN /* B ought to put you on the right record */
+         IF (Master.key = Update.key)
+         THEN BEGIN
+              DELETE Master.*;
+              INSERT Update.* INTO Master;
+              FETCH Master;
+              END;
+          END;
+
+    "D": BEGIN
+         WHILE Master.key < Update.key)
+         DO FETCH Master.*;
+         IF (Master.key = Update.key)
+         THEN DELETE Master.*;
+         END;
+    END;
+
+CLOSE Master;
+SORT Master ON Master.key;
+CLOSE Update;
+END;
+

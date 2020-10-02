@@ -1,0 +1,74 @@
+/* function prototypes */
+
+int            sgetch(void);      /* receive a serial character     */
+void interrupt serial_isr(void);  /* serial interrupt svc routine   */
+void           install(void);     /* installation/initialization    */
+void           sputch(char);      /* transmit a serial character    */
+void           cleanup(void);     /* exit cleanup routine           */
+
+/* data declarations and constants */
+
+#define    QUELEN          1024   /* size of serial input buffer    */
+char queue[QUELEN];               /* buffer to hold input chars.    */
+int  break_detect      =      0;  /* set true on break detect       */
+int  char_overrun      =      0;  /* set true on character overrun  */
+int  echo              =      0;  /* controls kybd. echo to screen  */
+int  translation       =      0;  /* add line feed to incoming C/R  */
+int  frame_error       =      0;  /* count of framing errors        */
+int  input_index       =      0;  /* input index of serial buffer   */
+int  output_index      =      0;  /* output index of serial buffer  */
+int  parity_error      =      0;  /* count of parity errors         */
+int  ring_detect       =      0;  /* set true on ring detect        */
+void interrupt (*old_vector)();   /* place to save old int. vector  */
+#define    S_EOF             -1   /* return value for sgetch()      */
+                                  /* if no characters are available */
+
+/* 8259A PIC register addresses and commands */
+
+#define PIC_CTL_REG         0x20  /* 8259A PIC control register     */
+#define PIC_INT_MASK_REG    0x21  /* 8259A PIC interrupt mask reg   */
+#define NON_SPEC_EOI        0x20  /* non-specific end of interrupt  */
+
+/* 8250 ACE register addresses and bit definitions */
+
+#if     COM_PORT      ==       1  /* definitions for COM1           */
+#define ACE_DATA_REG       0x3f8  /* data register                  */
+#define ACE_INT_ENB_REG    0x3f9  /* interrupt enable register      */
+#define ACE_INT_IDENT_REG  0x3fa  /* interrupt identification reg   */
+#define ACE_LINE_CTL_REG   0x3fb  /* line control register          */
+#define ACE_MODEM_CTL_REG  0x3fc  /* modem control register         */
+#define ACE_LINE_STAT_REG  0x3fd  /* line status register           */
+#define ACE_MODEM_STAT_REG 0x3fe  /* modem status register          */
+#define COM_INT_NUM           12  /* interrupt number for COM1      */
+#define IRQ_MASK            0xef  /* IRQ mask for IRQ4  (11101111)  */
+
+#elif   COM_PORT      ==       2  /* definitions for COM2           */
+#define ACE_DATA_REG       0x2f8  /* data register                  */
+#define ACE_INT_ENB_REG    0x2f9  /* interrupt enable register      */
+#define ACE_INT_IDENT_REG  0x2fa  /* interrupt identification reg   */
+#define ACE_LINE_CTL_REG   0x2fb  /* line control register          */
+#define ACE_MODEM_CTL_REG  0x2fc  /* modem control register         */
+#define ACE_LINE_STAT_REG  0x2fd  /* line status register           */
+#define ACE_MODEM_STAT_REG 0x2fe  /* modem status register          */
+#define COM_INT_NUM           11  /* interrupt number for COM2      */
+#define IRQ_MASK            0xf7  /* IRQ mask for IRQ3  (11110111)  */
+#endif
+
+#define THRE                0x20  /* transmit holding reg empty     */
+#define CTS                 0x10  /* clear to send                  */
+#define DSR                 0x20  /* data set ready                 */
+#define RI                  0x40  /* ring indicator                 */
+#define DCD                 0x80  /* data carrier detect            */
+#define PE                     4  /* parity error                   */
+#define FE                     8  /* framing error                  */
+#define OE                     2  /* overrun error                  */
+#define BI                  0x10  /* break interrupt                */
+#define DCTS                   1  /* delta clear to send            */
+#define DDSR                   2  /* delta data set ready           */
+#define TERI                   4  /* trailing edge ring detect      */
+#define DDCD                   8  /* delta data carrier detect      */
+
+
+
+/* end of header */
+

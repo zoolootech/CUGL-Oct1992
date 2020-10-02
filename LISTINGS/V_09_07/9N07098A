@@ -1,0 +1,342 @@
+
+
+/*
+ *      xlib2.c
+ *      A  more advanced X Window 
+ *      (Xlib)-based program using text,
+ *      written for the C Users Journal.
+ *
+ *      Link with the X library, e.g.,
+ *
+ *              cc -o xlib2 xlib2.c -lX11
+ *
+ *      Define SYSV if you have malloc()
+ *      declared in stdlib.h.
+ *
+ */
+
+#include <stdio.h>
+
+#ifdef SYSV
+#include <stdlib.h>
+#endif
+
+#include  <X11/Xlib.h>
+#include  <X11/Xutil.h>
+#include  <X11/keysymdef.h>
+#include  <X11/keysym.h>
+
+
+/*
+ *      We have a hard-coded size and location
+ */
+#define X_LOCATION              10
+#define Y_LOCATION              20
+#define WIDTH                   400
+#define HEIGHT                  50
+#define MAX_STRING_LENGTH       400
+
+/*
+ *      Use xlsfonts to find a font name
+ *      that is available on your system.
+ */
+/* #define FONT_NAME               "fixed"  */
+#define FONT_NAME               "variable"
+
+
+main( argc, argv )
+
+int     argc;
+char    *argv[];
+
+{       /* main */
+        Display         *display;
+        int             screen;
+        Window          rootwindow;
+        Window          window;
+        XSizeHints      *sizehints;
+        XWMHints        *wmhints;
+        GC              gc;
+        XEvent          event;
+        int             done;
+        char            string[ MAX_STRING_LENGTH + 4 ];
+        XFontStruct     *font;
+
+
+        /*
+         * Connect to an X server.
+         */
+        display = XOpenDisplay( (char *) NULL );
+
+        if ( display == (Display *) NULL )
+                {
+                fprintf( stderr, "Error opening display\n" );
+                exit( 1 );
+                }
+
+        screen     = DefaultScreen( display );
+        rootwindow = RootWindow( display, screen );
+
+        /*
+         * Create a window
+         */
+        window = XCreateSimpleWindow( display,
+                        rootwindow,     /* parent */
+                        X_LOCATION, Y_LOCATION,
+                        WIDTH, HEIGHT,
+                        1,              /* border width */
+                        BlackPixel( display, screen ),
+                        WhitePixel( display, screen ) );
+
+    /*
+     * Set up Window Manager Hints for keyboard input
+     */
+        wmhints = (XWMHints *) malloc( sizeof(XWMHints) );
+
+    wmhints->flags = InputHint;
+    wmhints->input = True;
+
+    XSetWMHints(display, window, wmhints );
+
+    free( wmhints );
+
+        /*
+         * Set up hints about the window
+         */
+        sizehints = (XSizeHints *) malloc( sizeof(XSizeHints) );
+
+        sizehints->x      = X_LOCATION;
+        sizehints->y      = Y_LOCATION;
+        sizehints->width  = WIDTH;
+        sizehints->height = HEIGHT;
+        sizehints->flags  = PPosition | PSize;
+
+        /* 
+         * Use XSetWMProperties() in R4
+         *      
+         */
+        XSetStandardProperties( display, window,
+                "Xlib2",        /* window name */
+                "Xlib2",        /* icon name */
+                (Pixmap) None,  /* Icon pixmap */
+                argv, argc,
+                sizehints );
+
+        free( sizehints );
+
+    
+        /*
+         * Ask for Expose, mouse (Button) and keyboard input
+         */
+        XSelectInput( display, window,
+                ButtonPressMask | ExposureMask | KeyPressMask );
+
+
+        /*
+         * Load up a font. 
+         */
+        font = XLoadQueryFont( display, FONT_NAME );
+
+
+        if ( font == (XFontStruct *) NULL )
+                {
+                fprintf( stderr, "Error in loading %s font.\n",
+                        FONT_NAME );
+
+                XCloseDisplay( display );
+                exit( 1 );
+                }
+
+
+        /*
+         * Create a Graphics Context (GC) for drawing text
+         */
+        gc = XCreateGC( display, window,
+                0L, (XGCValues *) NULL );
+
+        XSetForeground( display, gc, 
+                BlackPixel( display, screen ) );
+
+        /*
+         * Set the background color, too
+         */     
+        XSetBackground( display, gc, 
+                WhitePixel( display, screen ) );
+
+        /*
+         * Set the GC to draw in the given font.
+         */
+        XSetFont( display, gc, font->fid );
+
+
+        /*
+         * Make Window appear on the screen
+         */
+        XMapWindow( display, window );
+        XFlush( display );
+
+        string[0] = '\0'; /* null out string */
+        
+        done = False;
+
+        while( !done )
+                {
+                XNextEvent( display, &event );
+
+                switch( event.type )
+                        {
+                        case ButtonPress:
+                                XCloseDisplay( display );
+
+                                exit( 0 );
+                                break;
+                        case Expose:
+                                /*
+                                 * Only redraw when all
+                                 * Expose events are in
+                                 */
+                                if ( event.xexpose.count == 0 )
+                                        {
+                                        RedrawText( display, window, 
+                                                gc, string );
+                                        }
+                                break;
+                        case KeyPress:
+                                EditString( display, window,
+                                        &event, string, 
+                                        MAX_STRING_LENGTH );
+
+                                RedrawText( display, window, 
+                                        gc, string );
+                                break;
+                        }
+
+                }
+
+
+}       /* main */
+
+RedrawText( display, window, gc, string )
+
+Display *display;
+Window  window;
+GC      gc;
+char    string[];
+
+{       /* RedrawText */
+
+        XDrawImageString( display, window, gc,
+                5, 20,          /* location */
+                string,
+                strlen( string ) );
+
+#define MESSAGE "Click a Mouse Button to Exit"
+
+        XDrawImageString( display, window, gc,
+                5, 40,          /* location */
+                MESSAGE,
+                strlen( MESSAGE ) );
+
+        XFlush( display );
+
+}       /* RedrawText */
+
+EditString( display, window, event, string, max_length )
+
+Display         *display;
+Window          window;
+XKeyEvent       *event;
+char            string[];
+int             max_length;
+
+{       /* EditString */
+        int             length;
+        char            new_string[ 12 ];
+        KeySym          keysym;
+        XComposeStatus  composestatus;
+
+        length = XLookupString( event,
+                        new_string,
+                        1,              /* max length of new_string */
+                        &keysym,
+                        &composestatus );
+
+    new_string[1] = '\0';   /* some systems add garbage to new_string */
+
+        if ( ( event->state & Mod1Mask ) || ( event->state & Mod2Mask ) )
+                {
+                /*
+                 * ALT key
+                 */
+                }
+
+        if ( event->state & ShiftMask )
+                {
+                /*
+                 * Shift key down
+                 */
+                }
+
+        /*
+         * This is a US ASCII test, so you may need to change this.
+         */
+        if ( ( length > 0 ) && ( keysym > 31 ) && ( keysym < 127 ) )
+                {
+                if ( ( length + strlen( string ) ) < max_length ) 
+                        {
+                        strcat( string, new_string );
+                        }
+                }
+        else
+                {
+                /*
+                 * Could be a function or special key.
+                 * We'll only check for a few here.
+                 */
+                switch( keysym )
+                        {
+                        case XK_Return: /* Return key */
+                                break;
+                        case XK_Escape:
+                                string[0] = '\0';
+
+                                XClearWindow( display, window );
+                                break;
+                        case XK_BackSpace: /* NOBREAK */
+                        case XK_Delete:
+                                /*
+                                 * We'll treat both back space and
+                                 * delete the same.
+                                 */
+                                length = strlen( string );
+
+                                if ( length > 0 )
+                                        {
+                                        string[ length - 1 ] = '\0';
+                                        }
+
+                                /*
+                                 * You should have a much better
+                                 * algorithm to refresh after a
+                                 * delete character, than this,
+                                 * but we'll just clear the window
+                                 * and start over.
+                                 */
+                                XClearWindow( display, window );
+                                break;
+                        case XK_Right: /* right arrow */        
+                                break;
+                        case XK_Prior: /* PageUp to DOS folks */
+                                break;
+                        case XK_Next:   /* PageDn to DOS folks */
+                                break;
+                        case XK_F1:     /* functionkey 1 */
+                                break;
+                        }
+
+                }
+
+}       /* EditString */
+
+/* end of file */
+

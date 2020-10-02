@@ -1,0 +1,177 @@
+---------------------------------------------------------------------------
+
+                              Appendix P
+typedef Frog* T;
+
+// Boolean type
+typedef int Truth;
+
+// A node contains a value of type T.  Each node can link 
+// itself to another node
+
+class Node {
+public:
+     Node( T x)                    { val = x; Next = 0; }
+     Node *next()                  { return Next; }
+     void link( Node *neighbor)    { Next = neighbor; }
+     T value()                     { return val; }
+private:
+     Node *Next;
+     T val;
+};
+
+// A word about preconditions:  if the precondition is
+// not satisfied, the operation should not be performed.
+// If, nonetheless, the operation is performed, the results are
+// indeterminate ( e.g. spurious results, corruption of program,
+// memory fault ... )
+
+// Lisp of T is a Lisp-style list of T values.
+// It is a simple abstraction, useful in its own right,
+// also useful for building more sophisticated list abstractions.
+// Note:  Lists with reference semantics are obtained by
+// substituting T* for T.
+
+class Lisp {
+public:
+     Lisp()              { head = 0; }
+
+     Truth isempty()     { return head == 0; }
+
+     // lget returns the value at the head of the lisp
+     // without deleting it.  This is car in LISP.
+     // precondition:  !isempty() (lisp is not empty)
+     T lget()             { return head->value(); }
+
+     // ltail returns the tail of the lisp.  cdr in LISP.
+     Lisp ltail()
+     {
+          Lisp r;
+          if( !isempty() )
+               r.head = head->next();
+          return r;
+     }
+
+     // ladd inserts a new element with value x at the head
+     // of the lisp
+     void ladd(T x)
+     {
+          Node *p = new Node(x);  // error return of new should
+                                  // be checked ... 
+          if( !isempty() )        // member fun. calls member fun.
+               p->link( head);
+          head = p;
+     }
+     
+     // ldel deletes value at the head of the list
+     // and returns the value
+     // precondition:  !isempty() (lisp is not empty) 
+     T ldel()
+     {
+          Node *t = head;
+          T r     = head->value();
+          head    = head->next();
+          delete t;
+          return r; 
+     }
+
+// some functions useful for building parametric List[T] with
+// random access to element on its index in the list
+
+     // after inserts the value x after the first element in the
+     // lisp.  If the lisp is empty, x becomes first element
+     void after( T x)
+     {
+          Node *p = new Node(x);  // error return of new should
+                                  // be checked ... 
+          if( isempty() )
+               head = p;
+          else {
+               p->link( head->next() );
+               head->link( p);
+          }
+     }
+
+     // pluck deletes the 2nd element in the lisp
+     // precondition:  lisp has at least 2 elements
+     // i.e. !tail().isempty()
+     T pluck()
+     {
+          Node *t = head->next();
+          T r     = t->value();
+          head->link( t->next());
+          delete t;
+          return r;
+     }
+
+private:
+     Node *head;
+};
+
+// Pond is a kind of Lisp wherein the individual elements can
+// be randomly accessed.  Element indices start at 0.
+// Note:  Pond inherits all of the properties of Lisp
+
+class Pond : public Lisp {
+public:
+        Pond();
+
+        Pond( Lisp &l);
+
+     // length returns the number of elements in the list
+     int length();
+
+     // get returns the nth value in the list
+     // precondition:  !isempty() && 0 <= n < length()
+     T get( int n);
+
+     // del deletes the nth value in the list and returns it.
+     // precondition:  !isempty() && 0 <= n < length()  
+     T del( int n);
+
+     // add adds x after element n
+     // precondition:  n >= 0
+     // Note:  if you want to insert to the head of the Pond,
+     // use the inherited void ladd( T x) member function     
+     void add( T x, int n);
+
+     // tail returns the tail of the Pond.
+     Pond tail();
+
+        // tail( n) returns the n-th tail of the Pond
+        Pond tail( int n);
+};
+
+int Pond::length()
+{
+        int n;
+        Pond r;
+        
+        for( n = 0, r = *this; !r.isempty(); n++, r = r.tail() )
+                ;
+        return n;
+}
+
+T Pond::get( int n)             { return tail( n).lget(); }
+
+T Pond::del( int n)             
+{ 
+     return n ? tail( n - 1).pluck() : ldel(); 
+}
+
+void Pond::add( T x, int n)     { tail( n).after( x); }
+
+Pond::Pond() : ()               {}
+
+Pond::Pond( Lisp &l)            { (*(Lisp *)this) = l; }
+
+Pond Pond::tail()               { return Pond( ltail()); }
+
+Pond Pond::tail( int n)
+{
+        for( Pond r = *this; !r.isempty() && (n-- > 0); r = r.tail() )
+                ;
+        return r;
+}
+
+---------------------------------------------------------------------------

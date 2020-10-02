@@ -1,0 +1,67 @@
+#include	<conio.h>
+
+
+/*
+************************************************************************
+*	Input - waits for key or mouse button press, then returns value
+*
+*	Parameters:
+*		x (out) - x position of mouse when button pressed
+*		y (out) - y position of mouse when button pressed
+*
+*	Returns:
+*		For mouse, returns MOUSE_L or MOUSE_R (left or right button).
+*		For normal key press, returns key code (extended ascii).
+*		For extended key press, returns second byte of extended key
+*			code * -1.
+*
+*	Notes:
+*		This routine blocks waiting user action.
+*		Mouse coordinates are virtual screen coordinates.
+*		This routine turns the mouse on and off.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+**********************************************************************
+*/
+
+#define	INVALID		-1
+#define	MOUSE_L		-2
+#define	MOUSE_R		-3
+
+int	Input (int *x, int *y)
+{
+	int	m1, m2, m3, m4;
+	int	mouse;
+	int	ch;
+	int	retval = 0;
+	*x = INVALID;
+	*y = INVALID;
+
+	MouseOn ();
+	while (retval == 0)
+	{
+		/* return mouse if pressed */
+		m1 = 3;		/* check button press on mouse */
+		m2 = 0;
+		IntMouse (&m1, &m2, &m3, &m4);
+		if (m2 != 0)
+		{
+			/* wait for button release */
+			mouse = m2;
+			while (m2 != 0) IntMouse (&m1,&m2,&m3,&m4);
+			*x = m3;
+			*y = m4;
+			if (mouse == 1) retval = MOUSE_L;
+			else retval = MOUSE_R;
+		}
+		if (kbhit() != 0) /* keyboard hit test */
+		{
+		   ch = getch();
+		   if (ch == 0) ch = -(getch());	/* get extended key code */
+		   retval = ch;
+		}
+	}
+	MouseOff ();
+	return retval;
+}

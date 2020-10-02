@@ -1,0 +1,137 @@
+/* Set Device Driver Attributes */
+/* Philip J. Erdelsky - June 28, 1988 */
+
+#include <fcntl.h>
+#include <stdio.h>
+
+typedef unsigned char byte;
+typedef unsigned int word;
+
+/* format of device header */
+
+struct device_header {
+  word offset, segment;
+  word attributes;
+  word strategy_entry;
+  word interrupt_entry;
+  char name[8];
+  };
+
+/* device header attributes */
+
+#define CHAR_DEVICE_ATTRIBUTE     0x8000
+#define STI_DEVICE_ATTRIBUTE      0x0001
+#define STO_DEVICE_ATTRIBUTE      0x0002
+#define NUL_DEVICE_ATTRIBUTE      0x0004
+#define CLOCK_DEVICE_ATTRIBUTE    0x0008
+#define SPECIAL_ATTRIBUTE         0x0010
+#define IOCTL_ATTRIBUTE           0x4000
+#define NON_IBM_FORMAT_ATTRIBUTE  0x2000
+
+static union {
+
+  struct {
+    word signature;
+    word bytes_in_final_sector;
+    word size_of_file;
+    word number_of_relocation_items;
+    word size_of_header;
+    word paragraphs_after_end;
+    word high_low_loader_switch;
+    word SS;
+    } exe_header;
+
+  struct device_header device_header;
+
+  char unstructured[512];
+
+  } buffer;
+
+#define PARAGRAPH 16
+
+static int capital(c) int c; {
+return ('a'<=c && c<='z' ? c-('a'-'A') : c);
+}
+
+void main(argc, argv) int argc; char **argv; {
+int n, exe_file, sys_file;
+
+if (argc<5) {
+  fputs("Missing argument(s)", stderr);
+  exit(1);
+  }
+
+if ((exe_file = open(argv[1],O_RDONLY|O_RAW,0))<0) {
+  fputs("Can't open ", stderr);
+  fputs(argv[1], stderr);
+  exit(1);
+  }
+
+if ((sys_file = open(argv[2],O_WRONLY|O_CREAT|O_TRUNC|O_RAW,0))<0) {
+  fputs("Can't open ", stderr);
+  fputs(argv[2], stderr);
+  exit(1);
+  }
+
+if (read(exe_file, buffer.unstructured, PARAGRAPH) < PARAGRAPH) {
+  fputs(".EXE file format error", stderr);
+  exit(1);
+  }
+
+if (buffer.exe_header.number_of_relocation_items!=0) {
+  fputs(".EXE file contains relocation items", stderr);
+  exit(1);
+  }
+
+  {
+  int i;
+  for (i=buffer.exe_header.size_of_header; i>1; i--)
+    if (read(exe_file, buffer.unstructured, PARAGRAPH) < PARAGRAPH) {
+      fputs(".EXE file format error", stderr);
+      exit(1);
+      }
+  }
+
+n = read(exe_file, buffer.unstructured, sizeof(buffer));
+
+if (n<sizeof(buffer.device_header)) {
+  fputs(".EXE file format error", stderr);
+  exit(1);
+  }
+
+  {
+  char *p;
+  for (p=argv[3]; *p!=0; p++) switch (capital(*p)) {
+    case 'C': buffer.device_header.attributes |= CHAR_DEVICE_ATTRIBUTE; break;
+    case 'I': buffer.device_header.attributes |= STI_DEVICE_ATTRIBUTE; break;
+    case 'O': buffer.device_header.attributes |= STO_DEVICE_ATTRIBUTE; break;
+    case 'N': buffer.device_header.attributes |= NUL_DEVICE_ATTRIBUTE; break;
+    case 'T': buffer.device_header.attributes |= CLOCK_DEVICE_ATTRIBUTE; break;
+    case 'S': buffer.device_header.attributes |= SPECIAL_ATTRIBUTE; break;
+    case 'L': buffer.device_header.attributes |= IOCTL_ATTRIBUTE; break;
+    case 'X': buffer.device_header.attributes |= NON_IBM_FORMAT_ATTRIBUTE; break;
+    }
+  }
+
+if (buffer.device_header.attributes&CHAR_DEVICE_ATTRIBUTE) {
+  int c, i;
+  for (i=0; (c=argv[4][i])!=0 && i<8; i++)
+    buffer.device_header.name[i] = capital(c);
+  }
+else {
+  char *p;
+  int u = 0;
+  for (p=argv[4]; *p!=0; p++) u = 10*u+(*p)-'0';
+  buffer.device_header.name[0] = u;
+  }
+
+do {
+  if (write(sys_file, buffer.unstructured, n) < n) {
+    fputs("File write error", stderr);
+    exit(1);
+    }
+  n = read(exe_file, buffer.unstructured, sizeof(buffer));
+  } while (n>0);
+
+}
+

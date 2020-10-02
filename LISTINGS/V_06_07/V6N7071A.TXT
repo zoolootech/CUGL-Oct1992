@@ -1,0 +1,167 @@
+/* RAM disk */
+/* Philip J. Erdelsky - June 23, 1988 */
+
+#include "dd.h"
+
+#define SECTOR_SIZE            512
+#define KILOBYTE              1024
+#define DIRECTORY_ENTRY_SIZE    32
+#define TBA                      0
+
+#define DIRECTORY_ENTRIES_PER_SECTOR (SECTOR_SIZE/DIRECTORY_ENTRY_SIZE)
+
+struct sector {
+  bite x[SECTOR_SIZE];
+  };
+
+static struct sector *buffer;
+
+/* bootstap block */
+
+static bite jump[3] = {0,0,0};
+static char OEM[8] = {' ', ' ', ' ', ' ', ' ', ' ', ' ', ' '};
+
+/* BIOS Parameter Block */
+
+struct bpb BPB = {
+  SECTOR_SIZE,  /* bytes_per_sector            */
+  1,            /* sectors_per_allocation_unit */
+  1,            /* reserved_sectors            */
+  1,            /* FATs                        */
+  TBA,          /* root_directory_entries      */
+  TBA,          /* total_sectors               */
+  0xFE,         /* media_descriptor            */
+  TBA,          /* sectors_per_FAT             */
+  8,            /* sectors_per_track           */
+  1,            /* heads                       */
+  0             /* hidden_sectors              */
+  };
+
+static struct bpb *bpb_table[1];
+
+static unsigned int get_number(p) char *p; {
+unsigned int n = 0;
+int c;
+if (p==NULL) return 0;
+c = *p++;
+while ('0'<=c && c<='9') {
+  n = 10*n + c - '0';
+  c = *p++;
+  }
+return n;
+}
+
+void init() {
+unsigned int capacity;
+capacity = get_number(argument(1));
+  if (capacity==0) capacity = 160;
+BPB.root_directory_entries = get_number(argument(2));
+if (BPB.root_directory_entries==0) BPB.root_directory_entries = 64;
+BPB.root_directory_entries =
+  (BPB.root_directory_entries + (DIRECTORY_ENTRIES_PER_SECTOR-1))
+    & (-DIRECTORY_ENTRIES_PER_SECTOR);
+BPB.total_sectors = capacity*(KILOBYTE/SECTOR_SIZE);
+
+  {
+  unsigned int FAT_bytes;
+  FAT_bytes = BPB.total_sectors + (BPB.total_sectors+1)/2;
+  BPB.sectors_per_FAT =
+    (FAT_bytes + SECTOR_SIZE - 1) / SECTOR_SIZE;
+  }
+
+puts("\nRAM disk installed, capacity = ");
+puts(capacity==160 ? "160" : argument(1));
+puts("K\n");
+
+buffer = (struct sector *) (request_header->x.init.end_of_driver);
+request_header->x.init.end_of_driver += 
+  (long) BPB.total_sectors * (long) BPB.bytes_per_sector;
+
+buffer[0] = *((struct sector *)(&jump));
+
+  {
+  int i;
+  char *q;
+  q = buffer[BPB.reserved_sectors].x;
+  for (i=0;
+       i<BPB.sectors_per_FAT*BPB.FATs+
+                    DIRECTORY_ENTRY_SIZE*BPB.root_directory_entries;
+       i++)
+    q[i] = 0;
+  }
+
+buffer[BPB.reserved_sectors].x[0] = BPB.media_descriptor;
+buffer[BPB.reserved_sectors].x[1] = 0xFF;
+buffer[BPB.reserved_sectors].x[2] = 0xFF;
+
+bpb_table[0] = &BPB;
+request_header->x.init.pointer.bpb_table = bpb_table;
+request_header->x.init.number_of_units = 1;
+
+request_header->status = DONE_STATUS;
+}
+
+void media_check() {
+request_header->x.media_check.returned = 1;
+request_header->status = DONE_STATUS;
+}
+
+void build_bpb() {
+request_header->x.build_bpb.bpb = &BPB;
+request_header->status = DONE_STATUS;
+}
+
+void ioctl_input() {bad_device_driver_function();}
+
+void input() {
+unsigned sector, n;
+struct sector *p;
+sector = request_header->x.io.starting_sector;
+p = (struct sector *) (request_header->x.io.transfer_address);
+n = request_header->x.io.count;
+while (n>0 && sector<BPB.total_sectors) {
+  *p++ = buffer[sector++];
+  n--;
+  }
+request_header->status = DONE_STATUS;
+}
+
+void nondestructive_input() {
+request_header->status = DONE_STATUS;
+}
+
+void input_status() {
+request_header->status = DONE_STATUS;
+}
+
+void input_flush() {
+request_header->status = DONE_STATUS;
+}
+
+void output() {
+unsigned sector, n;
+struct sector *p;
+sector = request_header->x.io.starting_sector;
+p = (struct sector *) (request_header->x.io.transfer_address);
+n = request_header->x.io.count;
+while (n>0 && sector<BPB.total_sectors) {
+  buffer[sector++] = *p++;
+  n--;
+  }
+request_header->status = DONE_STATUS;
+}
+
+void output_with_verify() {
+output();
+}
+
+void output_status() {
+request_header->status = DONE_STATUS;
+}
+
+void output_flush() {
+request_header->status = DONE_STATUS;
+}
+
+void ioctl_output() {bad_device_driver_function();}
+

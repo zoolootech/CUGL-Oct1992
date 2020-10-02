@@ -1,0 +1,46 @@
+
+    #include <ctype.h> 
+    #include <stdarg.h> 
+    #include <stdio.h> 
+    #include <stdlib.h> 
+    #include <string.h> 
+
+    int rprintf(char *fmt, ...) 
+        { 
+        va_list args; 
+        int len, count; 
+        char *r, *f, *c; 
+        char rpt_fmt[200]; 
+
+        for (r=rpt_fmt, f=fmt; (*r = *f) != '\0'; r++, f++) 
+            if (f[0] == '%' && isdigit(f[1])) 
+                if ((c=f+1+strspn(f+1,"0123456789"))[0] == 'r' && c[1] == '(') 
+                    { 
+                    for (count=atoi(f+1), f=c+2; count != 0; count--) 
+                        for (c = f; *c && *c != ')'; *r++ = *c++) 
+                            ; 
+                    r--; 
+                    f = c; 
+                    } 
+
+        va_start(args, fmt); 
+        len = vprintf(rpt_fmt, args); 
+        va_end(args); 
+
+        return len; 
+        } 
+
+    void main(void) 
+        { 
+        rprintf("rprintf output is:\n\n"); 
+        rprintf("One=%d, Two=%d.\n", 1, 2); 
+        rprintf("Digits=%10r(%d).\n", 0, 1, 2, 3, 4, 5, 6, 7, 8, 9); 
+        rprintf("Digits=%d%9r(, %d).\n", 0, 1, 2, 3, 4, 5, 6, 7, 8, 9); 
+        } 
+
+    rprintf output is: 
+
+    One=1, Two=2. 
+    Digits=0123456789. 
+    Digits=0, 1, 2, 3, 4, 5, 6, 7, 8, 9. 
+

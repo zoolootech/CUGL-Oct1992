@@ -1,0 +1,303 @@
+/*  VERSION 0007  (DATE: 16/12/86)  (TIME: 22:57)  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qe4
+
+	FUNCTIONS: info,findorrep,dofindrep,find
+
+	PURPOSE: perform find, alter and repeat commands
+
+*/
+
+#include "qe.h"
+
+info()
+{
+	char c;
+	int from,to,line;	/*non-empty lines to reform*/
+
+#if (WWRAP)
+	if (expert) xprtmess("F/A/P/Y/K/L/O ? ");
+	else
+  	 putmess("|F|ind |A|lter |P|aragraph |Y|(DEL-EOL) |K|ontext |L|ine nums toggle |O|nscrn Help ");
+	while ((c = getlow()) != 'a' && c != 'f' && c != 'p' && c != 'k' &&
+	    	c!='l' && c!='o' && c != 'y' && c != ESCKEY);
+#else	/*no word wrap*/
+	if (expert) xprtmess("F/A/Y/K/L/O ? ");
+	else
+  	 putmess("|F|ind |A|lter |Y|(DEL-EOL) |K|ontext |L|ine nums toggle |O|nscrn Help ");
+	while ((c = getlow()) != 'a' && c != 'f' && c != 'k' &&
+		  c!='l' && c!='o' && c != 'y' && c != ESCKEY);
+#endif   /*wrap*/
+
+if (c == ESCKEY) goto clear;
+switch (c)  {
+	case 'f':
+		replace = NO;
+		findorrep();
+		break;
+	case 'a':
+		replace = YES;
+		findorrep();
+		break;
+#if WWRAP
+	case 'p':
+		puttext();
+		if (!text[0]) moveline(1);
+		else  {
+			from=to=line=cline;
+			if (cline!=lastl)
+				do {
+					gettext(++line);
+					to++;
+				} while	 ((cline<=lastl) &&
+					(c=text[0]) && (!((c==' ')||(c=='\t'))) );
+			else to++;			/*"to" must be 1 more than text to refrm*/
+			reform(from,to);
+			changed=YES;
+			putpage();
+			}
+		break;
+#endif   /*word wrap*/
+	case 'y':
+			/* save deleted portion for later recovery */
+		strcpy(textb,&text[charn]);
+		deleteline((cursorx-offset),cursory);
+		altered = changed = YES;
+		text[charn] = '\0';
+		break;
+	case 'k':
+		envir();
+		break;
+	case 'l':
+		displaypos = !displaypos;
+		deleteline(LNPOS,0);
+		putlineno(cline);
+		return;
+	case 'o':
+		if (helpon) {
+			helpon = NO;
+			unmess();
+			}
+		else {
+			helpon=YES;
+			dohelp();
+			}
+		break;
+	}
+clear:
+	if (expert) xmessoff();
+}
+
+findorrep()
+{
+	int  toend, global, i, count;
+	char c;
+
+	if (expert) {
+		deleteline(0,0);
+		puts("Find|:(^]=esc)|? ");
+		}
+	else putmess("Find|(^]=ESC)|? ");
+	global=nocheck=toend=NO;
+	findir=1; 
+	count=0;
+	c=scans(patt,FLIM);
+	if (c==ESCKEY) goto clrfind;
+	if (replace) {
+		if (c == ESCKEY) goto clrfind;
+		if (expert) {
+			deleteline(0,0);
+			puts("Alter|:(^]=esc)|? ");
+			}
+		else putmess("Alter to|(^]=ESC)|? ");
+		c=scans(changeto,FLIM);
+		}
+	else if (!patt[0]) goto clrfind;
+	if (c == CR) {
+		if (replace) {
+			if (expert) xprtmess("B/G/T/W/n ? ");
+			else
+			  putmess("B|ack/|G|lobal/|T|o end (start)/|W|ithout asking/number |? ");
+		    }
+		else
+			if (expert) xprtmess("B|kwrds/n|? ");
+			else putmess("|Search |B|ackwards/number|? ");
+		if (scans(opts,5) == ESCKEY) goto clrfind;
+		for (i=0; (c=opts[i]); i++) {
+			switch(tolower(c)) {
+			case 'g' : 
+				global=YES;
+			case 't' : 
+				toend=YES;
+				break;
+			case 'b' : 
+				findir=-1; 
+				break;
+			case 'w' : 
+				nocheck=YES; 
+				break;
+				}
+			if (c >= '0' && c <= '9') count=count*10+c-'0';
+			}
+		if (!replace) {
+			global=NO; 
+			toend=NO;
+			}
+		if (count == 0) {
+			if (toend) count=MAXINT;
+			else count=1;
+			}
+		if (global) {
+			findir=1;
+			moveline(1-cline);
+			sync(0);
+			}
+		}
+	else count=1;
+	dofindrep(count);
+clrfind:
+	if (expert) {
+		/*
+		gotoxy(0,0);
+		for (i=0;i<FNPOS;i++) puts(" ");
+		*/
+		deleteline(0,0);
+		putstatusline();
+		resetcursor();
+		}
+}
+
+dofindrep(count)
+int count;
+{
+	int cp, i, len;
+	char c;
+
+	puttext();
+	do {
+		count--;
+		if (find() == FAIL) count=0;
+		else if (replace) {
+			if (nocheck) c='y';
+			else {
+				gotoxy(EMPOS,0);
+				puts("     Replace |{|Y|/|N|}|? ");
+				do {
+					gotoxy(REPPOS,0);
+					for (i=0; i < 1000; i++);
+					resetcursor();
+					for (i=0; i < 1000; i++);
+					} 
+				while ((c=testlow()) != 'y' && c != 'n'
+				&& c != ESCKEY);
+				}
+			deleteline(EMPOS,0);
+			switch(c) {
+			case 'y' :	
+				if (strlen(text)+(len=strlen(patt)) >= LLIM) {
+					error("Line would be too long"); 
+					return;
+					}
+				for (cp=charn; (text[cp]=text[cp+len]); cp++);
+				for (cp=strlen(text), len=strlen(changeto); 
+					cp >= charn; cp--)
+					    text[cp+len]=text[cp];
+				for (i=0; (c=changeto[i]); i++) text[charn++]=c;
+				altered=YES; 
+				puttext();
+				rewrite(++cp,cursorx);
+				sync(charn);
+				break;
+			case ESCKEY:
+				count=0;
+				error("Search stopped");
+			case 'n' :
+				movechar(findir); 
+				break;
+				}
+			}
+		} 
+	while(count);
+	inbufp=0;
+}
+
+find()	/*find 'patt', searching back (findir==-1) or forwards (1) from
+	  current line.  Return FAIL or YES, and set current line to
+	  that containing pattern*/
+{
+	int fline, oldcharn, newcharn, interupt, linecount, pos;
+	char *s, pattch1, *p, *t, *getline();
+
+	if (!replace || repeat) movechar(findir);
+	fline=cline;  
+	oldcharn=charn; 
+	interupt=NO;
+	linecount= cline%100;
+	pattch1=patt[0];
+	gotoxy(WAITPOS,0);
+	if (findir == 1)
+		while (fline <= lastl) {
+			if (linecount++ == 100) {
+				linecount=1; 
+				putlineno(fline);
+				gotoxy(WAITPOS,0);
+				if (testkey() == ESCKEY) {
+					interupt=YES;
+					goto interrupted;
+					}
+				}
+/*			for (s=getline(fline)+charn; *(p=s); charn++,s++)
+				if (*s == pattch1) {
+					for (t=patt+1, p++; *t && *p == *t; p++, t++);
+					if (!*t) goto foundit;
+					}   */
+			if ( (pos=index(getline(fline)+charn,patt)) != FAIL) {
+				charn+=pos;
+				goto foundit;
+				}
+			fline++; 
+			charn=0;
+			}
+	else
+	while (fline >= 1) {
+		if (linecount-- == 0) {
+			linecount=99; 
+			putlineno(fline);
+			gotoxy(WAITPOS,0);
+			if (testkey() == ESCKEY) {
+				interupt=YES;
+				goto interrupted;
+				}
+			}
+		for (s=getline(fline); charn >= 0; charn--)
+			if (*(p=&s[charn]) == pattch1) {
+				for (t=patt+1,p++; *t && *p == *t; p++, t++);
+				if (!*t) goto foundit;
+				}
+		charn=strlen(getline(--fline))-1;
+		}
+interrupted:
+	charn=oldcharn; 
+	if (!replace || repeat) movechar(-findir);
+	if (interupt) {
+		error("Search aborted");
+		putlineno(cline);
+		}
+	else error("       Search fails");
+	return FAIL;
+
+foundit:
+	newcharn=charn; 
+	moveline(fline-cline); 
+	sync(charn=newcharn);
+	return YES;
+}
+n; cp--)
+					    text[cp+len]=te

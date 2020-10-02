@@ -1,0 +1,106 @@
+
+
+/**************************************************
+* DXSEND.C -- Send a file to another network node.
+*
+*     Copyright 1990 Tom Jensen
+**************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include "netbios.h"
+#include "dxdef.h"
+
+int IFLAG;
+
+static void DispHelp(void);
+
+int main(int argc, char **argv)
+{
+  struct NcbData  *ncb;
+  char		  buffer [BUFSIZE];
+  char		  lname[17], fname[17];
+  unsigned	  retcode;
+  unsigned char   session;
+
+  if(retcode = NetActive())
+    exit(retcode);
+
+  if((ncb =
+    (struct NcbData *) malloc(sizeof(struct NcbData)))
+    == NULL)
+    exit(1);
+
+  if(argc < 3)
+  {
+    DispHelp();
+    exit(1);
+  }
+
+  /* process recipient's name */
+  NbExpandName(fname, argv[1]);
+  fname[15] = NAME_UNIQUE;    /* make the name unique */
+  fname[16] = '\0';           /* make it a C string */
+
+  /* process local (sender's) name */
+  LocalName(buffer);	      /* Get local net name */
+  NbExpandName(lname, buffer);
+  lname[15] = NAME_UNIQUE;    /* make the name unique */
+  lname[16] = '\0';           /* make it a C string */
+
+  printf("Wait for unique name to be added.\n");
+  if((retcode = NbAddName(ncb, lname)) == NB_OK)
+    printf("Name \"%s\" added successfully.\n", lname);
+  else
+  {
+    printf("NETBIOS error %02xH encountered ", retcode);
+    printf(" encountered while adding \"%s\".\n", lname);
+    exit(1);
+  }
+
+  if((retcode = NbOpenSession(ncb, lname, fname, &session))
+    == NB_OK)
+    printf("Session opened successfully.\n");
+  else
+  {
+    printf("NETBIOS error %02xH ", retcode);
+    printf("returned from Call command.\n");
+    NbDelName(ncb, lname);
+    exit(1);
+  }
+
+  strcpy(buffer, DXPREFIX);
+  strcat(buffer, argv[2]);
+
+  NbSendData(ncb, lname, fname, buffer, BUFSIZE, session);
+  NbReceiveData(ncb, lname, fname, buffer, BUFSIZE,
+    session);
+
+  if(strncmp(buffer, OKMSG, OKSIZE) == 0)
+    printf("File successfully exchanged.\n");
+  else
+    printf("Probable error exchanging file.\n");
+
+  NbCloseSession(ncb, lname, fname, session);
+  NbDelName(ncb, lname);
+
+  return 0;
+}
+
+/*******************************************
+* DispHelp -- Display a brief help message.
+*******************************************/
+
+static void DispHelp(void)
+{
+  printf("Usage: DXSEND <receiving name> <file spec>\n");
+  printf("  Where <receiving name> is the network name ");
+  printf("of the recipient\n");
+  printf("  and <file spec> contains the data to be ");
+  printf("made available.\n");
+  printf("Note: The receiving name is case sensitive\n");
+  printf("  and the file spec must be known to the ");
+  printf("recipient.\n");
+}
+

@@ -1,0 +1,387 @@
+
+/************************************************************
+ * Program: RMENU Menu Interpreter
+ *  Module: rmenu2.c
+ * Top-level menu processing
+ * Written by: Leor Zolman, 7/91
+ ************************************************************/
+
+#include "cmenu.h"
+#include "rcmenu.h"
+
+#if __STDC
+#pragma hdrstop
+#endif
+
+#include <ctype.h>
+
+
+/************************************************************
+ * sub_menu(): 
+ * Run a local menu at the given nesting level
+ * Default command/menu path is supplied via "path".
+ ************************************************************/
+
+int sub_menu(mnum, path)
+int mnum;
+char *path;
+{
+   MENU2 *M2p = LMenus[nestlev].Menus[mnum];
+   MENU *Mp = &M2p -> Menu;
+   char newpath[MAX_PATH];
+   
+   int cur_item = 0;
+   int sel_val = 0;
+   int factor;
+   
+   draw_menu(M2p, cur_item);               /* display the menu     */
+
+   strcpy(newpath, make_path(path, Mp -> path));
+
+   while (1)
+   {
+      switch (get_cmd(Mp -> nitems, cur_item, &sel_val))
+      {
+         case  KEY_UP:
+            draw_item(M2p, cur_item, NORMAL, NO);
+            cur_item = cur_item ? cur_item - 1 :
+                  Mp -> nitems - 1;
+            draw_item(M2p, cur_item, STANDOUT, YES);
+            break;
+            
+         case KEY_DOWN:
+            draw_item(M2p, cur_item, NORMAL, NO);
+            cur_item = (cur_item == Mp -> nitems - 1) ? 0 :
+                  cur_item + 1;
+            draw_item(M2p, cur_item, STANDOUT, YES);
+            break;
+
+         case KEY_RIGHT:
+            if (Mp -> columns == 1)
+               break;
+
+            draw_item(M2p, cur_item, NORMAL, NO);
+
+            factor = MAX_IROWS / Mp -> spacing;
+            if (cur_item + factor < Mp -> nitems)
+               cur_item += factor;
+            else
+               cur_item %= factor;
+
+            draw_item(M2p, cur_item, STANDOUT, YES);
+            break;
+            
+         case KEY_LEFT:
+            if (Mp -> columns == 1)
+               break;
+            draw_item(M2p, cur_item, NORMAL, NO);
+
+            factor = MAX_IROWS / Mp -> spacing;
+            if (cur_item >= factor)
+               cur_item -= factor;
+            else
+               while (cur_item + factor < Mp -> nitems)
+                  cur_item += factor;
+
+            draw_item(M2p, cur_item, STANDOUT, YES);
+            break;
+            
+         case KEY_SHOW:
+            show_item(M2p, cur_item, newpath);
+            break;
+            
+         case KEY_RUN:
+            if (M2p -> Items[cur_item] -> acttyp == ACT_EXIT)
+               return OK;
+            if (do_item(M2p, cur_item, newpath) == EXITALL)
+               return EXITALL;
+
+            switch(M2p -> Items[cur_item] -> nextcode)
+            {
+               case NXT_FIRST:
+                  cur_item = 0;
+                  break;
+                  
+               case NXT_LAST:
+                  cur_item = M2p -> Menu.nitems - 1;
+                  break;
+               
+               case NXT_NEXT:
+                  if (cur_item < M2p -> Menu.nitems - 1)
+                     cur_item++;
+                  break;
+                  
+               case NXT_DIRECT:
+                  cur_item = M2p -> Items[cur_item] -> nextitem;
+                  break;
+            }
+
+            draw_menu(M2p, cur_item);            /* redisplay menu */
+            break;
+            
+         case K_DIRECT:
+            if ((sel_val - 1) != cur_item)
+            {
+               draw_item(M2p, cur_item, NORMAL, NO);
+               cur_item = sel_val - 1;
+               draw_item(M2p, cur_item, STANDOUT, YES);
+            }
+            break;
+
+         case K_SHELL:
+            if (M2p -> Menu.escape == YES ||
+              (M2p -> Menu.escape == DEFAULT && DEF_ESCAPE == YES))
+            {
+#if SHELL_PROMPT
+               if (put_msg(0, SH_PROMPT_STR) == ESC)
+                  break;
+#else
+               move(ERR_ROW, 0);
+               hlight_on();
+               addstr("Invoking shell. . .");
+               hlight_end();
+#endif
+
+               pre_shell();            /* set up for shell call    */
+               system(SysShell);       /* run a shell              */
+               post_shell();           /* restore everything       */
+
+               draw_menu(M2p, cur_item);
+            }
+            else
+              put_msg(1, "Sorry, shell escapes are disabled.");
+            break;
+
+         case K_EXIT:
+            return OK;
+
+         case K_EXITALL:
+            return EXITALL;
+
+         case K_VERSION:
+            put_msg(0, " RMENU Menu Interpreter v%s ",
+                      VERSION);
+            break;
+
+         case K_UNKNOWN:
+            beep();
+      }
+      refresh();
+   }
+}
+
+
+/************************************************************
+ * draw_menu(): 
+ * Display the entire menu, including all prompts,
+ * and titles and help text (if any) for current item
+ * on the screen.
+ ************************************************************/
+
+Void draw_menu(M2p, curr)
+MENU2 *M2p;
+int curr;
+{
+   MENU *Mp = &M2p -> Menu;
+   int title_len = strlen(Mp -> title);
+   int i, j; 
+   
+   clear();
+
+   move(TITLE_ROW, (SCREEN_COLS - title_len)/2);
+   addstr(Mp -> title);                       /* Put up menu title */
+
+   for (i = 0; i < Mp -> nitems; i++)
+      if (i != curr)
+         draw_item(M2p, i, NORMAL, NO);
+
+   draw_item(M2p, curr, STANDOUT, YES);
+
+   move(PROMPT_ROW, 0);
+   addstr(MENU_OPTS);
+   if (Mp -> escape == YES ||
+         (Mp -> escape == DEFAULT && DEF_ESCAPE == YES))
+      addstr(MENU_SHELL);
+   addstr(MENU_PROMPT);
+   getyx(stdscr, echoy, echox); /* save coords of item # echo area */
+      
+   refresh();                                /* display the window */
+
+}
+
+
+/************************************************************
+ * draw_item():
+ * Display a single item (the current item) of the
+ * specified menu, using the specified video mode.
+ * Display assiciated help text only if "dohelp"
+ * is TRUE.
+ ************************************************************/
+
+Void draw_item(M2p, item, vid_mode, dohelp)
+MENU2 *M2p;
+int item, vid_mode, dohelp;
+{
+   ITEM *Ip = M2p -> Items[item];
+   COORDS *Cp = &M2p -> coords[item];
+   int j;
+   int help_len;
+
+   move (Cp->ypos, Cp->xpos);
+   printw("%2d.", item + 1);
+
+   if (vid_mode == STANDOUT)
+      hlight_on();
+
+   printw(" %s", Ip -> text);
+
+   for (j = 0; j < Cp -> spaces_needed; j++)
+         addch(' ');
+
+   if (vid_mode == STANDOUT)
+      hlight_end();
+
+
+   if (dohelp == YES)
+   {
+      move(HELP_ROW0, HELP_COL0);
+      if (*Ip -> help)
+      {
+         addstr(" HELP: ");                /* display "HELP:" text */
+
+         move (HELP_ROW, 0);  /* Erase preivous help text (if any) */
+         clrtoeol();
+
+         help_len = strlen(Ip -> help);
+         if (help_len > (SCREEN_COLS - 6))
+            move (HELP_ROW, (80 - strlen(Ip -> help))/2);
+         else
+            move (HELP_ROW, (80 - help_len)/2 - 2);
+
+         hlight_on();
+         if (help_len <= (SCREEN_COLS - 6))
+            addstr(" ");
+         addstr(Ip -> help);
+         if (help_len <= (SCREEN_COLS - 6))
+            addstr(" ");
+         hlight_end();
+         clrtoeol();
+      }
+      else
+      {
+         addstr("       ");                /* clear help text area */
+         move(HELP_ROW, 0);
+      }
+      clrtoeol();
+   }
+}
+
+
+/************************************************************
+ * get_cmd()
+ * Get a command from the user.
+ * Arrow keys or space returns the appropriate K_ code.
+ * Pressing Enter returns the K_RUN code.
+ * Pressing ! returns the K_SHELL code.
+ * Entering a direct number returns K_DIRECT,
+ * and the sel_val is set (indirectly) to selection number
+ *  (1-based).
+ ************************************************************/
+
+int get_cmd(nitems, curr, sel_val)
+int nitems;
+int curr;
+int *sel_val;
+{
+   int ch;
+   int newval;
+   int savy, savx;
+
+   static int digits = FALSE;      /* true if digits being entered */
+   
+   move(echoy, echox);                  /* move to prompt location */
+   printw("%d", curr + 1);
+   getyx(stdscr, savy, savx);
+   clrtoeol();
+   move(savy, savx);
+   refresh();
+   
+   while (1)
+   {
+      ch = getch();
+      if (!isdigit(ch))
+         digits = FALSE;
+      switch (ch)
+      {
+         case KEY_UP:
+         case '\b':           /* WYSE 60s send this for left arrow */
+            clrtoeol();
+            return KEY_UP;
+
+         case ' ':
+         case KEY_DOWN:
+#if UNIX || XENIX
+         case '\n':           /* WYSE 60s send this for down arrow */
+#endif
+            clrtoeol();
+            return KEY_DOWN;
+
+         case KEY_RIGHT:
+         case KEY_LEFT:
+         case KEY_RUN:
+         case KEY_SHOW:
+            return ch;
+
+         case 'e':
+         case 'E':
+            return K_EXIT;
+
+         case 'x':
+         case 'X':
+            return K_EXITALL;
+            
+         case 'v':
+         case 'V':
+            return K_VERSION;
+
+         case '!':
+            return K_SHELL;
+
+         case ESC:                            /* clear digits area */
+            digits = FALSE;
+            move(echoy, echox);  
+            clrtoeol();
+            refresh();
+            break;
+            
+         default:                                 /* handle digits */
+            if (!isdigit(ch))
+               return K_UNKNOWN;
+
+            if (digits && 
+               (newval = *sel_val * 10 + (ch - '0')) <= nitems
+                  && newval > 0)
+            {
+               addch(ch);
+               refresh();
+               *sel_val = newval;
+               return K_DIRECT;
+            }
+            else if ( (newval = ch - '0') && newval <= nitems)
+            {
+               digits = TRUE;
+               move(echoy, echox);  
+               addch(ch);
+               clrtoeol();
+               refresh();
+               *sel_val = newval;
+               return K_DIRECT;
+            }
+            else
+            {
+               digits = FALSE;
+               beep();
+            }
+      }
+   }
+}

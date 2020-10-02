@@ -1,0 +1,626 @@
+
+
+/* next_string() reads the header file and returns the next NON-COMMENT */
+/* string in the file, or NULL if end-of-file is reached */
+/* *f is the file pointer for the header file */
+
+char *next_string(f)
+FILE *f;
+{
+	int num_fields; /* number of fields read & assigned by fscanf() */
+	static char instring[256];  /* buffer for fscanf() */
+	    /* WARNING: While INSTRING is declared as a local variable, its */
+	    /* actual scope is more global. INSTRING is declared STATIC */
+	    /* because it is accessed by other functions via the STRING */
+	    /* pointer.  The contents of INSTRING must remain valid beyond */
+	    /* the life of the next_string() call.                      */
+
+	char *string; /* pointer to INSTRING */
+
+	num_fields=fscanf(f,"%s",instring);
+	string=instring;
+
+	    /* throw away the comments */
+	if(!strncmp("/*", string, 2))
+	{
+	    do
+	    {
+		num_fields=fscanf(f,"%s",string);
+	    } while( strncmp("*/",&string[strlen(string)-2],2) && (num_fields != EOF));
+
+		/* get the next string after the close of the comment */
+		/* to return.  Make sure that the next string is not also */
+		/* a comment by using the recursive call */
+	    string=next_string(f);
+	}
+
+	if(num_fields==EOF)
+	    string=NULL;
+
+	return(string);
+
+}
+
+
+
+
+
+Listing 1: The main parsing function of h_filter.
+
+
+ACUITY_H                                acuity.h
+ACUITY_SCALE_FACTOR                     acuity.h
+CORRECT                                 acuity.h
+DATAFILE                                acuity.h
+LARGER                                  acuity.h
+NEW_SIZE                                acuity.h
+NO_RESPONSE                             acuity.h
+SEARCH                                  acuity.h
+SMALLER                                 acuity.h
+STDOUT                                  acuity.h
+STDPRN                                  acuity.h
+TARG_DOWN                               acuity.h
+TARG_LEFT                               acuity.h
+TARG_RIGHT                              acuity.h
+TARG_UP                                 acuity.h
+TRACK                                   acuity.h
+VERTICAL_DASH                           acuity.h
+WRONG                                   acuity.h
+
+
+
+Table 1: Sample output of h_filter.
+
+AB_END                                  acu_menu.h
+ABS                                     itex100.h
+ABSOLUTE                                itex100.h
+ACU_MENU_H                              acu_menu.h
+ACUITY_ARRAY_SIZE                       acu_menu.h
+ACUITY_H                                acuity.h
+ACUITY_SCALE_FACTOR                     acuity.h
+AD_IN                                   dt2808.h
+ADD                                     itex100.h
+ALLOCATION_ERROR                        itex100.h
+ALT                                     keys.h
+AND                                     itex100.h
+ANSI_H                                  ansi.h
+ANY_BUTTON                              cont_lib.h
+aslope                                  scotoma.h
+AUTO_PAUSE                              scotoma.h
+
+
+
+
+
+Table 2: Fragment of sample output from 
+         h_merge, including the 'a' entries
+         from table 1.
+
+/* h_filter.c is a utility for extracting names of #define'd constants */
+/* and macros, structs, unions, and typedefs from a header file and */
+/* creating an alphabetical listing file of the names, like this: */
+/* NAME    HEADER.H filename, one entry per line in the file. */
+/* All header.h filename entries are the same in the output file */
+/* The output file can be used to create a cross-reference list of */
+/* header file names for a library by combining the appropriate */
+/* alphabetical lists using h_merge.c, a companion utility. */
+/*                                                              */
+/* WARNING: h_filter.c uses a simplified version of C grammar, in */
+/* which comment delimiters and keywords are assumed to be preceded */
+/* and followed by either a space or a newline.  Valid C code will not */
+/* necessarily be parsed properly.  Further, it is assumed that all */
+/* struct and union definitions have names, i.e., struct {int a;char b;}c; */
+/* will be viewed as having the name "int". */
+/*                                                                      */
+/* Written by T. Clune 8/88.  Copyright (c) 1988, Eye Research Institute */
+/* Boston, MA.  Permission is granted to individuals to use this utility */
+/* for noncommercial applications.  All commercial rights are reserved. */
+
+/* Known MS C-specific aspects of this program are: use of process.h header */
+/* file to decalre exit() and use of strcmpi(), which is a Microsoft function */
+/* like strcmp() except that the string comparison is case-insensitive.  A */
+/* usable substitute for strcmpi() is available in my file strcmpi.c. */
+
+
+#include <stdio.h>
+#include <process.h>	/* MS C header that declares exit() */
+#include <string.h>
+#include <ctype.h>
+#include <malloc.h>
+#include <search.h>
+
+#define MAXPTRS 500     /* max number of names supported from the .h file */
+#define PATH_CHAR '\\'  /* path delimiter in MS-DOS */
+#define DRIVE_CHAR ':' /* drive designator in MS-DOS */
+
+
+static char *ptr[MAXPTRS];   /* ptrs to names of definitions in .h file */
+static int numptrs; /* the number of names that are actually in the file */
+
+char * next_string();
+char * lose_braces();
+void extract_names(), put_name();
+void make_list();
+int compare();
+
+
+/* main() Usage: h_filter foo.h bar.srt,                                 */
+/* where FOO.H is the name of the header file to work on                 */
+/* and BAR.SRT is the alphabetically-sorted list of FOO.H defined names. */
+
+main(argc, argv)
+int argc;
+char *argv[];
+{
+
+    FILE *f;
+    numptrs=0;  /* initialize number of names variable */
+
+    if(argc != 3)
+    {
+	printf("Usage: %s foo.h bar.srt,\n", argv[0]);
+	printf("\twhere FOO.H is the name of the header file to work on,\n");
+	printf("\t and BAR.SRT is the alphabetically-sorted list of FOO.H defined names,\n");
+	exit(-1);
+    }
+
+
+    if((f=fopen(argv[1], "r"))==NULL)
+    {
+	printf("Unable to open %s\n", argv[1]);
+	exit(-1);
+    }
+
+    extract_names(f);
+
+    fclose(f);
+
+    make_list(argv[1], argv[2]);
+
+}
+
+
+
+
+
+/* compare() is the function for qsort() comparisons in make_list() */
+
+int compare(a, b)
+char **a, **b;
+{
+    return(strcmpi(*a, *b));
+}
+
+
+
+
+
+
+/* extract_names() parses the header file, throwing away everything except */
+/* #define, struct, union, or typedef names, and sends the names to put_names() */
+/* for storage in malloc()ed space. *f is the file pointer for the header file */
+
+void extract_names(f)
+FILE *f;
+{
+    char *string, oldstring[256], *str_ptr;
+
+    do
+    {
+
+	string=next_string(f);
+
+	    /* get the names that immediately follow a keyword */
+	    /* (i.e., #define name, struct name, or union name) */
+	if(!strcmp("#define", string))
+	{
+
+	    string=next_string(f);
+	    put_name(string);
+	}
+
+	    /* get the '#      define' names */
+	if(!strcmp("#", string))
+	{
+	    string=next_string(f);
+	    if(!strcmp("define", string))
+	    {
+		string=next_string(f);
+		put_name(string);
+	    }
+	}
+
+	    /* get struct or union name and throw away the braces */
+	if( (!strcmp("struct", string)) || (!strcmp("union", string)) )
+	{
+
+	    string=next_string(f);
+	    put_name(string);
+		/* it's either 'struct name{' */
+	    if(str_ptr=strchr(string, '{'))
+		string=lose_braces(f, str_ptr);
+	    else
+	    {
+		    /* or 'struct name {' */
+		string=next_string(f);
+		string=lose_braces(f, string);
+	    }
+	}
+
+
+		/* for typedefs, the name is the last thing before ';' */
+		/* i.e., typedef identifier {...} name;                */
+	if(!strcmp("typedef", string))
+	{
+	    for(;;)
+	    {
+		string=next_string(f);
+		if(str_ptr=strchr(string, '{'))
+		    string=lose_braces(f, str_ptr);
+
+		    /* the end of the typedef condition */
+	       if(str_ptr=strrchr(string,';'))
+	       {
+			/* this selects between 'name ;' and  'name; ' */
+			/* if the former, the previous string had the name */
+		    *str_ptr='\0';
+		    if(strlen(string))
+			put_name(string);
+		    else
+			put_name(oldstring);
+		    break;
+		}
+
+		strcpy(oldstring, string);
+	    }
+
+	}
+
+
+    }while(string != NULL);
+
+}
+
+
+
+
+
+
+
+/* lose_braces() throws away everything between the braces of a struct, */
+/* union, or typedef, so that ' struct a{ struct b; union c;};' does not */
+/* cause 'b' or 'c' to be listed as defined in this header. */
+/* *f is the file pointer for the header file and *str_ptr is the string to */
+/* work on.  lose_braces() returns the last string it was working on */
+
+char * lose_braces(f, str_ptr)
+FILE *f;
+char *str_ptr;
+{
+    char *string;   /* copy of str_ptr while working */
+    int level=0;  /* level of braces counter for typedefs */
+
+    string=str_ptr;
+    do
+    {
+	      /* count the braces */
+	while(str_ptr=strchr(str_ptr,'{'))
+	{
+	     str_ptr++;
+	    level++;
+	}
+
+	str_ptr=string;
+	while(str_ptr=strchr(str_ptr,'}'))
+	{
+	    str_ptr++;
+	    level--;
+	}
+
+	if(level)
+	{
+	    string=next_string(f);
+	    str_ptr=string;
+	}
+
+    }while(level);
+
+    return(string);
+
+}
+
+
+
+
+
+
+/* make_list() sorts and copies the names list to the output file, eliminating */
+/* duplication and labeling each name as having come from the specified .h file */
+/* hfile is the header file filespec, ofile is the output file filespec. */
+
+void make_list(hfile, ofile)
+char *hfile, *ofile;
+{
+    char oldname[256];
+    char *str_ptr;
+    int i,j;
+    FILE *f;
+
+
+
+    if((f=fopen(ofile, "w"))==NULL)
+    {
+	printf("Unable to open %s\n", ofile);
+	exit(-1);
+    }
+
+
+    /* strip out the path of the .h file name */
+
+    if(str_ptr=strrchr(hfile, PATH_CHAR))
+	hfile=str_ptr+1;
+    else
+	if(str_ptr=strrchr(hfile, DRIVE_CHAR))
+	    hfile=str_ptr+1;
+
+	    /* sort the name pointers alphabetically */
+    qsort(ptr, (unsigned)numptrs, sizeof(char *), compare);
+
+    oldname[0]='\0';
+
+    for(j=0;j<numptrs;j++)
+    {
+	if(strcmp(ptr[j], oldname)) /* eliminate duplication of names */
+	{
+	    fprintf(f,"%s",ptr[j]);
+		/* format 1/2 page spacing between name & .h source file */
+	    for(i=0;i<(5-(strlen(ptr[j])/8));i++)
+		fprintf(f, "\t");
+	    fprintf(f,"%s\n", hfile);
+	    strcpy(oldname, ptr[j]);
+
+	}
+    }
+
+    fclose(f);
+
+}
+
+
+
+
+
+
+
+/* next_string() reads the header file and returns the next NON-COMMENT */
+/* string in the file, or NULL if end-of-file is reached */
+/* *f is the file pointer for the header file */
+
+char *next_string(f)
+FILE *f;
+{
+	int num_fields; /* number of fields read & assigned by fscanf() */
+	static char instring[256];  /* buffer for fscanf() */
+	    /* WARNING: While INSTRING is declared as a local variable, its */
+	    /* actual scope is more global. INSTRING is declared STATIC */
+	    /* because it is accessed by other functions via the STRING */
+	    /* pointer.  The contents of INSTRING must remain valid beyond */
+	    /* the life of the next_string() call.                      */
+
+	char *string; /* pointer to INSTRING */
+
+	num_fields=fscanf(f,"%s",instring);
+	string=instring;
+
+	    /* throw away the comments */
+	if(!strncmp("/*", string, 2))
+	{
+	    do
+	    {
+		num_fields=fscanf(f,"%s",string);
+	    } while( strncmp("*/",&string[strlen(string)-2],2) && (num_fields != EOF));
+
+		/* get the next string after the close of the comment */
+		/* to return.  Make sure that the next string is not also */
+		/* a comment by using the recursive call */
+	    string=next_string(f);
+	}
+
+	if(num_fields==EOF)
+	    string=NULL;
+
+	return(string);
+
+}
+
+
+
+
+
+
+
+/* put_name() accepts as input the string containing the definition name */
+/* and strips any leading or trailing characers like '{', '(', or '*' */
+/* from the name before putting the name in malloc()ed space.  Note that */
+/* '_' IS NOT removed from the definition name, so '_exit' will end up */
+/* alphabetized by '_', not 'e' */
+
+void put_name(string)
+char *string;
+{
+    int i,j;
+
+    i=0;
+    j=strlen(string);
+
+	/* throw away leading garbage */
+    while(!((i>=j) || (isalnum(*(string+i))) || (*(string+i) == '_')))
+	i++;
+    if(i<j)
+	string +=i;
+    j=strlen(string);
+
+	/* throw away trailing garbage */
+    i=0;
+    while( (i<j) && ( (isalnum(*(string+i))) || (*(string+i) == '_') ) )
+	i++;
+    if(i<j)
+	*(string+i)='\0';
+
+	/* is anything left? */
+    if(strlen(string))
+    {
+	ptr[numptrs]=malloc(strlen(string)+1);
+
+	if(ptr[numptrs]==NULL)
+	{
+	    printf("malloc() error.\n");
+	    exit(-1);
+	}
+
+	strcpy(ptr[numptrs], string);
+	numptrs++;
+
+    }
+
+    if(numptrs>=MAXPTRS)
+    {
+	printf("File has too many names for this program.\n");
+	exit(-1);
+    }
+
+
+}
+
+
+/* h_merge.c merges two alphabetically-ordered text files.  Used with */
+/* h_filter.c to build a cross-reference listing of a library's header */
+/* files.  Written by T. Clune 8/88.  Copyright (c) 1988,  Eye Research */
+/* Institute, Boston MA.  No rights reserved. */
+
+/* See h_filter.c for comments on MS C dependencies */
+
+#include <stdio.h>
+#include <process.h>	/* MS C exit() declaration header */
+#include <string.h>
+
+void merge_list();
+
+
+
+/* main() Usage: h_merge a.srt b.srt c.srt,             */
+/* where a.srt and b.srt are sorted files to be merged, */
+/* and c.srt is the name for the output file.           */
+
+main(argc, argv)
+int argc;
+char *argv[];
+{
+    if(argc != 4)
+    {
+	printf("Usage: %s a.srt b.srt c.srt,\n", argv[0]);
+	printf("\twhere a.srt and b.srt are sorted files to be merged,\n");
+	printf("\tand c.srt is the name for the output file\n");
+	exit(-1);
+    }
+
+    merge_list(argv[1], argv[2], argv[3]);
+
+}
+
+
+
+
+
+
+
+/* merge_list() merges the alphabetically-sorted FIRSTFILE and SECONDFILE */
+/* and places the results in OUTFILE */
+/* FIRSTFILE, SECONDFILE, and OUTFILE are the respective filespec strings */
+
+void merge_list(firstfile, secondfile, outfile)
+char *firstfile, *secondfile, *outfile;
+{
+    FILE *ff, *sf, *of; /* file pointers for firstfile, secondfile, outfile */
+    char f_string[256], s_string[256]; /* the active lines for interleaving */
+    char *f_end, *s_end; /* go to NULL when EOF for firstfile or secondfile */
+    int i;
+
+
+    if((of=fopen(outfile, "w"))==NULL)
+    {
+	printf("Unable to open %s\n", outfile);
+	exit(-1);
+    }
+
+
+    if((ff=fopen(firstfile, "r"))==NULL)
+    {
+	printf("Error opening %s\n", firstfile);
+	exit(-1);
+    }
+
+
+    if((sf=fopen(secondfile, "r"))==NULL)
+    {
+	printf("Unable to open %s\n", secondfile);
+	exit(-1);
+    }
+
+	/* prime the pump */
+    f_end=fgets(f_string, 256, ff);
+    s_end=fgets(s_string, 256, sf);
+
+    for(;;)
+    {
+		/* when one file is empty, just copy the other to output */
+	if(f_end==NULL)
+	{
+	    while(s_end != NULL)
+	    {
+		fprintf(of, "%s", s_string);
+		s_end=fgets(s_string, 256, sf);
+	    }
+	    break;
+	}
+
+	else
+	{
+	    if(s_end==NULL)
+	    {
+		while(f_end != NULL)
+		{
+		    fprintf(of,"%s",f_string);
+		    f_end=fgets(f_string, 256, ff);
+		}
+		break;
+	    }
+	}
+		
+	/* compare the next entry from FIRST and SECOND.  The alphabetically */
+	/* prior entry gets put to output, and a new entry is read */
+
+	i=strcmpi(f_string, s_string);
+
+	if(i<0)
+	{
+	    fprintf(of,"%s",f_string);
+	    f_end=fgets(f_string, 256, ff);
+	}
+
+	else
+	{
+	    fprintf(of,"%s",s_string);
+	    s_end=fgets(s_string, 256, sf);
+	}
+
+    }
+
+    fclose(ff);
+    fclose(sf);
+    fclose(of);	
+
+
+}
+
+

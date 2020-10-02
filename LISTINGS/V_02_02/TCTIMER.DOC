@@ -1,0 +1,85 @@
+TCTIMER - Routines for high-resolution timing of events for Turbo C
+------------------------------------------------------------------------
+
+Richard S. Sadowsky
+8/10/88
+Version 1.0
+Released to the public domain
+
+BASED ON TPTIME.ARC
+
+which was written by Brian Foley and Kim Kokkonen of TurboPower Software and
+released to the public domain.
+
+ADDITIONAL FILES ADDED 9/30/90:
+        xtimer.c        - modified version of tctimer.c for Microsoft C 5.x
+        mytimer.asm     - contains the inline assembly code from tctimer.c
+                          converted to MASM 5.x
+These modifications allow the timer to be compiled under MSC 5.x which does
+not support inline assembly.
+                        David Burki
+
+Overview
+------------------------------------------------------------------------------
+One problem commonly faced when trying to run benchmarks on a PC is that, by
+default, the system clock is accurate only to 1/18th of a second. The TCTIMER
+unit provides a simple and convenient means of timing events with microsecond
+Unless your program is working with the timer chip at a very low level, no
+incompatibilities should arise, nor should the performance of your program
+change.
+
+Using TCTIMER
+------------------------------------------------------------------------------
+Before using any other TCTimer routines, initializetimer() must be called.
+Then, events are timed by calling readtimer when you are ready to start/stop
+timing. Any program that calls initializetimer() must call restoretimer()
+before terminating.  See TESTTIME.C for a sample use of the TCTIMER routines.
+
+TCTIMER includes the following routines:
+
+
+long readtimer(void);
+/*Read the timer with 1 microsecond resolution*/
+
+void elapsedtime(long start, long stop, double *result);
+/*Calculate time elapsed (in milliseconds) between Start and Stop*/
+
+
+void initializetimer(void);
+/*Reprogram the timer chip to allow 1 microsecond resolution*/
+
+void restoretimer(void);
+/*Restore the timer chip to its normal state*/
+
+InitializeTimer must be executed before any other TCTIMER routines are called.
+RestoreTimer must be called before the program ends.  Failure to call
+initializetimer will result in incorrect results and failure to call
+restoretimer may result in chaos.
+
+Limitations
+-----------
+Because long integers are used to represent time, TCTIMER cannot be used to
+time events longer than about 60 minutes:
+
+   4,294,967,295 (= $FFFFFFFF, largest unsigned value represented by longint)
+ /     1,193,181 (timer resolution in counts/second)
+ ---------------
+           3,599
+         /    60 (seconds/minute)
+         -------
+            59.9 minutes
+
+This should hardly be a problem, however, since an event longer than an hour
+presumably doesn't need to be timed with 1-microsecond accuracy anyway.
+
+Also note that the process of reading the time takes time. Hence, results of
+timing very short events will be skewed by the overhead of reading the timer.
+The following table shows the time measured between two calls to ReadTimer,
+one right after the other.
+
+  Toshiba 1000 (4.77MHz 8088)    125 microseconds
+  ATT 6300 (8MHz 8086)            53     "
+  Deskpro 286 (8MHz 80286)        35     "
+  Sperry IT (7.1MHz 286, 0 wait)  32     "
+  IBM PS/2 model 50               25     "
+  PC Designs GV386 (16MHz)        27     "

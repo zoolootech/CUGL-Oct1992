@@ -1,0 +1,2103 @@
+/*
+HEADER:		 documentation file - FUNCS.DOC
+TITLE:		FUNCS.DOC
+VERSION:	1.0
+DATE:		5/1/90
+
+DESCRIPTION: documentation of procedure calls for windows routines - 
+ 			functions are grouped in related 'families' 
+
+KEYWORDS:	windows, keyboard, mouse, text, graphics, expanded memory, menus;
+SYSTEM:		MS-DOS v3.0, probably works with v2.0 but untested;
+FILENAME:	FUNCS.DOC
+
+WARNINGS:	
+
+SEE-ALSO:   WTWG.DOC, DEFINE.DOC	
+				
+AUTHOR:	David Blum
+COMPILERS:	Turbo C v2.0, Microsoft C v5.1
+*/
+
+
+
+
+/*--------------------- Initialization routines ----------------*
+ *										
+ *	winit, deskview, 50line mode, SysRq, 
+ * 	palette and clock routines 			
+ *                                      
+ *                                      
+ *--------------------------------------------------------------*/
+
+
+
+/*! winit ()
+ *	Set a video mode. Open a full screen window.
+ *
+ *	Parms: 	newmode = 'T' or 'G' to set text or graphics.
+ *
+ *		On VGA, in graphics mode, selects mode 0x12 (=640x480)
+ */
+void winit ( char newmode );
+
+/*! winit_pages()
+ * 	Sets a video mode and opens a full screen window.
+ *	Also clears video memory for the higher pages
+ *		(may contain garbage otherwise)
+ *	and provides for mouse use for multiple pages (Hercules monitors)
+ *      
+ *       On VGA, selects mode 0x10 (=640x350)
+ */
+void winit_pages ( char newmode );
+
+
+/* wdvinit() 
+ * 		Initialization code for DeskView aware programming.
+ *		Call this routine immediately after call to winit()
+ *		...ie, BEFORE any direct screen writes.
+ * 		Incompatible with multiple page display (winit_pages)
+ *		Tested only in text mode, one page. untested in all graphics modes.
+ *
+ *	RETURNS: 0     = not a DeskView task
+ *			 non_0 = a DeskView task (#is DeskView (major) version number 
+ */
+int wdvinit (void);
+
+
+
+/* w50line()
+ * 		SET VGA 50 (EGA 43) line video mode, or restore 25-line mode.
+ *		PARAMETERS: want_50 = 	0 (OFF) to restore 25-line mode
+ *								non-0 to set 50/43 line modes
+ *		RETURNS:    0 if new mode is 25 line mode (ie, call failed)
+ *					non-0 if new mode is 50/43 line mode (call succeeded)
+ *
+ *		NOTES:	
+ *		1) 	when switching from 25 to 50 line mode the first time,
+ *		   	the program clears the lower  25 lines (or 18 lines EGA)
+ *			to the color of the current window.
+ *		2)  MOUSE movement is changed to match new screen size.
+ *		3)  25 line mode automatically restored on exit() or return from main()
+ *		4)  Multiple pages are supported, and size of page is changed. 
+ *			but page numbers will be wrong for any old windows above page 0.
+ *			ALSO, number of pages reduced in 50 line mode from 8 to 4. 
+ *				(be sure to recheck wlastpage)
+ *		5)  BE SURE CURSOR IS OFF BEFORE CALLING THIS ROUTINE.
+ *			(usually not a problem if you didn't specifically turn it ON)
+ *		6)  When switching from 50-line mode to 25 line mode,
+ *			windows displayed below line #24 will be invisible,
+ *			but still saved on the screen.
+ */
+int w50line ( int want_50 );
+
+
+
+/* w_ega_color() 
+ *	tells you if an ega card is connected to a monochrome or color monitor.
+ * 	useful if wmonitor =='E', which is an EGA
+ *	cannot tell if an VGA is connected to a color or gray-scale monitor
+ *	and cannot tell what kind of monitor is connected to a CGA
+ *	RETURNS:  OFF if monochrome monitor (or Hercules or MDA)
+ *			  ON  if VGA, EGA/color, or CGA
+ *		
+ */
+int w_ega_color(void);
+
+
+
+/* palette routines
+ *
+ *		wsetpalette() sets the EGA/VGA palette from 17-byte save area.
+ *		wgetpalette() gets palette data into 17-byte save area 
+ *
+ *		The palette is 17 bytes, ie  16 colors and a border color
+ *					valid color choices are 0-255.
+ *					default is border =0, colors 0 to 15 = 0 to 15.
+ *
+ *		EGA/VGA only. NO TESTING FOR MONITOR TYPE IS DONE IN THE ROUTINES.
+ *
+ *		PARAMETER: 
+ *			unsigned char palette[17] = array of 17 bytes to hold palette data.
+ *		RETURNS: void.
+ *				
+ */
+void wsetpalette( unsigned char palette[17] );
+void wgetpalette( unsigned char palette[17] );
+
+/* wSysRrq_install() and remove.
+ *
+ *      Sys Rq interrupt handler - on AT and PS/2 or newer XTs only
+ *
+ *		When user presses SysRq (=ALT_PrintScreen), an interrupt is generated.
+ *			This can be used as a replacement for CTRL_, which is ignored
+ *		
+ *		The routines describe here install/remove an interrupt handler
+ *			(and install an atexit() routine to remove same handler)
+ *
+ *	wSysRq_install ():
+ *		PARAMETERS: u_func is a function to be called when SysRq is pressed.
+ *					should be prototyped as 'void u_func(void)'
+ *		RETURNS: void. Program halts if unsuccessful.
+ *	wSysRq_remove ():
+ *		removes any existing SysRq interrupt handler.
+ *		PARAMS & RETURNS: void.
+ *	wSysRq_ask ():
+ *		a sample interrupt handler. Asks 'Do you want to quit?'
+ *
+ *
+ *	example:
+ *		winit ('T');
+ *		wSysRq_install ( wSysRq_ask );
+ *		...	
+ *
+ *  NOTES: 
+ *		1) ONLY available in TurboC version. 
+ *		2) BE CAREFUL HOW YOU COMPILE THIS ROUTINE. See source file wsysrq.c
+ *		2) You may have to increase the stack size... 
+ *			if your use a complex function as your SysRq handler.
+ *		3) Your interrupt routine will be ignored
+ * 			...when running as a virtual task under DeskView 
+ *			...or if you read keyboard using any of these 'non-windows' funcs:
+ *				getch(), gets, cgets, or  DOS interupt 0x21
+ *			(works if all keyboard reads are done using wgetc() or wreadc() )
+ *		5) USER has to press SysRq again to unlock keyboard.
+ */
+void wSysRq_install ( void (*user_func)(void) );
+void wSysRq_remove (void);
+void wSysRq_ask (void);
+
+
+
+/* w_inDOS() 
+ *		test the inDos flag. (useful for writing interrupt handlers) 
+ *		Interrupt handler routines sometimes have to test the system state
+ *		(ie, cannot ask for DOS services if interrupt occured while in DOS)
+ *		In most programming environments, this is very complex.
+ *	
+ *		In this windows environment, it is easy IF you exclusively use wgetc()
+ *			(or related wreadc(), wread_kbd(), wgets(), or mouse funcs)
+ *		(caution: may not work well if you mix methods of keyboard access)
+ *
+ *		RETURNS: zero if not in DOS, so is safe to ask for DOS services/
+ *				 non_zero if in DOS, do not proceed with DOS calls.
+ *
+ *		NOT AVAILABLE in microsoft c.
+ *		example:
+ *
+ *		void  interrupt my_handler (void)	
+ *				{
+ *				if ( ! w_inDOS () )
+ *					{
+ *					... do whatever you want...
+ *					} 		
+ *				}
+ */
+char w_inDOS (void);
+
+
+
+
+
+/* wclockinstall() and wclockremove()
+ *	pass the on-screen clock a pair of screen co-ords
+ *	where you would like the clock to be. CLOCK format is HH:MM = 5 bytes.
+ *
+ *  the clock is automatically removed at program termination. (atexit func)
+ *
+ *
+ *	NOTE: this clock will run in both text and graphic modes, 
+ *		but in graphics modes on EGA/VGA you can get garbage onscreen
+ *		unless you UNINSTALL the clock before doing any graphics output
+ *			   and REINSTALL the clock when ready for user keystrokes.
+ *		works OK on hercules cards graphics, though
+ *
+ *	TURBOC only.
+ */
+void wclockinstall (int x, int y);
+void wclockremove  (void);
+
+
+
+
+
+
+
+
+
+/*--------------- window definitions and manipulation ----------------*
+ *                                                             
+ *  Window definition
+ *	wdefine, wabandon ---> create and destroy windows.
+ *				no actual screen access
+ *				(such as saves/restores, draw frame, clear...)
+ *
+ *				usually these functions are less useful
+ *
+ *
+ *
+ *	wopen, wclose  -----> create & destroy windows.
+ *                            accesses screen:
+ *					wopen saves underlying image
+ *						    draws frame.
+ *					wclose restores old image.
+ *
+ *  alter window priority
+ *	wreopen, wbury
+ *
+ *
+ *  window display
+ *	whide, wshow
+ *
+ *
+ *  Window appearance
+ *	wframe(), wtitle, wps
+ *
+ *  change display page.
+ *	wturnpage()  wsetvisualpage() ------> change displayed page.
+ *
+ *  Window lovation
+ *	wrelocate, wdrag, wmsdrag   -----> move windows
+ *
+ *  Screen image
+ *	wsave, wrestore	   -----> save/restore window images.
+ *                                                                    *
+ *--------------------------------------------------------------------*/
+
+
+
+/*! wopen, wclose, wdefine, wabandon
+ *
+ *	wopen - saves the underlying screen contents, attributes and cursor
+ *	        opens a new window at specified location, draws border,
+ *			returns the address of the window it opens,
+ *			which you may ignore, or may use to wreopen or wrelocate.
+ *              In (BGI) graphics mode, sets viewport, activepage, etc...
+ *		PARAMETERS:
+ *		left, top = screen coords of upper left corner of text portion
+ *					 note that any border is above and to left of this.
+ *					Start counting at 0,0
+ *		xmax, ymax = number of columns and rows in window. 
+ *					Starts counting at 1,1. 
+ *					w0->winxmax will be set to this number -1.
+ *		attr = color for text. first 4 bits = background. low 4 bits = text.
+ *		box  = type of border. SINGLE_BORDER, DOUBLE_BORDER, etc.. 
+ *		boxattr = color for border.
+ *
+ *	 	save2 =WSAVE2NULL ==> no save
+ *		       =WSAVE2RAM  ==> save underlying contents
+ *
+ *		To setup output to a new page,
+ *			change wnextpage before calling wopen().
+ *
+ *		If no border is specified, the new window is not cleared.
+ *		If a  border is specified, the window is cleared
+ *
+ *
+ *	wdefine - same as wopen, but does not save underlying image
+ *		and does not clear window or draw frame.
+ *
+ *
+ *
+ *	wclose - restore screen contents, close the current window
+ *
+ *
+ *	wdefine  - allocates storage and sets up window, ready for
+ *		   ouptut, but no screen access takes place,
+ *		   save areas not allocated, no frame is drawn.
+ *
+ *	wabandon - remove the current window from memory,
+ *		   but leave its image on the screen.
+ *		   note: identical to wclose() but doesn't restore screen.
+ *
+ *		see also: wunlink, wlink, wreopen, wbury
+ */
+WINDOW	*wopen
+		(int x, int y, int xmax, int ymax,
+		 unsigned char attr, int box, unsigned char box_attr,
+		 unsigned char save2 );
+
+
+
+	/* save modes for wopen
+	 */
+	#define WSAVE2NULL	0	/* don't save window */
+	#define WSAVE2RAM	1	/* save to RAM */
+
+
+
+
+
+
+
+
+WINDOW *wdefine (int x, int y, int xmax, int ymax,
+		 unsigned char attr, int box, unsigned char box_attr );
+
+
+
+void    wabandon (void);
+
+#define wclose()	( wrestore(), wabandon() )
+
+
+/*! wreopen, wbury
+ *
+ *	wreopen - make the indicated window the current window.
+ *		  the previously open window becomes the second
+ *		  window on the chain.
+ *		DOES NOT check for overlapping windows.
+ *		you can get screen garbage by reopenning a window
+ *		with other windows on top of it.
+ *
+ *	wbury  - make the current window  the second-to-last window
+ *		(the last window is the full-screen window)
+ *		this allows reuse of one common window while
+ *		  ... maintaining priority relationships amoung other windows
+ *
+ *
+ *	NOTE: you can wreopen() or wbury() the initial window  (wfullscreen)
+ *            but when you bury this window it becomes the last window
+ *	      and if you try to wclose(), it will be burried instead.
+ *	      That way the wfullscreen window is never closed.
+ *
+ */
+void 	wreopen ( WINDOW *new );
+void    wbury   ( void );
+
+
+
+
+/*! wrelocate()
+ *	move a window to a new location
+ *	the window must have been created with WSAVE2RAM.
+ *
+ *	RETURNS: 0 if successful
+ *		-1 if failure. Can fail because:
+ *			wndow was openned with WSAVE2NULL - cannot restore
+ *			new address out of bounds
+ *			not enough memory to save images of screen
+ *
+ *
+ *
+ */
+int 	wrelocate (int x, int y);
+
+
+
+
+
+
+/*! wlocate(), wsetlocation(), wstrrowcol()
+ *
+ *	tools for automatically sizing and placing windows
+ *	( commonly used code placed in one spot and easy to use )
+ *
+ *	wlocate() : This function determines where to put the top left corner
+ *			based on the type of location specified in wlocation.
+ *			See the definition of struct wlocation.
+ *				wlocation.wloc_type sets allowable places:
+ *					WLOC_CENTER = center of screen
+ *					WLOC_ATCUR  = current cursor position
+ *                                      WLOC_ATWIN  = at top.left of window
+ *					WLOC_ATXY   = at screen co-ords x,y.
+ *				wlocation.wloc_x  and .wloc_y give offset
+ *
+ *				example: wlocation.wloc_type = LWOC_ATCUR
+ *				     and .wloc_x = 2, wloc_y = -1
+ *					will place window above and to right
+ *					of current screen location.
+ *
+ *			Set the desired location prior to calling wlocate().
+ *
+ *
+ *			The following functions use wlocate()
+ *				wpromptc, wprompts, wpicklist, wform
+ *			so you can change where these windows will appear
+ *				by setting new values in wlocation before call
+ *
+ *		     	NOTE: the value of wlocation is reset after each call
+ *				the default is center of screen.
+ *
+ *			PARAMETERS: left, top = address of (int)
+ *					new co-ords  will be placed in these
+ *                                  xmax, ymax = size of desired window.
+ *
+ *			RETURNS: void.
+ *
+ *	wsetlocation(): a macro that sets up the data
+ *			in the wlocation structure
+ *                      Simplifies auto-locating windows.
+ *
+ *			PARAMETERS:
+ *			    location type, x, y -- as above.
+ *
+ *			example:
+ *			    wsetlocation (WLOC_ATCUR, 1, 1);
+ *
+ *	wstrrowcol(): This function is like a 2-dimensional strlen.
+ *			It determines the number of rows and columns
+ *			   for a string. It finds the longest row,
+ *			   and counts the number of lines.
+ *			IGNORES: \t character, assumes WPUTWRAP is off.
+ *			parameters: text = string to check.
+ *				    rows, cols= address of (ints) = answers
+ *
+ *
+ */
+
+void wlocate ( int *aleft, int *atop, int xmax, int ymax );
+
+
+#define wsetlocation(LOC, X, Y)	    \
+	 wlocation.wloc_type=(LOC), \
+	 wlocation.wloc_x   =(X),   \
+	 wlocation.wloc_y   =(Y)
+
+
+void wstrrowcol ( char *text, int *rows, int *cols );
+
+
+
+
+/*! whide() and wshow()
+ *
+ *      whide restores the original screen contents,
+ *		which effectively hides the current window
+ *	wshow restores the curren screen contents
+ *
+ *	obviously, whide must be called before wshow,
+ *		and if another window is openned in between,
+ *		chaos will result.
+ *
+ *	whide() : PARAMETER none,  RETURNS void far *
+ *	wshow() : PARAMETER void far *, RETURNS none.
+ *
+ *			you have to provide wshow the pointer
+ *				that was returned by whide.
+ */
+void far *whide ( void );
+void wshow ( void far *hideptr );
+
+
+
+
+
+
+
+
+
+/*! wframe, wtitle, wps
+ *
+ * 	draw a box on the screen
+ *		The style types are defined in this header file
+ *			( see NO_BORDER, SINGLE_BORDER, etc...)
+ *	place a 'title' in the top line of the box
+ *	place a trailing message (like P.S. for a letter) in the bottom line
+ */
+void 		wframe  (int l, int t, int r, int b,
+			 int style, unsigned char color);
+#define	wtitle(title) wborderwrite ('t', 'c', (title))
+#define	wps(footnote) wborderwrite ('b', 'r', (footnote))
+
+void wborderwrite (char line, char justify, char *title);
+
+
+
+
+
+
+/*! wsetvisualpage () or wturnpage()
+ *
+ *	changes the displayed page.
+ *	does not change which page wputc/wputs etc write to...
+ *      the visual page does not have to match the page of the current
+ *      window
+ */
+void 	wsetvisualpage (int page);
+#define wturnpage(new)	wsetvisualpage( (new) )
+
+
+
+
+
+/*! wsave, wrestore
+ *
+ *
+ * wsave saves current contents of screen indicated by window pointer
+ * 	and stores the far * pointer to the save area in winsave.
+ *      NOTE if w0->winsave is not NULL on entry, wsave will use that area.
+ *		to hold the screen image,without checking for area size.
+ *		BE CAREFUL.
+ *
+ * wrestore restores the screen contents from the save area pointed to
+ *	in the window. Does not free the storage.
+ */
+void     wsave    (void);
+void     wrestore (void);
+
+
+
+/*! wdrag()
+ *	Allow user to move a window by keystrokes (arrows, page up/down, etc)
+ *		requires WSAVE2RAM when the window is opened.
+ *
+ * 	Parameter: keystroke may be any of the ARROWs, HOME, END, PAGE UP/DN
+ *	The current window is moved as indicated by the keystroke.
+ *		( ARROWs move 5 spaces in that direction,
+ *		  HOME moves to left edge, END moves to right edge
+ *		  PAGE UP to top of screen, PAGE DN to bottom )
+ *	RETURNS: non-zero (original keystroke) if move was successful.
+ *               0 if move was not successful, which may be because:
+ *			invalid keystroke, outside screen edge, or WSAVE2NULL
+ *
+ *		SEE wmsdrag() below, for improved version.
+ */
+int	wdrag (int  keystroke);
+
+
+
+/* wmsdrag()
+ *		A keytrap routine to increase mouse usefullness.
+ *		Call this routine once at startup to allow user to drag any window
+ *		Windows which are draggable include:
+ *			1) must have a border.
+ *			2) must be called with WSAVE2RAM (underlying image stored)
+ *			3) in VGA graphics mode, total image size < 64k.
+ *
+ *		User activates dragging by clicking on upper left corner of window.
+ *		
+ *		To use, call wmsdrag() once at beginning of program 
+ *			to install the mouse-drag keytrap routine.
+ *		
+ */
+void wmsdrag (void);
+
+/*	wmspopup () 
+ *		install func to be executed whenever the mouse center button is pressed
+ *		func is  function that takes no arguments and returns a keyvalue
+ *			(simplest example: just return FKEY(1) to trigger help screen)
+ *			
+ *		This allows the center mouse key to act like a hotkey. 
+ *		second calls are OK, they just change which function is called.
+ *		calling with NULL inactivates the keytrap.
+ */
+void wmspopup ( int (*func)(void) );
+
+
+/* wpopfkey() -
+ *		another keytrap routine to increase mouse usefullness.
+ *		Call once at startup to install this routine.
+ *			(second calls are OK, and can change the FKEY labels used)
+ *		Click center button of mouse brings a popup menu of FKEY 1-12
+ *		This allows mouse to generate FKEY commands.
+ *
+ *		PARAMETERS:  a NULL terminated list of string ptrs for labels.
+ *		RETURNS: void.
+ *
+ *	see DEMOMOUS.C
+ */
+ void wpopfkey ( char ** fkey_labels );
+
+
+
+
+
+/*--------------- control of window contents -------------------------*
+ *
+ *   text output:
+ *	wputc(), wputs(), wprintf(), werror()
+ *	wsetattr(), wbright() wdim(), wreverseattr(), wgetattr()
+ *   clear areas of window:
+ *	wclear(), wclearline() wsetc()
+ *   location of text:
+ *	wgoto()  wherex() wherey()
+ *   miscellaneous:
+ *	wscroll()
+ *      wgoto()
+ *
+ *                                                                    
+ *--------------------------------------------------------------------*/
+
+
+
+
+
+/*! wputc, wputs, wprintf, werror
+ *
+ *	put char or string to current window
+ *
+ *	see defines for WPUT... to affect the operation of these routines.
+ *	you can change whether the routines:
+ *		 wrap or clip at the right hand edge
+ *			(w0->winputstyle  |= WPUTWRAP )
+ *		 scroll or goto top of window after last line fills
+ *			(w0->winputstyle |= WINPUTSCROLL )
+ *		 use ANSI formatting codes or put IBM-screen graphics
+ *			 (w0->winputstyle |= WPUTANSI )
+ *		 use \n to return\linefeed or just linefeed
+ *			(w0->winputstyle  |= WPUTN2RN )
+ *			(NOTE TurboC cputs/cputc do not \r\n when they see \n
+ *			      but puts/putc and all other compilers do \r\n)
+ *               use embedded screen attribute bytes (next byte in string)
+ *			(w0->winputstyle |= WPUTATTR )
+ *				this only works if WPUTALARM is OFF.
+ *
+ *
+ *
+ *
+ *
+ *
+ * wputc will puts a char to the screen.
+ *	RETURNS  1 if ok to put next character
+ *		 0 if you've hit the window boundary and
+ *			   0 == winputstyle & WPUTSCROLL (bottom edge)
+ *			or 0 == winputsyle  & WPUTWRAP   (right edge)
+ *
+ *
+ * wputs puts a string, following all the ANSI escape codes as defined
+ *	(unless winputstyle & WPUTANSI == 0)
+ *
+ *	wputfl puts a 'fixed' size of string. If the provided string is 
+ *		too long, it is truncated, if it is too short, the remaining
+ *		length is printed as blanks. 
+ *		PARMS: char *s= string, int l= number of bytes to put. RETURNS void.
+ *
+ * wprintf works is like printf, limits text output to window,
+ *		follows rules set in winputstyle,
+ *	   EXCEPTIONS:
+ *		does NOT work in tiny model.
+ *              limits total number of bytes to size set by WPRINTF_LIMIT
+ *			( for longer strings, allocate a buffer, use sprintf)
+ *
+ *
+ * werror is like perror for fatal messages.
+ *	If in graphics mode, restores CRT.
+ *	TERMINATES execution.
+ */
+int 	wputc		(char c);
+int  	wputs		(char *s);
+void	wputfl 		(char *s, int l);
+int 	wprintf     	(char *format, ...);
+
+	#define 	WPRINTF_LIMIT	250
+
+void	werror		(int errcode, char *errmsg);
+
+
+
+
+
+/*! attr
+ *
+ *	wsetattr() -set screen attributes, set bright or dim letters
+ *		attribute = (background color << 4) + foreground color
+ *				valid colors are 0 --> 7
+ *				fourth bit is blink(background) bright(foreground)
+ *				see the enum COLORS above.
+ *	wbright - sets ON highlighting
+ *	wdim    -      OFF
+ *
+ *      wreverseattr() - macro which returns the reversed value of an attr.
+ *			use as follows: wsetattr(wreverseattr(BLUE));
+ *				(sets a BLUE background)
+ *
+ *
+ *
+ */
+#define wsetattr(x)   	( w0-> winattr = (x)  )
+#define wbright()   	( w0-> winattr |=  BRIGHT )
+#define wdim()    	( w0-> winattr &=  (0xff - BRIGHT) )
+#define wgetattr()      ( w0-> winattr )
+
+#define wreverseattr(xx)  (  ( ((xx)&0x0f)<<4 ) | ( ((xx)&0xf0)>>4) )
+
+
+/*! wclear, wclearline
+ *
+ *	clear current window using current attribute.
+ *	and clear to end of current line.
+ *      these call wlear abs, which clears an area of screen
+ *		specified in absolute (not window) co-ords.
+ */
+void wclear 	(void);
+void wclearline (void);
+
+
+#define wclearln() wclearline()
+
+
+
+/*! wsetc
+ * 	
+ *   sets contents of window to a specific character,
+ *		beginning at the current position, 
+ *		to the right/bottom corner. Uses current attribute
+ *
+ *	 PARAMETER:  char c = character to set. 
+ *							recommend   176 = speckle pattern.
+ *										206 = double intersecting bars.
+ */
+void 	wsetc (char c);
+
+
+
+/*! wscroll
+ *
+ *       insert a blank line at current cursor postion. scroll up
+ */
+void 	wscroll	(void);
+
+
+
+
+
+
+/*! wgoto
+ *
+ *	goto a specified row =x, col =y.  (0- winxmax, 0-winymax, inclusive)
+ *		if x = -1, stays in same row    (moves up/down)
+ *		if y = -1, stays in same column (moves across)
+ */
+void 	wgoto (int row, int col);
+
+
+
+
+
+
+
+
+/*! wherex() wherey()
+ *	these are pseudofunctions  -
+ * 	more efficient to use extern globals, cuts out function calls
+ */
+	#define wherex()     ( w0-> winx )
+	#define wherey()     ( w0-> winy )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*------------------------  Keyboard input ---------------------------*
+ *
+ *  get input
+ *	wgetc(), wgets()
+ *  keyboard status
+ *	wkbd_enhanced(), wready(), wflush()
+ *  keyboard buffer stuff routine
+ *	wpushc() wungetc()
+ *  cursor control
+ *	wcursor()
+ *
+ *  wpipe_in(), wpipe_out()
+ *  wmacro_install(), wmacro_select, wmacro_names()
+ *
+ *---------------------------------------------------------------------*/
+
+
+
+
+
+/*! wgetc, wgets
+ *
+ *	get characters from the keyboard and or mouse.
+ *
+ *	The lowest level routine is wreadc(). This routine does the following:
+ *		Checks to see if an input pipe (ie, macro) is active. if so, Uses that.
+ *		check mouse to see if it's moved or button clicked.
+ *			NOTE: DOES NOT TURN MOUSE CURSOR ON.
+ *			if so, 	maps right button to ESCAPE key value.
+ *					looks for left click on an onscreen 'push button'
+ *						and translates that into appropriate button value.
+ *					returns key value = MOUSE
+ *		checks for keyboard (if not MOUSE).
+ *					maps ordinary keys, scan code keys, and enhanced keys
+ *		passes key value to any active output pipes (ie, macro recorder)
+ *		
+ *
+ *
+ *
+ *	wgetc() does the following:
+ *          TURNS ON the mouse cursor
+ *			checks to see if either key or mouse hit. If not, waits 
+ *				and after 3 minutes, blanks out screen.
+ *			When a user action is available, calls wreadc() to get that action.
+ *          TURNS OFF the mouse cursor.
+ *			passes user key/mouse on to any 'Hotkey' routines.
+ *			If key was used by a hotkey routine, repeats process until
+ *				...a key is ready to return.
+ *
+ *	For most purposes, use wgetc().
+ *			.. you don't have to mess with mouse, it's done for you.
+ *	Use wreadc() if you want to bypass active hotkey routines or menus.
+ *			... but turn mouse ON first then turn OFF when done.
+ *			ex:   wmouse_turn(ON);
+ *				  key= wreadc();
+ *				  wmouse_turn(OFF); 
+ *
+ *
+ *
+ *	wgets uses the arrow keys to provide simple editing, insertion, etc
+ *		nbytes is sizeof(buffer) and includes the terminal \0
+ *		The typed characters are placed correctly in the window.
+ *		Returns the keypress that stopped input (ESCAPE, ENTER, etc)
+ *
+ *		The following flags change the behavior of wgets (new for version 2.0):
+ *
+ * 	WGETS_FORM	-	 used internally by wscanform 
+ *	WGETS_INT	-	 accept integer input only, +- signs OK 
+ *	WGETS_DEC	-	 accept integers and a single decimal pt
+ *	WGETS_SKIP	-	 auto return when buffer is filled, dont wait for ENTER key 
+ *
+ */
+int 	wgetc       (void);
+int     wreadc 		(void);
+int		wgets       (int nbytes, char *buffer, char behavior);
+
+
+
+
+
+/*! wready
+ * 	returns 1 if a key (including MOUSE) is ready to read
+ *		Tests enhanced kbd if present.
+ *		0 if user hasn't typed anything
+ *
+ */
+int 	wready(void);
+
+
+
+/*! wflush
+ *      flushes keyboard and mouse of any prior input.
+ *	does nothing if input pipe (redirection is in effect.
+ *	does not touch the unget buffer.
+ */
+void wflush (void);
+
+
+
+
+/* wkbd_enhanced() - RETURN 0 if standard (PC/XT) keyboard.
+ *                   RETURN non-zero if enchanced (AT) keyboard.
+ */
+int  wkbd_enhanced (void);
+
+
+
+
+
+/*! keyboard only routines.
+ *		These routines ONLY poll the keyboard. Ignores mouse, pipes, macros,
+ *			and hotkeys. No screen blackout, No 'buttons'.
+ */
+int wready_kbd(void);		/* returns 0 if no key hit (like TurboC kbhit() )*/
+int wread_kbd(void);		/* returns key value. Maps extended keys */
+void wflush_kbd(void);		/* flushes input keyboard buffer */
+
+
+
+
+
+
+/*! wcursor
+ *
+ *	turn cursor ON/OFF. Sets w0->winputstyle |= WPUTCURSOR.
+ *
+ */
+void		wcursor     (int);
+
+
+
+
+/* keyboard pipes
+ *	input pipes accept input from the pipe rather than the keyboard
+ *	output pipes trap all keyboard/mouse acivity and save keystorkes
+ *
+ *	recurrent calls are not supported.
+ *
+ *	wpipefin() - 	provide program input from a file.
+ *            		the file stores keys as int (=2bytes each)
+ *			MOUSE input also stores value of wmouse
+ *			PARAMETERS:  char *filename    - name of file to read
+ *				     void (*whendone)(void) - routine to call
+ *					this routine is called at end of file.
+ *					not called if NULL.
+ *			RETURNS: 0 if sucessful installation.
+ *				-1 if file not found, -2 if already installed.
+ *
+ *
+ *	wpipefout() - 	record keyboard/mouse activity in a file
+ *			whenever the mouse is used, wmouse is also saved.
+ *			PARAMETERS:  char *filename
+ *				     int  stopcode = key that stops recording
+ */
+int  	wpipefin  ( char *filename, void (*whendone)(void) );
+void    wpipefout ( char *filename, int  stopcode );
+
+
+
+
+/* keyboard macros
+ *	a simple keyboard macro system, uses pipes as above
+ *
+ *	wmacro_install ()	- install the macro system.
+ *
+ *	wmacro_select  ()   	- display list of defined macros,
+ *			 	  RETURNS: ALT_n value of choice or ESCAPE
+ *
+ *	wmacro_names   ()	- display list of macros, user chooses one.
+ *				  PARAMETERS: a message to display in the box
+ *				  RETURNS: ptr to table of macro names.
+ *              macro names are stored in a table of 10 names, each 9 bytes
+ *			WMACRO_NAMES *m_n;
+ *			m_n = wmacro_names();
+ *			puts ( (*m_n)[0] );	prints the 1st macro name
+ *
+ *	wmacro_assign  ()	- assign a macro file to an ALT_n key
+ *				PARAMETERS: char *name = 8 letter filename
+ *						(extension .mcr assumed)
+ *					    int  key = ALT_1 to ALT_0
+ *                                                     assign to this key.
+ *				NOTE: routine does not check if file exists!!
+ */
+void	wmacro_install  (void);
+int 	wmacro_select	(char *message);
+WMACRO_NAMES *wmacro_names (void);
+void 	wmacro_assign	(char *filename, int key);
+
+
+
+/*------------------------  MOUSE functions --------------------------
+ *
+ *	wmouse_init, wmouse_textmask, wmouse_limit, wmouse_move, wmouse_location
+ *
+ */
+
+/*	mouse initialization - used internally, called by winit() 
+ */
+void  		wmouse_init 	(void);
+
+/* wmouse_turn () - turn the mouse cursor ON/OFF
+ *			BE SURE that calls to this are accurately paired
+ *			or the mouse driver will go bonkers and loose track.
+ *
+ *			NOTE: in EGA/VGA graphics... 
+ *					you should always have the mouse OFF before drawing.
+ *					...including text output in graphics mode.
+ *					Otherwise, you'll get garbage onscreen.
+ *
+ *					If you use wgetc() or wgets() to get input, 
+ *						this is done for you. 
+ *					If you use wreadc() or wmouse_location()
+ *						 you should have paired calls
+ *
+ *			Usually, you never need to call this function.					
+ *
+ *	example:  wmouse_turn (ON);		/* MOUSE cursor visible onscreen */
+ *			  delay (100);	
+ *			  wmouse_location();	/* check for input */
+ *			  wmouse_turn (OFF);	/* MOUSE cursor no longer visible */
+ *
+ *
+ */
+void 	       	wmouse_turn 	(int state );
+
+
+/* wmouse_move () - move mouse to desired x/y position
+ *				  works in either text or graphics mode.
+ * 
+ *	PARAMETERS: x,y = character position in current window.
+ *	RETURNS: 	void. 
+ */
+void wmouse_move ( int x, int y );
+
+/* wmouse_move_pixel () - move mouse to desired px/py pixel position
+ *						NOTE unpredictable if currently in text mode.
+ * 
+ *	PARAMETERS: px,py = pixel position in current window.
+ *	RETURNS: 	void. 
+ */
+void wmouse_move_pixel ( int px, int py );
+
+
+/* wmouse_limit ()
+ * 	limit mouse movement to current window ( any mode, any video page )
+ *	does not interfere with functions wmouse_location() or wmouse_move...()
+ *
+ *	WARNING: be very careful with this function if your program has 'hotkeys'
+ *			 or uses pulldown menus, mouse limitations may get messed up.
+ *
+ *  PARAMETERS: int ON_OFF:  0= remove limits on movement (full screen)
+ *							 non-0= set limits on movement. 
+ */
+void wmouse_limit (int ON_OFF);
+
+
+
+
+/* wmouse_location ()
+ *  check current mouse state, 
+ *	accumulate button presses in wmouse structure
+ *	compute mouse location in all coord systems (window/absolute/pixels)
+ *	
+ *	called by wgetc() and wreadc(). 
+ *
+ *	can be called if you want to query mouse independently of keyboard.
+ *	after done with mouse, set wmouse.wms_internal = 0;
+ *		(this resets mouse 'use' flags 
+ *		so wgetc() will ignore mouse use that you processed independently)
+ */
+void	  	wmouse_location (void);
+
+
+/* wmouse_flush ()
+ *		flush mouse of pending button events  (press, release, etc...)
+ *		and wait for any currently depressed buttons to be released.
+ *		(recognizes all three mouse buttons)
+ */
+void wmouse_flush (void);
+
+
+/*  wmouse_textmask ()
+ * 		allows you to set a different type of mouse cursor.
+ *		The mouse mask is moved into the screen buffer at the mouse location.
+ *		The screen buffer is 2 bytes per display character.
+ *			First byte = attribute, Second byte = character.
+ *
+ *	WORKS ONLY IN TEXT MODE.
+ *		
+ *	PARAMETERS: 
+ *		unsigned int screen = "screen mask" is AND'ED onto 2 bytes in buffer
+ *		unsigned int cursor = "cursor mask" is OR'ED  onto 2 bytes in buffer 
+ *
+ *	Example: setup software cursor = invert underlying character
+ *			wmouse_textmask ( 0xffff, 0x7f00 );
+ *			 setup a character that overlies display 
+ *			wmouse_textmask ( 0x0000, 0x07xx );	
+ *				where xx = hex code for desired char ( ie: '*' = 42 = 0x2a )
+ */
+void 		wmouse_textmask (unsigned int screen, unsigned int cursor);
+
+
+
+
+
+
+/*---------------- keyboard UNGET ----------------------------
+ *
+ * 	'unget' a character into the keyboard buffer
+ *	note that this keyboard buffer can also hold MOUSE information
+ *	and is not the same as the ANSI C/DOS ungetc() function.
+ *
+ *	also note that the unget buffer is only 1 character long.
+ *
+ */
+#define wpushc(xx)      wunget_buffer = (xx)
+
+#define wungetc(xx)	wunget_buffer = (xx)
+
+
+
+
+
+
+
+
+/*--------------------- 'BUTTON'  functions -----------------------------*
+ *
+ *	buttons are selectable choices onscreen
+ *		associated with either mouse or keyboard action.
+ *
+ *
+ *	wbutton_add () 		- add a button to the list.
+ *				     install button handler if not yet done
+ *				     add new button to linked list
+ *				     draws the button onscreen.
+ *
+ *		PARAMETERS:
+ *			char *text  = text to place in button.
+ *					may be longer or shorter than button
+ *			int  x, y   = x,y position of button in open window.
+ *			int len	    = length of button, include terminal NULL.
+ *			int value = keyboard bvalue of button.
+ *			unsinged char style = WBTN_BOX to draw a box.
+ *
+ *		RETURNS: void.
+ *
+ *              OPTIONS:
+ *			WBTN_BOX = draw a box around button
+ *
+ *	wbutton_mark ()		- places a 'mark' to left of a button
+ *				     specify the button by the 'button value'
+ *				     and the 1-character mark, and attr.
+ *				     (Remove the mark by using ' ')
+ *
+ *
+ *	wbutton_delete() 	- remove specified button.
+ *				     redaw screen without button.
+ *		PARAMETERS:
+ *			int	value = keyboard value of button
+ *              	int     how   = 0= clear screen area
+ *					1= rewrite text in current attr
+ *		RETURNS void.
+ *
+ *	wbutton_inactivate()    - temporarily inactivate button.
+ *				     redraws button in current attribute.
+ *		PARAMETERS:
+ *			int	value = button value
+ *			int     how   = 0= clear screen area
+ *					1= rewrite text in current attr
+ *		RETURNS: void.
+ *
+ *	wbutton_activate()	- reactivate the button.
+ *				     redraws button in wbutton_attr.
+ *		PARAMETERS:
+ *			int value = button value.
+ *		RETURNS: void.
+ *
+ *	wbutton_getptr()	- returns ptr to button that matches a value
+ *					or NULL if not an active button.
+ *
+ *		PARAMETERS:
+ *			int value = keystroke or MOUSE
+ *		RETURNS:
+ *			WBUTTON *ptr = ptr to button if key is an active btn.
+ *			         NULL if key is not an active button.
+ *
+ *		NOTES:	this function is mostly for internal use,
+ *			but can be used to validate keystrokes.
+ *
+ *	wbutton_test()		- returns button value or 0 if not a button
+ *		PARAMETERS:
+ *			int value = keystroke or MOUSE
+ *		RETURNS:
+ *			int value = (value) if is a button
+ *					      0 if VALUE is not a button.
+ *
+ *
+ *	METHOD:
+ *
+ *
+ *	these routines keep linked lists list of currently active buttons
+ *
+ *	one list is maintianed for each window.
+ *
+ *	when a button is added, wbutton_add()
+ *		checks to see if button-handler is installed
+ *			(less overhead if you never use buttons)
+ *		        and installs button handler if needed.
+ *		allocates memory for BUTTON struct and adds to linked list.
+ *		draws button onscreen.
+ *
+ *
+ *      after buttons have been defined, wgetc() calls the button manager
+ *		and compares mouse use against buttons,
+ *		translates mouse into button value,
+ *		invokes callback function...
+ *
+ *
+ *
+ *
+ *
+ *	NOTES:
+ *	  1)    buttons are released by wclose() when window is closed.
+ *
+ *        2)    Be sure the same window is active when the
+ *		buttons are created as when keyboard/mouse input is read
+ *		(The routine computes all button positions relative to
+ *		the current window).
+ *
+ *	  3)    It's OK to wrelocate() or wdrag() the active window.
+ *
+ *
+ *	  5)    multi-line buttons: not allowed.
+ *
+ *
+ *
+ *	Example:
+ *
+ *		wopen (10,10, 20,10, WHITE, SINGLE_BORDER, WHITE, WSAVE2RAM);
+ *		wputs ("Are you having fun?");
+ *
+ *
+ *		wbutton_add ( "YES",   10, 5, 3, 'Y', WBTN_BOX );
+ *		wbutton_add ( "NO",    15, 5, 3, 'N', WBTN_BOX );
+ *		wbutton_add ( "MAYBE", 20, 5, 5, 'M', WBTN_BOX );
+ *
+ *		answer = wbutton_test( wgetc() );
+ *
+ *		wclose();
+ *
+ *		This code is roughly equivalent to the single line:
+ *
+ *		key = wpromptc (NULL, "are we having fun?",
+ *			"YES", "NO", "MAYBE", NULL ):
+ *
+ */
+void wbutton_add (char *btext, int bx, int by, int blen,
+		int bval, unsigned char bstyle );
+
+void wbutton_delete (int bval, int how);
+
+void wbutton_inactivate (int bval, int how);
+
+void wbutton_activate (int bval);
+
+void wbutton_mark ( int bval, char mark );
+
+WBUTTON *wbutton_getptr ( int bval );
+
+int wbutton_test ( int bval );
+
+
+
+
+	/* internal button functions
+	 */
+	void wbutton_draw ( WBUTTON *, unsigned char  );
+	void wbutton_frame ( WBUTTON *, unsigned char , unsigned char );
+
+
+
+
+/* WSCROLLBAR - routines for vertical mouse-driven scrollbars.
+ *
+ *		screen co-ords are mapped into 'virtual' values
+ *		virtual values may go from 0...range set as param to wscrollbar_add()
+ *		to allow user to drag the scrollbar icon, call wscrollbar_scroll()
+ *			(be sure the LEFT MOUSE BUTTON has been pressed)
+ *		
+ *
+ * 		wscrollbar_add () - create a scrollbar
+ *			PARAMS: key = a non-keyboard keyvalue (negative is best) for ID
+ *						  	This value will be returned by wgetc()
+ *							when the mouse clicks on the scrollbar image area.
+ *					x	= x-location in window for scrollbar.
+ *					y1, y2= top and bottom locations of scrollbar.
+ *					range = unsigned int value giving virtual position of ptr
+ *							when ptr=y1, virtual position is 0.
+ *							when ptr=y2, virtual value is 'range'
+ *					start = unsigned int = starting virtual value of scrollbar.
+ *			RETURNS: WBUTTON *Bptr = ptr to the scrollbar data, used below.
+ *
+ *		wscrollbar_draw() - draw, or redraw scrollbar	(ie, after wclear())
+ *			PARAMS:  WBUTTON *Bptr = pts to the scrollbar data.
+ *			RETURNS: void.
+ *
+ * 		wscrollbar_scroll() - allow mouse to move scrollbar ptr onscreen.
+ *			USE: when wgetc() returns the key that identifies the scrollbar,
+ *				the mouse state is: LEFT BUTTON newly pressed, on scrollbar.
+ *				Call wscrollbar_scroll() to track the mouse mvt and get new ptr
+ *			PARAMS: WBUTTON *Bptr = ptr to scrollbar data area
+ *									(obtained from wscrollbar_add() )
+ *			RETURNS: unsigned int newval = new virtual position 
+ *						0 <= newval <= range
+ *							
+ *		wscrollbar_reset() - provide new virtual position for the scrollbar 
+ *							 and redraw the ptr onscreen.
+ *			PARAMS: WBUTTON *Bptr = ptr to scrollbar data.
+ *					unsigned int newval = new virtual value.
+ *
+ *	NOTES: no error checking is performed. Be careful of following:
+ *			The scrollbar must be AT LEAST 4 bytes long (y2 > y1+3)
+ *			The range must be > 2.
+ *			The key assigned should not be producable on a PC/AT keyboard
+ *				(prog. will lock if a keyboard press activates the scrollbar)
+ *				(negative key values are guaranteed to work)
+ *			
+ *	EXAMPLE: see DEMOMOUS.C
+ */
+WBUTTON *wscrollbar_add ( int key, 
+			unsigned char x, unsigned char ytop, unsigned char ybottom,
+			unsigned int virtual_range, unsigned int virtual_start );
+			
+void 			wscrollbar_draw   ( WBUTTON *Bptr );
+unsigned int 	wscrollbar_scroll ( WBUTTON *Bptr );  /*returns virtual_val */
+void 			wscrollbar_reset  ( WBUTTON *Bptr, unsigned int new_val );
+
+
+
+
+
+
+
+
+
+
+
+/*---------------------- dialog routines --------------------------*
+ *
+ *  wpromptc ()
+ *  wprompts ()
+ *  wpicklist()
+ *  wscanform()
+ *
+ *------------------------------------------------------------------*/
+
+
+/*! wpromptc()
+ *	dialog box routines. - prompt user for a single keystroke
+ *
+ *	displays a message in a window, waits for the user to press a key
+ *	validates the keypress against the specified response parameter.
+ *	Integrates mouse and keyboard.
+ *
+ *	auto_sizing and auto_centering
+ *		you may change location by calling wsetlocation first.
+ *
+ *	parameters:
+ *		title = ptr to title string. Ignored if null
+ *		msg   = ptr to message for main body of window.
+ *			may be multiple lines. Window sized to fit.
+ *		responses = ptrs to response prompts.
+ *			One 'button' is created for each response.
+ *			an ESCPAE button is automatically created.
+ *			The first character ( alpha or numeric )
+ *			of each string is returned if that string is chosen
+ *
+ *                      Terminate the list with NULL
+ *
+ *
+ *	RETURNS: The keypressed by the user, as limitted by response choices
+ *			lowercase is translated to uppercase.
+ *
+ *	example:  key = wpromptc ("title", "are we having fun",
+ *			"Yes", "No", ESCAPE);
+ *		The only possible return values are ESCAPE, 'Y' 'N'
+ *
+ */
+
+int wpromptc(char *title, char *msg, ...);
+
+
+
+
+/*! wprompts ()
+ *
+ *	prompt user for a string
+ *	works like wpromptc()
+ *	but allows user to type a longer answer.
+ *	the answer is returned in reply
+ *	RETURNS:
+ *	the key used to terminate input (ENTER, ESCAPE, etc)
+ */
+int wprompts ( char *title, char *msg, char *reply, int nbytes );
+
+
+
+
+
+
+
+
+/*! wpicklist()
+ *	user selection from a list of strings; pop-up menu style
+ *
+ *      parms:  title will be written on the top of the box.
+ *              list  is a char **, a pointer to a list of strings
+ *					terminated by a NULL
+ *
+ *	RETURNS the offset number for the choice made
+ *		or the offset to the terminating NULLif ESCAPE
+ *
+ *		the returned offset to ptr can be used 2 ways:
+ *			1) char *answer;
+ *			   answer = list[ wpicklist (title,list) ] ;
+ *			   wputs (answer);  <=== answer is a string.
+ *
+ *			2) int n;
+ *			   n= wpicklist (title,list);
+ *                          	(n is the number of the choice 0,1,2,3...)
+ *			neither of these code fragments checked for NULL.
+ *
+ *	Long lists ( >10 lines )
+ *	will automatically allow PAGE UP/PAGE DN choices.
+ *
+ *
+ *
+ *	example:
+ *
+ *              char *list[] = { "one", "two", "three", "four", NULL };
+ *
+ *		response = wpicklist ("<PICK A NUMBER>", list);
+ *
+ *		in this example, response will be the choice number
+ *			0= first element on list, 1=second, etc...
+ *			will index the terminal NULL if ESCAPE was selected.
+ *
+ *
+ *	NOTE: in large or compact memory models,
+ *		you must be sure entire list is in one segment.
+ *		or list[n] may point to wild data.
+ *		(ie, use a normalized pointer)
+ */
+int wpicklist ( char *title, char **list );
+
+
+
+
+
+
+
+
+/*! wscanform() and wprintform()
+ *
+ *
+ *	interactive versions of printf() and scanf()
+ *                    	that allow more flexible formatting/interaction
+ *
+ *      table-driven -- see definition of WFORM
+ *                   	the table consists of multipple entries of type WFORM
+ *                      example:
+ *			WFORM sample_form [] = {  <<< simplified
+ *				data item,
+ *				(optional labels, no data),
+ *				data item,
+ *				last line  };
+ *
+ *
+ *	parameters:  title for form and pointer to form table.
+ *
+ *
+ *
+ *
+ *
+ *
+ * the last line terminates the table with a NULL in the wflabel position.
+ *	the last line also gives the xmax and ymax for the form window
+ *	(be sure to leave enough room for all data & text )
+ *
+ *	A validation function may be specified for the whole form.
+ *		See below for description of validation functions.
+ *		If the validation function for the whole form returns non-zero,
+ *			no updating will take place.
+ *
+ * data items may be any type supported by printf/scanf
+ *	EXCEPT: longs, doubles, long doubles and pointers are NOT supported
+ *		variable lengths (%*i) is NOT supported.
+ *		item count reporting (%ni) is NOT supported.
+ *
+ *      a picklist may be specified instead of hand-typed entry.
+ *
+ *      a form item may be a 'pure label' ie, only the wflabel is printed,
+ *		ie, leave the wfuser field NULL.
+ *
+ * CAUTION:	DO NOT MAKE THE FIRST OR LAST FIELDS OF THE FORM A LABEL !!!!
+ *
+ * validation functions: Each entry in the WFORM table can call a function
+ *	The pointer to the function is specified in the 'wfvalidate' entry.
+ *	The function prototype MUST look like this:
+ *		int func_name (WFORM *form, char *buffer)
+ *	The function is called each time data is entered into the field.
+ *	Parameters passed to the function:
+ *		WFORM *form     ptr to the WFORM entry for this filed.
+ *		char  *buffer   ptr to the string holding the new value
+ *				The string is AT MOST (form->wflen) bytes.
+ *	The function may optionally communicate errors to the user.
+ *	See below, Tools for form validation functions.
+ *
+ *		validation func RETURN: 0 if the data is valid, non-zero if not valid.
+ *
+ *
+ *
+ * you must specify the length of onscreen display for data items
+ *	length must be enough to hold the data in string form with terminal 0
+ *	length MUST include terminal NULL (ie, 1 more than number bytes to show).
+ *	for string data, length is # bytes that will be returned,
+ *		incl. terminal NULL.
+ *
+ * the x,y positions for data items determine the screen start of the data
+ *	the label is placed before the data.
+ *	Be sure the label fits on current line in the space you provided.
+ *
+ * you can control border color attributes of various form items, see wfmatr_....
+ * you can control autoskip (=move to next field automatically or wait for TAB)
+ *			by setting wfm_autoskip = WFM_AUTOSKIP; or reset to 0.
+ *			DO NOT use other values.
+ *
+ * wprintform() opens a window, draws the form, and leaves the window open
+ *	with data showing. No data entry or chages to data values occur.
+ *
+ */
+int wscanform  (char *title, WFORM *form);
+void wprintform (char *title, WFORM *form);
+
+	/* WFORM attributes showing defaults */
+char wfmatr_lbl,		/* CYAN for 		labels							 */
+	 wfmatr_lbl_active,	/* BLACK on WHITE  	label indicating active data item */
+	 wfmatr_border,		/* CYAN			    form border 					*/
+	 wfmatr_title,		/* CYAN				form title						*/
+	 wfmatr_data,	 	/* CYAN			    inactive data					*/
+	 wfmatr_data_active;/* BLACK on WHITE   active data item (while typing) */
+
+int wfm_border_type;	/* DOUBLE_BORDER */
+
+char wfm_autoskip;		/* set to 0 for no autoskip, 
+						 * set to WFM_AUTOSKIP for auto skip to next field
+						 */
+
+/* Tools for form validation functions
+ *
+ * When a form validation function (see above) is called, it is passed
+ * a ptr to the form table for the current entry and a ptr to the char *
+ * buffer holding the current value.
+ *
+ * Form validation functions may call the following sub-procedures
+ * to simplify work.
+ *
+ * wform_showerror() - display an error msg under the field
+ *		If NULL is passed, a standard error message is displayed.
+ *		The error msg must be 1 line and short enough to fit onscreen
+ *		(it is located starting below and to the left of the data)
+ *
+ * wfvall () - pass the start address of the form, and buffer.
+ *		This routine loops through all the fields and calls all
+ *		validation routines one at a time, keeping track of errors.
+ *		Use this function as all or part of the total form validation
+ *		(ie, name the function on the form header line)
+ */
+
+void wform_showerror(WFORM *form, char *errmsg);
+int  wfvall (WFORM *form, char *buffer);
+
+
+
+
+
+/* miscellaneous form-oriented routines
+ *		date and time validation functions for forms.
+ *		These functions may be specified in WFORM tables.
+ */
+int wfvdate (WFORM *form, char *buffer);
+int wfvtime (WFORM *form, char *buffer);
+
+
+
+/*validate a string date in form mm/dd/yy or mm/dd/yyyy
+ * returns 0 if valid, nonzero otherwise.
+ *	also changes contents of the string to eliminate extra spaces, digits,
+ *	etc (result stirng may be shorter than original but will not be longer)
+ *
+ * or validate a time string in the form hh:mm:ss
+ *		WARNING: you must provide at least 9 bytes for this routine's arg
+ *				 as the seconds field is filled in if it was left blank.
+ *				ie: "10:30" is converted to "10:30:00" 
+ */
+int wval_date (char *date);
+int wval_time (char *time);
+
+void wdtparse ( unsigned int *, char **, char );	/* internal routine */
+
+
+/*! wfscanform() wfprintform()  - file oriented form processing.
+ *
+ *
+ *
+ *  wfscanform - parse a file using a WFORM table.
+ * 
+ *  	parameters: wfscanform(FILE *infile, WFORM *form, char *stopcode)
+ *						infile = ptr to file to parse (already opened)
+ *						form   = ptr to WFORM table
+ *						stopcode= ptr to string to stop parsing.
+ *
+ *	This procedure is a file-header parser.
+ *	Text files are read and each line is checked to see if
+ *	it matches an item in the WFORM table. If so, the data is
+ *	formatted and placed in the calling program's storage area
+ *	...as indicated by the table.
+ *
+ *	The input file may be in the format:
+ *		KEYWORDdata\r\n
+ *		KEYWORDdata\r\n
+ *		STOPCODE\r\n
+ *	The KEYWORD may have a punctuation mark or whitespace at the end,
+ *		these are ignored for the purposes of comparison.
+ *		So the file may be in any of the following forms:
+ *		KEYWORD: filedata\r\n
+ *		KEYWORD:filedata\r\n
+ *		KEYWORD filedata\r\n
+ *		KEYWORD-filedata\r\n
+ *		KEYWORD$  filedata\r\n
+ *
+ *
+ *		ONLY 1 punctuation mark may be used as a delimiter,
+ *			but it doesn't have to be the same one each time.
+ *
+ *
+ *		in each of these cases, the data that will be returned
+ *              will be 'filedata' without the punctuation or leading space.
+ *
+ *	However, if no delimiter or space is indicated in the WFORM label,
+ *		then any delimiter found will be included in the data.
+ *
+ *	Data may continue to the next line if the last line is a + - or \
+ *		ex: col 0123456789....
+ *              KEYWORD: This is dat+\r\n
+ *              a for the program\r\n
+ *		will be read as This is data for the program.
+ *
+ *
+ *	Open the input file in either text or binary mode,
+ *		This routine actively ignores \n\r
+ *		and does not depend on fgets() to remove these codes.
+ *
+ *
+ *	If a KEYWORD is not found in the file, no values are moved to the
+ *		calling program's data area.
+ *
+ *	Input stops on FEOF or on an input line entirely contained in STOPCODE
+ *		OK if you specify STOPCODE as DATA: and the input line is DATA\r\n
+ *			or OK if stopcode is DATA and input line is DATA:\r\n (any punct.)
+ *		ie: for a header record, STOPCODE might be DATA: or DATA- or DATA
+ *			as long as the word DATA is all that shows on the line.
+ *			if STOPCODE is DATA: and the input file says DATA- it won't work.
+ *
+ *	to display the KEYWORDdata information onscreen, use the same WFORM[]
+ *		and call WPRINTFORM ()
+ *	to create compatible file headers, use the same WFORM[]
+ *		and call WFPRINTFORM[]
+ *
+ *
+ *	validation functions are not called by wfscanform
+ *--------------------------------------------------------------
+ *
+ *  wfprintform -
+ *	the data and labels are printed to a file, one line at a time
+ *		in the order of the table.
+ *
+ *
+ *  partial example:
+ *	if the table entry is "NAME: ", your_name, ... "%s",  ...
+ *	then wfscanform will identify any line beginning with "NAME: "
+ *	and will place the following string data into the buffer your_name.
+ *
+ *	for output, wfprintform will type a line that reads: "NAME: John\n"
+ */
+void wfscanform ( FILE *infile,  WFORM *formtable, char *stopcode );
+
+void wfprintform (FILE *outfile, WFORM *formtable );
+
+
+
+
+/*----------------------------- HOTKEYS -----------------------------
+ *
+ * 	HOTKEYS are specific keys which automatically call up 
+ * 		functions. When the key is pressed, the function is 
+ * 		automatically called, and then that key is 'swallowed up'
+ *		so the original function doesn't have to process it.
+ *		F1 for context sensitive help is an example of a hotkey 
+ *			routine.
+ *
+ *
+ *	You associate a key with a function by calling whotkey_install()
+ *	The function should be declared as 
+ *			void myfunc(void);
+ *	To associate myfunc() with a key, say the HOME key, call...
+ *			whotkey_install ( HOME, myfunc );
+ *  NOTES:
+ *	1) You cannot de-install a hotkey... you must provide your own 
+ *		means for inactivating it if you need to.
+ *	2) The function will not be called more often than once at a 
+ *		time. If the function is currently active the key will be 
+ *		'regular' not hot.
+ *
+ */
+void whotkey_install ( int HOTKEY_keyvalue,  void (*myfunc)(void) );
+
+
+
+
+/*-------------------------- TOP MENU LINE ---------------------------*
+ *
+ * wpulldown (), wpulldown_draw(), wpulldown_pages() -
+ *	provide for pulldown menus.
+ *	these functions should be called to install the menu manager
+ *	after winit() but before any other functions.
+ *
+ *
+ *
+ * parameters:
+ *
+ *	WMENU *topmenu  = address of NULL-terminated array of WMENU.
+ *			  any level of nesting is allowed.
+ *
+ *
+ * NOTES:
+ *
+ *	use wpulldown() for programs on only one video page.
+ *	use wpulldown_pages() for programs that use mult. video pages.
+ *
+ * 	install these soon after winit () or winit_pages()
+ *
+ * 	both functions replace the top 2 lines of the screen with menus
+ *	and 'shorten' the fullscreen window to protect the top two lines.
+ *
+ * 	use one or the other, but not both.
+ *
+ *	for wpulldown, the menu is activated whenever an ALT_letter or
+ *				FKEY() in the topmenu is pressed, or by mouse
+ *
+ *
+ * !!!	any function called by the menu MUST quit when ESCAPE is pressed.
+ *		internally,
+ *			the menu routine uses wungetc(ESCAPE)
+ *                      to force functions to quit for moving horizontally
+ *
+ *	use wpulldown_draw() to redraw top lines of menu
+ *
+ *  set wpulldown_enable to 0 to temporarily turn off menu functions.
+ *
+ *---------------------------------------------------------------------*/
+void wpulldown 		( WMENU *topmenu );
+void wpulldown_pages	( WMENU *topmenu );
+void wpulldown_draw     ( void );
+
+int  wpulldown_enable;					/* 0=turns off menu default=1*/ 
+
+
+
+
+
+/*! function key functions
+ *    defined here so they can be used in a wfkey[10] table.
+ * 	see the header wfkey.h for example of how to link these into
+ * 		a program
+ */
+
+
+/*-------------------------- HELP system  ------------------------------*
+ *	F1 activates context-sensitive help.
+ *		You tell the help system which file has help text when you install help.
+ *		You tell the system which topic to display by setting the whelp_ptr.
+ *		If you are use pulldown menus (wpulldown) or form data entry (wscanform)
+ *			.. the system automatically sets whelp_ptr to the current topic.
+ *
+ *
+ * 	whelp_ptr is a global variable,pts to a help string.
+ *		new ptrs may be assigned to it at any time.
+ *
+ *	whelp_install() installs a hotkey- activated help display routine.
+ *			the string pointed to by whelp_ptr is displayed.
+ *                      PARAMETERS: the helpfile name (no extension)
+ *                      	looks for filename.hlp & filename.hx
+ *
+ *	STEP BY STEP GUIDE TO CREATING HELP FOR YOUR PROGRAM MYPROG.EXE:
+ *	1)	you type a standard ASCI file with help text in it.
+ *			each topic starts with '@' in column 1,
+ *			then name of topic (up to 15 bytes), then <CR><LF>
+ *			then up to 5 lines of 50 bytes each of help text.
+ *	sample of a 2 topic help text file: filename MYHELP.HLP
+ @TOPIC 1
+ This is help text for topic 1.
+ This is a second line of help for topic 1.
+ @TOPIC 2
+ This is help for second topic.
+ <END_OF_FILE, CTRL Z>
+ *	2) run MAKEHX.EXE - makehx.exe is a utility that makes help index files.
+ *	   'C:\>makehx MYHELP' which creates file MYHELP.HX
+ *	3) In your program MYPROG.C, you call 'whelp_install ("MYHELP");
+ *
+ *	4) Set whelp_ptr to "TOPIC 1" or "TOPIC 2" at various pts in your program.
+ *	
+ *	EXAMPLES: .C programs that use help: demomenu, demoform, demohkey.
+ *			 help text files: demomenu.hlp, demoform.hlp, demohkey.hlp.
+ *---------------------------------------------------------------------*/
+void whelp_install(char *filename);
+
+
+
+
+/*! wdos
+ *	 a menu or fkey choice, allows execution of DOS commands
+ *	( NOT available in graphics mode).
+ */
+void	wdos		(void);
+
+
+/*! wexit
+ *	ask user if he/she wants to quit, and exit if 'Y'
+ */
+void 	wexit 		(void);
+
+
+
+
+
+
+
+
+/*! wunlink(), wlink()
+ *	unlink the current window from the chain of windows.
+ *		the image of the window is saved (pointer winsave).
+ *		the screen is not changed.
+ *      this function is used just before changing modes
+ *			   or just before wcloseall
+ *	allows subsequent wlink to re-establish this window
+ *      	when you come back to the window's mode.
+ *
+ *		RETURNS: pointer to the window if successful, NULL if error
+ *
+ *
+ *	wlink opens the specified window, restores its image to the screen
+ *		parameter = window pointer obtained by wunlink ()
+ *
+ *		windows are linked into the same page as the current window.
+ *
+ *	do NOT place a text-mode window on a graphics mode screen
+ *		or vice-versa.
+ *
+ *      do not unlink either the last window or the fullscreen window.
+ *
+ *	example: 	winit ('T');
+ *                      wopen (... );
+ *			wputs ("A bunch of stuff...");
+ *			my_textwindow = wunlink ();
+ *			init ('G');
+ *				do graphics things...
+ *			winit ('T');
+ *			wlink ( my_textwindow );
+ *
+ *
+ */
+
+WINDOW 	*wunlink (void);
+void    wlink (WINDOW  *new);
+
+
+/* WDRAW() - only available in TurboC version.
+ *		allows user to draw an object onscreen.
+ *		returns ptr to allocated data area of type WOBJECT_D_ART
+ *		which contains description of drawn object.
+ *		PARAMETERS:
+ *			type = 	type of object to draw.
+ *					see definition of WOBJECT_D_ART for values of type.	
+ *			color, linestyle, thickness = as defined by TURBO C.
+ *		RETURNS: ptr to WOBJECT_D_ART, see funcs.doc
+ */
+
+
+WOBJECT_D_ART *wdraw ( char type, int color, int linestyle, int thickness );
+
+
+/*------------- HEAP MANAGEMENT --------------------- */
+
+	/* This package includes routines to allocate chunks of memory
+	 * to expanded memory, and when that is no longer available, to RAM, 
+	 * and when that is used up, to the hard disk. Large chunks of memory 
+	 * are especially important for saving underlying graphics images
+	 * when you open a window.
+	 *
+	 * You can use these 'heap' routines for things other than window storage.
+	 * Expanded memory and disk storage are inefficient ways to handle small
+	 * 	chunks of data, use farmalloc() ( or in msc, _fmalloc ) for those.
+	 *
+	 * The largest size chunk that can be allocated as one heap element is
+	 * 64k-16 bytes, given in WHEAP_MAX. 
+	 */
+
+
+	/*
+	 * The amount of far ram used is limitted by the global variable
+	 * wheap_ramlimit. 
+	 * Setting wheap_ramlimit to 0 shuts off use of ram (only xms & disk used)
+	 * Setting wheap_ramlimit to very large (1 MEG) allows use of all avail ram
+	 * If you have data that MUST be stored in regular (far) ram,
+	 * or in LARGE model want enough ram left over for important data, 
+	 *		set wheap_limit large enough to hold that data.
+	 *  
+	 */
+	extern unsigned long 	 wheap_ramlimit;   /* default is 256k */
+
+
+
+
+void 		 wheap_init ( void );		/* internal use only */
+
+
+/*  wheap_alloc() requests a chunk of heap memory.
+ *	parameters:
+ * 		priority (0-255) relates to where it will be stored
+ *			 0 = always stored to disk. Dont clutter up ram with this.
+ *			 1-254 = stored to expanded or ram if room
+ *					 if no room, objects of lower priority are swapped to disk
+ *							until room is made.
+ *					 if still no room after low priority items are swapped,
+ *							item is allocated on disk drive.
+ *			255 = never store on disk. very important data item.
+ *		errmsg if NULL, and no storage obtained,  wheap_alloc returns NULL
+ *			else, pts to name of module, will be identified as source of error
+ *			ie msg: "Out of heap memory, call from  xxxxxxx" is printed
+ *			
+ *	RETURNS: ptr to WHEAP ( ie to control block for the allocated memory )
+ *			 this is NOT the ptr to the memory itself.
+ *			 (the memory allocated may not even be in RAM)
+ *			returns NULL only if: No memory on heap and errmsg == NULL
+ *	
+ */
+
+WHEAP 		*wheap_alloc
+		   (size_t numbytes, unsigned char priority, char *errmsg );
+
+
+/* wheap_access and wheap_deaccess 
+ * 		USE: after wheap_alloc() creates a heap element,
+ *			 call wheap_access() to bring data into ram (from disk or wherever)
+ *			 when done with it, call wheap_deaccess() to free up ram
+ *		PARAMETERS:
+ *			heap_ptr = ptr returned by call to wheap_alloc.
+ *			readwrite = a flag. 
+ *				for wheap_access() - readwrite= 1 means read data from disk
+ *												(ie: re-accessing prior data)
+ *									 readwrite= 0 means don't access disk
+ *												(ie: creating data first time)
+ *				for wheap_deaccess() - readwrite=1 means write data to disk
+ *												=0 means don't save data 
+ *			The first time you access data, set readwrite=0.
+ *			When you deaccess it, to save new values set readwrite =1.
+ *		    The last time it is de-accessed, just before free(), set=0
+ *
+ */
+void far 	*wheap_access   ( WHEAP *,  int readwrite );
+void 		 wheap_deaccess ( WHEAP *,  int readwrite );
+
+/* free heap element.
+ */
+void		 wheap_free  ( WHEAP * );
+
+
+
+
+/* wheap_avail() & similar funcitons
+ * 	determine amount of RAM available ( ram+xms, ram alone or xms alone )
+ * 	returned value does NOT include the amount specified
+ *		by wheap_cushion
+ */
+unsigned long	 wheap_availxms ( void );
+unsigned long    wheap_avail    ( void );
+
+
+
+/* wheap_swap2dsk()
+ * 	swap specified WHEAP object to disk
+ */
+void		 wheap_swap2dsk ( WHEAP * );
+
+/* wheap_swapall2dsk()
+ *	swap all WHEAP objects of specified priority to disk
+ */
+void		 wheap_swapall2dsk ( int priority );
+
+
+
+/* wheap_unlink ()
+ *	swaps from expanded or disk storage to main ram.
+ *	removes control block from heap manager.
+ *
+ *	returned address can be released by free() (farfree() in small model)
+ *
+ */
+void far 	*wheap_unlink ( WHEAP * );
+
+
+
+
+/* wheap_freeall ()
+ * 	cleanup heap, release xms blocks, free main storage, delete disk file
+ *	called internally at program shutdown.
+ */
+void		 wheap_freeall ( void );
+
+/* wmalloc ()
+ *		this is a 'shell' routine to malloc()
+ *		alleviates need to always check for successful allocation
+ *		and takes care of segmentation/normalization in LARGE model.
+ *
+ *		PARAMETERS: nbytes = number of bytes to allocate
+ *					errmsg = if no memory allocated, issue this msg and exit
+ *							 if errmsg is NULL, and no memory avail,
+ *								 ... then return to caller.
+ *							errmsg should be less than 12 bytes.
+ *		RETURNS: ptr to allocated data.
+ *				 NULL if no memory AND errmsg was NULL.
+ */
+void *wmalloc ( size_t nbytes, char *errmsg );
+
+/* wfarmalloc ()
+ * 	allocate far memory, NORMALIZE pointer, test for error
+ *	if no memory obtained && errmsg!=NULL, print msg and exit.
+ *			      && errmsg==NULL, return NULL to caller.
+ *				errmsg should be less than 12 bytes.
+ */
+void  far *wfarmalloc ( unsigned long nbytes,  char *errmsg );
+
+
+
+
+/*wrealloc()
+ *		just like ANSI-realloc, except:
+ *		PARAMETERS: void * ptr  - ptr to reallocate.
+ *					size_t nbytes - new size.
+ *					char * err_msg - if not NULL and memory not avail,
+ *										wrealloc() halts program & writes errmsg
+ *									errmsg should be less than 12 bytes. long.
+ *
+ */
+void *wrealloc ( void *ptr, size_t nbytes, char *errmsg ); 
+
+
+
+/* whplj_dump()
+ * FAST screen dump routine for laserjet II printers.
+ * USES Printer Control Language level III (PCL) for HP and compatible ptrs.
+ *	NOTES:
+ *		1) this screen dump uses 2 features to make it FAST
+ *				A) reads one byte (=8pixels) at a time from the screen
+ *					(most commercial drivers seem to read 1 pixel at a time)
+ *				B) writes to printer using compaction mode 1
+ *		2) routine dumps screen for any text mode or any graphics mode.
+ *				(automatically senses mode)	
+ *		3) on color monitors in graphics dithering is same as for hercules:
+ *				any pixel with either GREEN or BLUE is printed
+ *					ie: GREEN, CYAN, YELLOW, PURPLE are;   RED is not.
+ *		4) print resolution and aspect ratio set automatically 
+ *			to print image of screen as large as possible inside 8*11 paper
+ *		5) VGA 50 line text mode: entire 50 line screen is printed (or EGA 43)
+ *		6) multiple video page programs: printing is the active page
+ *			(not necessarily the display page)
+ *			NOTE: limitation of DOS PrtScrn always prints page 0.
+ *
+ *	usage: pass routine a FILE pointer. Use stdprn to get DOS printer
+ *			Use a pointer to an open BINARY mode output file 
+ *				to save a set of HPLJ commands to a disk file
+ *			then later execute dos command:  TYPE  FILENAME > LPT1:
+ *
+ *
+ *	function whplj_install () installs screen dump routine as a hotkey activated.
+ *			asks if dump should be to printer or file
+ *			files are named "HPLJ###.PCL" and numbered up from 0.
+ */
+void whplj_dump (FILE *f);
+void whplj_install (int key);
+
+
+
+/* ---------------------- End of FUNCS.DOC ---------------------------- */
+ 

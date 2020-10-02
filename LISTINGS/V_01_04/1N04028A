@@ -1,0 +1,60 @@
+/*			 LISTING 3				*/
+
+
+/*	Example program to test error module */
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include "err.h"
+
+/* Local prototypes */
+BOOLEAN sub_a(int);
+BOOLEAN sub_b(void);
+BOOLEAN sub_c(PSTR);
+
+void main()
+{
+	if (!sub_a(27)) {
+		err_push(ERR_FINISH_CMD, NULL);
+	}
+	if (err_state()) {
+		err_disp();
+		exit(1);
+	}
+	exit(0);
+}
+
+BOOLEAN sub_a(int n)
+{
+	char str[30];
+
+	if (!sub_b()) {
+		sprintf(str, " %d", n);
+		err_push(ERR_DELETE_RECORD, str);
+		return(FALSE);
+	}
+	return(TRUE);
+}
+
+BOOLEAN sub_b()
+{
+	static char fname[] = "data.idx";
+
+	if (!sub_c(fname)) {
+		err_push(ERR_OPEN_INDEX, fname);
+		return(FALSE);
+	}
+	return(TRUE);
+}
+
+BOOLEAN sub_c(PSTR file)
+{
+	FILE *fd;
+
+	if ((fd = fopen(file, "r")) == NULL) {
+		err_push(errno, file);
+		return(FALSE);
+	}
+	return(TRUE);
+}

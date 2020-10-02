@@ -1,0 +1,58 @@
+#include <dos.h>
+sread_ca(int row, int col, char *area)
+/* This will read the character and attr at row,col and place them into the
+   string pointed to by area.
+*/
+{
+  extern int color, mono, cga, ega, scrseg, bios;
+  union REGS inregs;
+  int   scrofs, orow, ocol;
+  char pchar;
+  char far *base;
+  char far *work;
+	if(mono) base=(char far *)0xb0000000;
+	else base=(char far *)0xb8000000;
+  if(bios) {
+        locate(row,col) ;
+        inregs.h.ah=0x08;
+        inregs.h.bh=0x00;
+		int86(0x10,&inregs,&inregs);
+        *area=inregs.h.al;
+		area++;
+		*area=inregs.h.ah;
+        return(0);
+  }
+	scrofs = ((((row+1) * 160) - 160) + ((col+1) * 2)) - 2;
+	work = base + scrofs;
+	asm les bx,work
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+	asm mov cl,byte ptr es:[bx]
+	asm mov pchar,cl
+	*area = pchar;
+	work++;
+	area++;
+	asm les bx,work
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+	asm mov cl,byte ptr es:[bx]
+	asm mov pchar,cl
+	*area = pchar;
+
+	return(0);
+}
+

@@ -1,0 +1,155 @@
+/* Listing 1
+
+   test.c: Program to test data blocks and modify them
+
+   Written by Hugh Staley
+              Box 842
+              Los Alamos, NM 87544
+ */
+
+#include <stdio.h>
+#include <string.h>
+
+/* Data block & offsets */
+#define FILEOFFSET  0X9999L
+
+#define CT       0      /* Offset for int Count */
+#define LE    CT+2      /* Offset for int Length */
+#define OS    LE+2      /* Offset for long Offset */
+#define Q1    OS+4      /* Offset for char Question1 */
+#define Q2    Q1+5      /* Offset for char Question2 */
+#define BL   Q2+10      /* Total Block Length */
+
+char Parameters [BL] = {"FILE BLOCK 1          "};
+
+void Initialize (Count, Length, Offset, Question1, Question2)
+    int  *Count, *Length;
+    long *Offset;
+    char Question1 [], Question2 [];
+
+    {
+    *Count = 10;
+    *Length = 60;
+    *Offset = -1L;
+    strcpy (Question1, "How?");
+    strcpy (Question2, "Why me?");
+    }   /* Initialize the block */
+
+void Request (Count, Length, Offset, Question1, Question2)
+    int  *Count, *Length;
+    long *Offset;
+    char Question1 [], Question2 [];
+
+    {
+    printf ("What is the count? ");
+    scanf ("%d", Count);
+
+    printf ("What is the length? ");
+    scanf ("%d", Length);
+
+    printf ("What is the offset? ");
+    scanf ("%ld", Offset);
+
+    while (getc (stdin) != '\n')
+        /* dump input characters */ ;
+
+    printf ("What is question 1 text? ");
+    gets (Question1);
+
+    printf ("What is question 2 text? ");
+    gets (Question2);
+    }   /* Request parameters */
+
+void Display (Count, Length, Offset, Question1, Question2)
+    int  Count, Length;
+    long Offset;
+    char Question1 [], Question2 [];
+
+    {
+    printf ("The count is %d\n", Count);
+    printf ("The length is %d\n", Length);
+    printf ("The offset is %ld\n", Offset);
+    printf ("Question 1 is %s\n", Question1);
+    printf ("Question 2 is %s\n", Question2);
+    }   /* Display the parameters */
+
+void Save (Block)
+    char Block [];
+
+    {
+    FILE *fd;
+    int i;
+
+    if ((fd = fopen ("TEST.EXE", "r+b")) != NULL)
+        {
+        fseek (fd, FILEOFFSET, SEEK_SET);
+        for (i = 0; i < BL; ++i)
+            fputc (Parameters [i], fd);
+        fclose (fd);
+        }
+    }   /* Save a block of parameters */
+
+void Load (Block)
+    char Block [];
+
+    {
+    FILE *fd;
+    int i;
+
+    if ((fd = fopen ("TEST.EXE", "rb")) != NULL)
+        {
+        fseek (fd, FILEOFFSET, SEEK_SET);
+        for (i = 0; i < BL; ++i)
+            Parameters [i] = fgetc (fd);
+        fclose (fd);
+        }
+    }   /* Load block of parameters */
+
+main ()
+    {
+    char Option, Command [10];
+    int  Okay;
+
+    /* declarations to divide block into variables */
+    int  *Count = (int *)(Parameters + CT),
+         *Length = (int *)(Parameters + LE);
+    long *Offset = (long *)(Parameters + OS);
+    char *Question1 = Parameters + Q1,
+         *Question2 = Parameters + Q2;
+
+    do
+        {
+        do
+            {
+            printf ("\n--------------------\nDo you want to\n");
+            printf ("    Display the parameters\n");
+            printf ("    Initialize the parameters\n");
+            printf ("    Load a block\n");
+            printf ("    Quit the program\n");
+            printf ("    Request the parameters\n");
+            printf ("    Save a block\n");
+            gets (Command);
+            Option = tolower (*Command);
+            if (! (Okay = (int)strchr ("dilqrs", Option)))
+                printf ("Your answer must be one of the list.\n");
+            }
+            while (! Okay);
+
+        switch (Option)
+            {
+            case 'i':  Initialize (Count, Length, Offset,
+                                   Question1, Question2);
+                       break;
+            case 'r':  Request (Count, Length, Offset,
+                                Question1, Question2);
+                       break;
+            case 's':  Save (Parameters); break;
+            case 'd':  Display (*Count, *Length, *Offset,
+                                Question1, Question2);
+                       break;
+            case 'l':  Load (Parameters); break;
+            }
+        }
+        while (Option != 'q');
+    }
+

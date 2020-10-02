@@ -1,0 +1,42 @@
+
+/*
+    TITLE:      Test Driver for MouseLib Module;
+    FILENAME:   TRYMOUSE.C;
+    COMPILER:   Turbo C++ V.1.0;
+    REQUIRES:   MOUSELIB.OBJ;
+*/
+
+
+#include <stdio.h>
+#include <dos.h>
+#include <conio.h>
+#include "mouselib.h"
+
+int mou_buttons;
+unsigned long far *mouse_vector = (unsigned long far *) MK_FP(0, 0x33 * 4);
+
+int main(void)
+{
+    int x, y, count, button = 1;
+    unsigned char far *op_code = (unsigned char far *) *mouse_vector;
+
+    clrscr();
+
+    if(! op_code  ||  *op_code == 0xCF)  /* if vector NULL or has IRET opcode */
+    goto bail_out;                   /* don't bother to call INT 33h! */
+
+    if(! mouse_reset(&mou_buttons))  {
+bail_out:
+    printf("\n\tNo Mouse!\n");
+    return 1;
+    }
+
+    printf("\n\n\tPress Right Mouse Button to Quit ...\n\n");
+    mouse_show();
+    while(! (mouse_button_press(&x, &y, &count, button) & RIGHT_BUTTON))
+    ;   /* do nothing */
+
+    mouse_hide();
+    mouse_reset(&mou_buttons);
+    return 0;
+}

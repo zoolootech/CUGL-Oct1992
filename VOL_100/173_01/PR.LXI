@@ -1,0 +1,117 @@
+
+/*
+ * Token analyser for HOC
+ */
+white   = [\n\t ];              /* End of a word        */
+alpha   = [a-zA-Z];
+number  = [0-9];
+any     = (alpha|number)*;
+operator = [\41\43-\57\72-\77\133-\140\173-\175];
+quote   = ["];
+string  = (white|alpha|number|operator)*;
+int     = number(number)*;
+eol     = [;];                 /* End of input line    */
+/* ignore  = [\41-\100]; */
+illegal = [\0-\377];           /* Skip over junk       */
+
+%{
+#define TRUE 1
+#define FALSE 0
+char            line[133];
+char            *linep          = &line[0];
+int             col, line_cnt;
+char            buff[80], *str_token, *print_token;
+int             is_eof          = 0;
+int             wordct          = 0;
+int             flg_case = FALSE;
+int             str_len;
+
+extern void getline();
+#include "stdlib.h"
+#define T_EOL   1
+#define SYMBOLE LEXSKIP
+#define STRING  LEXSKIP
+#define INTEGER LEXSKIP
+#define FLOAT   LEXSKIP
+#define HEADER  LEXSKIP
+#define COMMAND LEXSKIP
+int int_x;
+
+
+void main(argc,argv)
+int argc;
+char *argv[];
+{
+        int    i;
+        line_cnt = 1;
+        col = 1;
+        printf("Lexical analyser for HOC -- Test Program\n");
+/*      lexin = fopen("test.lxi", "r"); */
+        while ((i = yylex()) != 0) {
+                /*
+                 * If the "end-of-line" token is  returned
+                 * AND  we're really at the end of a line,
+                 * read the next line.  Note that T_EOL is
+                 * returned  twice when the program starts
+                 * because of the nature of the look-ahead
+                 * algorithms.
+                 */
+        }
+        exit(0);
+}
+%}
+%%
+
+white(white)*  {
+                          return(LEXSKIP);
+       }
+quote string quote {
+	gettoken(buff, sizeof(buff) );
+	printf("string: %s\n", buff);
+	return(STRING);
+}
+int             {
+                          gettoken( buff, sizeof(buff) );
+                          int_x = atoi(buff);
+                          printf("Integer %d \n", int_x );
+                          return(INTEGER);
+                }
+("." int | int "." | int "." int) {
+                          gettoken( buff, sizeof(buff) );
+                          printf("Float %s\n", buff );
+                          return(FLOAT);
+                }
+
+"h" "e" "a" "d" "e" "r"     {
+                        str_token = gets( buff );
+                        printf("printf(\"%s\");\n",str_token);
+                        return(HEADER);
+                }
+alpha any {
+                gettoken( buff, sizeof(buff) );
+                printf("Symbole: %s\n", buff);
+                return(SYMBOLE);
+                }
+"@" alpha any  {
+               gettoken( buff, sizeof(buff) );
+               printf("Command: %s\n", buff); return(COMMAND);
+               }
+"@" "(" int "," int ")"
+               {
+               gettoken( buff, sizeof(buff) );
+               printf("Locator: %s\n", buff); return(COMMAND);
+               }
+operator       {
+               gettoken( buff, sizeof(buff) );
+               printf("Operator = %c\n", buff[0]);
+               return( buff[0] );
+               }
+eol            {
+                        return(T_EOL);
+               }
+%%
+
+       return( buff[0] );
+               }
+eol            {
+  

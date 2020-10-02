@@ -1,0 +1,153 @@
+/*
+	Comm.c - Generalized Communication functions
+
+	Author - 2/16/91  David T. Lowerre  ;{
+
+	2/16/91  Windows version
+*/
+
+#include <stdlib.h>
+#include <windows.h>
+
+static int comhandle[5]= {-1,-1,-1,-1,-1};    /* support up to com4 */
+
+/*
+	Open a communication port
+*/
+ComOpen( int port,                  /* Port number */
+		 int inqsize,               /* input FIFO size */
+		 int outqsize )             /* output FIFO size */
+{
+	char comstr[5];
+	int handle;
+
+	sprintf( comstr, "COM%d", port );
+	if( (handle = OpenComm( comstr, inqsize, outqsize )) < 0 )
+	{
+		error( "Failed to open %s: code %d", comstr, handle );
+		return 0;           /* indicate failure */
+	}
+	comhandle[port] = handle;  /* store the new handle */
+	return 1;               /* indicate success */
+}
+
+/*
+	Close a communication port
+*/
+void ComClose( int port )
+{
+	/* Make sure that we have opened the port */
+	if( comhandle[port] >= 0 )
+	{
+		CloseComm( comhandle[port] );
+		comhandle[port] = -1;       /* mark the port as closed */
+	}
+}
+
+static char ptyval[] = { NOPARITY, EVENPARITY, ODDPARITY };
+static char stpval[] = { ONESTOPBIT, ONE5STOPBITS, TWOSTOPBITS };
+
+/*
+	ComSet - Set Communication Parameters
+*/
+void ComSet( int port,      /* port number */
+			 int baud,      /* actual baud rate */
+			 int parity,    /* 0,1,2 for NONE,EVEN,ODD */
+			 int bits,      /* actual number of data bits */
+			 int stop )     /* 0,1,2 for 1, 1.5, 2 */
+{
+	DCB dcb;
+
+	if( comhandle[port] >= 0 )
+	{
+		/* Get the DCB from Windows */
+		GetCommState( comhandle[port], (DCB FAR *)&dcb );
+		dcb.BaudRate = baud;
+		dcb.ByteSize = bits;
+		dcb.Parity = ptyval[parity];
+		dcb.StopBits = stpval[stop];
+
+		/* Use the new DCB to set up the port */
+		SetCommState( (DCB FAR *)&dcb );
+	}
+}
+
+/*
+	ComRead - Read from the input FIFO of a port
+*/
+ComRead( int port,      /* port number */
+		 char *buf,     /* place to put the data */
+		 int bytes )    /* number of bytes to read */
+{
+	int read;   /* number of bytes actually read */
+	int err;
+
+	if( comhandle[port] >= 0 )
+	{
+		/* if the return value is negative, clear the error */
+		if( (read = ReadComm( comhandle[port], buf, bytes )) <= 0 )
+			err = GetCommError( comhandle[port], NULL );
+		return abs(read);       /* return number of bytes actually read */
+	}
+	else
+		return 0;       /* port not open, nothing read */
+}
+
+/*
+	ComWrite - Write to the output FIFO of a port
+*/
+ComWrite( int port,     /* port number */
+		  char *buf,    /* source of data to move into FIFO */
+		  int bytes )   /* number of bytes to write */
+{
+	int wrote;  /* actual number of bytes written */
+	int err;
+
+	if( comhandle[port] >= 0 )
+	{
+		/* if the return value is negative, clear the error */
+		if( (wrote = WriteComm( comhandle[port], buf, bytes )) <= 0 )
+			err = GetCommError( comhandle[port], NULL );
+		return abs(wrote);      /* return actual number of bytes written */
+	}
+	else
+		return 0;       /* port not open, nothing written */
+}
+
+/*
+	ComInQSize - Determine the number of bytes waiting in the input FIFO
+*/
+ComInQSize( int port )
+{
+	COMSTAT cstat;
+	int err;
+
+	if( comhandle[port] >= 0 )
+	{
+		/* catch the COMSTAT information in cstat */
+		err = GetCommError( comhandle[port], &cstat );
+		return cstat.cbInQue;   /* number of bytes in the FIFO */
+	}
+	else
+		return 0;       /* port not open, no bytes in FIFO! */
+}
+
+/*
+	ComOutQSize - Determine the number of bytes remaining in the
+				  Output FIFO.
+*/
+ComOutQSize( int port )
+{
+	COMSTAT cstat;
+	int err;
+
+	if( comhandle[port] >= 0 )
+	{
+		/* Catch the COMSTAT information in cstat */
+		err = GetCommError( comhandle[port], &cstat );
+		return cstat.cbOutQue;      /* number of bytes in the FIFO */
+	}
+	else
+		return 0;       /* port not open, no bytes in FIFO! */
+}
+

@@ -1,0 +1,86 @@
+############################################################################
+#                                                                          #
+#   BISON 'make' file for Kneller's NDMAKE v4.5                            #
+#                                                                          #
+#       Microsoft C v5.1 Large model compiler                              #
+# ------------------------------------------------------------------------ #
+# TMP:              ndmake variable for it's temporary files               #
+# NAME:             name of the final executable file                      #
+# MODEL:            large model                                            #
+# INCLUDE:          compiler's '.h' file subdirectory                      #
+# HEADERS:          all necessary '.h' subdirectories                      #
+# ERRLVL:           level of error/warning reportage                       #
+# ODR:              destination directory for compiled object files        #
+# BIN:              compiler directive for object file location            #
+# COMP:             essential compiler command                             #
+# LINKF:            linker directives                                      #
+# LIBS:             additional object libraries                            #
+# ------------------------------------------------------------------------ #
+TMP     = D:
+NAME    = bison
+MODEL   = -AL
+INCLUDE = \M51\INCLUDE
+HEADERS = -I. -I$(INCLUDE)
+ERRLVL  = -DLINT_ARGS -W3
+ODR     = OBJ
+BIN     = -Fo$(ODR)
+COMP    = cl -c $(BIN)\ $(MODEL) $(ERRLVL) $(HEADERS)
+
+LDFLAG  = /exepack /NOI /STACK:0x7fff
+LIBS    =
+
+#   assorted predefined compilation macros
+#
+#------------------------------ optimize code, remove stack checking
+M5CC    = $(COMP) -Ox -Gs
+
+#------------------------------ disable optimizer, insert DEBUGging hooks
+M5DC    = $(COMP) -Zi -Od
+
+#------------------------------ do syntax check only
+M5SC    = $(COMP) -Zs
+
+#------------------------------ generate function prototypes
+M5GC    = $(COMP) -Zg
+
+CC      = $(M5CC)
+
+#   fundamental compilation rule (lacking a rules file MAKE.INI)
+.c.obj:
+        $(CC) $< ;
+
+OBJECTS = \
+        $(ODR)\LR0.obj  $(ODR)\allocate.obj  $(ODR)\closure.obj \
+        $(ODR)\conflict.obj  $(ODR)\derives.obj  $(ODR)\files.obj \
+        $(ODR)\getargs.obj  $(ODR)\getopt.obj  $(ODR)\gram.obj \
+        $(ODR)\lalr.obj  $(ODR)\lex.obj  $(ODR)\main.obj \
+        $(ODR)\nullable.obj  $(ODR)\output.obj  $(ODR)\print.obj \
+        $(ODR)\reader.obj  $(ODR)\symtab.obj   $(ODR)\warshall.obj
+
+bison.exe:      $(OBJECTS)
+       link $(OBJECTS),$(NAME),$(NAME),$(LIBS) $(LDFLAG) ;
+
+#------------------------------ object file dependencies
+$(ODR)\allocate.obj:    allocate.h
+$(ODR)\closure.obj:     machine.h new.h gram.h closure.h warshall.h
+$(ODR)\conflict.obj:    machine.h new.h files.h gram.h state.h conflict.h
+$(ODR)\derives.obj:     new.h types.h gram.h derives.h
+$(ODR)\files.obj:       files.h new.h gram.h
+$(ODR)\getargs.obj:     files.h bison.h getopt.h getargs.h
+$(ODR)\getopt.obj:  getopt.h
+$(ODR)\lalr.obj:        machine.h types.h state.h new.h gram.h lalr.h bison.h
+$(ODR)\lex.obj:         files.h symtab.h lex.h bison.h
+$(ODR)\lr0.obj:         machine.h new.h gram.h state.h bison.h closure.h lr0.h
+$(ODR)\main.obj:        machine.h getargs.h files.h reader.h nullable.h lalr.h \
+                lr0.h print.h conflict.h derives.h output.h bison.h
+$(ODR)\nullable.obj:    types.h gram.h new.h nullable.h
+$(ODR)\output.obj:  machine.h new.h files.h gram.h \
+                state.h bison.h output.h bison.h
+$(ODR)\print.obj:       machine.h new.h files.h gram.h state.h \
+                conflict.h print.h
+$(ODR)\reader.obj:  files.h new.h symtab.h lex.h gram.h output.h \
+                reader.h bison.h
+$(ODR)\symtab.obj:  new.h gram.h symtab.h
+$(ODR)\warshall.obj:    machine.h warshall.h
+
+

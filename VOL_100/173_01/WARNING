@@ -1,0 +1,150 @@
+< Warning >
+
+This warning is made based upon the article, in The C Users Group Newletter 
+Sept/Oct, 1987, written by Victor Volkman and the letter from Michael Yokoyama.
+
+* Victor Volkman *
+
+	Public domain (PD) lex program CUG has several syntax-level 
+incompatibilities with the original Unix system specifications. First, in the 
+definitions section Unix lex specifies:
+	"Any line in this section not contained between %{ and %}, and 
+beginning in column 1, is assumed to define Lex substitution strings. The 
+format of such string is
+
+	name 	translation
+
+and it causes the string given as a translation to be associated with the
+name. The name and translation must be separated by at least one blank or
+tab, and the name must begin with a letter." (Unix lex, Section 6)
+But in PD lex, the syntax of the name definition requires more delimiters
+than Unix lex:
+"A definition has the form:
+
+expression_name = regular_expression;
+
+where a name is composed of a lower-case letter followed by a sequence 
+string of letter and digits, and where an underscore is a letter." (PD
+lex, Section 2.4)
+	The additional syntax overhead and the lowercase restriction requires 
+modifying existing Unix lex specification files for PD lex. For example, the 
+Unix lex specification
+
+	letter 	[a-z][A-Z]
+becomes
+	letter = [a-z][A-Z];
+
+	Second, another syntax disparity occures in the rules section. The 
+rules section is a table of regular expressions and their corresponding actions.
+The Unix lex specification makes no restrictions about the case sensitivity
+of the regular expression names. However, PD lex enforces an upper-case 
+restriction on regular expressions similar to its lower-case restriction in
+the definition section:
+	"Outside a string, a sequence of upper-case letters stands for 
+sequence of the equivalent lower-case letters, while a sequence of lower-case 
+letters is taken as the name of a LEX expression." (PD lex, section 2.1)
+	This means that an existing Unix lex specification like
+
+	while	{return(WHILE);}
+
+must be changed to:
+
+	WHILE	{return(WHILE);}
+
+	Unix lex users will immediately notice the absence of a string variable
+called yytext which contains the actual pattern match. The Unix lex 
+specifically names this:
+	"In more complex actions, the user will often want to know the actual
+text that matched some expressionn like [a-z]+. Lex leaves this text in an
+external character array names yytext". (Unix lex, section 4)
+	However, PD lex does not provide this built-in yytext variable. 
+Fortunately, a file called GETTOK.C provides a routine gettoken() which must be
+used to make yytext available. The following call will also properly set yyleng.
+
+	yyleng = gettoken(yytext, sizeof, yytext);
+
+	The PD lex processor does not support all of the regular expression 
+operators which are supported by Unix lex. These operators are simply ignored 
+in the PD lex documentation. When used in a lex file they do not produce errors
+but do not match regular expressions either. The missing operators as found in 
+Unix lex, section 12:
+
+
+	operator use		semantics
+
+	.			any character but newline
+	^x			an x at the beginning of a line
+	<y>x			an x when Lex is in start condition y
+	x$			an x at the end of a line
+	x?			an optional x
+	x+			1,2,3 ... instances of x
+	x{m,n}			m through n occurrences of x
+	
+
+	Lastly, the IBM-PC adaptation is severely limited in its workspace for 
+creating the lex tables. This small-model implementation means tha lex is
+limited to rules that it can process in a 64K data segment. A large-model
+implementation, while somewhat slower, would allow lex to access the full 640K
+memory. A future release of PD lex should be considered in order to remove this
+restriction.
+
+	Depending upon the severity of your compiler's error checking 
+mechanism, you may notice several warnings and errors for the sample lex and C
+files provided. For example. the Lattice C compiler insists that all externally 
+declared items match their declarations. This means that a procedure declared
+void in lex.h must also be void in the C files. Another caveat concerns the 
+use of variable-number argument function calls. Many C compilers will not 
+generate code to correct for user-functions with variable-number arguments 
+like they do for scanf() and printf(). Functions like lexerror() should be
+normalized to a fixed number of arguments (e.g. four arguments). Also, be 
+aware that passing structures as function arguments is implementation 
+dependent. Passing the address of a structure via pointer or address operator
+is highly recommended.
+	Unless you are using the DeSmet C compiler (C88) then you should use 
+the stdio.h file which came with your compiler. The DeSmet C stdio.h relies on
+the low-level implementation of file handles as an integer in MS-DOS. 
+Compilers such as Lattice C use structures (instead of integers) like _iobuf
+for higher-level I/O functions like scanf() and putc().
+	Perhaps the biggest danger is the cavalier assumption that integers 
+and pointers are equivalent. Kernighan and Ritchie thought this abuse 
+important enough to discourage its use by devoting a section (5.6) of "The C
+programming Language" to it. Experienced MS-DOS programmers will note that
+pointers and integers are equivalent ONLY in the small model (less than 64K
+cod, less than 64K data). This is invalidated in large model compilers (more
+than 64K code more than 64K data) where pointers are 32-bits. Working with 
+long 32-bit integers can help alleviate this problem.
+
+* Michael Yokoyama *
+
+	PD Lex differs from UNIX Lex in that while in UNIX Lex the translation
+may be omitted, in PD Lex the translation is required. One technique that 
+seems to work is to provide an entry of [\0 - \0377]; where the blank is used
+in UNIX Lex.
+
+
+Example.
+	UNIX Lex			PD Lex
+
+	letter [a-zA-Z]			letter = [a-zA-Z];
+	digit [0-9]			digit = [0-9];
+	other				other = [\0-\0377];
+
+
+
+If you find any more difference between Unix Lex and PD Lex, please feel free
+to write us or call us.
+
+CUG.
+
+
+	
+
+
+
+
+
+
+		
+
+
+

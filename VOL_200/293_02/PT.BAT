@@ -1,0 +1,1 @@
+c:\ake\pictga %1.out %1.tga

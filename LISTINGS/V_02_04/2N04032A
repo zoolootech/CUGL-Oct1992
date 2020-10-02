@@ -1,0 +1,89 @@
+{Listing 4 -- floppy.h}
+
+/*
+**  Definitions for the Floppy Disk Controller (FDC) ports and commands.
+*/
+
+typedef unsigned char byte;
+
+/* FDC Ports addresses */
+#define FdcOutputRegister   (0x03f2)
+#define FdcStatusRegister   (0x03f4)
+#define FdcCommandRegister  (0x03f4)
+#define FdcDataRegister     (0x03f5)
+
+/* FDC data macros */
+#define fdcSetDOR(value)    outportb(FdcOutputRegister, (value))
+#define fdcWriteCmd(value)  outportb(FdcDataRegister, (value))
+#define fdcGetStatus()      inportb(FdcStatusRegister)
+#define fdcGetResult()      inportb(FdcDataRegister)
+
+/* FDC Digital Output Register (DOR) Commands */
+#define FdcDorDrive0Select  (0x00)
+#define FdcDorDrive1Select  (0x01)
+#define FdcDorDrive2Select  (0x02)
+#define FdcDorDrive3Select  (0x03)
+#define FdcDorReset         (0x00)
+#define FdcDorClearReset    (0x04)
+#define FdcDorDmaDisable    (0x00)
+#define FdcDorDmaEnable     (0x08)
+#define FdcDorDriveOn       (0x10)
+
+/* FDC Main Status Register (MSR) bit flags */
+#define FdcMsrDrive0Seek    (0x01)   /* Drive 0 is seeking */
+#define FdcMsrDrive1Seek    (0x02)   /* Drive 1 is seeking */
+#define FdcMsrDrive2Seek    (0x04)   /* Drive 2 is seeking */
+#define FdcMsrDrive3Seek    (0x08)   /* Drive 3 is seeking */
+#define FdcMsrFdcBusy       (0x10)   /* Read/Write in progress */
+#define FdcMsrExecMode      (0x20)   /* non-DMA Execute phase */
+#define FdcMsrDirection     (0x40)   /* set if FDC->CPU */
+#define FdcMsrRequest       (0x80)   /* set if ready for master to read */
+
+/* FDC Commands */
+#define FdcCmdSpecify       (0x03)   /* Set FDC parameters */
+#define FdcCmdSenseDrive    (0x04)   /* Get drive state */
+#define FdcCmdSenseInt      (0x08)
+#define FdcCmdRecalibrate   (0x07)
+#define FdcCmdSeek          (0x0f)
+#define FdcCmdRead      (0x06 | 0x80)   /* Read, Multitrack */
+#define FdcCmdReadTrack     (0x02)
+#define FdcCmdWrite     (0x05 | 0x80)   /* Write, Multitrack */
+#define FdcCmdFormatTrack   (0x0d)
+
+/* DMA Defines */
+#define DmaFdcChannel   (0x02)
+#define DmaMaskPort     (0x0a)
+#define DmaModePort     (0x0b)
+#define DmaFFPort       (0x0c)
+#define DmaAddrPort     (2 * DmaFdcChannel)
+#define DmaWcPort       (DmaAddrPort + 1)
+#define DmaPagePort     (0x81)
+#define DmaCmdRead      (0x44 | DmaFdcChannel)
+#define DmaCmdWrite     (0x48 | DmaFdcChannel)
+
+/* Convert a far pointer to a long */
+#define ptrToLong(ptr)  ((((unsigned long)FP_SEG(ptr)) \
+<< 4) + FP_OFF(ptr))
+
+/* Global data */
+extern byte Results[7];
+
+/* Function protoypes */
+void fdcSetDriveParms(byte srt, byte hut, byte hlt);
+void fdcResetParms(void);
+void fdcReset(void);
+void fdcSelectDrive(byte drive);
+int fdcSpecify(void);
+unsigned fdcSenseDrive(void);
+unsigned fdcSenseInterrupt(void);
+unsigned fdcRecalibrate(void);
+unsigned fdcSeek(int head, int cylinder);
+unsigned fdcReadSectors(int sector, unsigned nsect, void* buffer);
+unsigned fdcReadTrack(void* buffer);
+unsigned fdcWriteSectors(int sector, unsigned nsect, void* buffer);
+unsigned fdcFormatTrack(void* buffer);
+int fdcSendCmd(byte* cmd, unsigned cmdlen);
+void fdcWaitForInt(void);
+int fdcResultPhase(int immediate, int nres);
+int dmaPageTest(byte far* buf, unsigned length);
+int dmaSetup(int fcn, unsigned nbytes, void far* addr);

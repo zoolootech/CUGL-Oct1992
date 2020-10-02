@@ -1,0 +1,496 @@
+/*
+CUG-HEADER:
+   TITLE: "Text comparison utility"
+   VER: 1.7
+   AUTHOR: G.N. GILBERT
+   O.S.: CP/M 2.2
+   FNAME: TEXTCOM
+   DESC: compares two text files, printing differences
+   	 attempts to re-synchronise after finding differences
+   KEYWORDS: text, differences
+*/
+
+/*
+	TEXTCOM
+
+	compares two text files, printing differences
+		attempts to synchronise after finding differences.
+
+	G. Nigel Gilbert / MICROLOGY  (tel 04868-22521)  16.10.81
+
+	vers 1.3:  tabs expanded on list output 	 30.8.82
+	vers 1.4:  control chars suppressed on output (except ^I,cr/lf)
+	vers 1.5:  option to ignore parity bit
+	vers 1.6:  findline() substituted for fgets(), which got screwed
+			up when \n had its parity bit set
+	vers 1.7:  option to match white space in comparison
+
+	compile with -e3300 -o
+*/
+#define VERSION 17
+
+#include <bdscio.h>
+
+#define MAXINT 65535
+#define MAXSYNC 100	/*max distance to attempt to restore synchronism*/
+#define DEFLSYNC 3	/*default no. of bytes which must match to
+establish synchronity*/
+#define MAXLEN 512	/*max length of input line*/
+
+#define NO 0
+#define YES 1
+
+#define bool char
+
+bool putboth;		/*print diffs on both screen and printer*/
+bool pause;		/*stop at the end of each screen of output*/
+bool nosync;		/*don't attempt to synchronise*/
+int sync;		/*distance over which files must be matched */
+int line;		/*output line count*/
+int col;		/*output column no for printer tabs*/
+bool report;		/*write differences to file*/
+bool parity;		/*ignore parity bit*/
+bool white;		/*match white space*/
+char repbuf[BUFSIZ];	/*file buffer for report*/
+char name1[15], name2[15];	/*names of files to compare*/
+unsigned line1, line2;	/*line counts for input files*/
+unsigned start, stop;	/*start and stop comparing at lines..*/
+bool different, listing;/*found a difference; list diffs.*/
+char *c1,*c2;		/*pointers to current lines being compared*/
+char fbuf1[BUFSIZ], fbuf2[BUFSIZ];	/*input file buffers*/
+char repname[15];	/*report file name*/
+
+struct aring {
+	char *buf[MAXSYNC];
+	int ringp;
+	bool eof;
+} 
+ring1, ring2;		/*file input ring buffer*/
+
+char *findline(line,iobuf)	/*read a line from an  input file, stripping
+				 '\n', and returning NULL if at Eof */
+char *line, *iobuf;
+{
+	int cint;
+	char i, cnopar;
+
+	for (i=0; i < (MAXLEN-1) && (cint=getc(iobuf)) != ERROR; i++) {
+		if ((cnopar=cint & 0x7f) == CPMEOF) return NULL;
+		if (cnopar == '\n') break;
+		if (cnopar == '\r') continue;
+		*line++= (parity ? cnopar : cint);
+		}
+	*line='\0';
+	return line;
+}
+
+char *readline(iobuf)	/*read a line and store it away, returning pointer
+				to it, or NULL if end of file*/
+char *iobuf;
+{
+	char temp[MAXLEN], *t, *p, *alloc(), *findline(), *strcpy();
+
+	if (findline(temp,iobuf) == NULL) return NULL;
+	if ((p=alloc(strlen(temp)+1)) == NULL) {
+		puts("Out of memory\n"); 
+		exit();
+		}
+	return strcpy(p,temp);
+}
+
+char *getline(ring,iobuf)	/*get a line of text from ring buffer
+					returning pointer to it;
+					replace with one from input file*/
+struct aring *ring;
+char *iobuf;
+{
+	char *c, **p, *readline();
+
+	if (ring -> ringp == MAXSYNC) ring -> ringp = 0;
+	c = *( p=&(ring -> buf[ring -> ringp++]) );
+	if (ring -> eof || (*p=readline(iobuf)) == NULL) {
+		*p=EOF; 
+		ring -> eof=YES;
+		}
+	return c;
+}
+
+initring(ring,iobuf)	/*initialise by filling ring buffer*/
+struct aring *ring;
+char *iobuf;
+{
+	int i;
+	char *c, *readline();
+
+	ring -> eof=NO;
+	for (i=0; i<MAXSYNC; i++) {
+		if (ring -> eof || (c=readline(iobuf)) == NULL)
+		{
+			c=EOF; 
+			ring -> eof=YES;
+			}
+		ring -> buf[i]=c;
+		}
+	ring -> ringp=MAXSYNC;
+}
+
+char *peep(ring,p)		/*return pointer to p'th next line*/
+struct aring *ring;
+int p;
+{
+	return ring -> buf[ (p - 1 + ring -> ringp) % MAXSYNC];
+}
+
+pline(c)		/*print a line and free its storage space*/
+char *c;
+{
+	lineincr();
+	if (c != EOF) {
+		puts(c);
+		free(c);
+		}
+	else puts("--End Of File--");
+	putchar('\n');
+}
+
+putchar(c)		/*print a printable character,
+			  on printer too if putboth
+			  or into report file if reporting*/
+int c;
+{
+	if (c < ' ' && (c != '\n' && c != '\r' && c != '\t')) return c;
+	if (c == '\n')putchar('\r');
+	if (putboth) {
+		if (c == '\t') while (++col%8) bdos(5,' ');
+		else {
+			if (c == '\n') col=0;
+			else col++;
+			bdos(5,c);
+			}
+		}
+	if (report) {
+		if (putc(c,repbuf) == ERROR) {
+			report=NO; 
+			puts("Error on writing report file\n");
+			exit();
+			}
+		}
+	else bdos(2,c);
+	return c;
+}
+lineincr()	/*increment line count; pause, print header
+				if at end of screen*/
+{
+	if (line >= 22 && pause) {
+		puts("\t\t\t\t\t[Return]/Quit > ");
+		if (tolower(getchar()) == 'q') exit();
+		putchar('\n');
+		line=0;
+		}
+	if (!line++)printf("\t<<<<< Comparison of %s with %s >>>>>\n",
+	name1,name2);
+}
+
+scompare(s1,s2)		/*compare strings for equality (0=same)*/
+char *s1,*s2;
+{
+	if (s1 == s2) return 0; /*both EOF*/
+	if (s1 == EOF || s2 == EOF) return 1;
+	return (white ? txtcmp(s1,s2) : strcmp(s1,s2));
+}
+
+txtcmp(s1,s2)		/*compare strings, matching white space with
+			any white space chars*/
+char *s1,*s2;
+{
+	while (*s1 && *s2) {
+		if ((*s1 == ' ' || *s1 == '\t') && (*s2 == ' ' || *s2 == '\t')) {
+			while (*s1 == ' ' || *s1 == '\t') s1++;
+			while (*s2 == ' ' || *s2 == '\t') s2++;
+			if (!*s1 && !*s2) return 0;
+			}
+		if (*s1++ != *s2++) return 1;
+		}
+	while (*s1 == ' ' || *s1 == '\t') *s1++;
+	while (*s2 == ' ' || *s2 == '\t') *s2++;
+	return *s1-*s2;
+}
+		
+search(ringa,ringb,c)	/*try to get files back into sync. when mismatch
+				has been found.  If successful, returns
+				number of lines to skip to get back to
+				synchronity, else 0*/
+struct aring *ringa, *ringb;
+char *c;
+{
+	int outofsync, match, i;
+
+	if (nosync) return 0;
+	for (outofsync=1; outofsync < MAXSYNC; outofsync++)
+		/*look forward for a match*/
+		if (!scompare(peep(ringb,outofsync),c)) break;
+	/*break when found*/
+
+	if (outofsync == MAXSYNC) return 0;
+	else   /* match found, look for sync more */
+	for (match=1; match < sync; match++)
+		if ( (i=outofsync+match) >= MAXSYNC ||
+		scompare(peep(ringa,match),peep(ringb,i)))
+			break;	/*break if no match*/
+
+	if (match == sync) return outofsync;
+	/*return pos of start of sync matches*/
+	else return 0;
+}
+
+blksrch(ringa,ringb,n)	/*try to get files back into sync. when mismatch
+				at n'th character after current
+				has been found.  If successful, returns
+				number of lines to skip to get back to
+				synchronity, else 0*/
+struct aring *ringa, *ringb;
+int n;
+{
+	int outofsync, match, i;
+
+	if (nosync) return 0;
+	for (outofsync=1; outofsync+n < MAXSYNC; outofsync++)
+		/*look forward for a match*/
+		if (!scompare(peep(ringb,outofsync+n),peep(ringa,n)))
+			break; /*break when found*/
+
+	if (outofsync == MAXSYNC) return 0;
+	else   /* match found, look for sync more */
+	for (match=1; match < sync; match++)
+		if ( (i=outofsync+match+n) >= MAXSYNC ||
+		scompare(peep(ringa,match+n),peep(ringb,i)))
+			break;	/*break if no match*/
+	if (match == sync) return outofsync;
+	/*return pos of start of sync matches*/
+	else return 0;
+}
+
+addr(p)		/*gets a line number from a command line parameter;
+			returns it*/
+char **p;
+{
+	int n;
+
+	n=0;
+	while (*(++*p))	n=10*n+**p-'0';
+	return n;
+}
+
+args(argc,argv)		/*read args from command line*/
+
+int argc;
+char *argv[];
+{
+	int i;
+	char *p;
+
+	putboth=listing=nosync=report=NO;
+	pause=parity=white=YES;
+	start=sync=0; 
+	stop=MAXINT;
+	printf("[Textcom v%d.%d]\n",VERSION/10,VERSION%10);
+	if (argc < 3) {
+		puts("Usage: TEXTCOM  oldfile  newfile [options]\n");
+		puts("\t(compares an old version of a text file with a new)\n");
+		puts("\n   Options:\n");
+		puts("       -Sdd  to syncronise up to dd lines\n");
+		printf("           (use -S for strict compare). Default = %d\n",
+		DEFLSYNC);
+		puts("       -L  to list differences on printer and screen\n");
+		puts("       -Rname to create a file, 'name', reporting differences\n");
+		puts("       -C  to continue without pauses at the end of each screen\n");
+		puts("       -Fxxxx to display differences only from ");
+		puts("line xxxx\n");
+		puts("       -Txxxx to stop comparison at line xxxx\n");
+		puts("       -P  to include parity bit in comparison\n");
+		puts("       -W  to match a white space char only with the same one\n");
+		exit();
+		}
+
+	for (i=3; i < argc; i++) {
+		switch( *(p=++argv[i]) ) {
+		case 'L': 
+			listing=YES; 
+			break;
+		case 'C': 
+			pause=NO; 
+			break;
+		case 'S': 
+			sync=addr(&p); 
+			nosync=!sync;
+			if (sync >= MAXSYNC) {
+				printf("Max. sync is %u",MAXSYNC); 
+				exit();
+				}
+			break;
+		case 'R': 
+			report=YES; 
+			strcpy(repname,++p); 
+			break;
+		case 'F': 
+			start=addr(&p); 
+			break;
+		case 'T': 
+			stop=addr(&p); 
+			break;
+		case 'P': 
+			parity=NO; 
+			break;
+		case 'W':
+			white=NO;
+			break;
+		default : 
+			puts("Unknown option -"); 
+			puts(p); 
+			exit();
+			}
+		}
+	if (stop < start) {
+		printf("-From (%d) is not less than -To (%d)\n",start,stop);
+		exit();
+		}
+	if(listing || report) pause=NO;
+	if(sync == 0) sync=DEFLSYNC;
+
+	strcpy(name1,argv[1]);
+	if (fopen(name1,fbuf1) == ERROR) {
+		puts("Can't find "); 
+		puts(name1); 
+		exit();
+		}
+	initring(&ring1,fbuf1);
+
+	strcpy(name2,argv[2]);
+	if (fopen(name2,fbuf2) == ERROR) {
+		puts("Can't find "); 
+		puts(name2); 
+		exit();
+		}
+	initring(&ring2,fbuf2);
+
+	if (report) {
+		if (fcreat(repname,repbuf) == ERROR) {
+			puts("Can't open "); 
+			puts(repname); 
+			exit();
+			}
+		}
+	putboth=listing;
+}
+
+printdif()	/*resynchronise and print differences */
+{
+	int unsync, i;
+
+	if ( (unsync=search(&ring2,&ring1,c2))) { /*note deletion*/
+		lineincr();
+		puts(">>>>>> ");
+		if (unsync == 1) printf("Line %u",line1+1);
+		else printf("Lines %u to %u",line1,line1+unsync);
+		printf(" of %s deleted from %s\n",name1,name2);
+		for (i=0; i<unsync; i++) {
+			pline(c1);
+			c1=getline(&ring1,fbuf1);
+			}
+		line1+=unsync;
+		}
+	else {
+		if ((unsync=search(&ring1,&ring2,c1))) {
+			/*note insertion*/
+			lineincr();
+			puts(">>>>>> ");
+			if (unsync == 1) printf("Line %u",line2+1);
+			else printf("Lines %u to %u",line2,
+				line2+unsync);
+			printf(" of %s inserted\n",name2);
+			for (i=0; i<unsync; i++) {
+				pline(c2);
+				c2=getline(&ring2,fbuf2);
+				}
+			line2+=unsync;
+			}
+		else { /*look for a block of changed lines*/
+
+			for (unsync=1; unsync < MAXSYNC &&
+		scompare(peep(&ring1,unsync),peep(&ring2,unsync)) &&
+		!blksrch(&ring1,&ring2,unsync) &&
+		!blksrch(&ring2,&ring1,unsync);
+		unsync++);
+			    if (unsync == 1) {
+				lineincr();
+				printf(">>>>>> Line %u of %s changed to line %u of %s\n",
+				line1,name1,line2,name2);
+				pline(c1,line1);
+				pline(c2,line2);
+				}
+			else {
+				lineincr();
+				printf(">>>>>> Lines %u to %u of %s ....\n",
+				line1,line1+unsync-1,name1);
+				for (i=1; i<=unsync; i++) {
+					pline(c1);
+					if (i < unsync)c1=getline(&ring1,fbuf1);
+					}
+				lineincr();
+				printf(">>>>>> .... changed to lines %u to %u of %s\n",
+				line2,line2+unsync-1,name2);
+				for (i=1; i<=unsync; i++) {
+					pline(c2);
+					if(i < unsync)c2=getline(&ring2,fbuf2);
+					}
+				line1+=--unsync; 
+				line2+=unsync;
+				}
+			}
+		}
+}
+
+main(argc,argv)
+
+int argc;
+char *argv[];
+
+{
+	_allocp=NULL;
+	args(argc,argv);
+
+	line1=line2=1;
+	line=col=0;
+	different=NO;
+
+	do {
+		c1=getline(&ring1,fbuf1);
+		c2=getline(&ring2,fbuf2);
+
+		if (scompare(c1,c2)) { /*lines are different*/
+			different=YES;
+			if (line1 >= start && line2 >= start) printdif();
+			}
+		else {
+			if (c1 != EOF) free(c1);
+			if (c2 != EOF) free(c2);
+			}
+		line1++; 
+		line2++;
+		} 
+	while ((c1 != EOF || c2 != EOF) && (line1 < stop || line2 < stop));
+
+	if (different) puts("Files differ");
+	else printf("Files %s and %s are identical",name1,name2);
+	if (start != 0 || stop != MAXINT)
+		printf(" between lines %u and %u\n",start,min(line1,line2));
+	else putchar('\n');
+
+	if (report) { /*flush and close report file*/
+		putc(CPMEOF,repbuf); 
+		fflush(repbuf); 
+		fclose(repbuf);
+		}
+}
+	puts(">>>>>> ");
+			if (unsync == 1) printf("Line %u",line2+1);

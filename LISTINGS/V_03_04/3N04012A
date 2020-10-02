@@ -1,0 +1,128 @@
+typedef unsigned char BYTE;
+typedef unsigned int  USHORT;
+typedef unsigned long ULONG;
+
+#define LOBYTE(w)	((BYTE)(w))
+#define HIBYTE(w)	((BYTE)(((USHORT)(w) >> 8) & 0xff))
+#define LOUSHORT(l)	((USHORT)(l))
+#define HIUSHORT(l)	((USHORT)(((ULONG)(l) >> 16) & 0xffff))
+#define MAKEULONG(l, h) ((ULONG)(((USHORT)(l)) | ((ULONG)((USHORT)(h))) << 16))
+
+#define VDS_SERVICES             0x81
+#define VDS_LOCK                 0x03
+#define VDS_UNLOCK               0x04
+#define VDS_ENABLE_TRANSLATION   0x0B
+#define VDS_DISABLE_TRANSLATION  0x0C
+#define VDS_FLAGS_COPY           0x02 
+#define VDS_FLAGS_ALIGN64K       0x10 
+#define VDS_FLAGS_ALIGN128K      0x20 
+
+// DMA controller addresses and commands
+#define DMA_type_write  0x04
+#define DMA_type_read   0x08
+#define Transfer_Data	0x04
+#define Write_Mem	      0x08
+
+// Base address of DMA controllers
+#define DMA_CONTROLLER_0_3 0x00
+#define DMA_CONTROLLER_4_7 0xC0
+
+// Offset from base of specific DMA controller registers
+#define DMA_OFFSET_ADDRESS 0x00
+#define DMA_OFFSET_COUNT   0x01
+#define DMA_OFFSET_STATUS  0x08
+#define DMA_OFFSET_MASK    0x0A
+#define DMA_OFFSET_MODE    0x0B
+#define DMA_OFFSET_CLEAR   0x0C
+
+// Address of page registers for each channel
+#define DMA_PAGE_0      0x87
+#define DMA_PAGE_1      0x83
+#define DMA_PAGE_2      0x81
+#define DMA_PAGE_3      0x82
+#define DMA_PAGE_4      0x8F
+#define DMA_PAGE_5      0x8B
+#define DMA_PAGE_6      0x89
+#define DMA_PAGE_7      0x8A
+
+//  MicroChannel specific ports
+#define DMA_XFN 	      0x18
+#define DMA_EXE 	      0x1A
+
+// MicroChannel extended commands
+#define Set_IO_Adr		0x00
+#define Set_Mem_Adr		0x20
+#define Get_Mem_Adr		0x30
+#define Set_Count		   0x40
+#define Get_Count		   0x50
+#define Get_Status		0x60
+#define Set_Mode		   0x70
+#define Set_Arbus		   0x80
+#define Set_Chn_Mask		0x90
+#define Reset_Chn_Mask	0xA0
+#define Master_Clear	   0xD0
+
+#define BUS_MICROCHANNEL   01
+#define BUS_AT_ISA         02
+
+#ifdef DOS
+#define GET_PHYS_ADDR( pchar, dmastruc, bufstruc ) \
+   Dos_GetPhysAddr( pchar, dmastruc )
+#endif
+#ifdef WIN3
+#define GET_PHYS_ADDR( pchar, dmastruc, bufstruc ) \
+   Win3_GetPhysAddr( pchar, dmastruc )
+#endif
+#ifdef OS2
+#define GET_PHYS_ADDR( pchar, dmastruc, bufstruc ) \
+   OS2_GetPhysAddr( pchar, dmastruc, bufstruc )
+#endif
+
+typedef enum
+{
+  TRANSFER_READ_FROM_MEM,
+  TRANSFER_WRITE_TO_MEM
+} TRANSFER_TYPE;
+
+typedef struct
+{
+   ULONG    Size;
+   ULONG    Linear;
+   USHORT   Selector;
+   USHORT   BufferID;
+   ULONG    Physical;
+} DMA_DESCRIPTOR;
+
+typedef struct 
+{
+   ULONG    PhysAddr;      // used only by OS/2 drivers
+   char     *pStart;       // first byte in buffer
+   char     *pEnd;         // last byte in buffer 
+   char     *pIn;          // next byte to be added
+   char     *pOut;         // next byte to be removed
+   USHORT   Size;          // total size of buffer  
+} BUF_INFO;
+
+typedef struct 
+{
+   BUF_INFO RxBuf;      
+   BUF_INFO TxBuf; 
+   BYTE     BusType;             
+   BYTE     Channel;
+   TRANSFER_TYPE TransferType;   // read or write
+   ULONG    TransferPhys;        // physical address of buffer for DMA transfer
+   USHORT   TransferCount;       // number of bytes for DMA transfer
+   char **far *pVDSInfo;   
+} DMA_INFO;
+
+typedef struct
+{
+  unsigned int   DeviceRdyToTx:1;  
+  unsigned int   DeviceRdyToRx:1;  
+  unsigned int   DmaComplete:1;
+  unsigned int   DmaAbort:1;
+} INTERRUPT_TYPE;
+
+
+
+

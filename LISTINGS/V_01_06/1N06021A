@@ -1,0 +1,59 @@
+        page    ,132
+
+;
+;  Figure 7
+;  Function to perform a warm or cold reboot.
+;  Call with Zero to perform a cold boot, Non-Zero for a warm boot.
+;
+
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros, e.g.
+                                        ;MASM /Dmemodel=LARGE /Dlang=C
+
+        .DATA
+
+bootflg dw      72h,40h
+
+        .CODE
+                
+reboot  PROC    bootype:WORD            ;0 for Cold boot, 1 for Warm boot
+        les     DI,dword ptr [bootflg]
+        mov     AX,bootype
+        and     AX,AX
+        je      setype
+        mov     AX,01234h
+setype: 
+        mov     word ptr ES:[DI],AX
+        cli
+        xor     AX,AX
+        mov     DS,AX
+        mov     ES,AX
+        mov     SS,AX
+        mov     SP,AX
+kbwait:
+        in      AL,64H                  ;wait on AT keyboard controller
+        test    AL,2
+        jne     kbwait
+
+        xor     AL,AL                   ;try reset lines
+        out     64H,AL
+        nop
+        nop
+        nop
+        mov     AL,0FEh
+        out     64H,AL
+        nop
+        nop
+        nop
+        mov     AX,0002H                ;jump to reset vector via IRET
+        push    AX
+        mov     AX,0F000H
+        push    AX
+        mov     AX,0FFF0H
+        push    AX
+        iret
+        
+reboot  ENDP
+
+        end

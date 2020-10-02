@@ -1,0 +1,96 @@
+DOCUMENTATION FOR TXTPLOT FUNCTION:
+
+Version 1.1 -- 6/14/85
+
+
+Revisions:
+
+1.1 -- (JWP, 6/14/85) Added parity stripping, skipping of controls, and
+       variable tab size.
+
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+TXTPLOT.CSM is a replacement for the txtplot function in the BDS C library.
+BDS C has 5 library functions for memory-mapped video: 
+
+	setplot(base,xsize,ysize)
+	clrplot()
+	plot(x,y,chr)
+	txtplot(string,x,y,ropt)
+	line(c,x1,y1,x2,y2)
+
+Although setplot and plot work OK for the 8801A, txtplot, clrplot and line 
+do not work at all.  Simply doing a putch(0x1a) will take care of clrplot,
+and line is not a very useful function, anyway.  But txtplot, which maps
+a string at a given set of screen coordinates, is great for using in 
+editors and the like, so I have written a replacement that works well
+on the 8801A.
+
+* * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * * *
+
+USAGE:
+
+There are some changes to the format of a txtplot call.  The old version
+worked like this:
+
+	void txtplot(string,x,y,ropt)
+	char *string;
+	int  x,y,ropt;
+
+where string is a pointer to the string to be plotted, x and y are the
+coordinates to plot at, and "ropt" was supposedly a flag to toggle
+reverse video.  This function was designed for a memory-mapping scheme
+where the lines on the screen were mapped end-to-end in memory, and 
+a parity bit set indicated reverse video.  On the 8801A, this won't
+work, since each screen line is followed in video ram by 40 bytes
+of attribute information.  When the old txtplot function tries to
+wrap a line around column 80, on the 8801A, it will wreak havoc with
+your video attributes.
+
+The new format is as follows:
+
+	int txtplot(string,x,y,tabsiz)
+	char *string;
+	int  x,y,tabsiz;
+
+At its simplest, the new txtplot rectifies this situation by simply refusing
+to plot text past column 80.  I could have done it with wrap-around, but
+chose not to since in the applications I use it with, one line of text
+must occupy only one line on the screen.
+
+The new txtplot does more than the old, however.  To facilitate its use
+in word processing applications, I added the following features:
+
+	(1)  Strings may now be terminated by either a null or by
+	     a carriage return (0x0d).  This means you can just pass
+	     it a pointer to a regular C character string, or you
+	     can pass a pointer to a line of a standard text file.
+
+	(2)  All control characters (with the exception of tabs) are
+	     ignored in the plotting.
+
+	(3)  All characters have their parity bit stripped before mapping.
+	     (2) and (3) combined will allow for WordStar files to be
+	     properly mapped.
+
+	(4)  The new txplot expands tabs.  The "tabsiz" variable is
+	     the factor for tab expansion, allowing variable tab sizes.
+
+	(5)  The "ropt" flag has been removed altogether.  Setting video
+	     attributes on the 8801A requires a different strategy.
+
+	(6)  The old txtplot did not return anything.  The new version 
+	     returns the number of the last column mapped to.  This can
+	     be helpful if you want to relocate the cursor after mapping
+	     a line.
+
+
+James Pritchett
+275 Bleecker St., Apt. 1
+New York, NY  10014
+
+
+
+
+s Pritchett
+275 Bleecker St., Apt. 1

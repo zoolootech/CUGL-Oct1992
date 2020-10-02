@@ -1,0 +1,805 @@
+/******************************************************************************
+*
+*   File:       ASCII.H
+*
+*   Contents:   Definitions for standard ASCII values
+*
+******************************************************************************/
+
+#define NUL     0x00
+#define SOH     0x01
+#define STX     0x02
+#define ETX     0x03
+#define EOT     0x04
+#define ENQ     0x05
+#define ACK     0x06
+#define BEL     0x07
+#define BS      0x08
+#define HT      0x09
+#define LF      0x0A
+#define VT      0x0B
+#define FF      0x0C
+#define CR      0x0D
+#define SO      0x0E
+#define SI      0x0F
+#define DLE     0x10
+#define DC1     0x11
+#define DC2     0x12
+#define DC3     0x13
+#define DC4     0x14
+#define NAK     0x15
+#define SYN     0x16
+#define ETB     0x17
+#define CAN     0x18
+#define EM      0x19
+#define SUB     0x1A
+#define ESC     0x1B
+#define FS      0x1C
+#define GS      0x1D
+#define RS      0x1E
+#define US      0x1F
+#define SP      0x20
+#define DEL     0x7F
+
+
+/******************************************************************************
+*
+*   File:       USEFUL.H
+*
+*   Contents:   Declarations for USEFUL.LIB functions.
+*
+*   NOTE:   USEFUL.LIB contains general purpose functions that are missing
+*           from STDIO.LIB or that are useful to keep for future use.  This
+*           is only a partial header file.
+*
+******************************************************************************/
+
+char        *bld_ptr();         /* converts a segment token to a pointer    */
+unsigned    bld_sel();          /* converts a pointer to a token (selector) */
+char        *c_to_plm();        /* C string to PL/M (byte count) string     */
+int         fdelete();          /* delete a file                            */
+int         finfo();            /* get info about file (struct finfo_str)   */
+int         faccess();          /* change file access rights                */
+
+
+/*1****************************************************************************
+*
+*   File:       SPOOLER.C
+*
+*   Program:    Print Spooler Utility (for iRMX 286 OS)
+*
+*   Summary:    This print spooler will monitor the spooler directory for
+*               files.  As files are copied to the spooler directory, they
+*               will be copied to the system printer.  After a file has
+*               been copied to the printer, it will be deleted from the
+*               spooler directory.
+*
+*   Usage:  1.  Run the spooler as a background job under iRMX-286 R2.0:
+*
+*                   CREATEDIR :SD:SPOOLER       (if not already present)
+*
+*                   BACKGROUND(100,100) SPOOLER
+*
+*               Use "SPOOLER.LOG" as the name of the log file for the job.
+*
+*
+*           2.  Next, create a logical name for the spooler directory:
+*
+*                   ATTACHFILE :SD:SPOOLER AS :SPOOLER:
+*               (or)
+*                   ATTACHFILE :MASTER:SD/SPOOLER AS :SPOOLER:  (RMX-NET)
+*
+*
+*           3.  Finally, use the copy command to send files to the spooler:
+*
+*                   COPY SRC/ * TO :SPOOLER:
+*
+*   Caveats:    The spooler job sets itself up as a SUPER user so that it
+*               can have access to any file that is copied to the spooler
+*               directory.  Other than sending a form feed control to the
+*               printer before the start of each new file, the spooler
+*               does nothing but copy the files directly to the printer.
+*               All TAB conversions and paging should be performed before
+*               a file is copied to the spooler directory.
+*
+*   Author:     Richard Carver                  Date:   03/03/88
+*
+*   Revisions:
+*
+******************************************************************************/
+
+#include <rmx.h>                    /* RMX system call declarations */
+#include <ascii.h>                  /* ASCII control codes          */
+#include <stdio.h>                  /* Standard C Library           */
+#include <useful.h>                 /* Useful Functions Library     */
+
+
+/* RMX Condition Codes  */
+
+#define E$OK                ((unsigned int)0x0000)
+#define E$TIME              ((unsigned int)0x0001)
+#define E$MEM               ((unsigned int)0x0002)
+
+
+/* Wait Times For RMX System Calls  */
+
+#define NO_WAIT             ((unsigned int)0)
+#define WAIT_ONE_SEC        ((unsigned int)100)
+#define WAIT_TWO_SEC        ((unsigned int)200)
+#define WAIT_FOREVER        ((unsigned int)0xFFFF)
+
+
+/* Defines for various RMX system calls */
+
+#define THIS_JOB            ((unsigned int)1)
+#define ROOT_JOB            ((unsigned int)3)
+
+#define FIFO_MBX            ((unsigned int)0)
+
+#define NO_RESP             ((unsigned int)0)
+
+#define READ_ONLY           ((unsigned char)1)
+#define BUFFERS_TWO         ((unsigned char)2)
+
+#define USER_SUPER          ((unsigned int)0)
+
+#define ACCESS_DRAU         ((unsigned int)15)
+
+
+/* Miscellaneous Defines    */
+
+#define DISABLE             ((unsigned char)0x00)
+
+#define NOT_FOUND           ((int)-1)
+
+#define PRINTER_NAME        ":LP:"
+
+#define SPOOLER_MBX_NAME    "\013SPOOLER_MBX"
+
+
+/* Spooler Command Codes    */
+
+#define CMND_CONTINUE       ((int)0)
+#define CMND_SUSPEND        ((int)1)
+#define CMND_SHUTDOWN       ((int)2)
+#define CMND_NEXTFILE       ((int)3)
+
+
+/* Spooler Commands */
+
+char *spooler_cmnds[]   =   {   "continue",
+                                "suspend",
+                                "shutdown",
+                                "nextfile",
+                                NULL            };
+
+
+/* Structure Declarations   */
+
+struct dir_entry_str                    /* RMX Directory Entry Structure    */
+    {
+    unsigned int    fnode;
+    char            fname[14];
+    };
+
+struct finfo_str                        /* RMX File Information Structure   */
+    {
+    unsigned int        device_share;
+    unsigned int        number_connections;
+    unsigned int        number_reader;
+    unsigned int        number_writer;
+    unsigned char       share;
+    unsigned char       named_file;
+    char                device_name[14];
+    unsigned int        file_drivers;
+    unsigned char       functions;
+    unsigned char       flags;
+    unsigned int        device_granularity;
+    unsigned long int   device_size;
+    unsigned int        device_connections;
+    unsigned int        file_id;
+    unsigned char       file_type;
+    unsigned char       file_granularity;
+    unsigned int        owner_id;
+    unsigned long int   create_time;
+    unsigned long int   access_time;
+    unsigned long int   modify_time;
+    unsigned long int   file_size;
+    unsigned long int   file_blocks;
+    char                volume_name[6];
+    unsigned int        volume_granularity;
+    unsigned long int   volume_size;
+    unsigned int        accessor_count;
+    unsigned char       owner_access;
+    };
+
+struct  user_ids_str                    /* RMX User ID Structure    */
+    {
+    unsigned int    length;
+    unsigned int    count;
+    unsigned int    user_id;
+    }user_ids   =   {1, 1, USER_SUPER};
+
+struct xhndlr_str                       /* RMX Exception Handler Structure  */
+    {
+    void            (*xhndlr_addr)();
+    unsigned char   xhndlr_mode;
+    };
+
+struct spooler_msg_str                  /* Spooler Message Structure    */
+    {
+    int         cmnd_code;
+    };
+
+
+/* Constant & Global Data   */
+
+char    spooler_dir[]   =   "\013:sd:spooler";
+
+int     spooler_state   =   CMND_CONTINUE;
+
+
+main(argc, argv)
+int     argc;
+char    *argv[];
+    {
+    int                     command;
+
+    unsigned int            dummy_mbx;
+    unsigned int            root_tkn;
+    unsigned int            spooler_mbx;
+    unsigned int            rsp_mbx;
+    unsigned int            stat;
+    unsigned int            status;
+
+    struct xhndlr_str       xhndlr_info;
+
+    struct spooler_msg_str  *spooler_msg_ptr;
+
+/*9****************************************************************************
+*       Disable the RMX exception handler.
+******************************************************************************/
+
+    rq$get$exception$handler(&xhndlr_info, &status);
+
+    if (status == E$OK)
+        {
+        xhndlr_info.xhndlr_mode = DISABLE;
+
+        rq$set$exception$handler(&xhndlr_info, &status);
+        }
+
+/*9****************************************************************************
+*       Get the object token for the system's root job.  The root job is the
+*   highest level in the RMX job tree.
+******************************************************************************/
+
+    if (status == E$OK)
+        {
+        root_tkn = rq$get$task$tokens(ROOT_JOB, &status);
+        }
+
+    if (status == E$OK)
+        {
+/*9****************************************************************************
+*       Lookup the name of the spooler mailbox in the root job's object
+*   directory.  This will be present only if the spooler is already installed.
+*   NOTE: RMX uses byte count strings (first byte in string is length).
+******************************************************************************/
+
+        spooler_mbx =
+            rq$lookup$object(root_tkn, SPOOLER_MBX_NAME, NO_WAIT, &status);
+
+        if (status == E$OK)
+            {
+/*9****************************************************************************
+*       Since the spooler is installed, check to see if there are two command
+*   line arguments (program name and spooler command).  If there is only one
+*   argument (program name), inform user that the spooler is already running.
+*   If more than two arguments exist, the program was incorrectly invoked.
+******************************************************************************/
+
+            if (argc != 2)
+                {
+                if (argc == 1)
+                    {
+                    printf("ERROR: Spooler already installed.\n");
+                    }
+                else
+                    {
+                    printf("ERROR: Invalid invocation.\n");
+                    }
+                }
+            else
+                {
+/*9****************************************************************************
+*       If the command invocation was correct, verify that the command is a
+*   valid command.  If an invalid command, indicate error.  If a valid
+*   command, create a message to send to the spooler.  Create a mailbox to
+*   receive the response from the spooler.  The response will use the same
+*   segment as the message.  Send the message to the spooler.  If the message
+*   could not be sent, the spooler is no longer running (it may have been
+*   deleted by the "kill" utility).  Remove the spooler mailbox name from
+*   the root directory so that the spooler may be re-installed in the future.
+*   If the message was sent, wait for the response from the spooler.  When
+*   the response has been received, delete the response mailbox and the
+*   message segment.
+******************************************************************************/
+
+                command = command_code(argv[1]);
+
+                if (command == NOT_FOUND)
+                    {
+                    printf("ERROR: Invalid spooler command.\n");
+                    }
+                else
+                    {
+                    spooler_msg_ptr =
+                        calloc(1, sizeof(struct spooler_msg_str));
+
+                    if (spooler_msg_ptr != NULL)
+                        {
+                        spooler_msg_ptr->cmnd_code = command;
+
+                        rsp_mbx = rq$create$mailbox(FIFO_MBX, &status);
+
+                        if (status == E$OK)
+                            {
+                            rq$send$message(spooler_mbx,
+                                bld_sel(spooler_msg_ptr), rsp_mbx, &status);
+
+                            if (status != E$OK)
+                                {
+                                rq$uncatalog$object(
+                                    root_tkn, SPOOLER_MBX_NAME, &stat);
+                                }
+                            else
+                                {
+                                rq$receive$message(rsp_mbx,
+                                    WAIT_FOREVER, &dummy_mbx, &status);
+                                }
+
+                            rq$delete$mailbox(rsp_mbx, &stat);
+                            }
+
+                        free(spooler_msg_ptr);
+                        }
+                    else
+                        {
+                        status = E$MEM;
+                        }
+                    }
+                }
+            }
+        else if (status == E$TIME)
+            {
+/*9****************************************************************************
+*       If the spooler mailbox name was not found (lookup timed out), then
+*   the spooler is not installed.  If only the program name was entered (one
+*   command line argument) then this invocation of the program will become
+*   the installed spooler.  Otherwise, nothing can be done because the
+*   spooler is not installed.
+******************************************************************************/
+
+            if (argc == 1)
+                {
+                spooler(root_tkn);
+                }
+            else
+                {
+                printf("ERROR: Spooler not installed.\n");
+                status = E$OK;
+                }
+            }
+        }
+
+/*9****************************************************************************
+*       If any RMX errors occurred during execution, display an error
+*   message.  Finally, exit the program.
+******************************************************************************/
+
+    if (status != E$OK)
+        {
+        printf("ERROR (%04xh): Could not execute spooler command.\n",
+            status);
+        }
+
+    exit(0);
+    }
+
+/*1****************************************************************************
+*
+*   Function:   command_code
+*
+*   Summary:    Searches the array of valid commands for a match on the
+*               given command.
+*
+*   Invocation: code = command_code(cmnd_ptr)
+*
+*   Inputs:     cmnd_ptr (char *) - address of command to search for
+*
+*   Outputs:    code (int) - returns NOT_FOUND (-1), if the command
+*                   was not found in the array of valid commands;
+*                   Otherwise, the value is the code for the command.
+*
+******************************************************************************/
+
+command_code(cmnd_ptr)
+char    *cmnd_ptr;
+    {
+    int     code;
+    int     indx;
+
+    code = NOT_FOUND;
+
+    for (indx = 0; (spooler_cmnds[indx] != NULL) &&
+        (code == NOT_FOUND); indx++)
+        {
+        if (strcmp(cmnd_ptr, spooler_cmnds[indx]) == 0)
+            {
+            code = indx;
+            }
+        }
+
+    return (code);
+    }
+
+/*1****************************************************************************
+*
+*   Function:   spooler_commands
+*
+*   Summary:    Check for any spooler commands
+*
+*   Invocation: spooler_state = spooler_commands(spooler_mbx)
+*
+*   Inputs:     spooler_mbx (unsigned int) - the token for the mailbox
+*                   where spooler commands will be received.
+*
+*   Outputs:    spooler_state (int) - the current command state of the
+*                   spooler (ie. shutdown, continue)
+*
+******************************************************************************/
+
+spooler_commands(spooler_mbx)
+unsigned int    spooler_mbx;
+    {
+    int                     command;
+
+    unsigned int            rsp_mbx;            /* command response mailbox */
+    unsigned int            msg_tkn;            /* command message token    */
+    unsigned int            status;
+
+    struct spooler_msg_str  *spooler_msg_ptr;
+
+/*9****************************************************************************
+*       If a spooler shutdown is pending, then don't process any more
+*   commands.  Otherwise, check if a spooler command message is waiting
+*   to be processed.
+******************************************************************************/
+
+    if (spooler_state != CMND_SHUTDOWN)
+        {
+        command = CMND_CONTINUE;
+
+        msg_tkn =
+            rq$receive$message(spooler_mbx, NO_WAIT, &rsp_mbx, &status);
+
+        if (status == E$OK)
+            {
+/*9****************************************************************************
+*       If a command message was received, get the command code from the
+*   message and return to message to acknowledge the command was received.
+*   Then, process the command
+******************************************************************************/
+
+            spooler_msg_ptr = bld_ptr(msg_tkn);
+
+            command = spooler_msg_ptr->cmnd_code;
+
+            rq$send$message(rsp_mbx, msg_tkn, NO_RESP, &status);
+
+            switch (command)
+                {
+/*9****************************************************************************
+*       If the command is SUSPEND, then wait until a non-SUSPEND command
+*   is received.  If a problem occurs, shutdown the spooler.
+******************************************************************************/
+
+                case CMND_SUSPEND:
+                    {
+                    while (command == CMND_SUSPEND)
+                        {
+                        msg_tkn = rq$receive$message(
+                            spooler_mbx, WAIT_FOREVER, &rsp_mbx, &status);
+
+                        if (status == E$OK)
+                            {
+                            spooler_msg_ptr = bld_ptr(msg_tkn);
+
+                            command = spooler_msg_ptr->cmnd_code;
+
+                            rq$send$message(rsp_mbx,
+                                msg_tkn, NO_RESP, &status);
+                            }
+                        else
+                            {
+                            command = CMND_SHUTDOWN;
+                            }
+                        }
+
+                    break;
+                    }
+
+/*9****************************************************************************
+*       Any other valid commands require no additional processing in this
+*   routine.  They will be passed back to the main spooler code.
+******************************************************************************/
+
+                case CMND_SHUTDOWN:
+                case CMND_CONTINUE:
+                case CMND_NEXTFILE:
+                    {
+                    break;
+                    }
+
+/*9****************************************************************************
+*       If an invalid command should get through, it will be handled like
+*   a CONTINUE command.  Which is basically a "do nothing" command.
+******************************************************************************/
+
+                default:
+                    {
+                    command = CMND_CONTINUE;
+                    break;
+                    }
+                }
+            }
+
+/*9****************************************************************************
+*       Set the new state to the value of the command.
+******************************************************************************/
+
+        spooler_state = command;
+        }
+
+    return (spooler_state);
+    }
+
+/*1****************************************************************************
+*
+*   Function:   spooler
+*
+*   Summary:    The main code for the installed spooler job
+*
+*   Invocation: spooler(root_tkn)
+*
+*   Inputs:     root_tkn (unsigned int) - the token for the root job.
+*                   This is needed so that the spooler mailbox can be
+*                   catalogued in the root job's object directory.
+*
+*   Outputs:    none
+*
+******************************************************************************/
+
+spooler(root_tkn)
+unsigned int    root_tkn;
+    {
+    char                    buffer[128];    /* file I/O buffer              */
+    char                    fname[15];      /* file name ("C" format)       */
+
+    int                     command;        /* spooler command code         */
+
+    unsigned int            job_tkn;        /* spooler job token            */
+    unsigned int            user_tkn;       /* SUPER user object token      */
+    unsigned int            dir_con;        /* spooler directory connection */
+    unsigned int            status;         /* RMX condition code           */
+    unsigned int            byte_cnt;       /* bytes read from file         */
+    unsigned int            spooler_mbx;    /* spooler mailbox              */
+
+    struct dir_entry_str    dir_entry;      /* RMX directory entry          */
+
+    struct finfo_str        file_info;      /* file information data        */
+
+    FILE                    *lp;            /* FILE pointer for printer     */
+    FILE                    *fp;            /* FILE pointer for file        */
+
+/*9****************************************************************************
+*       Create and catalog the print spooler mailbox.
+*   NOTE: RMX uses byte count strings (first byte in string is length).
+******************************************************************************/
+
+    spooler_mbx = rq$create$mailbox(FIFO_MBX, &status);
+
+    if (status == E$OK)
+        {
+        rq$catalog$object(root_tkn,
+            spooler_mbx, SPOOLER_MBX_NAME, &status);
+        }
+
+    if (status != E$OK)
+        {
+        printf("ERROR (%04xh): Could not create spooler mailbox.\n",
+            status);
+        exit(1);
+        }
+
+/*9****************************************************************************
+*       Setup the print spooler as a SUPER user.  The SUPER user can get
+*   access to files created by any system user.
+******************************************************************************/
+
+    job_tkn = rq$get$task$tokens(THIS_JOB, &status);
+
+    if (status == E$OK)
+        {
+        user_tkn = rq$create$user(&user_ids, &status);
+
+        if (status == E$OK)
+            {
+            rq$set$default$user(job_tkn, user_tkn, &status);
+            }
+        }
+
+    if (status != E$OK)
+        {
+        printf("ERROR (%04xh): Could not setup spooler as a SUPER user.\n",
+            status);
+        exit(1);
+        }
+
+/*9****************************************************************************
+*       Attach to the spooler directory and setup this directory as the
+*   default directory for future file accessing.
+*   NOTE: RMX uses byte count strings (first byte in string is length).
+******************************************************************************/
+
+    dir_con = rq$s$attach$file(spooler_dir, &status);
+
+    if (status == E$OK)
+        {
+        rq$set$default$prefix(job_tkn, dir_con, &status);
+        }
+
+    if (status != E$OK)
+        {
+        printf("ERROR (%04xh): Could not setup %s as spooler directory.\n",
+            status, &spooler_dir[1]);
+        exit(1);
+        }
+
+/*9****************************************************************************
+*       Attach the system printer.
+******************************************************************************/
+
+    lp = fopen(PRINTER_NAME, "w");
+
+    if (lp == NULL)
+        {
+        printf("ERROR: Could not attach the system printer\n");
+        exit(1);
+        }
+
+/*9****************************************************************************
+*       Begin processing files that appear in the spooler directory until
+*   a shutdown command is received.  Each execution of this loop represents
+*   one complete pass through the spooler directory's "directory file".
+*   The directory file contains an entry for each file in the directory.
+*   It also may contain empty entries from delete files.  At the end of
+*   each pass, the directory file is closed.  Spooler commands are check
+*   for at various points.
+******************************************************************************/
+
+    command = spooler_commands(spooler_mbx);
+
+    while ((status == E$OK) && (command != CMND_SHUTDOWN))
+        {
+        rq$s$open(dir_con, READ_ONLY, BUFFERS_TWO, &status);
+
+        if (status == E$OK)
+            {
+/*9****************************************************************************
+*       Process directory entries until no more entries are found.
+******************************************************************************/
+
+            byte_cnt = rq$s$read$move(dir_con,
+                &dir_entry, sizeof(dir_entry), &status);
+
+            command = spooler_commands(spooler_mbx);
+
+            while ((byte_cnt == sizeof(dir_entry)) &&
+                (command == CMND_CONTINUE))
+                {
+/*9****************************************************************************
+*       Copy the file name into a local buffer and convert it to a C string.
+*   If the entry is not empty (file node value is non-zero), then permit
+*   complete access to the file (Delete, Read, Append, Update).  It is
+*   possible that the file could still be in the process of being copied to
+*   the spooler directory, so wait until there a no users connected with the
+*   file.
+******************************************************************************/
+
+                strncpy(fname, dir_entry.fname, (sizeof(fname) - 1));
+                fname[sizeof(fname) - 1] = NUL;
+
+                if (dir_entry.fnode != 0)
+                    {
+                    faccess(fname, USER_SUPER, ACCESS_DRAU);
+
+                    status = finfo(fname, &file_info);
+
+                    if (status == E$OK)
+                        {
+                        while (file_info.number_connections > 0)
+                            {
+                            rq$sleep(WAIT_ONE_SEC, &status);
+                            finfo(fname, &file_info);
+                            }
+
+/*9****************************************************************************
+*       Open the file, send a formfeed to the printer and begin copying the
+*   file to the printer.  Spooler commands will be checked for as each buffer
+*   of data is transfered to the printer.  A command other than CONTINUE, will
+*   terminate the printing of the file.  When printing if finish, possibly
+*   due to a command, the file is close, the printer buffer flushed, and the
+*   file deleted from the spooler directory.
+******************************************************************************/
+
+                        fp = fopen(fname, "r");
+
+                        if (fp != NULL)
+                            {
+                            fputc(FF, lp);
+
+                            byte_cnt = fread(buffer, 1, sizeof(buffer), fp);
+
+                            command =
+                                spooler_commands(spooler_mbx);
+
+                            while ((byte_cnt > 0) &&
+                                (command == CMND_CONTINUE))
+                                {
+                                fwrite(buffer, 1, byte_cnt, lp);
+
+                                byte_cnt =
+                                    fread(buffer, 1, sizeof(buffer), fp);
+
+                                command = spooler_commands(spooler_mbx);
+                                }
+
+                            fclose(fp);
+
+                            fflush(lp);
+
+                            fdelete(fname);
+                            }
+                        }
+                    }
+
+                byte_cnt = rq$s$read$move(dir_con,
+                    &dir_entry, sizeof(dir_entry), &status);
+
+                command = spooler_commands(spooler_mbx);
+                }
+
+            rq$s$close(dir_con, &status);
+            }
+
+        rq$sleep(WAIT_TWO_SEC, &status);
+
+        command = spooler_commands(spooler_mbx);
+        }
+
+/*9****************************************************************************
+*       Spooler is being shutdown so cleanup before exiting.
+******************************************************************************/
+
+    rq$s$delete$connection(dir_con, &status);
+
+    rq$uncatalog$object(root_tkn, SPOOLER_MBX_NAME, &status);
+    rq$delete$mailbox(spooler_mbx, &status);
+
+    fclose(lp);
+
+    exit(0);
+    }
+

@@ -1,0 +1,616 @@
+COMMENT ~
+---------------------------------------------------------
+                        LISTING 1
+ File:  breakout.asm
+
+ This module contains routines necessary to enable
+ Ctrl-Break to "break out" of infinite loops.  A user
+ supplied clean up routine may be specified if necessary.
+
+ MASM 5.1/TASM 2.0 - C callable installation &
+ de-installation functions.
+
+ Language & memory model independant.  Change the .model
+ directive as needed.
+
+ Author:  David Burki
+---------------------------------------------------------
+END OF COMMENT ~
+
+title BREAKOUT.ASM
+page 57,132
+
+%  .model m_model, lang
+
+; ----  MACROS and EQUATES  ----
+
+;macro to simulate an interrupt so the interrupt returns
+;to the instruction immediately following the call
+sim_int macro  num
+        pushf
+        call    cs:orig_&num
+endm
+
+;macro to push selected registers
+apush macro   a,b,c,d,e,f,g,h
+   irp x,<a,b,c,d,e,f,g,h>
+      ifnb <x>
+         push    x
+      endif
+   endm
+endm
+
+;macro to pop selected registers
+apop macro   a,b,c,d,e,f,g,h
+   irp x,<h,g,f,e,d,c,b,a>
+      ifnb <x>
+         pop     x
+      endif
+   endm
+endm
+
+;macro to install a replacement vector
+;  --  assumes that ds = code seg of replacing function
+;  --  all var names used to save original vector must be
+;        2 characters long plus a training "h" (i.e. for
+;        int 8h "orig_08h")
+install_vector macro vector_num,function_name
+        mov     ax,35&vector_num
+        int     21h
+        mov     word ptr orig_&vector_num,bx
+        mov     word ptr orig_&vector_num+2,es
+        lea     dx,function_name
+        mov     ax,25&vector_num
+        int     21h
+endm
+
+;macro to un-install a replaced vector
+;  --  all var names used to save original vector must be
+;        2 characters long plus a training "h" (i.e. for
+;        int 8h "orig_08h")
+restore_vector macro replaced_vector
+        lds     dx,cs:orig_&replaced_vector
+        mov     ax,25&replaced_vector
+        int     21h
+endm
+
+; segment and offset of the BIOS break flag
+BIOS_SEG        equ     40h
+BREAK_FLAG_OFF  equ     71h
+
+; ----  CODE  ----
+.code
+
+; declare externally visible functions
+public  insure, cancel
+
+; NOTE:  all variables used here are part of the code
+;        segment so the interrupt routines can have easy
+;        access to them
+
+; --- storage for the address of the InDOS flag
+indos_addr              dd      0
+
+; --- storage for the address of the critical error flag
+critter_addr            dd      0
+
+; --- storage for the version of dos
+dos_major_version       db      0
+dos_minor_version       db      0
+
+; --- flag indicating disk i/o in progress
+busy_flag               db      0
+
+; --- far pointer to clean up routine
+exit_routine            dd      0
+
+; --- storage for original addresses of intercepted
+;     interrupt vectors.
+orig_08h                dd      0
+orig_1bh                dd      0
+orig_13h                dd      0
+orig_25h                dd      0
+orig_26h                dd      0
+
+; --- storage for the segment addr of the psp of process
+;     that asked for insurance  -  if zero, insurance isn't
+;     in effect
+insured_psp     dw      0
+
+; --- flag if still processing in int 8h
+in_already      db      0
+
+; --- interrupted program's SS & SP
+save_ss         dw      0
+save_sp         dw      0
+
+; --- original C stack segment
+installer_ss    dw      0
+installer_sp    dw      0
+
+; --- local stack while in int_8h_handler
+my_stack        dw      256 dup(0)
+stack_top       label word
+
+
+assume ds:@curseg, es:nothing
+
+;---------------------------------------------------------
+;  GET_DOS_VERSION()
+; Obtain the version & revision of DOS.  Store the version
+; in the variable "dos_major_version" and the revision in
+; the variable "dos_minor_version".  Both variables are code
+; segment variables.
+;
+; Returns:
+;       AL - dos minor version number
+;       AH - dos major version number
+;---------------------------------------------------------
+public get_dos_version
+get_dos_version proc
+        mov     ah,30h
+        int     21h
+        mov     cs:dos_major_version,al
+        mov     cs:dos_minor_version,ah
+        ret
+get_dos_version endp
+
+;---------------------------------------------------------
+;  GET_CRITICAL_ERROR_ADDR()
+; This function obtains & saves the address of the
+; critical error flag.  For DOS versions 3+, the critical
+; error flag is the byte just before the InDOS flag. For
+; DOS 2.x, it's the byte just after.
+;
+; NOTE:  get_dos_version() must be called before this
+;        function
+;
+; NOTE:  For COMPAQ DOS version 3.x, the critical error
+;        flag is located 01aah bytes BEFORE the InDOS flag.
+;
+; Trashes: AX
+;---------------------------------------------------------
+public get_critical_error_addr
+get_critical_error_addr proc    USES ES BX
+; --- get the address of the InDOS flag
+        mov     ah,34h
+        int     21h
+
+; --- dos 3.x or better use byte before InDOS
+        cmp     byte ptr cs:dos_major_version,3
+        jge     byte_before  ;good_version
+
+; --- dos 2.x, use byte after InDOS flag
+        inc     bx
+        jmp     store_critter_addr
+
+byte_before:
+        dec     bx
+
+store_critter_addr:
+; --- save the address & return success
+        mov     word ptr cs:critter_addr,bx
+        mov     word ptr cs:critter_addr+2,es
+
+        ret
+get_critical_error_addr endp
+
+;---------------------------------------------------------
+;  GET_INDOS_ADDR()
+; Uses the undocumented (but well known) function 34h of
+; INT 21h to obtain a far pointer to the "InDOS" flag.
+; Stores the address of the flag in the code segment
+; variable "indos_addr".
+;
+; Trashes AX
+;---------------------------------------------------------
+public get_indos_addr
+get_indos_addr proc     USES ES BX
+; --- get the address
+        mov     ah,34h
+        int     21h
+
+; --- save address in cs referenced variable
+        mov     word ptr cs:indos_addr,bx
+        mov     word ptr cs:indos_addr+2,es
+        ret
+get_indos_addr endp
+
+;---------------------------------------------------------
+;  CHECK_CRITTER_FLAG()
+; Examine the undocumented "critical error" flag to
+; determine if a critical error is in progress.
+;
+; Returns:
+;     carry clear - A critical error is NOT in progress
+;     carry set   - A critical error is in progress
+;---------------------------------------------------------
+public check_critter_flag
+check_critter_flag proc USES AX DS SI
+; --- ds:si <- address of critter flag
+        lds     si,dword ptr cs:critter_addr
+
+; --- check critter flag = zero
+        lodsb
+        or      al,al
+        jz      no_critter
+
+; --- critter flag not zero, return carry set
+        stc
+        jmp     critter_exit
+
+; --- critter flag zero, return carry clear
+no_critter:
+        clc
+
+critter_exit:
+        ret
+check_critter_flag endp
+
+;---------------------------------------------------------
+;  CHECK_INDOS_FLAG()
+; Examine the undocumented "InDOS" flag to determine if
+; non-rentrant DOS functions are currently executing.
+;
+; Returns:
+;     carry clear - InDOS flag is zero.
+;     carry set   - InDOS flag is non-zero.
+;---------------------------------------------------------
+public check_indos_flag
+check_indos_flag proc   USES AX DS SI
+; --- ds:si <-- addr of InDOS flag, then load al with
+;     the byte at that address
+        lds     si,dword ptr cs:indos_addr
+        lodsb
+
+; --- indos flag equal zero, DOS is stable
+        or      al,al
+        jz      dos_stable
+
+; --- no, set carry & return
+        stc
+        jmp     indos_exit
+
+; --- yes, clear carry and return
+dos_stable:
+        clc
+
+indos_exit:
+        ret
+check_indos_flag endp
+
+
+;---------------------------------------------------------
+;  CHECK_BREAK_BIT()
+;   This function examines the BIOS Break Flag (bit 7 of
+;   the byte at 40:71).
+;
+; Returns:
+;     carry clear - Break Flag is clear.
+;     carry set   - Break Flag is set.
+;---------------------------------------------------------
+check_break_bit proc    USES DS ES BX
+; --- establish addressing to the flag
+        mov     bx,BIOS_SEG
+        mov     es,bx
+        mov     bx,BREAK_FLAG_OFF
+
+; --- is bit 7 set
+        test    es:byte ptr [bx],10000000b
+        jnz     break_bit_set
+
+; --- no, return with carry clear
+        clc
+        jmp     check_break_exit
+
+; --- yes, clear it & return carry set
+break_bit_set:
+        and     es:byte ptr [bx],01111111b
+        stc
+
+check_break_exit:
+        ret
+check_break_bit endp
+
+;---------------------------------------------------------
+; INSTALL_INTERCEPTS()
+;   Retrieve & save the current vectors, replacing the
+;   vector table entries with the addresses of the
+;   intercept routines.
+
+; Entry:
+;   DS = CS
+; Returns:
+;   No value
+; Trashes:
+;   AX, BX, DX, ES
+;---------------------------------------------------------
+install_intercepts proc
+assume ds:@curseg
+; --- capture int 8h vector
+        install_vector 08h,int_8h_handler
+
+; --- capture int 13h vector
+        install_vector 13h,thirteen_handler
+
+; --- capture int 25h vector
+        install_vector 25h,twenty_five_handler
+
+; --- capture int 26h vector
+        install_vector 26h,twenty_six_handler
+
+; --- capture int 1bh vector
+        install_vector 1bh,break_handler
+
+        ret
+install_intercepts endp
+
+
+;---------------------------------------------------------
+; INSURE( cleanup_function )
+;   void (*PFV)();  /* far pointer to cleanup function */
+;
+;   Installs the breakout tool.
+;
+; Returns:
+;       AX = zero    -  installed successfully
+;       AX not zero  -  did not install
+;---------------------------------------------------------
+insure proc          USES DS ES SI DI, CLEAN_UP:FAR PTR
+; --- force ds = cs
+        push    cs
+        pop     ds
+assume ds:@curseg
+
+; --- currently in palce?
+        cmp     word ptr insured_psp,0
+
+; --- yes, return to caller with no action
+        jnz     not_installed
+
+; --- get dos version
+        call    get_dos_version
+
+; --- if not dos 3.x don't install
+        cmp     ah,3
+        jl      not_installed
+
+; --- retrieve & save the psp of the current process
+; --- function 62h (get PSP) is DOS 3+ only
+        mov     ah,62h
+        int     21h
+        mov     insured_psp,bx
+
+; --- get the addr of clean up function & save it
+        les     bx,CLEAN_UP
+        mov     word ptr exit_routine+2,es
+        mov     word ptr exit_routine,bx
+
+; --- get the addr of "InDOS" flag
+        call    get_indos_addr
+
+; --- get the gritical error flag address
+        call    get_critical_error_addr
+
+; --- install the interrupt intercepts
+        call    install_intercepts
+
+; --- insure BIOS break flag is clear
+        mov     bx,BIOS_SEG
+        mov     es,bx
+        mov     bx,BREAK_FLAG_OFF
+        and     es:byte ptr [bx],01111111b
+
+; --- save installer's SS and SP
+        mov     installer_ss,ss
+        mov     installer_sp,sp
+
+; --- set good return code & clear "in already" flag
+;     for int 8h handler
+        xor     ax,ax
+        mov     byte ptr in_already,al
+        jmp     insure_exit
+
+not_installed:
+        mov     ax,1
+
+insure_exit:
+        ret
+insure endp
+
+
+assume ds:nothing
+
+;---------------------------------------------------------
+; CANCEL()
+;   Restore the original vectors and clear the
+;   "insured_psp" address.
+; Returns:
+;   No value
+; Trashes:
+;   AX
+;---------------------------------------------------------
+cancel proc             USES DS DX
+; --- if not installed, get out with no action
+        mov     dx,cs:insured_psp
+        or      dx,dx
+        jz      no_cancellation
+
+; --- get the original int 8h  & restore it
+        restore_vector 08h
+
+; --- get the original int 1bh & restore it
+        restore_vector 1bh
+
+; --- get the original int 13h & restore it
+        restore_vector 13h
+
+; --- get the original int 25h & restore it
+        restore_vector 25h
+
+; --- get the original int 26h & restore it
+        restore_vector 26h
+
+; --- clear the insured_psp address
+        mov     cs:word ptr insured_psp,0
+
+no_cancellation:
+        ret
+cancel endp
+
+
+assume cs:@curseg
+;---------------------------------------------------------
+;  INT_8H_HANDLER()
+;   Intercept for timer tick interrupt.
+;   Checks the BIOS break flag (bit 7 at 40:71) on each
+;   invocation.
+;   Flagged to prevent rentry.
+;---------------------------------------------------------
+int_8h_handler proc far
+; --- let int 8 do it's stuff
+        sim_int 08h
+        cli
+
+; --- if int 8 post processing is still going on, don't
+;     re-enter - return to the interrupted code
+        cmp     cs:byte ptr in_already,1
+        jnz     do_break_ck
+        iret
+
+do_break_ck:
+; --- flag that we're processing an int 8h & swap stacks
+        mov     cs:byte ptr in_already,1
+        mov     cs:save_ss,ss
+        mov     cs:save_sp,sp
+        push    cs
+        pop     ss
+        mov     sp,offset cs:stack_top
+        sti
+        apush   ax,bx,cx,dx,ds,es,si,di
+
+; --- if the BIOS break flag is NOT set, iret to caller
+        call    check_break_bit
+        jnc     no_break
+
+; --- if disk i/o in progress, iret back to caller
+        cmp     cs:busy_flag,0
+        jnz     no_break
+
+; --- if not in dos or critical error
+        call    check_indos_flag
+        jc      no_break
+        call    check_critter_flag
+        jc      no_break
+
+; --- if the psp of the caller isn't the same as
+;     the psp when installed, skip it
+        mov     ah,62h
+        int     21h
+        cmp     bx,cs:insured_psp
+        jnz     no_break
+
+; --- BIOS break flag was set, everything is stable and the
+;     active PSP is the same as the one that installed the
+;     insurance.  clear the BIOS break bit and uninstall
+;     the intercepted vectors
+        call    cancel
+
+; --- if a user supplied exit routine is installed, do it
+        mov     bx,word ptr exit_routine+2
+        or      bx,bx
+        jnz     do_user_supplied_exit
+
+; --- otherwise, DOS terminate function - error level = 1
+        mov     ax,4c01h
+        int     21h
+
+do_user_supplied_exit:
+; --- get back BX & ES plus clean off CS, IP & FLAGS pushed
+;     on original interrupt, then jump to user exit routine
+        mov     ss,cs:installer_ss
+        mov     sp,cs:installer_sp
+        jmp     cs:exit_routine
+
+no_break:
+; --- clean up the stack
+        apop    ax,bx,cx,dx,ds,es,si,di
+        cli
+        mov     ss,cs:save_ss
+        mov     sp,cs:save_sp
+        sti
+        mov     cs:byte ptr in_already,0
+
+skip_it:
+; --- iret to the int 8 caller
+        iret
+
+int_8h_handler endp
+
+;---------------------------------------------------------
+;  BREAK_HANDLER()
+;   Simple replacement for int 1bh - no more than an iret
+;   to keep the "^C" off the display screen.
+;---------------------------------------------------------
+break_handler proc far
+        iret
+break_handler endp
+
+;---------------------------------------------------------
+;  THIRTEEN_HANDLER()
+;   intercept for int 13h
+;   Increments the busy flag on entry, calls the original
+;   interrupt service routine, and decrements the busy flag
+;   when the disk routine is complete. The busy flag must
+;   be zero to indicate no disk i/o in progress.
+;---------------------------------------------------------
+thirteen_handler proc far
+        pushf
+        inc     cs:busy_flag
+        popf
+        sim_int 13h
+        pushf
+        dec     cs:busy_flag
+        popf
+        iret
+thirteen_handler endp
+
+;---------------------------------------------------------
+;  TWENTY_FIVE_HANDLER()
+;   intercept for int 25h
+;   Increments the busy flag on entry, calls the original
+;   interrupt service routine, and decrements the busy flag
+;   when the disk routine is complete. The busy flag must
+;   be zero to indicate no disk i/o in progress.
+;---------------------------------------------------------
+twenty_five_handler proc far
+        pushf
+        inc     cs:busy_flag
+        popf
+        sim_int 25h
+        pushf
+        dec     cs:busy_flag
+        popf
+        iret
+twenty_five_handler endp
+
+;---------------------------------------------------------
+;  TWENTY_SIX_HANDLER()
+;   intercept for int 26h
+;   Increments the busy flag on entry, calls the original
+;   interrupt service routine, and decrements the busy flag
+;   when the disk routine is complete. The busy flag must
+;   be zero to indicate no disk i/o in progress.
+;---------------------------------------------------------
+twenty_six_handler proc far
+        pushf
+        inc     cs:busy_flag
+        popf
+        sim_int 26h
+        pushf
+        dec     cs:busy_flag
+        popf
+        iret
+twenty_six_handler endp
+
+end

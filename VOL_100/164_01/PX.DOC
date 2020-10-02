@@ -1,0 +1,382 @@
+                            PX Procedure Cross Referencer
+                             User's Guide for Ver. 1.00
+                                   April 27, 1984
+
+          PURPOSE
+
+          In the process of writing large assembler programs, it sometimes
+          becomes difficult to keep track of where procedures (subroutines)
+          are located and of where they are referenced (called).  Typically,
+          the programmer will include a prologue for each procedure, listing
+          the procedures it calls and the procedures from which it is
+          called.  Unfortunately, this practice requires the programmer
+          to update the procedure prologue every time a new call to it
+          is added; this can get pretty tedious for a large program, and
+          (also typically) the programmer's good intentions fall by the
+          wayside as the program gets larger.
+
+          PX is a procedure documenter.  It allows you to print out all
+          of the procedure prologues in a "dictionary" and to then print
+          a cross reference of all procedural calls;  i.e., a listing
+          of which procs call which procs.  It just makes life a little
+          easier.
+
+
+          WHAT YOU NEED
+
+          You need one or more disk drives, at least 128K of memory, and
+          DOS 2.00 or later.  A printer would be nice, but it's not a
+          requirement.  PX is designed to understand files written for
+          the Microsoft Assembler: IBM's ASM or MASM, or Microsoft Version
+          1.25.  With some restrictions, PX will also work with files
+          written for Digital Research's RASM-86.
+
+
+          OUTPUT FORMAT
+
+          PX's output (which can be sent to disk, screen, printer, or
+          any other device) is in two parts.  The first part is the procedure
+          dictionary; it is simply the text of your procedure prologues,
+          preceded by the name of the procedure and the file/line where
+          the prologue was found.  The dictionary looks like this:
+
+            PX 1.00 Procedure Dictionary           Date  Time  Page 1
+
+            MYPROC [File THISFILE.ASM at 50]
+            ; This is the procedure prologue for MyProc...
+            ; It contains whatever you put in it
+
+            VERYSLICK [File THISFILE.ASM at 70]
+            ; And this is the prologue for proc VerySlick...
+            ; And so on...
+
+
+                                                                          2
+                              ==== PX User's Guide ===
+
+          The second part is the procedure cross reference.  It is formatted
+          like this:
+
+            PX 1.00 Procedure Cross Reference      Date  Time  Page x
+
+            Proc MYPROC                 Near in THISFILE.ASM at 56 [1]
+            DUMB_PROC GREAT_PROC PROC1 PROC2 VERYSLICK
+
+            Proc VERYSLICK              Far  in THISFILE.ASM at 75 [1]
+            PROC6
+
+          The first line of each entry names the procedure, and specifies
+          its near/far attribute and the file and line where it was found.
+          The number in brackets is the dictionary page where the procedure's
+          prologue is printed.  The second and subsequent lines of each
+          procedure entry comprise an alphabetical list of procedures
+          which contain calls to the named proc.  For example, procedure
+          MYPROC is called by DUMB_PROC, GREAT_PROC, PROC1, PROC2, and
+          VERYSLICK.
+
+          Note that the line numbers in the dictionary and cross reference
+          sections may differ.  In the dictionary, the line number is
+          the line where the prologue was found; in the cross reference,
+          it is the line where the PROC statement was found.
+
+          At the end of each report, PX will print a line like:
+
+               UnDef: 2   UnRef: 6   Use Factor: 12.1%
+
+          This indicates that PX found calls to 2 procedures that it knew
+          nothing about (Undefined), and 6 procedures were defined but
+          unreferenced (nobody CALLed them [uncalled for procedures?]). PX
+          used about 12.1% of its available table space.
+
+
+          INCLUDE FILES
+
+          PX processes include files as it encounters them in the source
+          files.  However, it will read a given include file only once.
+          For example, if you are processing multiple source files, and
+          they each INCLUDE the file "MACLIB.ASM", PX will read MACLIB
+          only the first time.
+
+
+          DEFINING PROCEDURE PROLOGUES
+
+          If PX is to be able to print a "dictionary" of procedure prologues,
+          it must be able to find the prologues in the source code.  For
+          this purpose, PX understands two keywords in your file:  "DICT"
+          and "ENDD". You need to bracket your prologues with this pair
+          (in comments of course):
+
+
+                                                                         3
+                              ==== PX User's Guide ===
+
+               ;Dict MyProc
+
+               ; --------------------------
+               ; Procedure MyProc
+               ; Entry conditions:
+               ;   ...
+               ; Exit conditions:
+               ;   ...
+               ; --------------------------
+               ;EndD
+               MyProc proc near
+               ...
+
+          When PX reads the file containing the above "code", it will
+          print out everything between "Dict MyProc" and "EndD".  It doesn't
+          make any difference how you capitalize the two keywords, but
+          they MUST begin in the first column after the semicolon.  That
+          is, this won't work:
+
+               ;  dict myproc
+
+          The procedure name must follow the DICT keyword;  this enables
+          PX to match up procedure CALLs with the dictionary page where
+          the prologue appears.
+
+
+          RUNNING PX
+
+          The basic syntax for invoking PX is as follows:
+
+               PX {infile} {/command}
+
+          The infile(s) specify which assembler source files you want
+          PX to read.  For example,
+
+               PX thisfile thatfile
+
+          would read the files "thisfile" and "thatfile", prepare a procedure
+          dictionary and cross reference (hereinafter Xref), and display
+          the results.  If PX cannot find a file called "thisfile" it
+          will search for "thisfile.asm" before it gives up.  You can
+          specify up to twenty parameters (input files and commands) on
+          one command line.
+
+          The commands are as follows:
+
+               /o=filename    Specifies an output file
+               /i=filename    Specifies a command file
+               /s=filename    Specifies a "skip" file
+               /p=nn:nn       Set output page length:width
+               /x             Prepare Xref only
+               /d             Prepare dictionary only
+
+  
+                                                                          4
+                              ==== PX User's Guide ===
+
+          The commands are entered on the DOS command line and are always
+          preceded by a slash (/); PX assumes that anything without a
+          slash is an assembler source file to be processed.  Here is
+          an example of a command line with options:
+
+               PX thisfile thatfile /x /p=66:132 /o=prn
+
+          This PX run will process the files "thisfile" and "thatfile";
+          it will produce only an Xref (no dictionary); it will format
+          output for pages with 66 lines of 132 characters each; and the
+          output will go to the system printer.  We'll now cover each
+          of the commands in turn.  (Commands and files may be specified
+          on the command line in any order, by the way.)
+
+
+          OUTPUT FILE SELECTION (/O)
+
+          The /o command tells PX where to send its report.  Any valid
+          device that is defined for output to DOS is OK:
+
+               /o=prn    /o=lpt1   /o=com1   /o=con    /o=nul
+
+          You may also send output to a file:
+
+               /o=a:zapdict.txt    /o=crossref
+
+          Due to a compiler restriction, path names cannot currently be
+          used in ANY file specifications (input, output, or command).
+
+          Output defaults to console if no /o command is given.
+
+
+          COMMAND FILE SELECTION (/I)
+
+          PX command lines can be quite long if they contain multiple
+          source files and options; it is quite easy to exceed the maximum
+          length of a DOS command line (about 160 or so characters).
+          It would also be nice to avoid repetitive typing if you are
+          going to be using PX a number of times on the same assembler
+          project.  Fortunately, PX can obtain its commands from a standard
+          DOS text file known as a command file.
+
+          The /i command tells PX to look in a text file for further commands.
+          For example, the command "/i=zap.px" tells the program to look
+          for additional commands in a file called "zap.px".  (The format
+          of command files is detailed later.) If there is no extension
+          on the specified command file name and PX cannot find a file
+          with that name, it will append ".px" and try again.  For example,
+          "/i=zap" would find the file "zap.px" if "zap" did not exist.
+
+          The "i" in "/i", by the way, stands for "input commands".  The
+          more logical "/c" is reserved for a future command.
+   
+                                                                          5
+                              ==== PX User's Guide ===
+
+
+
+          SKIP FILES (/S)
+
+          PX is interested only in procedures, their prologues, and their
+          calls.  It is not interested in macros, data definitions, or
+          long files full of equates.  If such files are INCLUDEd in your
+          source, you can instruct PX to ignore them with a /s command.
+          For example, the command "/s=equates.asm" tells PX to ignore
+          the statement "include equates.asm" in the source.  This can
+          save you considerable processing time in large projects.
+
+
+          PAGE SPECS (/P)
+
+          You can specify the length and width of the output medium with
+          the /p option.  The format is
+
+               /p=length:width
+
+          Either parameter may be missing. Examples:
+
+               /p=66:132      Set length=66 lines, width=132 cols
+               /p=:40         Set width=40
+               /p=120         Set length=120
+
+          PX defaults to a page of length 66 and width 80.  It skips about
+          6 lines at the end of each page.  Limits: 20 <= length <= 200;
+          40 <= width <= 240.
+
+
+          XREF/DICT ONLY (/X and /D)
+
+          In some cases you may wish to skip either the dictionary or
+          the Xref portion of the report.  A "/x" command tells PX to
+          print ONLY the Xref; "/d" prints ONLY the dictionary.  Specifying
+          BOTH /x and /d is silly, and PX will tell you so.
+
+
+          COMMAND FILE FORMAT
+
+          Command files are simply DOS text files containing lists of
+          PX commands and input files.  You can put as many files/commands
+          as you want on each line, separated by commas, space, or tabs.
+          The semicolon specifies a comment, just as in MASM; anything
+          after a semicolon will be ignored.  Here is an example of a
+          command file:
+
+
+                                                                          6
+                              ==== PX User's Guide ===
+
+               ; ----- PX command file for ZAP program
+               /p=66:132                     ; Pagesize = 66x132
+               zap, edit, display, diskio    ; Input files
+               /s=equates, /s=maclib.mac     ; Skip file
+               /o=zap.ref                    ; Output to "zap.ref"
+
+          There is one restriction on command files: they cannot be nested.
+          That is, a command file cannot contain a "/i" command.
+
+          When PX has completed processing a command file, it returns
+          to the command line if there are more parameters.  For example,
+
+               PX  /x  /i=cmdfile.px  /i=cmdfile2.px  /s=xtrafile
+
+          is perfectly OK.
+
+
+          QUICK PRINCIPLES OF OPERATION
+
+          PX works by scanning for two assembler reserved words: PROC
+          and CALL.  When it encounters a PROC statement, it sets up a
+          table entry for the named procedure; when it encounters a CALL
+          statement, it looks for the CALLed label in the procedure table.
+          If no entry is found, a new entry is created and PX waits for
+          a later definition.
+
+          A few situations will cause problems for PX:
+
+               o Table-driven calls.  If you set up a table of routines
+                    to be called and execute the call via CALL [BX] or
+                    some such, PX can't know what's being called.  The
+                    call is ignored.
+
+               o Calls to labels not defined via PROC statements (e.g.,
+                    CALL LABEL, where LABEL is defined "LABEL:" rather
+                    than "LABEL PROC NEAR").  PX creates a table entry
+                    for the label, but cannot find a definition.  This
+                    results in an undefined procedure.
+
+               o Jumps to procedures. If a procedure is JuMPed to rather
+                    than CALLed, PX will not find the reference.
+
+          Note, however, that PX will create a table entry when it encounters
+          a ";DICT procname" directive.  You may be able to use this to
+          overcome the second problem above.  (This also allows you to
+          use PX with RASM-86, which has no PROC statement or equivalent.)
+          When a table entry is defined only by a DICT directive, PX will
+          not know whether it is NEAR or FAR.
+
+
+                                                                          7
+                              ==== PX User's Guide ===
+
+          LIMITS, RESTRICTIONS, AND QUIRKS
+
+          On a 128K machine, PX has about 63K available for storage of
+          the procedure and reference tables.  This is plenty for all
+          but the largest projects.  For example, I have used PX on a
+          program consisting of 16 files totaling more than 110K of source;
+          only about 11% of the available memory was used.  PX is compiled
+          using the small memory model (for execution speed), so larger
+          amounts of RAM do not increase the available storage.
+
+          PX allows for a maximum of 40 files of any type that it keeps
+          track of: source files, include files, and skip files.
+
+          Regrettably, PX does not, at this point, understand the COMMENT
+          directive in assembler source.  It will scan anything between
+          COMMENT delimiters; if the keywords PROC or CALL appear in the
+          comments, you may find some strange results in the cross refer-
+          ence. (PROCs or CALLs in procedure prologues are OK.)
+
+          The current version of the C compiler used does not permit path
+          names in file specifications.  This should be corrected shortly.
+
+          Due to a compiler oddity, commas cannot be used as command line
+          parameter separators; use spaces or tabs.  Commas are OK in
+          command files, however.
+
+
+                       ---------------------------------------
+
+                                   The PX program
+                                and this document are
+                                Copyright (C) 1984 by
+
+                               Christopher J. Dunford
+                              10057-2 Windstream Drive
+                              Columbia, Maryland 21044
+
+          -- who hereby authorizes you to use PX for your own private,
+          noncommercial use.  You may copy PX for others, but you may
+          not charge for the copies or for the use of the program or for
+          anything else connected with the PX program, in any manner,
+          whatsoever.  Please do not alter or bypass the notice displayed
+          at program startup.  You will find it to be unobtrusive and
+          in good taste.
+
+          -- and who welcomes your comments, criticisms, suggestions,
+          or bug reports (provided they are also unobtrusive and in good
+          taste), directed to the above address or to CompuServe 71076,1115.
+          He will also accept phone calls, as long as West Coast people
+          exercise restraint and recognize that 11PM PST is not a good
+          time to call the East Coast.
+

@@ -1,0 +1,739 @@
+/* 
+HEADER: 	CUG
+TITLE:		Parallel Pattern Matching and FGREP
+VERSION:	1.00
+DATE:		09/20/85
+DESCRIPTION:	"Development of algorithm used in FGREP, a full
+		emulation of Unix's 'fgrep' utility."
+KEYWORDS:	fgrep, grep, filter, UNIX, pattern-matching
+SYSTEM:
+FILENAME:	FGREP.DOC
+WARNINGS:
+CRC:		xxxx
+SEE-ALSO:	FGREP.C
+AUTHORS:	Ian Ashdown - byHeart Software
+COMPILERS:
+REFERENCES:	AUTHORS: Bell Telephone Laboratories;
+		TITLE:	 UNIX Programmer's Manual Vol. 1, p. 166;
+		AUTHORS: A.V. Aho & M.J. Corasick;
+		TITLE:	 'Efficient String Matching: An Aid to
+			 Bibliographic Search'
+			 Communications of the ACM
+			 pp. 333 - 340, Vol. 18 No. 6 (June '75);
+ENDREF
+*/
+
+/*-------------------------------------------------------------*/
+
+Ian Ashdown
+byHeart Software
+1089 West 21st Street
+North Vancouver
+British Columbia V7P 2C6
+Canada
+
+Date: April 12th, 1985
+
+
+
+
+
+
+
+
+
+	       Parallel Pattern Matching and FGREP
+	       -----------------------------------
+
+			 by Ian Ashdown
+			byHeart Software
+
+*****************************************************************
+*								*
+* NOTE: This manuscript was published in the September 1985	*
+*	issue of Doctor Dobb's Journal. It may be reproduced	*
+*	for personal, non-commercial use only, provided that	*
+*	the above copyright notice is included in all copies.	*
+*	Copying for any other use without previously obtaining	*
+*	the written permission of the author is prohibited.	*
+*								*
+*****************************************************************
+
+
+
+	Preparing an index to a large technical book. Finding all
+references to a person in several years' worth of a company's
+minutes of meetings. Searching for all occurrences of a specific
+sequence of events in the volumes of data obtained from a
+scientific experiment. All of these problems and many more are
+examples of searching for patterns in a set of data. The question
+is, what is the most efficient search algorithm to use?
+
+	For single patterns, such as searching for the phrase
+"binary tree" in a text file, there are two of particular
+interest: the Boyer-Moore Algorithm (reference 5) and the
+Knuth-Morris-Pratt Algorithm (reference 6). Both are fast and
+reasonably simple to implement. However, neither is appropriate
+when more than one pattern at a time must be searched for.
+
+	One algorithm that is appropriate can be found in a paper
+published in the June '75 issue of "Communications of the ACM"
+(reference 1). Entitled "Efficient String Matching: An Aid to
+Bibliographic Search" and written by Alfred Aho and Margaret
+Corasick of Bell Laboratories, the paper presents "a simple and
+efficient algorithm to locate all occurrences of any of a finite
+number of keywords in a string of text". Without modification to
+the algorithm, a "keyword" can be taken to mean any pattern, and
+"a string of text" to mean any sequence of symbols, be it ASCII
+text, digitized data obtained from a video camera, or whatever.
+
+	The algorithm has some interesting features. For
+instance, most pattern matching schemes must employ some form of
+backtracking, or rescanning of the string when an attempted match
+to a pattern fails or multiple patterns are to be matched. The
+Aho-Corasick algorithm differs in that it searches for all of the
+patterns in parallel. By doing so, it can process the string in
+one pass without any backtracking.
+
+	The algorithm also recognizes patterns that overlap in
+the string. For example, if the patterns are "he", "she" and
+"hers", the algorithm will correctly identify matches to all
+three in the string "ushers".
+
+	As to speed of execution, it is independent of the number
+of patterns to be matched! This perhaps surprising feature is a
+direct result of the patterns being searched for in parallel.
+
+	Curiously, this algorithm has all but disappeared from
+the literature of computer science. Of the hundreds of textbooks
+and articles written since that discuss pattern matching, only a
+few reference the paper, and none that I know of present the
+Aho-Corasick algorithm itself. Unless you have access to back
+issues of "Communications of the ACM", you will likely never
+encounter it.
+
+	On the other hand, if you work with UNIX you may have
+used a utility based on the algorithm: "fgrep". This useful tool
+searches for and displays all occurrences of a set of keywords
+and phrases in one or more text files. While it does not accept
+wildcard characters in its patterns like UNIX's more flexible
+"grep" utility, it does illustrate the speed of the Aho-Corasick
+algorithm in comparison with other pattern matching methods.
+Typically, "fgrep" is five to ten times faster than "grep" in
+searching files for fixed string patterns.
+
+	Given its general usefulness, I thought it appropriate to
+reintroduce Aho and Corasick's work in this article. At the same
+time, it seemed a shame that "fgrep" has been restricted to the
+UNIX operating system. Therefore, the source code in C for a full
+implementation (reference 4) of "fgrep" has been included. This
+serves not only to demonstrate the algorithm, but also to bring
+the idea of a public domain UNIX one small step closer to
+reality.
+
+Inside The Machine
+------------------
+
+	The Aho-Corasick algorithm consists of two phases:
+building a "finite state automaton" (FSA for short), then running
+a string of data through it, with each consecutive symbol being
+considered a separate input. Before analyzing these phases, a
+quick summary of what finite state automata are and how they work
+is in order. (For a more detailed discussion, reference 2 is
+recommended.)
+
+	In essence, an FSA is a conceptual machine that can be in
+any one of a finite number of "states". It also has a set of
+"state transition" rules and a set of "inputs", which together
+with the set of states define what inputs cause the machine to
+change from one state to another. Finally, since a machine serves
+no purpose without producing some output, an FSA has one or more
+"terminal" states. Output is produced only when the FSA enters
+such states. 
+
+	A physical example of an FSA could be a light switch.
+This device has two states, ON and OFF. Its inputs consist of
+someone pushing the switch UP or DOWN. ON is a terminal state,
+where the associated lamp produces visible radiation. The state
+transition rules can be stated in a simple truth table:
+
+		+------------------+
+		|    | OFF  |  ON  |
+		|----|------|------|
+		| UP | ON   |  --  |
+		|DOWN| --   |  OFF |
+		+------------------+
+
+	Alternatively, this could be shown as a "state transition
+diagram":
+			 DOWN
+		   +-------------+
+		   |		 |
+		   V		 |
+		+-----+  UP   ******
+	    +-->| OFF |------>* ON *<---+
+	    | 	+-----+       ******    | 
+	    |      |		 |      |
+	    | DOWN |		 |  UP  |
+	    +------+		 +------+
+
+where no state transition on a particular input (as shown in the
+truth table) is equivalent to a transition from a state to itself
+(as shown in the diagram).
+
+	Getting ahead of ourselves for a moment, look at Figure
+1a, which shows part of an FSA (the other parts are shown in
+Figures 1b and 1c, and will be explained shortly). By having
+sequences of states, it is possible for the FSA to recognize
+patterns in an input stream. For example, presenting the string
+"she" to the FSA shown in Figure 1a would cause it to change from
+State 0 to States 3, 4 and 5 as each input symbol of the string
+is processed. State 5 is a terminal state that indicates the
+pattern "she" was recognized.
+
+	There are two types of FSA that can be built, one
+"nondeterministic" (Algorithm 1) and the other "deterministic"
+(Algorithm 2). The nondeterministic one (NFSA for short) uses
+functions called "go_to", "failure" and "output", while the
+deterministic FSA (DFSA) uses "move" and "output". The difference
+between the two is that while the NFSA can make one or more state
+transitions per input symbol, the DFSA makes only one. With fewer
+transitions to make, a DFSA can process its input in less time
+than an equivalent NFSA.
+
+	The "go_to" function accepts as input parameters the
+current state of the NFSA and the current input symbol, and
+returns either a state number (the "go_to" state transition) if
+the input symbol matches that expected by the patterns being
+matched, or else a unique symbol called FAIL. The only exception
+to this is State 0 - "go_to(0,X)" returns a state number for all
+input symbols "X". If symbol "X" does not match the beginning
+symbol of any of the patterns, the state number returned is 0.
+
+	The "failure" function is called whenever the "go_to"
+function returns FAIL. Accepting the current state as its input
+parameter, it always returns a state number, the "failure" state
+transition.
+
+	For the DFSA, the "move" function accepts the current
+state number and input symbol, and always returns the next state
+number. There are no failure state transitions in deterministic
+FSA's.
+
+	Both the NFSA and the DFSA use the "output" function. As
+defined in Aho and Corasick's paper, this function prints the
+patterns as they are matched by the FSA. However, the definition
+of this function can be much more general. In fact, the FSA can
+be implemented to execute any arbitrary set of procedures
+whenever it recognizes a pattern.
+
+	FSA's as used by the Aho-Corasick algorithm can be either
+nondeterministic or deterministic. While a DFSA executes more
+quickly than its equivalent NFSA, it also requires more memory to
+encode its state transition tables. Which type is chosen depends
+upon the application and the constraints of execution speed and
+memory usage.
+
+	As an example, assume a set of text patterns to be
+matched: "he", "she", "his" and "hers", with ASCII characters as
+the set of input symbols. (These have been unabashedly purloined
+from Aho and Corasick.) The FSA's needed to recognize these
+patterns are shown in Figure 1.
+
+	Looking at the NFSA first: using as input the string
+"ushers", the machine is run using Algorithm 1. Starting in State
+0, the first symbol from the string is "u". Since only symbols
+"h" and "s" lead from State 0 to other states, "go_to(0,u)"
+returns 0 and so the NFSA remains in State 0.
+
+	The next symbol from the string is "s". Following Figure
+1a, the NFSA makes a go_to state transition to State 3. The next
+symbol ("h") causes a go_to transition to State 4, and the next
+("e") to State 5. There is an output defined for State 5 (Figure
+1c), and so the NFSA prints "she,he", having recognized two
+pattern matches.
+
+	Continuing, the next character is "r". There are no go_to
+transitions defined for State 5, and so "go_to(5,r)" returns
+FAIL. This causes "failure(5)" to return 2 (from Figure 1b),
+making the NFSA perform a failure transition to State 2. From
+here, Algorithm 1 executes "go_to(2,r)", which causes the NFSA to
+enter State 8.
+
+	Finally, the last input symbol, "s", leads the NFSA to
+enter terminal State 9, and the output defined for this state
+causes "hers" to be printed. In all, Algorithm 1 recognized the
+patterns "he", "she" and "hers" in the string "ushers". The state
+transitions made can be summarized as:
+
+		Input Symbol:	 u s h e   r s
+		Current State:	0 0 3 4 5 2 8 9
+
+	Turning our attention to the DFSA and using the same
+input string "ushers", this machine makes move state transitions
+in accordance with Algorithm 2 and Figure 1d. Its state
+transitions can be summarized as:
+
+		Input Symbol:	 u s h e r s
+		Current State:	0 0 3 4 5 8 9
+
+The only difference is that the failure transition to State 2 was
+skipped. By being able to avoid any failure transitions,
+Algorithm 2 can recognize a pattern in fewer state transitions
+and hence less time than Algorithm 1.
+
+Software Construction
+---------------------
+
+	Having seen how FSA's work, it is now time to see how
+they are built, starting with the computation of the "go_to"
+function by Algorithm 3.
+
+	The "go_to" function is initially defined to return FAIL
+for every input symbol and every state. Each pattern is run
+through procedure "enter", which tries to match the pattern
+symbol by symbol to the existing partially-constructed "go_to"
+function. When a failure occurs, a new state is created and added
+to the "go_to" function, with the current symbol of the pattern
+being the input for the state transition. Thereafter, each
+consecutive symbol of the pattern causes a new state to be
+created and added.
+
+	When the last symbol of each pattern has been processed
+by procedure "enter", its associated state is made a terminal
+state. As shown in Algorithm 3, this means that the output for
+the state is defined as the current pattern, which Algorithm 1
+will print when the NFSA is run. However, it is easy to see that
+the statement "output(state) = pattern" in Algorithm 3 can be
+rewritten to assign whatever procedures to "output(state)" that
+you want.
+
+	Finally, after all of the patterns have been processed,
+"go_to(0,X)" is redefined to return 0 for all symbols "X" that
+still return FAIL.
+
+	When Algorithm 3 completes, it has computed the "go_to"
+function of the FSA and also partially computed the "output"
+function. If you simulate Algorithm 3 by hand with "he", "she",
+"his" and "hers" as its patterns, you will see that the output
+for State 5 will be "she", not "she,he". It remains for Algorithm
+4 to complete the "output" function as it computes the "failure"
+function.
+
+	 Let's define the "depth" of a state as the number of
+go_to state transitions that must be made from State 0 to reach
+it. For example, the depth of State 4 in Figure 1a is 2, while
+that of State 9 is 4. The failure state transition for all states
+of depth 1 is State 0. The algorithm used to compute the failure
+transitions for all states of depth greater than 1 can be
+expressed in its simplest form as:
+
+	for each depth D do
+	  for each state S of depth D-1 do
+	    for each input symbol A do
+	      if (T = go_to(S,A)) != FAIL then
+		begin
+		  R = failure(S)
+		  while go_to(R,A) == FAIL do
+		    R = failure(R)
+		  failure(T) = go_to(R,A)
+		end
+
+	To demonstrate this using our example, let's compute one
+failure transition for a state of depth 2. The states of depth 1
+are 1 and 3. The only input symbols for which the "go_to"
+function does not return FAIL are "e" and "i" for State 1 and "h"
+for State 3. Taking State 3 for "S" and symbol "h" for "A" above,
+we have "T" being 4, "R" being "failure(3)", which is 0,
+"go_to(0,h)" returning 1, and finally "failure(4)" being set to
+"go_to(0,h)". The failure transition for State 4 is thus State 1.
+
+	Algorithm 4 expands on the above algorithm in two ways.
+First, it uses a queue (a first-in, first-out list) to maintain
+the order of states by depth to be processed. Second, it accepts
+as input the "output" function and combines the outputs of the
+terminal states where appropriate. In our example, the output
+"he" of State 2 would be combined with the output "she" of State
+5 to produce the final and correct "she,he" output for State 5.
+
+	The "move" function is computed from the "go_to" and
+"failure" functions by means of Algorithm 5. Essentially, all
+this algorithm does is precompute all possible sequences of
+failure state transitions. It is also very similar to Algorithm
+4. Since there is considerable redundancy between them, they can
+be merged to compute the "failure" and "move" functions
+concurrently. The result is shown as Algorithm 6.
+
+Details, Details
+----------------
+
+	So far, the functions "go_to", "failure", "move" and
+"output" have been shown as something that you can simply assign
+outputs to for specified inputs. This assumes a much higher-level
+programming language than most of today's offerings. Implementing
+these algorithms in C, Pascal, Basic or Fortran requires some
+extra code and work.
+
+	Aho and Corasick programmed their original version in
+Fortran. This is evident from their paper, where they suggest
+that the "failure" and "output" functions could be implemented as
+one-dimensional arrays accessed by state numbers. With a language
+such as C that supports complex data structures, the code for the
+functions can be more elegantly written by replacing the state
+numbers and arrays with dynamically allocated structures. Each
+structure can have as members pointers to linked lists of go_to
+and move transitions, a pointer to the appropriate failure
+transition, and a pointer to a character string for the output
+function.
+
+	They also noted that the "go_to" and "move" functions
+could be implemented as two-dimensional arrays, with the number
+of states forming one dimension and the set of input symbols
+forming the other. However, this would require enormous amounts
+of memory for an ASCII character set and several hundred states.
+Their recommendation was that the go_to and move transitions for
+each state be implemented as linked linear lists or binary trees.
+
+	Since the FSA will usually spend most of its time in
+State 0 for large input symbol sets, it is advantageous to have
+the "go_to" or "move" functions execute as quickly as possible
+for this state. Therefore, following Aho & Corasick's suggestion,
+a one-dimensional array can be assigned to State 0. (Note that
+since there are no failure transitions defined for State 0, its
+go_to and move transitions are one and the same.) The array is
+accessed directly, using the input symbol as the index, with the
+corresponding array entry being the state transition for that
+symbol.
+
+	An improvement not covered by Aho & Corasick can be made
+when it realized that often several states will have the same
+move transitions (see Figure 1d as an example). In such cases,
+the state structures can be assigned a common pointer to one
+linked list of move transitions.
+
+	Some applications may call for the algorithm to be coded
+with predefined patterns in read-only memory. Here it is usually
+desired to maximize the speed of execution while at the same time
+minimizing the code size. Aho and Ullman (reference 2) discuss a
+method of encoding the state transition tables that combines the
+compactness of linked lists with the speed of direct array
+access. Their method (which UNIX's "yacc" compiler-compiler
+utility uses to encode its parsing tables) is unfortunately too
+involved to discuss here. Interested readers are referred to Aho
+and Ullman's book for details.
+
+Putting It All To Work
+----------------------
+
+	Implementing the Aho-Corasick algorithm is fairly
+straightforward, although as you can see, the code required to
+flesh it out to a full emulation of UNIX's "fgrep" is somewhat
+involved. Regardless, the work is done for you. If you want to
+use the algorithm in other programs, simply remove the "fgrep"
+shell and add whatever interface routines you require.
+
+	An example: as an information retrieval utility that
+searches arbitrary text files, "fgrep" is useful but by no means
+complete. One useful extension would be the ability to specify
+Boolean operators (AND, OR and EXCLUSIVE-OR) for combinations of
+patterns.
+
+	Another one: rather than simply print matched patterns
+for its output, the FSA can execute whatever procedures you
+choose to associate with the patterns as they are matched. From
+this you could create a macro processor, where the FSA accepts an
+input string, finds matches to predefined patterns, substitutes
+the corresponding macro expansions, and then emits the result as
+an output string.
+
+	For those with RAM memory to spare (a megabyte or so),
+consider how fast a spelling checker that makes no disk accesses
+beyond initially loading itself could be made to run ... fifty
+thousand or more words in RAM and your text file is checked
+almost as fast as it can be read.
+
+	If you come up with an original and fascinating use for
+the Aho-Corasick algorithm, or if you derive new utilities from
+"fgrep", by all means let me know about it. Better yet, donate
+your code to a public domain software group. That alone would
+repay me for the effort I put into developing the code and
+writing this article.
+
+------------------------------------------------------
+Algorithm 1: Nondeterministic Pattern Matching Machine
+------------------------------------------------------
+
+Input:  A string of symbols and a pattern-matching machine
+	consisting of functions "go_to", "failure" and "output".
+Output: Matched patterns.
+
+begin
+  state = 0
+  while there are more symbols in the string do
+    begin
+      a = next symbol in the string
+      while go_to(state,a) == FAIL do
+	state = failure(state)
+      state = go_to(state,a)
+      if output(state) != NULL then
+	print output(state)
+    end
+end
+
+---------------------------------------------------
+Algorithm 2: Deterministic Pattern Matching Machine
+---------------------------------------------------
+
+Input:  A string of symbols and a pattern-matching machine
+	consisting of functions "move" and "output".
+Output: Matched patterns.
+
+begin
+  state = 0
+  while there are more symbols in the string do
+    begin
+      a = next symbol in the string
+      state = move(state,a)
+      if output(state) != NULL then
+	print output(state)
+    end
+end
+
+---------------------------------------------
+Algorithm 3: Computation of Go_to Transitions
+---------------------------------------------
+
+Input:  Array of patterns {y[1],y[2] .... y[k]} where each
+	pattern is a string (one-dimensional array) of symbols.
+	(Function "go_to(s,a)" is defined to return FAIL for all
+	states "s" and all input symbols "a" until defined
+	otherwise by procedure "enter".)
+Output: Function "go_to" and partially computed function
+	"output". 
+
+begin
+  newstate = 0
+  for i = 1 to i = k do
+    enter(y[i])
+  for each symbol a do
+    if go_to(0,a) == FAIL then
+      go_to(0,a) = 0
+end
+
+procedure enter(pattern)	/* "pattern" is an array of */
+begin				/* "m" symbols */
+  state = 0
+  j = 1
+  while go_to(state,pattern[j]) != FAIL do
+    begin
+      state = go_to(state,pattern[j])
+      j = j + 1
+    end
+  for p = j to p = m do
+    begin
+      newstate = newstate + 1
+      output(newstate) = NULL
+      go_to(state,pattern[p]) = newstate
+      state = newstate
+    end
+  output(state) = pattern
+end
+
+-----------------------------------------------
+Algorithm 4: Computation of Failure Transitions
+-----------------------------------------------
+
+Input:  Functions "go_to" and "output" from Algorithm 3.
+Output:	Functions "failure" and "output". 
+
+begin
+  initialize queue
+  for each symbol a do
+    if (r = go_to(0,a)) != 0 then
+      begin
+	add r to tail of queue
+	failure(r) = 0
+      end
+  while queue is not empty do
+    begin
+      s = head of queue
+      remove head of queue
+      for each symbol a do
+	if (t = go_to(s,a)) != FAIL then
+	  begin
+	    add t to tail of queue
+	    r = failure(s)
+	    while go_to(r,a) == FAIL do
+	      r = failure(r)
+	    failure(t) = go_to(r,a)
+	    output(t) = output(t) + output(failure(t))
+	  end
+    end
+end
+
+--------------------------------------------
+Algorithm 5: Computation of Move Transitions
+--------------------------------------------
+
+Input:	Function "go_to" from Algorithm 3 and function "failure"
+	from Algorithm 4.
+Output:	Function "move".
+
+begin
+  initialize queue
+  for each symbol a do
+    begin
+      move(0,a) = go_to(0,a)
+      if (r = go_to(0,a)) != 0 then
+	add r to tail of queue
+    end
+  while queue is not empty do
+    begin
+      s = head of queue
+      remove head of queue
+      for each symbol a do
+	if (t = go_to(s,a)) != FAIL then
+	  begin
+	    add t to tail of queue
+	    move(s,a) = t
+	  end
+	else
+	  move(s,a) = move(failure(s),a)
+    end
+end
+
+---------------------------------------------------------------
+Algorithm 6: Merged Computation of Failure and Move Transitions
+---------------------------------------------------------------
+
+Input:  Functions "go_to" and "output" from Algorithm 3.
+Output:	Function "move".
+
+begin
+  initialize queue
+  for each symbol a do
+    begin
+      move(0,a) = go_to(0,a)
+      if (r = go_to(0,a)) != 0 then
+	begin
+	  add r to tail of queue
+	  failure(r) = 0
+	end
+    end
+  while queue is not empty do
+    begin
+      s = head of queue
+      remove head of queue
+      for each symbol a do
+	if (t = go_to(s,a)) != FAIL then
+	  begin
+	    add t to tail of queue
+	    r = failure(s)
+	    while go_to(r,a) == FAIL do
+	      r = failure(r)
+	    failure(t) = go_to(r,a)
+	    output(t) = output(t) + output(failure(t))
+	    move(s,a) = t
+	  end
+	else
+	  move(s,a) = move(failure(s),a)
+    end
+end
+
+=================================================================
+
+Figure 1: Pattern Matching Machine
+----------------------------------
+
+!{h,s} (any symbol but "h" or "s")
++-----+
+|     V
+|   +---+  h  +---+  e  *****  r  +---+  s  *****
++---| 0 |---->| 1 |---->* 2 *---->| 8 |---->* 9 *
+    +-+-+     +-+-+     *****     +---+     *****
+      |         |
+      |         |    i  +---+  s  *****
+      |         +------>| 6 |---->* 7 *
+      |                 +---+     *****
+      |
+      |    s  +---+  h  +---+  e  *****
+      +------>| 3 |---->| 4 |---->* 5 *
+              +---+     +---+     *****
+
+
+		(a) Go_to function
+
+
+Current State:	1  2  3  4  5  6  7  8  9
+Failure State:	0  0  0  1  2  0  3  0  3
+
+
+		 (b) Failure function
+
+
+Current		Output:
+State:
+
+  0		 --
+  1		 --
+  2		{he}
+  3		 --
+  4		 --
+  5		{she,he}
+  6		 --
+  7		{his}
+  8		 --
+  9		{hers}
+
+
+		(c) Output function
+
+Current	  Input     Next	Current	  Input     Next
+State:    Symbol:   State:	State:    Symbol:   State:
+
+  0         h         1		  4         e         5
+            s         3		            i         6
+            .         0		            h         1
+  1         e         2		            s         3
+            i         6		            .         0
+            h         1		  6         s         7
+            s         3		            h         1
+            .         0		            .         0
+  2,5       r         8		  8         s         9
+            h         1		            h         1
+            s         3		            .         0
+            .         0
+  3,7,9     h         4
+            s         3
+            .         0
+
+  where "." represents any symbol not included in the list of
+  symbols for the indicated state(s).
+
+
+		(d) Move function
+
+=================================================================
+
+References:
+
+1. Aho, A.V. and Corasick, M.J. [1975]. Efficient String
+   Matching: An Aid to Bibliographic Search. CACM 18:6 (June),
+   pp.333-340.
+2. Aho, A.V. and Ullman, J.D. [1977]. Principles of Compiler
+   Design. Addison Wesley, pp.73-124.
+3. Aoe, J., Yamamoto, Y. and Shimada, R. [1984]. A Method for
+   Improving String Pattern Matching Machines. IEEE Transactions
+   On Software Engineering, SE-10:1 (January), pp.116-120.
+4. Bell Telephone Laboratories [1983], UNIX Programmer's Manual
+   Volume 1, Holt, Rinehart and Winston, p.70-71.
+5. Boyer, R.S. and Moore, J.S. [1977]. A Fast String Searching
+   Algorithm. CACM 20:10 (October), pp.762-772.
+6. Knuth, D.E., Morris, J.H. and Pratt, V.R. [1977]. Fast Pattern
+   Matching in Strings, SIAM J. Comp. 6:2 (June), pp.323-350.
+
+
+			     - End -
+
+  where "." represents any symbol not included in the list of
+  symbols for the indicated sta

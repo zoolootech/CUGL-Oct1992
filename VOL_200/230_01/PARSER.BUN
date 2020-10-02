@@ -1,0 +1,4182 @@
+: To unbundle, sh this file
+echo unbundling parser.y 1>&2
+cat >parser.y <<'End'
+/*
+	Little Smalltalk Class method syntax
+		
+		differs from smalltalk-80 slightly
+
+			class heading is different
+			vertical bar must appear between methods
+			syntax for primitives is different
+
+*/
+
+/*      literals        */
+%token LITNUM LITFNUM LITCHAR LITSTR LITSYM
+
+/*      basic objects   */
+%token CLASS ASSIGN BINARY PRIMITIVE NAMEDPRIM
+
+/*      types of variables */
+%token PSEUDO UPPERCASEVAR LOWERCASEVAR COLONVAR KEYWORD
+
+/*      one character symbols */
+%token LP RP LB RB PERIOD BAR MBAR SEMI UPARROW PS MINUS PE
+/*     (  )  [  ]  .      |   ^|   ;    ^       #  -     > */
+
+%{
+# include "env.h"
+# include "drive.h"
+# include "parser.h"
+%}
+
+%union {
+	struct litlist 		*a;
+	struct blockstruct 	*b;
+	char 			*c;
+	struct exprstruct 	*e;
+	int  			 i;
+	struct keylist 		*k;
+	struct classstruct 	*l;
+	struct methodstruct 	*m;
+	struct objstruct 	*o;
+	enum pseuvars 		 p;
+	struct primlist 	*r;
+	struct statestruct 	*s;
+	struct litstruct 	*t;
+	struct primstruct 	*u
+	}
+
+%{
+extern struct blockstruct *mkblock();
+extern struct classstruct *mkclass();
+extern struct varstruct *mkvar(), *addvlist(), *invlist();
+extern struct methodstruct *mkmethod();
+extern struct exprstruct *mkexpr(), *mkkey();
+extern struct keylist *mkklist();
+extern struct statestruct *mkstate();
+extern struct objstruct *mkobj();
+extern struct primstruct *mkprim();
+extern struct primlist *addprim();
+extern struct litstruct *mklit();
+extern struct litlist *addlit();
+extern char   *bincat();
+
+struct varstruct *instvars;
+struct varstruct *contextvars;
+
+int bytetop = 0;
+uchar bytearray[1000];
+
+YYSTYPE e;
+int errorcount = 0;
+%}
+
+%type <a> litarray
+%type <b> block
+%type <c> CLASS KEYWORD LOWERCASEVAR UPPERCASEVAR COLONVAR LITSYM LITSTR
+%type <c> BINARY BAR MINUS UPARROW PE
+%type <c> classname binarysym binarychar
+%type <c> LITFNUM fliteral
+%type <e> pattern expression cexpression binary unary
+%type <e> kcontinuation bcontinuation ucontinuation
+%type <i> LITCHAR LITNUM PRIMITIVE NAMEDPRIM
+%type <i> tempvars cvarlist namelist barglist nliteral
+%type <k> keypattern keywordlist
+%type <l> super classheading
+%type <m> method methodlist
+%type <o> primary
+%type <p> PSEUDO
+%type <r> objlist
+%type <s> statelist statement sexpression opmessagelist
+%type <s> bstatelist bstatement bexpression
+%type <t> literal iliteral aliteral
+%type <u> primitive
+
+
+%start file
+
+%%
+file    :       classdef
+        |       file classdef
+        ;
+
+classdef:       classheading lb methodlist RB
+			{if (errorcount == 0) genclass($1, $3);}
+        ;
+
+lb      :       LB
+        |       error   {if ((yytext[0] == ':') ||
+                             isalpha(yytext[0])) expect(":SuperClass");
+                         else expect("open brace [");}
+        ;
+
+classheading:   class super instancevars {$$ = $2;}
+        ;
+
+class   :       CLASS
+        |       error                   {expect("keyword Class");}
+        ;
+
+super   :       classname              	{$$ = mkclass($1, (char *) 0);}
+        |       classname COLONVAR    	{$$ = mkclass($1, $2);}
+        |       error                   {expect("Classname :Superclass");
+                                         $$ = mkclass("Error", (char *) 0);}
+        ;
+
+classname:	UPPERCASEVAR
+	|	CLASS
+	;
+
+instancevars:   /* empty */
+        |       bar instvarlist bar
+        ;
+
+instvarlist:    LOWERCASEVAR			{addinst($1);}
+        |       instvarlist LOWERCASEVAR	{addinst($2);}
+        |       error                   	{expect("instance variable");}
+        ;
+
+methodlist:     method			
+        |       methodlist MBAR method
+			{$3->nextmethod = $1; $$ = $3;}
+        ;
+
+method  :       pattern tempvars statelist op
+			{deltemps($2); $$ = mkmethod($1, $2, $3);}
+        ;
+
+pattern:        keypattern
+{$$ = mkkey((struct exprstruct *) 0, $1);}
+        |       binarysym argvariable
+{$$ = mkexpr((struct exprstruct *) 0, bincmd, $1, (struct exprstruct *) 0);}
+        |       LOWERCASEVAR
+{$$ = mkexpr((struct exprstruct *) 0, uncmd, $1, (struct exprstruct *) 0);}
+        |       error                   {expect("method pattern");
+$$ = mkexpr((struct exprstruct *) 0, uncmd, "", (struct exprstruct *) 0);}
+        ;
+
+keypattern:     KEYWORD argvariable
+{$$ = mkklist((struct keylist *) 0, $1, (struct exprstruct *) 0);}
+        |       keypattern KEYWORD argvariable
+{$$ = mkklist($1, $2, (struct exprstruct *) 0);}
+        ;
+
+argvariable:      LOWERCASEVAR            {addtemp($1, argvar);}
+        |         error                   {expect("argument variable");}
+        ;
+
+tempvars:       /* empty */             {$$ = 0;}
+        |       bar namelist bar        {$$ = $2;}
+        ;
+
+bar     :       BAR
+        |       MBAR
+        |       error                   {expect("| (vertical bar)");}
+        ;
+
+namelist:       tvariable               {$$ = 1;}
+        |       namelist tvariable      {$$ = $1 + 1;}
+        ;
+
+tvariable:      LOWERCASEVAR               {addtemp($1, tempvar);}
+        ;
+
+statelist:	statement			{$$ = $1;}
+        |	statelist PERIOD statement	{$3->nextstate = $1; $$ = $3;}
+        ;
+
+op	:	/* empty - optional period */
+	|	PERIOD
+	;
+
+statement:	UPARROW sexpression	{$$ = mkstate(upar, (char *) 0, $2);}
+	|	sexpression
+	;
+
+sexpression:	LOWERCASEVAR ASSIGN sexpression
+				{$$ = mkstate(asgn, $1, $3);}
+	|	cexpression	
+	{$$ = mkstate(expr, (char *) 0, (struct statestruct *) $1);}
+	;
+
+cexpression:	expression
+	|	kcontinuation	{$$ = mkexpr($1, semiend, 0, 0);}
+	;
+
+kcontinuation:	bcontinuation
+	|	bcontinuation keywordlist {$$ = mkkey($1, $2);}
+	;
+
+bcontinuation:	ucontinuation
+	|	bcontinuation binarysym unary
+			{$$ = mkexpr($1, bincmd, $2, $3);}
+	;
+
+ucontinuation:	cexpression SEMI	{$$ = mkexpr($1, semistart, 0, 0);}
+	|	ucontinuation LOWERCASEVAR
+		{$$ = mkexpr($1, uncmd, $2, (struct exprstruct *) 0);}
+	;
+
+expression:     binary			{$$ = $1;}
+        |       binary keywordlist	{$$ = mkkey($1, $2);}
+        ;
+
+keywordlist:    KEYWORD binary		
+			{$$ = mkklist((struct keylist *) 0, $1, $2);}
+        |       keywordlist KEYWORD binary
+			{$$ = mkklist($1, $2, $3);}
+        ;
+
+binary  :       unary			{$$ = $1;}
+        |       binary binarysym unary	{$$ = mkexpr($1, bincmd, $2, $3);}
+        ;
+
+binarysym:	binarychar		{$$ = $1;}
+	|	binarychar binarychar	{$$ = bincat($1, $2);}
+	;
+
+binarychar:      BINARY
+        |       BAR
+        |       MINUS
+        |       UPARROW
+	|	PE			
+        ;
+
+unary   :       primary			
+		{$$ = mkexpr((struct exprstruct *) 0, reccmd, (char *) 0,
+					(struct exprstruct *) $1);}
+        |       unary LOWERCASEVAR
+		{$$ = mkexpr($1, uncmd, $2, (struct exprstruct *) 0);}
+        ;
+
+primary :	classname		{e.c = $1; $$ = mkobj(classobj, &e);}
+        |       LOWERCASEVAR		{e.c = $1; $$ = mkobj(varobj, &e);}
+        |       literal			{e.t = $1; $$ = mkobj(litobj, &e);}
+        |       PSEUDO			{e.p = $1; $$ = mkobj(pseuobj, &e);}
+	|	primitive		{e.u = $1; $$ = mkobj(primobj, &e);}
+        |       LP sexpression RP	{e.s = $2; $$ = mkobj(exprobj, &e);}
+	|	block 			{e.b = $1; $$ = mkobj(blockobj, &e);}
+        ;
+
+primitive:	PRIMITIVE LITNUM objlist PE
+					{$$ = mkprim($2, $3);}
+	|	NAMEDPRIM objlist PE
+					{$$ = mkprim($1, $2);}
+	;
+
+objlist :	/* empty */		{$$ = (struct primlist *) 0;}
+	|	objlist primary		{$$ = addprim($1, $2);}
+	;
+
+block	:	LB barglist opmessagelist RB
+					{$$ = mkblock($2, $3);
+					deltemps($2);}
+	;
+
+barglist :       /* empty */             {$$ = 0;}
+        |       cvarlist BAR            {$$ = $1;}
+        ;
+
+cvarlist:       COLONVAR               {addtemp($1, argvar); $$ = 1;}
+        |       cvarlist COLONVAR      {addtemp($2, argvar); $$ = $1 + 1;}
+        ;
+
+opmessagelist:	bstatelist bstatement 	{$2->nextstate = $1; $$ = $2;}
+	|	bstatement 		{$$ = $1;}
+	;
+
+bstatement:	UPARROW sexpression 	{$$ = mkstate(blkupar, (char *) 0, $2);}
+	|	bexpression		{$$ = mkstate(upar, (char *) 0, $1);}
+	;
+
+bexpression:	/* empty */
+{e.p = nilvar;
+$$ = mkstate(expr, (char *) 0,
+(struct statestruct *) mkexpr((struct exprstruct *) 0, reccmd, (char *) 0,
+	(struct exprstruct *) mkobj(pseuobj, &e)));}
+	|	sexpression		{$$ = $1;}
+	;
+
+bstatelist:     sexpression PERIOD	{$$ = $1;}
+        |       bstatelist sexpression PERIOD
+			{$2->nextstate = $1; $$ = $2;}
+        ;
+
+literal :       iliteral                {$$ = $1;}
+        |       alitstart litarray RP   {e.a = $2; $$ = mklit(arlit, &e);}
+        ;
+
+alitstart:      PS LP
+        ;
+
+iliteral:	fliteral		{e.c = $1; $$ = mklit(fnumlit, &e);}
+	|	nliteral		{e.i = $1; $$ = mklit(numlit, &e);}
+	|       LITCHAR                 {e.i = $1; $$ = mklit(charlit, &e);}
+        |       LITSTR                  {e.c = $1; $$ = mklit(strlit, &e);}
+        |       LITSYM                  {e.c = $1; $$ = mklit(symlit, &e);}
+        |       PS LB bytearray RB      {bytearray[bytetop] = '\0';
+                                         $$ = mklit(bytelit, &e);}
+        ;
+
+fliteral:	LITFNUM			{$$ = $1;}
+	| 	MINUS LITFNUM		{$$ = bincat("-", $2);}
+	;
+
+nliteral:	LITNUM			{$$ = $1;}
+	|	MINUS LITNUM		{$$ = - $2;}
+	;
+
+aliteral:       iliteral                {$$ = $1;}
+        |       LOWERCASEVAR            {e.c = $1; $$ = mklit(symlit, &e);}
+        |       UPPERCASEVAR            {e.c = $1; $$ = mklit(symlit, &e);}
+	|	KEYWORD			{e.c = $1; $$ = mklit(symlit, &e);}
+	|	COLONVAR		{e.c = $1; $$ = mklit(symlit, &e);}
+	|	CLASS			{e.c = $1; $$ = mklit(symlit, &e);}
+        |       binarysym               {e.c = $1; $$ = mklit(symlit, &e);}
+        |       ias litarray RP         {e.a = $2; $$ = mklit(arlit, &e);}
+        ;
+
+ias     :       PS LP
+        |       LP
+        ;
+
+litarray:       /* empty */             {$$ = (struct litlist *) 0;}
+        |       litarray aliteral       {$$ = addlit($1, $2);}
+        ;
+
+bytearray:      LITNUM                  {bytetop = 0;
+                                         bytearray[bytetop++] = itouc($1);}
+        |       bytearray LITNUM        {bytearray[bytetop++] = itouc($2);}
+        ;
+%%
+# include <stdio.h>
+
+char *filename;
+FILE *fp;
+FILE *ofd;
+
+# include "lex.yy.c"
+
+main(argc, argv)
+int argc;
+char **argv;
+{	
+	if (argc != 2) quiter("parser: wrong number of arguments");
+	filename = argv[1];
+	fp = fopen(filename, "r");
+	if (fp == NULL) {
+		yerr("cannot open input file %s", filename);
+		quiter("parser quits");
+		}
+	ofd = stdout;
+	return(yyparse());
+}
+
+quiter(s) char *s; {fprintf(stderr,"%s\n", s); exit(1);}
+
+yywarn(s, v) char *s, *v; {
+   fprintf(stderr, "%s: line %d: Warning ", filename, linenum);
+   fprintf(stderr, s, v);
+   fprintf(stderr,"\n");
+}
+
+yyerror(s) char *s; {yerr(s, "");}
+
+yerr(s, v)
+char *s, *v;
+{
+   fprintf(stderr, "%s: line %d: ", filename, linenum);
+   fprintf(stderr, s, v);
+   fprintf(stderr,"\n");
+   if (errorcount++ > 10) quiter("too many errors, goodby");
+}
+
+expect(str) char *str;
+{  char buffer[100];
+
+   sprintf(buffer,"Expected %%s found %s", yytext);
+   yerr(buffer, str);
+}
+
+int yywrap() { return(1);}
+
+char *alloc(size) int size;      /* allocate a block of storage */
+{  char *p, *malloc();
+
+   p = malloc( (unsigned) size);
+   if (p == (char *) 0) yyerror("out of free space");
+   return(p);
+}
+
+char *bincat(s1, s2)
+char *s1, *s2;
+{	char *p;
+
+	p = alloc(strlen(s1) + strlen(s2) + 1);
+	strcpy(p, s1);
+	strcat(p, s2);
+	return(p);
+}
+End
+echo unbundling parser.lex 1>&2
+cat >parser.lex <<'End'
+%{
+/*
+        Little Smalltalk lexical analyzer
+*/
+# include <math.h>
+# include "primnum.h"
+
+# undef input
+# undef unput
+
+double atof();
+int linenum = 1;
+%}
+%%
+[ \t]+                          {;}
+\n                              {linenum++;}
+\"                              {readcomment();}
+":="                            {return(ASSIGN);}
+"<-"                            {return(ASSIGN);}
+Class                           {return(lexsave(CLASS));}
+self                            {yylval.p = selfvar;  return(PSEUDO);}
+selfProcess			{yylval.p = procvar;  return(PSEUDO);}
+super                           {yylval.p = supervar; return(PSEUDO);}
+nil                             {yylval.p = nilvar;   return(PSEUDO);}
+true                            {yylval.p = truevar;  return(PSEUDO);}
+false                           {yylval.p = falsevar; return(PSEUDO);}
+smalltalk                       {yylval.p = smallvar; return(PSEUDO);}
+\$.                             {yylval.i = yytext[1]; return(LITCHAR);}
+#                               {return(PS);}
+[0-9]+r-?[0-9A-Z]+(\.[0-9A-Z]+)?(e[-+]?[0-9]+)? {return(lexsave(LITFNUM));}
+[0-9]+                          {yylval.i = atoi(yytext); return(LITNUM);}
+[0-9]+(\.[0-9]+)?(e[-+]?[0-9]+)?   {return(lexsave(LITFNUM));}
+'[^']*'                         {char c; unput(c = input());
+                                 if (c == '\'') yymore();
+                                 else return(lexlstr());}
+[a-zA-Z0-9]+:?                  {return(varlex());}
+:[a-zA-Z0-9]+                   {return(slexsave(COLONVAR));}
+#[^ \t\n.()\[]+                 {return(slexsave(LITSYM));}
+"-"                             {return(lexsave(MINUS));}
+"("                             {return(LP);}
+")"                             {return(RP);}
+"["                             {return(LB);}
+"]"                             {return(RB);}
+"."                             {return(PERIOD);}
+^"|"				{return(lexsave(MBAR));}
+^"!"				{return(lexsave(MBAR));}
+"|"                             {return(lexsave(BAR));}
+"!"                             {return(lexsave(BAR));}
+";"                             {return(SEMI);}
+"^"                             {return(lexsave(UPARROW));}
+">"				{return(lexsave(PE));}
+[^ \t\nA-Za-z0-9]               {return(lexsave(BINARY));}
+"<primitive"   			{return(PRIMITIVE);}
+"<"[a-zA-Z0-9]+			{yylval.i = prim_number(&yytext[1]); return(NAMEDPRIM);}
+%%
+static int ocbuf = 0;
+static int pbbuf[400];
+
+static int input()
+{	int c;
+
+	if (ocbuf) {c = pbbuf[--ocbuf]; }
+	else {
+		c = getc(fp);
+		if (c == EOF) c = 0;
+		}
+	return(c);
+}
+
+static unput(c)
+char c;
+{
+	if (c) pbbuf[ocbuf++] = c;
+}
+
+# include <ctype.h>
+
+static readcomment()
+{  char c;
+
+   while ((c = input()) && c != '\"')
+	if (c == '\n') linenum++;
+   if (!c) yyerror("unterminated comment");
+}
+
+char *walloc(s) char *s;
+{  char *p, *malloc();
+
+   p = malloc((unsigned) (strlen(s) + 1));
+   if (p == (char *) 0) yyerror("out of variable string space");
+   strcpy(p, s);
+   return(p);
+}
+
+static int slexsave(type)
+int type;
+{
+
+	yylval.c = walloc(&yytext[1]);
+	if (yylval.c == 0) yerr("cannot create symbol %s", yytext);
+	return(type);
+}
+
+static int lexsave(type)
+int type;
+{
+
+	yylval.c = walloc(yytext);
+	if (yylval.c == 0) yerr("cannot create string %s", yytext);
+	return(type);
+}
+
+static int varlex()
+{
+
+   lexsave(0);
+   if (yytext[yyleng-1] == ':') return(KEYWORD);
+   else if (islower(yytext[0])) return(LOWERCASEVAR);
+   else return(UPPERCASEVAR);
+}
+
+static int lexlstr()
+{  char *p, *q;
+
+   yylval.c = p = walloc(&yytext[1]);
+   *(p + yyleng -2) = '\0';
+   return(LITSTR);
+}
+
+static int prim_number(name)
+char *name;
+{	struct prim_names *p;
+
+	for (p = prim_table; *(p->p_name); p++) {
+		if (strcmp(p->p_name, name) == 0)
+			return(p->p_number);
+		}
+	yerr("unknown primitive name %s", name);
+	return(0);
+}
+End
+echo unbundling parse1.c 1>&2
+cat >parse1.c <<'End'
+/*
+	Little Smalltalk
+		pass 1 of the parser
+
+		timothy a. budd, 10/84
+
+*/
+/*
+	The source code for the Little Smalltalk System may be freely
+	copied provided that the source of all files is acknowledged
+	and that this condition is copied with each file.
+
+	The Little Smalltalk System is distributed without responsibility
+	for the performance of the program and without any guarantee of
+	maintenance.
+
+	All questions concerning Little Smalltalk should be addressed to:
+
+		Professor Tim Budd
+		Department of Computer Science
+		Oregon State University
+		Corvallis, Oregon
+		97331
+		USA
+*/
+# include <stdio.h>
+# include "env.h"
+# include "drive.h"
+# include "parser.h"
+# include "y.tab.h"
+
+extern char *alloc();
+
+int maxcontext = 0;
+
+struct classstruct *mkclass(classname, supername)
+char *classname, *supername;
+{	struct classstruct *new;
+	struct varstruct *mkvar(), *addvlist();
+
+	new = structalloc(classstruct);
+	new->name = classname;
+	if (supername)
+		new->super = supername;
+	else new->super = walloc("Object");
+	instvars = (struct varstruct *) 0;
+	contextvars = (struct varstruct *) 0;
+	maxcontext = 0;
+	addtemp("_self", (enum vartypes) 0);
+	return(new);
+}
+
+struct varstruct *mkvar(text, vtype) char *text; enum vartypes vtype;
+{  struct varstruct *p;
+
+   p = structalloc(varstruct);
+   p->vtype = vtype;
+   p->text = text;
+   p->nextvar = (struct varstruct *) 0;
+   p->position = 17;
+   return(p);
+}
+
+struct varstruct *addvlist(varnode, vlist)
+struct varstruct *varnode, *vlist;
+{
+   varnode->nextvar = vlist;
+   if (vlist) varnode->position = 1 + vlist->position;
+   else varnode->position = 0;
+   return(varnode);
+}
+
+addtemp(name, vtype)
+char *name;
+enum vartypes vtype;
+{
+	contextvars = addvlist(mkvar(name, vtype), contextvars);
+	if (contextvars->position > maxcontext)
+		maxcontext = contextvars->position;
+}
+
+struct varstruct *invlist(varnode, name)
+struct varstruct *varnode;
+char *name;
+{
+	for ( ; varnode; varnode = varnode->nextvar)
+		if (strcmp(varnode->text, name) == 0)
+			return(varnode);
+	return((struct varstruct *) 0);
+}
+
+struct methodstruct *mkmethod(pat, temps, state)
+struct exprstruct *pat;
+int temps;
+struct statestruct *state;
+{	struct methodstruct *new;
+	int i;
+
+	new = structalloc(methodstruct);
+	new->pattern = pat;
+	new->numtempvars = temps;
+	new->states = state;
+	new->nextmethod = (struct methodstruct *) 0;
+	switch(pat->cmdtype) {
+		case uncmd: i = 0; break;
+		case bincmd: i = 1; break;
+		case keycmd: i = keycount(pat->cc.keys); break;
+		}
+	deltemps(i);
+	return(new);
+}
+
+keycount(kl)
+struct keylist *kl;
+{
+	if (kl->nextkey)
+		return(1 + keycount(kl->nextkey));
+	else return(1);
+}
+
+struct statestruct *mkstate(type, name, sexpr)
+enum statetypes type;
+char *name;
+struct statestruct *sexpr;
+{	struct statestruct *new;
+	struct varstruct *v;
+
+	new = structalloc(statestruct);
+	new->statetype = type;
+	new->nextstate = (struct statestruct *) 0;
+	switch(type) {
+		case upar: case blkupar:
+			new->nn.stateexpr = sexpr;
+			break;
+		case expr:
+			new->nn.cmd = (struct exprstruct *) sexpr;
+			break;
+		case asgn:
+			new->nn.stateexpr = sexpr;
+			v = invlist(instvars, name);
+			if (v) {
+				new->statetype = iasgn;
+				new->mm.varpos = v->position;
+				break;
+				}
+			v = invlist(contextvars, name);
+			if (v) {
+				new->statetype = casgn;
+				new->mm.varpos = v->position;
+				break;
+				}
+		default:
+			yyerror("unknown variable or case in mkstate");
+		}
+	return(new);
+}
+
+struct exprstruct *mkexpr(receiver, type, name, args)
+struct exprstruct *receiver, *args;
+enum cmdtypes type;
+char *name;
+{	struct exprstruct *new;
+
+	new = structalloc(exprstruct);
+	new->cmdtype = type;
+	new->cmdname = name;
+	new->receiver = receiver;
+	switch(type) {
+		case reccmd:
+			new->cc.recobj = (struct objstruct *) args;
+			break;
+		case uncmd:
+			break;
+		case bincmd:
+			new->cc.argument = args;
+			break;
+		case keycmd:
+			new->cc.keys = (struct keylist *) args;
+			break;
+		}
+	return(new);
+}
+
+struct keylist *mkklist(kl, kw, ka)
+struct keylist *kl;
+char *kw;
+struct exprstruct *ka;
+{	struct keylist *new;
+
+	new = structalloc(keylist);
+	new->keyword = kw;
+	new->arg = ka;
+	new->nextkey = kl;
+	return(new);
+}
+	
+mkkname(kl, kb)
+struct keylist *kl;
+char *kb;
+{
+	if (kl->nextkey)
+		mkkname(kl->nextkey, kb);
+	strcat(kb, kl->keyword);
+}
+
+struct exprstruct *mkkey(receiver, keywordlist)
+struct exprstruct *receiver;
+struct keylist *keywordlist;
+{	char kbuffer[500];
+
+	kbuffer[0] = '\0';
+	mkkname(keywordlist, kbuffer);
+	return(mkexpr(receiver, keycmd, walloc(kbuffer),
+		(struct exprstruct *) keywordlist));
+}
+
+struct objstruct *mkobj(type, info)
+enum objtypes type;
+YYSTYPE *info;
+{	struct objstruct *new;
+	struct varstruct *v;
+	struct litstruct *mklit();
+
+	new = structalloc(objstruct);
+	new->objtype = type;
+	switch(type) {
+		case classobj:
+			new->ee.litinfo = mklit(symlit, info);
+			break;
+		case varobj:
+			v = invlist(instvars, info->c);
+			if (v) {
+				new->objtype = instvarobj;
+				new->ee.varoffset = v->position;
+				return(new);
+				}
+			v = invlist(contextvars, info->c);
+			if (v) {
+				new->objtype = contvarobj;
+				new->ee.varoffset = v->position;
+				return(new);
+				}
+			yerr("unknown variable %s", info->c);
+			break;
+		case litobj:
+			new->ee.litinfo = info->t;
+			break;
+		case pseuobj:
+			new->ee.pseuinfo = info->p;
+			break;
+		case primobj:
+			new->ee.priminfo = info->u;
+			break;
+		case exprobj:
+			new->ee.stateinfo = info->s;
+			break;
+		case blockobj:
+			new->ee.blockinfo = info->b;
+			break;
+	}
+	return(new);
+}
+
+struct blockstruct *mkblock(numargs, bstates)
+int numargs;
+struct statestruct *bstates;
+{	struct blockstruct *new;
+	int i;
+
+	new = structalloc(blockstruct);
+	new->numargs = numargs;
+	if (contextvars)
+		i = (contextvars->position - numargs) +1;
+	else i = 1;
+	new->arglocation = i;
+	new->bstates = bstates;
+	return(new);
+}
+
+
+struct primstruct *mkprim(pnum, plist)
+struct primlist *plist;
+int pnum;
+{	struct primstruct *new;
+
+	new = structalloc(primstruct);
+	new->primnumber = pnum;
+	new->plist = plist;
+	return(new);
+}
+
+struct primlist *addprim(plist, prim)
+struct primlist *plist;
+struct objstruct *prim;
+{	struct primlist *new;
+
+	new = structalloc(primlist);
+	new->nextprim = plist;
+	new->pobject = prim;
+	return(new);
+}
+
+struct litlist *addlit(list, lit)
+struct litlist *list;
+struct litstruct *lit;
+{	struct litlist *new;
+
+	new = structalloc(litlist);
+	new->litele = lit;
+	new->nextlit = list;
+	return(new);
+}
+
+struct litstruct *mklit(littype, e)
+enum littypes littype;
+YYSTYPE *e;
+{  struct litstruct *p;
+
+	p = structalloc(litstruct);
+	p->littype = littype;
+	switch(littype) {
+		case numlit:  p->ll.litint = e->i; break;
+		case fnumlit: p->ll.litstr = e->c; break;
+		case charlit: p->ll.litchar = (char) e->i; break;
+		case strlit:  p->ll.litstr = e->c; break;
+		case symlit:  p->ll.litsym = e->c; break;
+		case arlit:   p->ll.litarry = e->a; break;
+      	}
+	return(p);
+}
+
+deltemps(n)
+int n;
+{
+	while (n--) {
+		contextvars = contextvars->nextvar;
+		}
+}
+End
+echo unbundling parse2.c 1>&2
+cat >parse2.c <<'End'
+/*
+	Little Smalltalk
+		pass 2 of the parser
+
+		timothy a. budd, 10/84
+
+*/
+/*
+	The source code for the Little Smalltalk System may be freely
+	copied provided that the source of all files is acknowledged
+	and that this condition is copied with each file.
+
+	The Little Smalltalk System is distributed without responsibility
+	for the performance of the program and without any guarantee of
+	maintenance.
+
+	All questions concerning Little Smalltalk should be addressed to:
+
+		Professor Tim Budd
+		Department of Computer Science
+		Oregon State University
+		Corvallis, Oregon
+		97331
+		USA
+*/
+# include <stdio.h>
+# include "env.h"
+# include "drive.h"
+# include "cmds.h"
+# include "parser.h"
+# include "y.tab.h"
+
+extern int maxcontext;
+extern char *filename;
+extern FILE *ofd;
+
+static int inblock = 0;
+static int topstack = 0;
+static int maxstack = 0;
+# define bumpstk() if (++topstack > maxstack) maxstack = topstack
+# define popstk(i) topstack -= i
+
+genclass(clinfo, mlist)
+struct classstruct *clinfo;
+struct methodstruct *mlist;
+{	int i;
+	struct methodstruct *m, *n;
+
+	topstack = 0;
+	maxstack = 0;
+
+	/* first find out how many methods have been declared */
+	/* also check for multiply defined methods */
+	for (m = mlist, i = 0; m; i++, m = m->nextmethod)
+		for (n = m->nextmethod; n; n = n->nextmethod)
+			if (streq((m->pattern)->cmdname ,
+				(n->pattern)->cmdname))
+				yerr("%s multiply defined",
+					(m->pattern)->cmdname);
+
+	fprintf(ofd,"temp <- <primitive 110 %d >\n", i);
+
+	/* next print out each method */
+	for (m = mlist, i = 1; m; i++, m = m->nextmethod) {
+		fprintf(ofd,"<primitive 112 temp %d\t\t\" %s \" \\\n",
+			i, (m->pattern)->cmdname);
+		topstack = 0;
+		genmeth(m);
+		}
+
+	/* finally print out class definition stuff */
+	fprintf(ofd,"<primitive 98 #%s \\\n", clinfo->name);
+	fprintf(ofd,"\t<primitive 97 #%s #%s #%s \\\n",
+		clinfo->name, clinfo->super, filename);
+	fprintf(ofd,"\t#( ");
+	if (instvars) prvars(instvars);
+	fprintf(ofd," ) \\\n");
+	fprintf(ofd,"\t#( ");
+	for (m = mlist; m; m = m->nextmethod)
+		fprintf(ofd,"#%s ", (m->pattern)->cmdname);
+	fprintf(ofd," ) \\\n");
+	fprintf(ofd,"\ttemp %d %d > >\n\n", 1 + maxcontext, 1 + maxstack);
+}
+
+prvars(v)
+struct varstruct *v;
+{
+	if (v->nextvar)
+		prvars(v->nextvar);
+	fprintf(ofd," #%s", v->text);
+}
+
+static int codetop = 0;
+static uchar code[1000];
+
+static gencode(value)
+int value;
+{
+   if (value >= 256) {
+	yerr("code word too big: %d", value);
+	}
+   code[codetop++] = itouc(value);
+}
+
+static genhighlow(high, low)
+int high, low;
+{
+   if (high < 0 || high > 16)
+	yerr("genhighlow error: %d", high);
+   if (low < 16) gencode(high * 16 + low);
+   else {
+      gencode(TWOBIT * 16 + high);
+      gencode(low);
+      }
+}
+
+static struct litstruct *literals[100];
+int littop = 0;
+
+int litcomp(l1, l2)
+struct litstruct *l1, *l2;
+{
+   if (l1->littype != l2->littype) return(0);
+   switch(l1->littype) {
+      case charlit: if (l1->ll.litchar != l2->ll.litchar) return(0); break;
+      case numlit: if (l1->ll.litint != l2->ll.litint) return(0); break;
+      case fnumlit: if (l1->ll.litstr != l2->ll.litstr) return(0); break;
+      case strlit:  if (strcmp(l1->ll.litstr, l2->ll.litstr)) return(0); break;
+      case symlit:  if (strcmp(l1->ll.litsym, l2->ll.litsym)) return(0); break;
+      default: return(0);
+      }
+   return(1);
+}
+
+int genlitix(l)
+struct litstruct *l;
+{	int i;
+
+	for (i = 0; i < littop; i++)
+		if (litcomp(l, literals[i]))
+			return(i);
+	i = littop;
+	literals[littop++] = l;
+	return(i);
+}
+
+static printalit(lit)
+struct litlist *lit;
+{
+   if (lit) {
+      if(lit->nextlit)
+        printalit(lit->nextlit);
+      printlit(lit->litele);
+      }
+}
+
+printlit(lit)
+struct litstruct *lit;
+{
+   if (lit)
+      switch(lit->littype) {
+         case numlit: fprintf(ofd,"%d ", lit->ll.litint); break;
+         case fnumlit: fprintf(ofd,"%s ", lit->ll.litstr); break;
+         case charlit: fprintf(ofd,"$%c ", lit->ll.litchar); break;
+         case strlit:  fprintf(ofd,"\'%s\' ", lit->ll.litstr); break;
+         case symlit:  fprintf(ofd,"#%s ", lit->ll.litsym); break;
+         case arlit:   fprintf(ofd,"#( ");
+                       printalit(lit->ll.litarry);
+                       fprintf(ofd,") ");
+                       break;
+         default: yerr("unknown literal type %d", lit->littype);
+         }
+}
+
+genmeth(m)
+struct methodstruct *m;
+{ 	int i;
+
+	fprintf(ofd,"\t#( #[");
+	codetop = littop = 0;
+	genstate(m->states, 1);
+	genhighlow(SPECIAL, SELFRETURN);
+	for (i = 0; i < codetop; i++){
+	   	fprintf(ofd," %d", uctoi(code[i]));
+		if (i % 15 == 14) fprintf(ofd," \\\n");
+		}
+	fprintf(ofd,"] \\\n");
+	fprintf(ofd,"\t#( ");
+	for (i = 0; i < littop; i++)
+		printlit(literals[i]);
+	fprintf(ofd," ) ) >\n\n");
+}
+
+genstate(s, doret)
+struct statestruct *s;
+int doret;
+{
+	if (s->nextstate)
+		genstate(s->nextstate, doret);
+	switch(s->statetype) {
+		default:
+			yerr("unknown case in genstate %d", s->statetype);
+		case blkupar:
+			gensexpr(s->nn.stateexpr);
+			if (inblock)
+				genhighlow(SPECIAL, BLOCKRETURN);
+			else
+				genhighlow(SPECIAL, RETURN);
+			popstk(1);
+			break;
+		case upar:
+			gensexpr(s->nn.stateexpr);
+			if (doret)
+				genhighlow(SPECIAL, RETURN);
+			popstk(1);
+			break;
+		case iasgn:
+			gensexpr(s->nn.stateexpr);
+			genhighlow(POPINSTANCE, s->mm.varpos);
+			popstk(1);
+			break;
+		case casgn:
+			gensexpr(s->nn.stateexpr);
+			genhighlow(POPTEMP, s->mm.varpos);
+			popstk(1);
+			break;
+		case expr:
+			genexpr(s->nn.cmd);
+			genhighlow(SPECIAL, POPSTACK);
+			popstk(1);
+			break;
+		}
+}
+
+gensexpr(s)
+struct statestruct *s;
+{
+	switch(s->statetype) {
+		default:
+			yerr("unknown state in gensexpr %d", s->statetype);
+		case iasgn:
+			gensexpr(s->nn.stateexpr);
+			genhighlow(SPECIAL, DUPSTACK);
+			bumpstk();
+			genhighlow(POPINSTANCE, s->mm.varpos);
+			popstk(1);
+			break;
+		case casgn:
+			gensexpr(s->nn.stateexpr);
+			genhighlow(SPECIAL, DUPSTACK);
+			bumpstk();
+			genhighlow(POPTEMP, s->mm.varpos);
+			popstk(1);
+			break;
+		case expr:
+			genexpr(s->nn.cmd);
+			break;
+		}
+}
+
+int supertest(rec)
+struct exprstruct *rec;
+{	struct objstruct *o;
+
+	if (rec->cmdtype != reccmd)
+		return(0);
+	o = rec->cc.recobj;
+	if (o->objtype != pseuobj)
+		return(0);
+	if (o->ee.pseuinfo == supervar)
+		return(1);
+	return(0);
+}
+
+int isblock(e)
+struct exprstruct *e;
+{	struct objstruct *o;
+
+	if (e->cmdtype != reccmd)
+		return(0);
+	o = e->cc.recobj;
+	if (o->objtype != blockobj)
+		return(0);
+	return(1);
+}
+
+genbarg(e)
+struct exprstruct *e;
+{
+	if (isblock(e)) {
+		genstate(((e->cc.recobj)->ee.blockinfo)->bstates, 0);
+		}
+	else {
+		genexpr(e);
+		genhighlow(UNSEND, VALUECMD);
+		}
+}
+
+fixjump(loc)
+int loc;
+{	int size;
+	
+	size = (codetop - loc) - 1;
+	if (size > 255)
+		yerr("block too big %d", size);
+	code[loc] = itouc(size);
+}
+
+int gencond(message, e)
+char *message;
+struct exprstruct *e;
+{	struct keylist *k;
+	int i, j;
+
+ 	k = e->cc.keys;
+	i = 0;
+	if ((i = streq(message, "ifTrue:")) || streq(message, "ifFalse:")) {
+		genhighlow(SPECIAL, i ? SKIPFALSEPUSH : SKIPTRUEPUSH);
+		i = codetop;
+		gencode(0);
+		genbarg(k->arg);
+		fixjump(i);
+		return(1);
+		}
+	if ((i = streq(message, "ifTrue:ifFalse:")) ||
+			streq(message, "ifFalse:ifTrue:")) {
+		genhighlow(SPECIAL, i ? SKIPFALSEPUSH : SKIPTRUEPUSH);
+		i = codetop;
+		gencode(0);
+		genbarg((k->nextkey)->arg);
+		genhighlow(SPECIAL, SKIPFORWARD);
+		j = codetop;
+		gencode(0);
+		fixjump(i);
+		genhighlow(SPECIAL, POPSTACK);
+		popstk(1);
+		genbarg(k->arg);
+		fixjump(j);
+		return(1);
+		}
+	if ((i = streq(message, "and:")) || streq(message, "or:")) {
+		genhighlow(SPECIAL, i ? SKIPF : SKIPT);
+		i = codetop;
+		gencode(0);
+		genbarg(k->arg);
+		fixjump(i);
+		return(1);
+		}
+	if ((j = streq(message, "whileTrue:")) ||
+			streq(message, "whileFalse:")) {
+		i = codetop;
+		genbarg(e->receiver);
+		genhighlow(SPECIAL, j ? SKIPFALSEPUSH : SKIPTRUEPUSH);
+		j = codetop;
+		gencode(0);
+		genbarg(k->arg);
+		genhighlow(SPECIAL, POPSTACK);
+		popstk(1);
+		genhighlow(SPECIAL, SKIPBACK);
+		/* add one because bytecount pointer already advanced */
+		gencode((codetop - i) + 1);
+		fixjump(j);
+		return(1);
+		}
+	return(0);
+}
+
+genexpr(e)
+struct exprstruct *e;
+{	char *message = e->cmdname;
+	char **p;
+	int  i, numargs, s;
+	YYSTYPE ex;
+	struct litstruct *mklit();
+
+	if (e->cmdtype != reccmd)
+		s = supertest(e->receiver);
+	switch(e->cmdtype) {
+		default:
+			yerr("unknown state in genexpr %d", e->cmdtype);
+		case reccmd:
+			genobj(e->cc.recobj);
+			return;
+		case semiend:
+			genexpr(e->receiver);
+			genhighlow(SPECIAL, POPSTACK);
+			popstk(1);
+			return;
+		case semistart:
+			genexpr(e->receiver);
+			genhighlow(SPECIAL, DUPSTACK);
+			bumpstk();
+			return;
+		case uncmd:
+			genexpr(e->receiver);
+			numargs = 0;
+			break;
+		case bincmd:
+			genexpr(e->receiver);
+			numargs = 1;
+			genexpr(e->cc.argument);
+			break;
+		case keycmd:
+			if ((!s) && isblock(e->receiver) &&
+				(streq(message, "whileTrue:") ||
+				 streq(message, "whileFalse:")))
+				 if (gencond(message, e))
+					return;
+			genexpr(e->receiver);
+			if ((!s) && ((streq(message, "ifTrue:")) ||
+				(streq(message, "ifFalse:")) ||
+				(streq(message, "and:")) ||
+				(streq(message, "or:")) ||
+				(streq(message, "ifTrue:ifFalse:")) ||
+				(streq(message, "ifFalse:ifTrue:"))))
+				if (gencond(message, e))
+					return;
+			numargs = genkargs(e->cc.keys);
+			break;
+		}
+	if (s) {	/* message to super */
+		genhighlow(SUPERSEND, numargs);
+		popstk(numargs - 1);
+		ex.c = message;
+		gencode(genlitix(mklit(symlit, &ex)));
+		return;
+		}
+	for (p = unspecial, i = 0; *p; i++, p++)
+		if (strcmp(*p, message) == 0) {
+			genhighlow(UNSEND, i);
+			return;
+			}
+	for (p = binspecial, i = 0; *p; i++, p++)
+		if (strcmp(*p, message) == 0) {
+			genhighlow(BINSEND, i);
+			popstk(1);
+			return;
+			}
+	for (p = arithspecial, i = 0; *p; i++, p++)
+		if (strcmp(*p, message) == 0) {
+			genhighlow(ARITHSEND, i);
+			popstk(1);
+			return;
+			}
+	for (p = keyspecial, i = 0; *p; i++, p++)
+		if (strcmp(*p, message) == 0) {
+			genhighlow(KEYSEND, i);
+			popstk(2);
+			return;
+			}
+	genhighlow(SEND, numargs);
+	popstk(numargs - 1);
+	ex.c = message;
+	gencode(genlitix(mklit(symlit, &ex)));
+}
+
+int genkargs(kl)
+struct keylist *kl;
+{	int i;
+	
+	if (kl->nextkey)
+		i = genkargs(kl->nextkey);
+	else i = 0;
+	genexpr(kl->arg);
+	return(i + 1);
+}
+
+genobj(o)
+struct objstruct *o;
+{
+	switch(o->objtype) {
+		default:
+			yerr("unknown state in genobj %d", o->objtype);
+		case classobj:
+			genspclass(o->ee.litinfo);
+			break;
+		case instvarobj:
+			genhighlow(PUSHINSTANCE, o->ee.varoffset);
+			bumpstk();
+			break;
+		case contvarobj:
+			genhighlow(PUSHTEMP, o->ee.varoffset);
+			bumpstk();
+			break;
+		case litobj:
+			genlit(o->ee.litinfo);
+			break;
+		case pseuobj:
+			genpseu(o->ee.pseuinfo);
+			break;
+		case primobj:
+			genprim(o->ee.priminfo);
+			break;
+		case exprobj:
+			gensexpr(o->ee.stateinfo);
+			break;
+		case blockobj:
+			genblock(o->ee.blockinfo);
+			break;
+		}
+}
+
+genspclass(litinfo)
+struct litstruct *litinfo;
+{	int i;
+	char **p, *name;
+
+	if (litinfo->littype != symlit)
+		yerr("can't happen in genspclass %d", litinfo->littype);
+	name = litinfo->ll.litsym;
+	for (p = classpecial, i = 30; *p; i++, p++)
+		if (strcmp(name, *p) == 0) {
+			genhighlow(PUSHSPECIAL, i);
+			bumpstk();
+			return;
+			}
+	genhighlow(PUSHCLASS, genlitix(litinfo));
+	bumpstk();
+}
+
+genpseu(p)
+enum pseuvars p;
+{
+
+	switch(p) {
+		default: yerr("unknown state in genpseu %d", p);
+		case truevar:  genhighlow(PUSHSPECIAL, 11); break;
+		case falsevar: genhighlow(PUSHSPECIAL, 12); break;
+		case nilvar:   genhighlow(PUSHSPECIAL, 13); break;
+		case smallvar: genhighlow(PUSHSPECIAL, 14); break;
+		case procvar:  genhighlow(PUSHSPECIAL, 15); break;
+		case supervar:
+		case selfvar:  genhighlow(PUSHTEMP, 0); break;
+		}
+	bumpstk();
+}
+
+int genpargs(p)
+struct primlist *p;
+{	int i;
+
+	if (p) {
+		i = 1 + genpargs(p->nextprim);
+		genobj(p->pobject);
+		}
+	else i = 0;
+	return(i);
+}
+
+genprim(p)
+struct primstruct *p;
+{	int i;
+
+	i = genpargs(p->plist);
+	genhighlow(SPECIAL, PRIMCMD);
+	popstk(i-1);
+	gencode(i);
+	/*genhighlow(9, i); TEST- DEBUG*/
+	gencode(p->primnumber);
+}
+
+genlit(l)
+struct litstruct *l;
+{	int i;
+
+	if (l->littype == numlit) {
+		i = l->ll.litint;
+		if (i == -1)
+			genhighlow(PUSHSPECIAL, 10);
+		else if (i >= 0 && i < 10)
+			genhighlow(PUSHSPECIAL, i);
+		else if ((i > 15) && (i < 30))
+			genhighlow(PUSHSPECIAL, i);
+		else if ((i > 60) && (i < 256))
+			genhighlow(PUSHSPECIAL, i);
+		else
+			genhighlow(PUSHLIT, genlitix(l));
+
+		}
+	else
+		genhighlow(PUSHLIT, genlitix(l));
+	bumpstk();
+}
+
+genblock(b)
+struct blockstruct *b;
+{	int i, size, bsave;
+
+	bsave = inblock;
+	inblock |= 1;
+	genhighlow(BLOCKCREATE, b->numargs);
+	bumpstk();
+	if (b->numargs)
+		gencode(b->arglocation);
+	i = codetop;
+	gencode(0); /* block size */
+	genstate(b->bstates, 1);
+	size = (codetop - i) - 1;
+	if (size > 255)
+		yerr("block too big %d", size);
+	code[i] = size;
+	inblock = bsave;
+}
+End
+echo unbundling disclaim 1>&2
+cat >disclaim <<'End'
+/*
+	The source code for the Little Smalltalk System may be freely
+	copied provided that the source of all files is acknowledged
+	and that this condition is copied with each file.
+
+	The Little Smalltalk System is distributed without responsibility
+	for the performance of the program and without any guarantee of
+	maintenance.
+
+	All questions concerning Little Smalltalk should be addressed to:
+
+		Professor Tim Budd
+		Department of Computer Science
+		Oregon State University
+		Corvallis, Oregon
+		97331
+		USA
+*/
+End
+echo unbundling Makefile 1>&2
+cat >Makefile <<'End'
+CFLAGS =
+LFLAGS =
+
+BINDIR = ../bin
+
+SOURCES = parser.y parser.lex parse1.c parse2.c
+MISC = disclaim Makefile *.h y.tab.c lex.yy.c uchar.c
+
+install: parse
+	mv parse $(BINDIR)
+
+parse: y.tab.o parse1.o parse2.o
+	cc $(LFLAGS) -o parse y.tab.o parse1.o parse2.o -lm
+
+newparse: y.tab.o parse1.o parse2.o
+	cc $(LFLAGS) -o newparse y.tab.o parse1.o parse2.o -lm
+
+bundle: y.tab.c lex.yy.c
+	bundle $(SOURCES) $(MISC) >../parser.bundle
+
+y.tab.o: y.tab.c lex.yy.c primnum.h
+
+y.tab.c: parser.y
+	yacc -d parser.y
+
+lex.yy.c: parser.lex
+	lex parser.lex
+
+parse2.o: parse2.c drive.h
+
+lint.out: y.tab.c
+	lint y.tab.c parse1.c parse2.c -lm
+
+clean:
+	-rm *.o
+End
+echo unbundling cmds.h 1>&2
+cat >cmds.h <<'End'
+/*
+	Little Smalltalk
+
+	The following very common commands are given a concise description
+	in bytecodes.
+
+*/
+
+static char *unspecial[] = {"new", "isNil", "notNil", "size", "class",
+		"value", "first", "next", "print", "printString",
+		"strictlyPositive", "currentKey", "not",
+
+		/* after the first 16 - which should be the most common
+		messages, order doesn't make as much difference so we
+		might as well list things in alphabetical order */
+
+		"abs",
+		"asArray",
+		"asFloat",
+		"asString",
+		"asSymbol",
+		"block",
+		"compareError",
+		"copy",
+		"current",
+		"deepCopy",
+		"exp",
+		"findLast",
+		"firstKey",
+		"gamma",
+		"isEmpty",
+		"isLowercase",
+		"isUppercase",
+		"last",
+		"lastKey",
+		"ln",
+		"newProcess",
+		"not",
+		"opError",
+		"read",
+		"removeError",
+		"removeFirst",
+		"removeLast",
+		"resume",
+		"rounded",
+		"shallowCopy",
+		"sqrt",
+		"squared",
+		"state",
+		"superClass",
+		"truncated",
+		"unblock",
+		"x",
+		"y",
+		0 };
+
+# define VALUECMD 5
+# define PRNTCMD  8
+
+static char *binspecial[] = {"new:", "at:", "to:", "do:", "value:",
+                      "==", "~~", "timesRepeat:", "whileTrue:", "whileFalse:",
+                      "ifTrue:", "ifFalse:", "error:", "add:",
+		      "/", "coerce:",
+
+		      "^",
+		      ",",
+		      "//",
+		      "addAll:",
+		      "addAllLast:",
+		      "addFirst:",
+		      "addLast:",
+		      "binaryDo:",
+		      "checkBucket:",
+		      "collect:",
+		      "deepCopy:",
+		      "gcd:",
+		      "getList:",
+		      "hashNumber:",
+		      "includes:",
+		      "inRange:",
+		      "keysDo:",
+		      "log:",
+		      "maxtype:",
+		      "newProcessWith:",
+		      "occurrencesOf:",
+		      "raisedTo:",
+		      "reject:",
+		      "remove:",
+		      "removeKey:",
+		      "respondsTo:",
+		      "reverseDo:",
+		      "roundTo:",
+		      "select:",
+		      "shallowCopy:",
+		      "sort:",
+		      "termErr:",
+		      "truncateTo:",
+		      "write:",
+		      "x:",
+		      "y:",
+		      "includesKey:",
+		      0};
+
+static char *arithspecial[] = {"+", "-", "*", "\\\\",
+                        "bitShift:", "bitAnd:", "bitOr:",
+                        "<", "<=", "=", "~=", ">=", ">",
+			"rem:", "quo:", "min:", "max:",
+			0};
+
+static char *keyspecial[] = {"at:put:", "ifTrue:ifFalse:", "ifFalse:ifTrue:",
+                        "value:value:", "to:by:", "at:ifAbsent:",
+			"indexOf:ifAbsent:", "inject:into:",
+			"remove:ifAbsent:", "removeKey:ifAbsent:",
+			"between:and:",
+			"findFirst:ifAbsent:", "findLast:ifAbsent:",
+			"equals:startingAt:",
+			"findAssociation:inList:",
+			"detect:ifAbsent:",
+			0};
+
+/*	The classes included in the standard prelude
+	also have a very concise description in bytecode representation
+*/
+
+static char *classpecial[] = {"Array", "ArrayedCollection",
+	"Bag", "Block", "Boolean", "ByteArray",
+	"Char", "Class", "Collection", "Complex",
+	"Dictionary", "False", "File", "Float",
+	"Integer", "Interpreter", "Interval",
+	"KeyedCollection", "List", "Magnitude", "Number",
+	"Object", "OrderedCollection", "Point",
+	"Radian", "Random",
+	"SequenceableCollection", "Set", "String", "Symbol",
+	"True", "UndefinedObject",
+	0 };
+End
+echo unbundling drive.h 1>&2
+cat >drive.h <<'End'
+/*
+	Little Smalltalk
+
+        defines used by both parser and driver
+
+*/
+
+# define TWOBIT         0
+# define PUSHINSTANCE   1
+# define PUSHTEMP       2
+# define PUSHLIT        3
+# define PUSHCLASS      4
+# define PUSHSPECIAL    5
+# define POPINSTANCE    6
+# define POPTEMP        7
+# define SEND           8
+# define SUPERSEND      9
+# define UNSEND        10
+# define BINSEND       11
+# define ARITHSEND     12
+# define KEYSEND       13
+# define BLOCKCREATE   14
+# define SPECIAL       15
+
+/* arguments for special */
+
+# define NOOP           0
+# define DUPSTACK       1
+# define POPSTACK       2
+# define RETURN         3
+# define BLOCKRETURN    4
+# define SELFRETURN     5
+# define SKIPTRUEPUSH   6
+# define SKIPFALSEPUSH  7
+# define SKIPFORWARD    8
+# define SKIPBACK       9
+# define PRIMCMD       10
+# define SKIPT         11
+# define SKIPF         12
+
+enum pseuvars {nilvar, truevar, falsevar, selfvar, supervar, smallvar,
+		procvar};
+
+# define streq(a,b) (strcmp(a,b) == 0)
+
+/* only include driver code in driver, keeps both lint and the 11/70 quiet */
+# ifdef DRIVECODE
+
+ enum lextokens { nothing, LITNUM , LITFNUM , LITCHAR , LITSTR , LITSYM ,
+	LITARR , LITBYTE , ASSIGN , BINARY , PRIMITIVE , PSEUDO ,
+	UPPERCASEVAR , LOWERCASEVAR , COLONVAR , KEYWORD ,
+ 	LP , RP , LB , RB , PERIOD , BAR , SEMI , PS , MINUS , PE , NL };
+
+typedef union  {
+	char 		*c;
+	double 		 f;
+	int  		 i;
+	enum pseuvars 	 p;
+	} tok_type;
+
+extern tok_type t;
+
+# endif
+End
+echo unbundling env.h 1>&2
+cat >env.h <<'End'
+/*
+	Little Smalltalk
+
+	execution environment definitions.
+
+The Little Smalltalk system is tailored to various machines by
+changing defined constants.  These constants, and their meanings,
+are as follows:
+
+CURSES	defined if the curses(3) library is available and the primitive
+	graphics it provides is desired
+
+GAMMA	defined if gamma() is part of the math library
+
+ENVSAVE	defined if it is required to save environ during fast load
+
+FACTMAX	maximum integer value for which a factorial can be computed by
+	repeated multiplication without overflow.
+
+FASTDEFAULT	defined if the default behavior should be to do a fast load
+
+FLUSHREQ	if defined a fflush is given after every call to printf
+		or fprintf
+
+INLINE	generate inline code for increments or decrements -
+	produces larger, but faster, code.
+
+MDWINDOWS	defined if the maryland windows package is used
+
+NOSYSTEM	defined if the system() call is NOT provided
+		(seriously limits functionality)
+
+OPEN3ARG	defined if 3 argument style opens are used
+
+PLOT3	defined if you have a device for which the plot(3) routines work
+	directly on the terminal (without a filter)
+	provides many of these routines as primitive operations
+	(see class PEN in /prelude)
+
+SMALLDATA	if defined various means are used to reduce the size of the
+		data segment, at the expense of some functionality.
+
+SIGS		define in the signal system call is available
+		for trapping user interrupt signals
+
+SETJUMP		defined if the setjump facility is available
+
+	In addition to defining constants, the identifier type ``unsigned
+character'' needs to be defined.  Bytecodes are stored using this datatype.
+On machines which do not support this datatype directly, macros need to be
+defined that convert normal chars into unsigned chars.  unsigned chars are
+defined by a typedef for ``uchar'' and a pair of macros that convert an int
+into a uchar and vice-versa.
+
+	In order to simplify installation on systems to which the
+Little Smalltalk system has already been ported, various ``meta-defines''
+are recognized.  By defining one of these symbols, the correct definitions
+for other symbols will automatically be generated.  The currently
+recognized meta-defines are as follows:
+	
+BERK42	Vax Berkeley 4.2
+DECPRO	Dec Professional 350 running Venix
+HP9000	Hewlett Packard 9000
+PDP1170	PdP 11/70 (also other PDP 11 machines)
+PERKELM	Perken Elmer 8/32
+RIDGE	Ridge ROS 3.1
+
+	Finally, a few path names have to be compiled into the code.
+These path names are the following:
+
+TEMPFILE - a temporary file name in mktemp format
+PARSER - the location of the parser
+PRELUDE - the location of the standard prelude in ascii format
+FAST - the location of the standard prelude in saved format
+LIBLOC - the location of the directory for additional libraries
+
+*/
+
+# define TEMPFILE "/usr/tmp/stXXXXXX"
+# define PARSER   "/users/budd/Projects/smalltalk/bin/parse"
+# define PRELUDE  "/users/budd/Projects/smalltalk/prelude/standard"
+# define FAST     "/users/budd/Projects/smalltalk/prelude/stdsave"
+# define LIBLOC	  "/users/budd/Projects/smalltalk/prelude"
+
+/* >>>>>>>>>>>>>>>>>>>>>>>>>>>>>meta-define <<<<<<<<<<<<<<<*/
+
+# define BERK42
+
+/*------------------------------  VAX Berkeley 4.2 definition */
+# ifdef BERK42
+
+# define GAMMA		/* gamma value is known */
+# define FACTMAX 12
+# define FLUSHREQ	/* flush after every printf */
+# define SIGS
+# define SETJUMP
+typedef unsigned char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) ((int) x)
+/* # define MDWINDOWS */
+/* FASTLOADING DOES work, and should eventually be defined to be standard*/
+/*# define FASTDEFAULT*/	/* default to fast-loading */
+
+# endif		/* BERK42 definition */
+
+/*------------------------------  HP 9000 / HP - UX definition */
+# ifdef HP9000
+
+# define GAMMA		/* gamma value is known */
+# define FACTMAX 12
+# define FLUSHREQ	/* flush after every printf */
+# define SIGS
+# define SETJUMP
+typedef unsigned char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) ((int) x)
+
+# endif		/* HP 9000 definition */
+
+/* ---------------------------------------RIDGE ROS 3.1 definition */
+# ifdef RIDGE
+
+# define GAMMA		/* gamma value is known */
+# define FACTMAX 12
+typedef unsigned char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) ((int) x)
+
+# endif		/* RIDGE definition */
+
+/* --------------------------------------------DEC PRO definitions */
+# ifdef DECPRO
+
+/* GAMMA, OPEN3ARG not defined */
+# define ENVSAVE
+# define FACTMAX 8
+# define SMALLDATA
+/* unsigned characters not supported, but can be simulated */
+typedef char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) (unsigned) (x >= 0 ? x : x + 256)
+
+# endif		/* DECPRO definition */
+
+/* --------------------------------------------PDP11/70 definitions */
+# ifdef PDP1170
+
+/* GAMMA, OPEN3ARG not defined */
+# define ENVSAVE
+# define FACTMAX 8
+# define FLUSHREQ
+# define SIGS
+# define SETJUMP
+/* unsigned characters not supported, but can be simulated */
+typedef char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) (unsigned) (x >= 0 ? x : x + 256)
+
+# endif		/* PDP1170 definition */
+
+/*------------------------------  Perkin Elmer 8/32 definitions */
+# ifdef PERKELM
+
+# define ENVSAVE
+# define FACTMAX 12
+# define FLUSHREQ	/* flush after every printf */
+typedef unsigned char uchar;
+# define itouc(x) ((uchar) x)
+# define uctoi(x) ((int) x)
+
+# endif		/* PERKELM definition */
+
+/******************************************************************/
+/*
+	the following are pretty much independent of any system
+*/
+
+# define INLINE		/* produce in line code for incs and decs */
+/* # define CURSES	*/
+/* # define PLOT3 	*/
+End
+echo unbundling parser.h 1>&2
+cat >parser.h <<'End'
+/*
+	Little Smalltalk
+		definitions used by parser
+*/
+
+
+enum vartypes {instvar, argvar, tempvar};
+
+struct varstruct {
+        struct varstruct *nextvar;
+        enum vartypes vtype;
+        char *text;
+        short position;
+        };
+
+enum objtypes {classobj, varobj, instvarobj, contvarobj,
+	litobj, pseuobj, primobj, exprobj, blockobj};
+
+struct objstruct {
+        enum objtypes objtype;
+        union {
+		char *varname;
+		int varoffset;
+                struct litstruct *litinfo;
+                enum   pseuvars pseuinfo;
+		struct primstruct *priminfo;
+                struct statestruct *stateinfo;
+                struct blockstruct *blockinfo;
+             } ee;
+        };
+
+struct blockstruct {
+	int arglocation;
+	int numargs;
+	struct statestruct *bstates;
+	};
+
+enum littypes {numlit, fnumlit, charlit, strlit, symlit, arlit, bytelit};
+
+struct litstruct {
+        enum littypes littype;
+        union {
+                int litint;
+                char litchar;
+                char *litstr;
+                char *litsym;
+                struct litlist *litarry;
+             } ll;
+        };
+
+struct litlist {
+        struct litstruct *litele;
+        struct litlist *nextlit;
+        int    litposition;
+        };
+
+struct primstruct {
+	int primnumber;
+	struct primlist *plist;
+	} ;
+
+struct primlist {
+	struct primlist *nextprim;
+	struct objstruct *pobject;
+	};
+
+enum cmdtypes {reccmd, uncmd, bincmd, keycmd, semistart, semiend};
+
+struct exprstruct {
+        enum   cmdtypes cmdtype;
+        char   *cmdname;
+        struct exprstruct *receiver;
+        union {
+                struct exprstruct *argument;
+                struct keylist *keys;
+                struct objstruct *recobj;
+              } cc;
+        struct exprstruct *nextcmd;
+        };
+
+enum statetypes {blkupar, upar, asgn, iasgn, casgn, expr};
+
+struct statestruct {
+        enum statetypes statetype;
+        struct statestruct *nextstate;
+        union {
+                struct varstruct *variable;
+		int varpos;
+              } mm;
+        union {
+                struct statestruct *stateexpr;
+                struct exprstruct *cmd;
+              } nn;
+        };
+
+struct keylist {
+        char   *keyword;
+        struct exprstruct *arg;
+        struct keylist *nextkey;
+        };
+
+struct methodstruct {
+	struct exprstruct *pattern;
+	int    numtempvars;
+        struct statestruct *states;
+        struct methodstruct *nextmethod;
+        };
+
+struct classstruct {
+        char *name;
+        char *super;
+        };
+
+# define structalloc(type) (struct type *) alloc(sizeof (struct type ))
+
+extern struct varstruct *instvars;
+extern struct varstruct *contextvars;
+
+# define addinst(x) (instvars = addvlist(mkvar(x, instvar), instvars))
+
+extern char *walloc();
+End
+echo unbundling primnum.h 1>&2
+cat >primnum.h <<'End'
+/*
+	Little Smalltalk
+
+	primitive names and numbers recognized by the parser
+
+*/
+
+static struct prim_names {
+	char *p_name;
+	int p_number;
+	} prim_table[] = {
+
+	/* Operations on all objects */
+{ "Class" , 1 },
+{ "SuperObject", 2 },
+{ "RespondsToNew", 3 },
+{ "Size", 4 },
+{ "HashNumber", 5},
+{ "SameTypeOfObject", 6},
+{ "Equality", 7},
+{ "Debug", 8},
+{ "GeneralityTest", 9},
+	/* Integer Arithmetic Operations */
+{ "IntegerAddition" , 10 },
+{ "IntegerSubtraction", 11 },
+{ "IntegerLessThan", 12 },
+{ "IntegerGreaterThan", 13 },
+{ "IntegerLessThanOrEqual", 14 },
+{ "IntegerGreaterThanOrEqual", 15 },
+{ "IntegerEquality", 16 },
+{ "IntegerNonEquality", 17 },
+{ "IntegerMultiplication", 18 },
+{ "IntegerSlash", 19 },
+{ "GCD", 20 },
+{ "BitAt", 21 },
+{ "BitOR", 22 },
+{ "BitAND", 23 },
+{ "BitXOR", 24 },
+{ "BitShift", 25 },
+{ "RadixPrint", 26 },
+{ "IntegerDivision", 28 },
+{ "IntegerMod", 29 },
+{ "DoPrimitive", 30 },
+{ "RandomFloat", 32 },
+{ "BitInverse", 33 },
+{ "HighBit", 34 },
+{ "Random", 35 },
+{ "IntegerToCharacter", 36 },
+{ "IntegerToString", 37 },
+{ "Factorial", 38 },
+{ "IntegerToFloat", 39 },
+	/* Character Operations */
+{ "CharacterLessThan", 42 },
+{ "CharacterGreaterThan", 43 },
+{ "CharacterLessThanOrEqual", 44 },
+{ "CharacterGreaterThanOrEqual", 45 },
+{ "CharacterEquality", 46 },
+{ "CharacterNonEquality", 47 },
+{ "DigitValue", 50 },
+{ "IsVowel", 51 },
+{ "IsAlpha", 52 },
+{ "IsLower", 53 },
+{ "IsUpper", 54 },
+{ "IsSpace", 55 },
+{ "IsAlnum", 56 },
+{ "ChangeCase", 57 },
+{ "CharacterToString", 58 },
+{ "CharacterToInteger", 59 },
+	/* floating point operations */
+{ "FloatAddition", 60 },
+{ "FloatSubtraction", 61 },
+{ "FloatLessThan", 62 },
+{ "FloatGreaterThan", 63 },
+{ "FloatLessThanOrEqual", 64 },
+{ "FloatGreaterThanOrEqual", 65 },
+{ "FloatEquality", 66 },
+{ "FloatNonEquality", 67 },
+{ "FloatMultiplication", 68 },
+{ "FloatDivision", 69 },
+{ "Log", 70 },
+{ "SquareRoot", 71 },
+{ "Floor", 72 },
+{ "Ceiling", 73 },
+{ "IntegerPart", 75 },
+{ "FractionalPart", 76 },
+{ "Gamma", 77 },
+{ "FloatToString", 78},
+{ "Exponent", 79},
+{ "NormalizeRadian", 80},
+{ "Sin", 81},
+{ "Cos", 82},
+{ "ArcSin", 84},
+{ "ArcCos", 85},
+{ "ArcTan", 86},
+{ "Power", 88},
+{ "FloatRadixPrint", 89},
+	/* symbol operations */
+{ "SymbolCompare", 91},
+{ "SymbolPrintString", 92},
+{ "SymbolAsString", 93},
+{ "SymbolPrint", 94},
+{ "NewClass", 97 },
+{ "InstallClass", 98},
+{ "FindClass", 99},
+	/* string operations */
+{ "StringLength", 100},
+{ "StringCompare", 101},
+{ "StringCompareWithoutCase", 102},
+{ "StringCatenation", 103},
+{ "StringAt", 104},
+{ "StringAtPut", 105},
+{ "CopyFromLength", 106},
+{ "StringCopy", 107},
+{ "StringAsSymbol", 108},
+{ "StringPrintString", 109},
+	/* arrays and other objects */
+{ "NewObject", 110},
+{ "At", 111},
+{ "AtPut", 112},
+{ "Grow", 113},
+{ "NewArray", 114},
+{ "NewString", 115},
+{ "NewByteArray", 116},
+{ "ByteArraySize", 117},
+{ "ByteArrayAt", 118},
+{ "ByteArrayAtPut", 119},
+	/* I/O operations */
+{ "PrintNoReturn", 120},
+{ "PrintWithReturn", 121},
+{ "Error", 122},
+{ "ErrorPrint", 123},
+{ "System", 125},
+{ "PrintAt", 126},
+{ "BlockReturn", 127},
+{ "ReferenceError", 128},
+{ "DoesNotRespond", 129},
+	/* operations on files */
+{ "FileOpen", 130},
+{ "FileRead", 131},
+{ "FileWrite", 132},
+{ "FileSetMode", 133},
+{ "FileSize", 134},
+{ "FileSetPosition", 135},
+{ "FileFindPosition", 136},
+	/* Process management */
+{ "BlockExecute", 140},
+{ "NewProcess", 141},
+{ "Terminate", 142},
+{ "Perform", 143},
+{ "SetProcessState", 145},
+{ "ReturnProcessState", 146},
+{ "StartAtomic", 148},
+{ "EndAtomic", 149},
+	/* operations on classes */
+{ "ClassEdit", 150},
+{ "SuperClass", 151},
+{ "ClassName", 152},
+{ "ClassNew", 153},
+{ "PrintMessages", 154},
+{ "RespondsTo", 155},
+{ "ClassView", 156},
+{ "ClassList", 157},
+{ "Variables", 158},
+	/* misc operations */
+{ "CurrentTime", 160},
+{ "TimeCounter", 161},
+{ "Clear", 162},
+{ "GetString", 163},
+{ "StringAsInteger", 164},
+{ "StringAsFloat", 165},
+	/* that's all */
+{ 0 , 0 } };
+
+End
+echo unbundling y.tab.h 1>&2
+cat >y.tab.h <<'End'
+# define LITNUM 257
+# define LITFNUM 258
+# define LITCHAR 259
+# define LITSTR 260
+# define LITSYM 261
+# define CLASS 262
+# define ASSIGN 263
+# define BINARY 264
+# define PRIMITIVE 265
+# define NAMEDPRIM 266
+# define PSEUDO 267
+# define UPPERCASEVAR 268
+# define LOWERCASEVAR 269
+# define COLONVAR 270
+# define KEYWORD 271
+# define LP 272
+# define RP 273
+# define LB 274
+# define RB 275
+# define PERIOD 276
+# define BAR 277
+# define MBAR 278
+# define SEMI 279
+# define UPARROW 280
+# define PS 281
+# define MINUS 282
+# define PE 283
+
+typedef union  {
+	struct litlist 		*a;
+	struct blockstruct 	*b;
+	char 			*c;
+	struct exprstruct 	*e;
+	int  			 i;
+	struct keylist 		*k;
+	struct classstruct 	*l;
+	struct methodstruct 	*m;
+	struct objstruct 	*o;
+	enum pseuvars 		 p;
+	struct primlist 	*r;
+	struct statestruct 	*s;
+	struct litstruct 	*t;
+	struct primstruct 	*u
+	} YYSTYPE;
+extern YYSTYPE yylval;
+End
+echo unbundling y.tab.c 1>&2
+cat >y.tab.c <<'End'
+# define LITNUM 257
+# define LITFNUM 258
+# define LITCHAR 259
+# define LITSTR 260
+# define LITSYM 261
+# define CLASS 262
+# define ASSIGN 263
+# define BINARY 264
+# define PRIMITIVE 265
+# define NAMEDPRIM 266
+# define PSEUDO 267
+# define UPPERCASEVAR 268
+# define LOWERCASEVAR 269
+# define COLONVAR 270
+# define KEYWORD 271
+# define LP 272
+# define RP 273
+# define LB 274
+# define RB 275
+# define PERIOD 276
+# define BAR 277
+# define MBAR 278
+# define SEMI 279
+# define UPARROW 280
+# define PS 281
+# define MINUS 282
+# define PE 283
+
+# line 26 "parser.y"
+# include "env.h"
+# include "drive.h"
+# include "parser.h"
+
+# line 31 "parser.y"
+typedef union  {
+	struct litlist 		*a;
+	struct blockstruct 	*b;
+	char 			*c;
+	struct exprstruct 	*e;
+	int  			 i;
+	struct keylist 		*k;
+	struct classstruct 	*l;
+	struct methodstruct 	*m;
+	struct objstruct 	*o;
+	enum pseuvars 		 p;
+	struct primlist 	*r;
+	struct statestruct 	*s;
+	struct litstruct 	*t;
+	struct primstruct 	*u
+	} YYSTYPE;
+
+# line 49 "parser.y"
+extern struct blockstruct *mkblock();
+extern struct classstruct *mkclass();
+extern struct varstruct *mkvar(), *addvlist(), *invlist();
+extern struct methodstruct *mkmethod();
+extern struct exprstruct *mkexpr(), *mkkey();
+extern struct keylist *mkklist();
+extern struct statestruct *mkstate();
+extern struct objstruct *mkobj();
+extern struct primstruct *mkprim();
+extern struct primlist *addprim();
+extern struct litstruct *mklit();
+extern struct litlist *addlit();
+extern char   *bincat();
+
+struct varstruct *instvars;
+struct varstruct *contextvars;
+
+int bytetop = 0;
+uchar bytearray[1000];
+
+YYSTYPE e;
+int errorcount = 0;
+#define yyclearin yychar = -1
+#define yyerrok yyerrflag = 0
+extern int yychar;
+extern short yyerrflag;
+#ifndef YYMAXDEPTH
+#define YYMAXDEPTH 150
+#endif
+YYSTYPE yylval, yyval;
+# define YYERRCODE 256
+
+# line 350 "parser.y"
+
+# include <stdio.h>
+
+char *filename;
+FILE *fp;
+FILE *ofd;
+
+# include "lex.yy.c"
+
+main(argc, argv)
+int argc;
+char **argv;
+{	
+	if (argc != 2) quiter("parser: wrong number of arguments");
+	filename = argv[1];
+	fp = fopen(filename, "r");
+	if (fp == NULL) {
+		yerr("cannot open input file %s", filename);
+		quiter("parser quits");
+		}
+	ofd = stdout;
+	return(yyparse());
+}
+
+quiter(s) char *s; {fprintf(stderr,"%s\n", s); exit(1);}
+
+yywarn(s, v) char *s, *v; {
+   fprintf(stderr, "%s: line %d: Warning ", filename, linenum);
+   fprintf(stderr, s, v);
+   fprintf(stderr,"\n");
+}
+
+yyerror(s) char *s; {yerr(s, "");}
+
+yerr(s, v)
+char *s, *v;
+{
+   fprintf(stderr, "%s: line %d: ", filename, linenum);
+   fprintf(stderr, s, v);
+   fprintf(stderr,"\n");
+   if (errorcount++ > 10) quiter("too many errors, goodby");
+}
+
+expect(str) char *str;
+{  char buffer[100];
+
+   sprintf(buffer,"Expected %%s found %s", yytext);
+   yerr(buffer, str);
+}
+
+int yywrap() { return(1);}
+
+char *alloc(size) int size;      /* allocate a block of storage */
+{  char *p, *malloc();
+
+   p = malloc( (unsigned) size);
+   if (p == (char *) 0) yyerror("out of free space");
+   return(p);
+}
+
+char *bincat(s1, s2)
+char *s1, *s2;
+{	char *p;
+
+	p = alloc(strlen(s1) + strlen(s2) + 1);
+	strcpy(p, s1);
+	strcat(p, s2);
+	return(p);
+}
+short yyexca[] ={
+-1, 1,
+	0, -1,
+	-2, 0,
+	};
+# define YYNPROD 120
+# define YYLAST 370
+short yyact[]={
+
+  82,  80,  76,  77,  78, 129,  93,  25, 160, 155,
+ 145, 126, 125, 128, 127, 133, 159, 144, 158,  36,
+  26,  90,  37,  28, 132, 134,  29,  82,  80,  76,
+  77,  78, 129, 152,  25, 150, 157, 109, 126, 125,
+ 128, 127, 133, 122, 121, 116,  34,  26,  40, 107,
+  28, 132, 134,  29,  82,  80,  76,  77,  78,  15,
+  43,  48,  71,  72,  65,  14, 118,  32,  33,  67,
+ 108,  73, 109,  42,  47,  99,  10,  35,  79,  81,
+ 151,  82,  80,  76,  77,  78,  15, 100,  85,  71,
+  72,  65,  14, 118,   9,  92,  67,   6,  73, 111,
+ 110, 147, 103,   5, 140,  79,  81, 136,  82,  80,
+  76,  77,  78,  15, 102,  13,  71,  72,  65,  14,
+  54,  15,  24,  67,  69,  73,  62,  14, 104,  17,
+ 131, 142,  79,  81,  82,  80,  76,  77,  78,  15,
+  60,  53,  71,  72,  65,  14,  54,  45,  58,  67,
+  51,  73,   2, 146,   7,  70,  84,  52,  79,  81,
+  82,  80,  76,  77,  78,  15,  89,  49,  71,  72,
+  65,  14,  54,  94,  46,  67,  30,  73,  82,  80,
+  76,  77,  78,  15,  79,  81,  71,  72,  65,  14,
+ 118,  22,  25,  67,  91,  73,  63,   4,   8,  25,
+  34,  12,  79,  81,  21,  26,  23,  25,  28, 101,
+  27,  29,  26,  85,  96,  28,  34,  27,  29,  95,
+  26,  32,  33,  28,  31,  27,  29, 124,  20,  88,
+   1, 137, 135,  97, 115,  41, 117,  32,  33, 120,
+ 113, 114,  66,  39, 153, 119, 149, 141, 123,  64,
+ 143, 139, 138,  50,  16,   3,  11,  20,  19,  44,
+  75, 105, 137,  83, 106, 148,  38,  61,  59,  57,
+  55,  87,  56,  18, 124,  74,  86,  68,   0,  98,
+   0, 154,   0,   0, 156,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0, 112,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+   0,   0, 130,   0,   0,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
+   0,   0,   0,   0,   0,   0,   0,   0,   0, 130 };
+short yypact[]={
+
+-159,-159,-1000,-180,-141,-1000,-1000,-1000, -65,-1000,
+-1000,-210,-193,-1000,-1000,-1000,-256,-1000,-210,-223,
+-196,-1000,-1000,-196, -72,-1000,-1000,-1000,-1000,-1000,
+-1000,-195,-1000,-1000,-1000,-1000,-1000, -65,-123,-181,
+-196,-1000,-1000,-1000,-1000,-1000, -40,-1000,-1000,-1000,
+-255,-1000, -97,-1000,-168,-273,-1000,-1000, -57, -57,
+-194,-182,-1000,-1000,-1000,-1000,-1000, -97,-1000,-1000,
+-1000,-155,-1000,-221,-1000,-1000,-1000,-1000,-1000,-202,
+-1000,-158,-1000, -56,-1000,-1000,-1000,-1000,-1000,-1000,
+-123,-1000, -97,-1000,-226, -79, -79,-226, -79,-1000,
+-1000,-229,-230,-1000,-176,-149,-260,-1000,-1000,-156,
+-1000,-1000,-1000,-1000,-1000,-1000, -79,-194,-1000, -72,
+-194,-1000,-1000,-1000,-1000,-1000,-1000,-1000,-1000,-1000,
+-1000,-1000,-237,-1000,-158,-203,-1000,-1000,-242,-149,
+-1000,-267, -97,-1000,-1000,-1000,-239,-1000, -72,-257,
+-1000,-1000,-1000,-1000,-268,-1000,-1000,-1000,-1000,-1000,
+-1000 };
+short yypgo[]={
+
+   0, 114, 277, 196, 219, 122, 275, 273, 272, 270,
+ 148, 140, 269, 268, 267, 266, 264, 263, 261, 260,
+ 258, 173, 256, 255, 129, 254, 126, 128, 253, 150,
+ 141, 252, 251, 104, 250, 249, 124, 248, 242, 230,
+ 152, 198, 197, 176, 224, 174, 166, 235, 156, 155,
+ 153, 130 };
+short yyr1[]={
+
+   0,  39,  39,  40,  41,  41,  23,  42,  42,  22,
+  22,  22,   3,   3,  43,  43,  45,  45,  45,  25,
+  25,  24,   7,   7,   7,   7,  20,  20,  47,  47,
+  15,  15,  44,  44,  44,  17,  17,  48,  28,  28,
+  46,  46,  29,  29,  30,  30,   9,   9,  12,  12,
+  13,  13,  14,  14,   8,   8,  21,  21,  10,  10,
+   4,   4,   5,   5,   5,   5,   5,  11,  11,  26,
+  26,  26,  26,  26,  26,  26,  38,  38,  27,  27,
+   2,  18,  18,  16,  16,  31,  31,  33,  33,  34,
+  34,  32,  32,  35,  35,  49,  36,  36,  36,  36,
+  36,  36,   6,   6,  19,  19,  37,  37,  37,  37,
+  37,  37,  37,  37,  51,  51,   1,   1,  50,  50 };
+short yyr2[]={
+
+   0,   1,   2,   4,   1,   1,   3,   1,   1,   1,
+   2,   1,   1,   1,   0,   3,   1,   2,   1,   1,
+   3,   4,   1,   2,   1,   1,   2,   3,   1,   1,
+   0,   3,   1,   1,   1,   1,   2,   1,   1,   3,
+   0,   1,   2,   1,   3,   1,   1,   1,   1,   2,
+   1,   3,   2,   2,   1,   2,   2,   3,   1,   3,
+   1,   2,   1,   1,   1,   1,   1,   1,   2,   1,
+   1,   1,   1,   1,   3,   1,   4,   3,   0,   2,
+   4,   0,   2,   1,   2,   2,   1,   2,   1,   0,
+   1,   2,   3,   1,   3,   2,   1,   1,   1,   1,
+   1,   4,   1,   2,   1,   2,   1,   1,   1,   1,
+   1,   1,   1,   3,   2,   1,   0,   2,   1,   2 };
+short yychk[]={
+
+-1000, -39, -40, -23, -42, 262, 256, -40, -41, 274,
+ 256, -22,  -3, 256, 268, 262, -25, -24,  -7, -20,
+  -4, 269, 256, 271,  -5, 264, 277, 282, 280, 283,
+ -43, -44, 277, 278, 256, 270, 275, 278, -15, -44,
+ 271, -47, 269, 256, -47,  -5, -45, 269, 256, -24,
+ -28, -29, 280, -30, 269,  -9,  -8, -12, -10, -13,
+ -11, -14, -26,  -3, -35, 267, -38, 272,  -2, -36,
+ -49, 265, 266, 274,  -6, -19, 259, 260, 261, 281,
+ 258, 282, 257, -17, -48, 269, -47, -44, 269, -46,
+ 276, -30, 263, 279, -21,  -4, 271, -21,  -4, 269,
+ 269, -30,  -1, 257, -27, -18, -16, 270, 272, 274,
+ 258, 257, -44, -48, -29, -30, 271, -11, 269, -10,
+ -11, 273, 273, -37, -36, 269, 268, 271, 270, 262,
+  -4, -51, 281, 272, 282, -27, 283, -26, -31, -32,
+ -33, -30, 280, -34, 277, 270, -50, 257, -10,  -1,
+ 272, 283, 275, -33, -30, 276, -30, 275, 257, 273,
+ 276 };
+short yydef[]={
+
+   0,  -2,   1,   0,   0,   7,   8,   2,   0,   4,
+   5,  14,   9,  11,  12,  13,   0,  19,  30,  22,
+   0,  24,  25,   0,  60,  62,  63,  64,  65,  66,
+   6,   0,  32,  33,  34,  10,   3,   0,   0,   0,
+   0,  23,  28,  29,  26,  61,   0,  16,  18,  20,
+  40,  38,   0,  43,  70,  45,  46,  47,  54,  48,
+  58,  50,  67,  69,  71,  72,  73,   0,  75,  93,
+ 116,   0,  78,  81,  96,  97,  98,  99, 100,   0,
+ 102,   0, 104,   0,  35,  37,  27,  15,  17,  21,
+  41,  42,   0,  52,  55,   0,   0,  49,   0,  68,
+  53,   0,   0,  78,   0,  89,   0,  83,  95,   0,
+ 103, 105,  31,  36,  39,  44,   0,  59,  70,  56,
+  51,  74,  94, 117, 106, 107, 108, 109, 110, 111,
+ 112, 116,   0, 115,  64,   0,  77,  79,   0,  89,
+  86,  90,   0,  88,  82,  84,   0, 118,  57,   0,
+ 114,  76,  80,  85,  90,  91,  87, 101, 119, 113,
+  92 };
+#ifndef lint
+static char yaccpar_sccsid[] = "@(#)yaccpar	4.1	(Berkeley)	2/11/83";
+#endif not lint
+
+#
+# define YYFLAG -1000
+# define YYERROR goto yyerrlab
+# define YYACCEPT return(0)
+# define YYABORT return(1)
+
+/*	parser for yacc output	*/
+
+#ifdef YYDEBUG
+int yydebug = 0; /* 1 for debugging */
+#endif
+YYSTYPE yyv[YYMAXDEPTH]; /* where the values are stored */
+int yychar = -1; /* current input token number */
+int yynerrs = 0;  /* number of errors */
+short yyerrflag = 0;  /* error recovery flag */
+
+yyparse() {
+
+	short yys[YYMAXDEPTH];
+	short yyj, yym;
+	register YYSTYPE *yypvt;
+	register short yystate, *yyps, yyn;
+	register YYSTYPE *yypv;
+	register short *yyxi;
+
+	yystate = 0;
+	yychar = -1;
+	yynerrs = 0;
+	yyerrflag = 0;
+	yyps= &yys[-1];
+	yypv= &yyv[-1];
+
+ yystack:    /* put a state and value onto the stack */
+
+#ifdef YYDEBUG
+	if( yydebug  ) printf( "state %d, char 0%o\n", yystate, yychar );
+#endif
+		if( ++yyps> &yys[YYMAXDEPTH] ) { yyerror( "yacc stack overflow" ); return(1); }
+		*yyps = yystate;
+		++yypv;
+		*yypv = yyval;
+
+ yynewstate:
+
+	yyn = yypact[yystate];
+
+	if( yyn<= YYFLAG ) goto yydefault; /* simple state */
+
+	if( yychar<0 ) if( (yychar=yylex())<0 ) yychar=0;
+	if( (yyn += yychar)<0 || yyn >= YYLAST ) goto yydefault;
+
+	if( yychk[ yyn=yyact[ yyn ] ] == yychar ){ /* valid shift */
+		yychar = -1;
+		yyval = yylval;
+		yystate = yyn;
+		if( yyerrflag > 0 ) --yyerrflag;
+		goto yystack;
+		}
+
+ yydefault:
+	/* default state action */
+
+	if( (yyn=yydef[yystate]) == -2 ) {
+		if( yychar<0 ) if( (yychar=yylex())<0 ) yychar = 0;
+		/* look through exception table */
+
+		for( yyxi=yyexca; (*yyxi!= (-1)) || (yyxi[1]!=yystate) ; yyxi += 2 ) ; /* VOID */
+
+		while( *(yyxi+=2) >= 0 ){
+			if( *yyxi == yychar ) break;
+			}
+		if( (yyn = yyxi[1]) < 0 ) return(0);   /* accept */
+		}
+
+	if( yyn == 0 ){ /* error */
+		/* error ... attempt to resume parsing */
+
+		switch( yyerrflag ){
+
+		case 0:   /* brand new error */
+
+			yyerror( "syntax error" );
+		yyerrlab:
+			++yynerrs;
+
+		case 1:
+		case 2: /* incompletely recovered error ... try again */
+
+			yyerrflag = 3;
+
+			/* find a state where "error" is a legal shift action */
+
+			while ( yyps >= yys ) {
+			   yyn = yypact[*yyps] + YYERRCODE;
+			   if( yyn>= 0 && yyn < YYLAST && yychk[yyact[yyn]] == YYERRCODE ){
+			      yystate = yyact[yyn];  /* simulate a shift of "error" */
+			      goto yystack;
+			      }
+			   yyn = yypact[*yyps];
+
+			   /* the current yyps has no shift onn "error", pop stack */
+
+#ifdef YYDEBUG
+			   if( yydebug ) printf( "error recovery pops state %d, uncovers %d\n", *yyps, yyps[-1] );
+#endif
+			   --yyps;
+			   --yypv;
+			   }
+
+			/* there is no state on the stack with an error shift ... abort */
+
+	yyabort:
+			return(1);
+
+
+		case 3:  /* no shift yet; clobber input char */
+
+#ifdef YYDEBUG
+			if( yydebug ) printf( "error recovery discards char %d\n", yychar );
+#endif
+
+			if( yychar == 0 ) goto yyabort; /* don't discard EOF, quit */
+			yychar = -1;
+			goto yynewstate;   /* try again in the same state */
+
+			}
+
+		}
+
+	/* reduction by production yyn */
+
+#ifdef YYDEBUG
+		if( yydebug ) printf("reduce %d\n",yyn);
+#endif
+		yyps -= yyr2[yyn];
+		yypvt = yypv;
+		yypv -= yyr2[yyn];
+		yyval = yypv[1];
+		yym=yyn;
+			/* consult goto table to find next state */
+		yyn = yyr1[yyn];
+		yyj = yypgo[yyn] + *yyps + 1;
+		if( yyj>=YYLAST || yychk[ yystate = yyact[yyj] ] != -yyn ) yystate = yyact[yypgo[yyn]];
+		switch(yym){
+			
+case 3:
+# line 103 "parser.y"
+{if (errorcount == 0) genclass(yypvt[-3].l, yypvt[-1].m);} break;
+case 5:
+# line 107 "parser.y"
+{if ((yytext[0] == ':') ||
+                             isalpha(yytext[0])) expect(":SuperClass");
+                         else expect("open brace [");} break;
+case 6:
+# line 112 "parser.y"
+{yyval.l = yypvt[-1].l;} break;
+case 8:
+# line 116 "parser.y"
+{expect("keyword Class");} break;
+case 9:
+# line 119 "parser.y"
+{yyval.l = mkclass(yypvt[-0].c, (char *) 0);} break;
+case 10:
+# line 120 "parser.y"
+{yyval.l = mkclass(yypvt[-1].c, yypvt[-0].c);} break;
+case 11:
+# line 121 "parser.y"
+{expect("Classname :Superclass");
+                                         yyval.l = mkclass("Error", (char *) 0);} break;
+case 16:
+# line 133 "parser.y"
+{addinst(yypvt[-0].c);} break;
+case 17:
+# line 134 "parser.y"
+{addinst(yypvt[-0].c);} break;
+case 18:
+# line 135 "parser.y"
+{expect("instance variable");} break;
+case 20:
+# line 140 "parser.y"
+{yypvt[-0].m->nextmethod = yypvt[-2].m; yyval.m = yypvt[-0].m;} break;
+case 21:
+# line 144 "parser.y"
+{deltemps(yypvt[-2].i); yyval.m = mkmethod(yypvt[-3].e, yypvt[-2].i, yypvt[-1].s);} break;
+case 22:
+# line 148 "parser.y"
+{yyval.e = mkkey((struct exprstruct *) 0, yypvt[-0].k);} break;
+case 23:
+# line 150 "parser.y"
+{yyval.e = mkexpr((struct exprstruct *) 0, bincmd, yypvt[-1].c, (struct exprstruct *) 0);} break;
+case 24:
+# line 152 "parser.y"
+{yyval.e = mkexpr((struct exprstruct *) 0, uncmd, yypvt[-0].c, (struct exprstruct *) 0);} break;
+case 25:
+# line 153 "parser.y"
+{expect("method pattern");
+yyval.e = mkexpr((struct exprstruct *) 0, uncmd, "", (struct exprstruct *) 0);} break;
+case 26:
+# line 158 "parser.y"
+{yyval.k = mkklist((struct keylist *) 0, yypvt[-1].c, (struct exprstruct *) 0);} break;
+case 27:
+# line 160 "parser.y"
+{yyval.k = mkklist(yypvt[-2].k, yypvt[-1].c, (struct exprstruct *) 0);} break;
+case 28:
+# line 163 "parser.y"
+{addtemp(yypvt[-0].c, argvar);} break;
+case 29:
+# line 164 "parser.y"
+{expect("argument variable");} break;
+case 30:
+# line 167 "parser.y"
+{yyval.i = 0;} break;
+case 31:
+# line 168 "parser.y"
+{yyval.i = yypvt[-1].i;} break;
+case 34:
+# line 173 "parser.y"
+{expect("| (vertical bar)");} break;
+case 35:
+# line 176 "parser.y"
+{yyval.i = 1;} break;
+case 36:
+# line 177 "parser.y"
+{yyval.i = yypvt[-1].i + 1;} break;
+case 37:
+# line 180 "parser.y"
+{addtemp(yypvt[-0].c, tempvar);} break;
+case 38:
+# line 183 "parser.y"
+{yyval.s = yypvt[-0].s;} break;
+case 39:
+# line 184 "parser.y"
+{yypvt[-0].s->nextstate = yypvt[-2].s; yyval.s = yypvt[-0].s;} break;
+case 42:
+# line 191 "parser.y"
+{yyval.s = mkstate(upar, (char *) 0, yypvt[-0].s);} break;
+case 44:
+# line 196 "parser.y"
+{yyval.s = mkstate(asgn, yypvt[-2].c, yypvt[-0].s);} break;
+case 45:
+# line 198 "parser.y"
+{yyval.s = mkstate(expr, (char *) 0, (struct statestruct *) yypvt[-0].e);} break;
+case 47:
+# line 202 "parser.y"
+{yyval.e = mkexpr(yypvt[-0].e, semiend, 0, 0);} break;
+case 49:
+# line 206 "parser.y"
+{yyval.e = mkkey(yypvt[-1].e, yypvt[-0].k);} break;
+case 51:
+# line 211 "parser.y"
+{yyval.e = mkexpr(yypvt[-2].e, bincmd, yypvt[-1].c, yypvt[-0].e);} break;
+case 52:
+# line 214 "parser.y"
+{yyval.e = mkexpr(yypvt[-1].e, semistart, 0, 0);} break;
+case 53:
+# line 216 "parser.y"
+{yyval.e = mkexpr(yypvt[-1].e, uncmd, yypvt[-0].c, (struct exprstruct *) 0);} break;
+case 54:
+# line 219 "parser.y"
+{yyval.e = yypvt[-0].e;} break;
+case 55:
+# line 220 "parser.y"
+{yyval.e = mkkey(yypvt[-1].e, yypvt[-0].k);} break;
+case 56:
+# line 224 "parser.y"
+{yyval.k = mkklist((struct keylist *) 0, yypvt[-1].c, yypvt[-0].e);} break;
+case 57:
+# line 226 "parser.y"
+{yyval.k = mkklist(yypvt[-2].k, yypvt[-1].c, yypvt[-0].e);} break;
+case 58:
+# line 229 "parser.y"
+{yyval.e = yypvt[-0].e;} break;
+case 59:
+# line 230 "parser.y"
+{yyval.e = mkexpr(yypvt[-2].e, bincmd, yypvt[-1].c, yypvt[-0].e);} break;
+case 60:
+# line 233 "parser.y"
+{yyval.c = yypvt[-0].c;} break;
+case 61:
+# line 234 "parser.y"
+{yyval.c = bincat(yypvt[-1].c, yypvt[-0].c);} break;
+case 67:
+# line 245 "parser.y"
+{yyval.e = mkexpr((struct exprstruct *) 0, reccmd, (char *) 0,
+					(struct exprstruct *) yypvt[-0].o);} break;
+case 68:
+# line 248 "parser.y"
+{yyval.e = mkexpr(yypvt[-1].e, uncmd, yypvt[-0].c, (struct exprstruct *) 0);} break;
+case 69:
+# line 251 "parser.y"
+{e.c = yypvt[-0].c; yyval.o = mkobj(classobj, &e);} break;
+case 70:
+# line 252 "parser.y"
+{e.c = yypvt[-0].c; yyval.o = mkobj(varobj, &e);} break;
+case 71:
+# line 253 "parser.y"
+{e.t = yypvt[-0].t; yyval.o = mkobj(litobj, &e);} break;
+case 72:
+# line 254 "parser.y"
+{e.p = yypvt[-0].p; yyval.o = mkobj(pseuobj, &e);} break;
+case 73:
+# line 255 "parser.y"
+{e.u = yypvt[-0].u; yyval.o = mkobj(primobj, &e);} break;
+case 74:
+# line 256 "parser.y"
+{e.s = yypvt[-1].s; yyval.o = mkobj(exprobj, &e);} break;
+case 75:
+# line 257 "parser.y"
+{e.b = yypvt[-0].b; yyval.o = mkobj(blockobj, &e);} break;
+case 76:
+# line 261 "parser.y"
+{yyval.u = mkprim(yypvt[-2].i, yypvt[-1].r);} break;
+case 77:
+# line 263 "parser.y"
+{yyval.u = mkprim(yypvt[-2].i, yypvt[-1].r);} break;
+case 78:
+# line 266 "parser.y"
+{yyval.r = (struct primlist *) 0;} break;
+case 79:
+# line 267 "parser.y"
+{yyval.r = addprim(yypvt[-1].r, yypvt[-0].o);} break;
+case 80:
+# line 271 "parser.y"
+{yyval.b = mkblock(yypvt[-2].i, yypvt[-1].s);
+					deltemps(yypvt[-2].i);} break;
+case 81:
+# line 275 "parser.y"
+{yyval.i = 0;} break;
+case 82:
+# line 276 "parser.y"
+{yyval.i = yypvt[-1].i;} break;
+case 83:
+# line 279 "parser.y"
+{addtemp(yypvt[-0].c, argvar); yyval.i = 1;} break;
+case 84:
+# line 280 "parser.y"
+{addtemp(yypvt[-0].c, argvar); yyval.i = yypvt[-1].i + 1;} break;
+case 85:
+# line 283 "parser.y"
+{yypvt[-0].s->nextstate = yypvt[-1].s; yyval.s = yypvt[-0].s;} break;
+case 86:
+# line 284 "parser.y"
+{yyval.s = yypvt[-0].s;} break;
+case 87:
+# line 287 "parser.y"
+{yyval.s = mkstate(blkupar, (char *) 0, yypvt[-0].s);} break;
+case 88:
+# line 288 "parser.y"
+{yyval.s = mkstate(upar, (char *) 0, yypvt[-0].s);} break;
+case 89:
+# line 292 "parser.y"
+{e.p = nilvar;
+yyval.s = mkstate(expr, (char *) 0,
+(struct statestruct *) mkexpr((struct exprstruct *) 0, reccmd, (char *) 0,
+	(struct exprstruct *) mkobj(pseuobj, &e)));} break;
+case 90:
+# line 296 "parser.y"
+{yyval.s = yypvt[-0].s;} break;
+case 91:
+# line 299 "parser.y"
+{yyval.s = yypvt[-1].s;} break;
+case 92:
+# line 301 "parser.y"
+{yypvt[-1].s->nextstate = yypvt[-2].s; yyval.s = yypvt[-1].s;} break;
+case 93:
+# line 304 "parser.y"
+{yyval.t = yypvt[-0].t;} break;
+case 94:
+# line 305 "parser.y"
+{e.a = yypvt[-1].a; yyval.t = mklit(arlit, &e);} break;
+case 96:
+# line 311 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(fnumlit, &e);} break;
+case 97:
+# line 312 "parser.y"
+{e.i = yypvt[-0].i; yyval.t = mklit(numlit, &e);} break;
+case 98:
+# line 313 "parser.y"
+{e.i = yypvt[-0].i; yyval.t = mklit(charlit, &e);} break;
+case 99:
+# line 314 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(strlit, &e);} break;
+case 100:
+# line 315 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 101:
+# line 316 "parser.y"
+{bytearray[bytetop] = '\0';
+                                         yyval.t = mklit(bytelit, &e);} break;
+case 102:
+# line 320 "parser.y"
+{yyval.c = yypvt[-0].c;} break;
+case 103:
+# line 321 "parser.y"
+{yyval.c = bincat("-", yypvt[-0].c);} break;
+case 104:
+# line 324 "parser.y"
+{yyval.i = yypvt[-0].i;} break;
+case 105:
+# line 325 "parser.y"
+{yyval.i = - yypvt[-0].i;} break;
+case 106:
+# line 328 "parser.y"
+{yyval.t = yypvt[-0].t;} break;
+case 107:
+# line 329 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 108:
+# line 330 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 109:
+# line 331 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 110:
+# line 332 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 111:
+# line 333 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 112:
+# line 334 "parser.y"
+{e.c = yypvt[-0].c; yyval.t = mklit(symlit, &e);} break;
+case 113:
+# line 335 "parser.y"
+{e.a = yypvt[-1].a; yyval.t = mklit(arlit, &e);} break;
+case 116:
+# line 342 "parser.y"
+{yyval.a = (struct litlist *) 0;} break;
+case 117:
+# line 343 "parser.y"
+{yyval.a = addlit(yypvt[-1].a, yypvt[-0].t);} break;
+case 118:
+# line 346 "parser.y"
+{bytetop = 0;
+                                         bytearray[bytetop++] = itouc(yypvt[-0].i);} break;
+case 119:
+# line 348 "parser.y"
+{bytearray[bytetop++] = itouc(yypvt[-0].i);} break;
+		}
+		goto yystack;  /* stack new state and value */
+
+	}
+End
+echo unbundling lex.yy.c 1>&2
+cat >lex.yy.c <<'End'
+# include "stdio.h"
+# define U(x) x
+# define NLSTATE yyprevious=YYNEWLINE
+# define BEGIN yybgin = yysvec + 1 +
+# define INITIAL 0
+# define YYLERR yysvec
+# define YYSTATE (yyestate-yysvec-1)
+# define YYOPTIM 1
+# define YYLMAX 200
+# define output(c) putc(c,yyout)
+# define input() (((yytchar=yysptr>yysbuf?U(*--yysptr):getc(yyin))==10?(yylineno++,yytchar):yytchar)==EOF?0:yytchar)
+# define unput(c) {yytchar= (c);if(yytchar=='\n')yylineno--;*yysptr++=yytchar;}
+# define yymore() (yymorfg=1)
+# define ECHO fprintf(yyout, "%s",yytext)
+# define REJECT { nstr = yyreject(); goto yyfussy;}
+int yyleng; extern char yytext[];
+int yymorfg;
+extern char *yysptr, yysbuf[];
+int yytchar;
+FILE *yyin ={stdin}, *yyout ={stdout};
+extern int yylineno;
+struct yysvf {
+	struct yywork *yystoff;
+	struct yysvf *yyother;
+	int *yystops;};
+struct yysvf *yyestate;
+extern struct yysvf yysvec[], *yybgin;
+/*
+        Little Smalltalk lexical analyzer
+*/
+# include <math.h>
+# include "primnum.h"
+
+# undef input
+# undef unput
+
+double atof();
+int linenum = 1;
+# define YYNEWLINE 10
+yylex(){
+int nstr; extern int yyprevious;
+while((nstr = yylook()) >= 0)
+yyfussy: switch(nstr){
+case 0:
+if(yywrap()) return(0); break;
+case 1:
+                         {;}
+break;
+case 2:
+                             {linenum++;}
+break;
+case 3:
+                             {readcomment();}
+break;
+case 4:
+                           {return(ASSIGN);}
+break;
+case 5:
+                           {return(ASSIGN);}
+break;
+case 6:
+                          {return(lexsave(CLASS));}
+break;
+case 7:
+                           {yylval.p = selfvar;  return(PSEUDO);}
+break;
+case 8:
+		{yylval.p = procvar;  return(PSEUDO);}
+break;
+case 9:
+                          {yylval.p = supervar; return(PSEUDO);}
+break;
+case 10:
+                            {yylval.p = nilvar;   return(PSEUDO);}
+break;
+case 11:
+                           {yylval.p = truevar;  return(PSEUDO);}
+break;
+case 12:
+                          {yylval.p = falsevar; return(PSEUDO);}
+break;
+case 13:
+                      {yylval.p = smallvar; return(PSEUDO);}
+break;
+case 14:
+                            {yylval.i = yytext[1]; return(LITCHAR);}
+break;
+case 15:
+                              {return(PS);}
+break;
+case 16:
+{return(lexsave(LITFNUM));}
+break;
+case 17:
+                         {yylval.i = atoi(yytext); return(LITNUM);}
+break;
+case 18:
+  {return(lexsave(LITFNUM));}
+break;
+case 19:
+                        {char c; unput(c = input());
+                                 if (c == '\'') yymore();
+                                 else return(lexlstr());}
+break;
+case 20:
+                 {return(varlex());}
+break;
+case 21:
+                  {return(slexsave(COLONVAR));}
+break;
+case 22:
+                {return(slexsave(LITSYM));}
+break;
+case 23:
+                            {return(lexsave(MINUS));}
+break;
+case 24:
+                            {return(LP);}
+break;
+case 25:
+                            {return(RP);}
+break;
+case 26:
+                            {return(LB);}
+break;
+case 27:
+                            {return(RB);}
+break;
+case 28:
+                            {return(PERIOD);}
+break;
+case 29:
+			{return(lexsave(MBAR));}
+break;
+case 30:
+			{return(lexsave(MBAR));}
+break;
+case 31:
+                            {return(lexsave(BAR));}
+break;
+case 32:
+                            {return(lexsave(BAR));}
+break;
+case 33:
+                            {return(SEMI);}
+break;
+case 34:
+                            {return(lexsave(UPARROW));}
+break;
+case 35:
+			{return(lexsave(PE));}
+break;
+case 36:
+              {return(lexsave(BINARY));}
+break;
+case 37:
+  			{return(PRIMITIVE);}
+break;
+case 38:
+		{yylval.i = prim_number(&yytext[1]); return(NAMEDPRIM);}
+break;
+case -1:
+break;
+default:
+fprintf(yyout,"bad switch yylook %d",nstr);
+} return(0); }
+/* end of yylex */
+static int ocbuf = 0;
+static int pbbuf[400];
+
+static int input()
+{	int c;
+
+	if (ocbuf) {c = pbbuf[--ocbuf]; }
+	else {
+		c = getc(fp);
+		if (c == EOF) c = 0;
+		}
+	return(c);
+}
+
+static unput(c)
+char c;
+{
+	if (c) pbbuf[ocbuf++] = c;
+}
+
+# include <ctype.h>
+
+static readcomment()
+{  char c;
+
+   while ((c = input()) && c != '\"')
+	if (c == '\n') linenum++;
+   if (!c) yyerror("unterminated comment");
+}
+
+char *walloc(s) char *s;
+{  char *p, *malloc();
+
+   p = malloc((unsigned) (strlen(s) + 1));
+   if (p == (char *) 0) yyerror("out of variable string space");
+   strcpy(p, s);
+   return(p);
+}
+
+static int slexsave(type)
+int type;
+{
+
+	yylval.c = walloc(&yytext[1]);
+	if (yylval.c == 0) yerr("cannot create symbol %s", yytext);
+	return(type);
+}
+
+static int lexsave(type)
+int type;
+{
+
+	yylval.c = walloc(yytext);
+	if (yylval.c == 0) yerr("cannot create string %s", yytext);
+	return(type);
+}
+
+static int varlex()
+{
+
+   lexsave(0);
+   if (yytext[yyleng-1] == ':') return(KEYWORD);
+   else if (islower(yytext[0])) return(LOWERCASEVAR);
+   else return(UPPERCASEVAR);
+}
+
+static int lexlstr()
+{  char *p, *q;
+
+   yylval.c = p = walloc(&yytext[1]);
+   *(p + yyleng -2) = '\0';
+   return(LITSTR);
+}
+
+static int prim_number(name)
+char *name;
+{	struct prim_names *p;
+
+	for (p = prim_table; *(p->p_name); p++) {
+		if (strcmp(p->p_name, name) == 0)
+			return(p->p_number);
+		}
+	yerr("unknown primitive name %s", name);
+	return(0);
+}
+int yyvstop[] ={
+0,
+
+36,
+0,
+
+1,
+0,
+
+2,
+0,
+
+32,
+36,
+0,
+
+3,
+36,
+0,
+
+15,
+36,
+0,
+
+36,
+0,
+
+36,
+0,
+
+24,
+36,
+0,
+
+25,
+36,
+0,
+
+23,
+36,
+0,
+
+28,
+36,
+0,
+
+17,
+18,
+20,
+0,
+
+36,
+0,
+
+33,
+36,
+0,
+
+36,
+0,
+
+35,
+36,
+0,
+
+20,
+0,
+
+20,
+0,
+
+26,
+36,
+0,
+
+27,
+36,
+0,
+
+34,
+36,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+31,
+36,
+0,
+
+30,
+32,
+36,
+0,
+
+29,
+31,
+36,
+0,
+
+22,
+0,
+
+14,
+0,
+
+19,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+21,
+0,
+
+4,
+0,
+
+5,
+0,
+
+38,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+18,
+0,
+
+18,
+20,
+0,
+
+16,
+20,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+10,
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+18,
+0,
+
+16,
+0,
+
+20,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+7,
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+11,
+20,
+0,
+
+16,
+0,
+
+16,
+20,
+0,
+
+38,
+0,
+
+6,
+20,
+0,
+
+12,
+20,
+0,
+
+20,
+0,
+
+20,
+0,
+
+9,
+20,
+0,
+
+16,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+38,
+0,
+
+20,
+0,
+
+20,
+0,
+
+38,
+0,
+
+20,
+0,
+
+13,
+20,
+0,
+
+37,
+38,
+0,
+
+20,
+0,
+
+8,
+20,
+0,
+0};
+# define YYTYPE char
+struct yywork { YYTYPE verify, advance; } yycrank[] ={
+0,0,	0,0,	1,3,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	1,4,	1,5,	
+0,0,	0,0,	0,0,	4,4,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	1,6,	1,7,	
+1,8,	1,9,	4,4,	0,0,	
+1,10,	1,11,	1,12,	0,0,	
+1,3,	0,0,	1,13,	1,14,	
+0,0,	1,15,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	1,16,	
+1,17,	1,18,	0,0,	1,19,	
+0,0,	0,0,	1,20,	0,0,	
+1,21,	0,0,	0,0,	65,53,	
+0,0,	65,53,	0,0,	2,30,	
+2,7,	2,8,	2,9,	0,0,	
+0,0,	8,32,	0,0,	2,12,	
+0,0,	0,0,	0,0,	2,13,	
+2,14,	8,0,	8,0,	0,0,	
+1,22,	0,0,	1,23,	1,24,	
+0,0,	0,0,	1,20,	9,33,	
+2,16,	2,17,	2,18,	1,25,	
+2,19,	25,46,	45,58,	9,33,	
+9,0,	2,21,	21,45,	1,26,	
+8,0,	26,47,	46,59,	47,60,	
+1,27,	1,28,	28,51,	8,32,	
+8,0,	8,0,	10,34,	8,32,	
+27,48,	1,29,	8,0,	44,57,	
+8,32,	48,61,	10,34,	10,34,	
+27,49,	2,22,	49,62,	2,23,	
+2,24,	9,33,	9,33,	50,63,	
+27,50,	9,33,	51,64,	52,65,	
+2,25,	8,32,	9,33,	57,70,	
+58,71,	59,72,	61,73,	62,74,	
+2,26,	63,75,	64,76,	70,81,	
+71,82,	2,27,	2,28,	67,68,	
+10,35,	10,34,	72,83,	9,33,	
+10,34,	73,84,	2,31,	74,85,	
+75,86,	10,34,	78,77,	8,0,	
+81,88,	84,89,	85,90,	88,91,	
+89,92,	8,32,	90,93,	91,94,	
+92,95,	93,96,	94,97,	95,98,	
+96,99,	97,100,	10,34,	98,101,	
+101,102,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	9,33,	
+0,0,	0,0,	0,0,	0,0,	
+15,36,	0,0,	15,15,	15,15,	
+15,15,	15,15,	15,15,	15,15,	
+15,15,	15,15,	15,15,	15,15,	
+15,37,	0,0,	67,77,	0,0,	
+0,0,	0,0,	10,34,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	15,20,	
+15,20,	15,20,	15,20,	15,38,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,39,	15,20,	15,20,	15,20,	
+15,20,	15,20,	15,20,	15,20,	
+15,20,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	0,0,	
+0,0,	0,0,	16,41,	0,0,	
+0,0,	0,0,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+16,40,	16,40,	16,40,	16,40,	
+18,42,	0,0,	0,0,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,44,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	18,43,	18,43,	
+18,43,	18,43,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,37,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	20,20,	20,20,	20,20,	
+20,20,	32,0,	32,0,	36,52,	
+36,52,	36,52,	36,52,	36,52,	
+36,52,	36,52,	36,52,	36,52,	
+36,52,	53,66,	53,66,	53,66,	
+53,66,	53,66,	53,66,	53,66,	
+53,66,	53,66,	53,66,	0,0,	
+32,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+32,0,	32,0,	38,53,	0,0,	
+38,53,	0,0,	32,0,	38,54,	
+38,54,	38,54,	38,54,	38,54,	
+38,54,	38,54,	38,54,	38,54,	
+38,54,	54,54,	54,54,	54,54,	
+54,54,	54,54,	54,54,	54,54,	
+54,54,	54,54,	54,54,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+39,55,	0,0,	0,0,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	32,0,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	39,56,	39,56,	
+39,56,	39,56,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	0,0,	0,0,	0,0,	
+0,0,	0,0,	0,0,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	40,40,	40,40,	40,40,	
+40,40,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+43,43,	43,43,	43,43,	43,43,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	0,0,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	55,67,	
+55,67,	55,67,	55,67,	56,68,	
+0,0,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	0,0,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+56,56,	56,56,	56,56,	56,56,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	56,69,	0,0,	
+0,0,	0,0,	0,0,	0,0,	
+0,0,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	68,78,	
+68,78,	68,78,	68,78,	69,79,	
+0,0,	69,79,	0,0,	0,0,	
+69,80,	69,80,	69,80,	69,80,	
+69,80,	69,80,	69,80,	69,80,	
+69,80,	69,80,	77,79,	0,0,	
+77,79,	0,0,	0,0,	77,87,	
+77,87,	77,87,	77,87,	77,87,	
+77,87,	77,87,	77,87,	77,87,	
+77,87,	79,87,	79,87,	79,87,	
+79,87,	79,87,	79,87,	79,87,	
+79,87,	79,87,	79,87,	80,80,	
+80,80,	80,80,	80,80,	80,80,	
+80,80,	80,80,	80,80,	80,80,	
+80,80,	0,0,	0,0,	0,0,	
+0,0};
+struct yysvf yysvec[] ={
+0,	0,	0,
+yycrank+-1,	0,		0,	
+yycrank+-42,	yysvec+1,	0,	
+yycrank+0,	0,		yyvstop+1,
+yycrank+6,	0,		yyvstop+3,
+yycrank+0,	0,		yyvstop+5,
+yycrank+0,	0,		yyvstop+7,
+yycrank+0,	0,		yyvstop+10,
+yycrank+-80,	0,		yyvstop+13,
+yycrank+-98,	0,		yyvstop+16,
+yycrank+-121,	0,		yyvstop+18,
+yycrank+0,	0,		yyvstop+20,
+yycrank+0,	0,		yyvstop+23,
+yycrank+0,	0,		yyvstop+26,
+yycrank+0,	0,		yyvstop+29,
+yycrank+154,	0,		yyvstop+32,
+yycrank+229,	0,		yyvstop+36,
+yycrank+0,	0,		yyvstop+38,
+yycrank+307,	0,		yyvstop+41,
+yycrank+0,	0,		yyvstop+43,
+yycrank+382,	0,		yyvstop+46,
+yycrank+2,	yysvec+20,	yyvstop+48,
+yycrank+0,	0,		yyvstop+50,
+yycrank+0,	0,		yyvstop+53,
+yycrank+0,	0,		yyvstop+56,
+yycrank+8,	yysvec+20,	yyvstop+59,
+yycrank+8,	yysvec+20,	yyvstop+61,
+yycrank+23,	yysvec+20,	yyvstop+63,
+yycrank+4,	yysvec+20,	yyvstop+65,
+yycrank+0,	0,		yyvstop+67,
+yycrank+0,	0,		yyvstop+70,
+yycrank+0,	0,		yyvstop+74,
+yycrank+-496,	yysvec+8,	yyvstop+78,
+yycrank+0,	0,		yyvstop+80,
+yycrank+0,	yysvec+10,	0,	
+yycrank+0,	0,		yyvstop+82,
+yycrank+459,	0,		0,	
+yycrank+0,	0,		yyvstop+84,
+yycrank+495,	yysvec+20,	yyvstop+86,
+yycrank+523,	yysvec+20,	yyvstop+88,
+yycrank+566,	0,		yyvstop+90,
+yycrank+0,	0,		yyvstop+92,
+yycrank+0,	0,		yyvstop+94,
+yycrank+641,	0,		yyvstop+96,
+yycrank+13,	yysvec+43,	yyvstop+98,
+yycrank+9,	yysvec+20,	yyvstop+100,
+yycrank+6,	yysvec+20,	yyvstop+102,
+yycrank+7,	yysvec+20,	yyvstop+104,
+yycrank+21,	yysvec+20,	yyvstop+106,
+yycrank+37,	yysvec+20,	yyvstop+108,
+yycrank+27,	yysvec+20,	yyvstop+110,
+yycrank+25,	yysvec+20,	yyvstop+112,
+yycrank+42,	yysvec+36,	yyvstop+114,
+yycrank+469,	0,		0,	
+yycrank+505,	yysvec+20,	yyvstop+116,
+yycrank+716,	0,		0,	
+yycrank+761,	yysvec+20,	yyvstop+119,
+yycrank+42,	yysvec+43,	yyvstop+122,
+yycrank+33,	yysvec+20,	yyvstop+124,
+yycrank+34,	yysvec+20,	yyvstop+126,
+yycrank+0,	yysvec+20,	yyvstop+128,
+yycrank+48,	yysvec+20,	yyvstop+131,
+yycrank+43,	yysvec+20,	yyvstop+133,
+yycrank+52,	yysvec+20,	yyvstop+135,
+yycrank+53,	yysvec+20,	yyvstop+137,
+yycrank+28,	yysvec+53,	0,	
+yycrank+0,	yysvec+53,	yyvstop+139,
+yycrank+113,	yysvec+55,	yyvstop+141,
+yycrank+804,	0,		0,	
+yycrank+852,	yysvec+20,	yyvstop+143,
+yycrank+46,	yysvec+43,	yyvstop+145,
+yycrank+41,	yysvec+20,	yyvstop+147,
+yycrank+61,	yysvec+20,	yyvstop+149,
+yycrank+85,	yysvec+20,	yyvstop+151,
+yycrank+59,	yysvec+20,	yyvstop+154,
+yycrank+54,	yysvec+20,	yyvstop+156,
+yycrank+0,	yysvec+20,	yyvstop+158,
+yycrank+867,	0,		0,	
+yycrank+69,	yysvec+68,	yyvstop+161,
+yycrank+877,	0,		0,	
+yycrank+887,	yysvec+20,	yyvstop+163,
+yycrank+67,	yysvec+43,	yyvstop+166,
+yycrank+0,	yysvec+20,	yyvstop+168,
+yycrank+0,	yysvec+20,	yyvstop+171,
+yycrank+59,	yysvec+20,	yyvstop+174,
+yycrank+58,	yysvec+20,	yyvstop+176,
+yycrank+0,	yysvec+20,	yyvstop+178,
+yycrank+0,	yysvec+79,	yyvstop+181,
+yycrank+59,	yysvec+43,	yyvstop+183,
+yycrank+65,	yysvec+20,	yyvstop+185,
+yycrank+81,	yysvec+20,	yyvstop+187,
+yycrank+74,	yysvec+43,	yyvstop+189,
+yycrank+81,	yysvec+20,	yyvstop+191,
+yycrank+73,	yysvec+20,	yyvstop+193,
+yycrank+64,	yysvec+43,	yyvstop+195,
+yycrank+82,	yysvec+20,	yyvstop+197,
+yycrank+77,	yysvec+20,	yyvstop+199,
+yycrank+84,	yysvec+43,	yyvstop+201,
+yycrank+72,	yysvec+20,	yyvstop+203,
+yycrank+0,	yysvec+20,	yyvstop+205,
+yycrank+0,	yysvec+43,	yyvstop+208,
+yycrank+73,	yysvec+20,	yyvstop+211,
+yycrank+0,	yysvec+20,	yyvstop+213,
+0,	0,	0};
+struct yywork *yytop = yycrank+944;
+struct yysvf *yybgin = yysvec+1;
+char yymatch[] ={
+00  ,01  ,01  ,01  ,01  ,01  ,01  ,01  ,
+01  ,011 ,012 ,01  ,01  ,01  ,01  ,01  ,
+01  ,01  ,01  ,01  ,01  ,01  ,01  ,01  ,
+01  ,01  ,01  ,01  ,01  ,01  ,01  ,01  ,
+011 ,01  ,01  ,01  ,01  ,01  ,01  ,047 ,
+'(' ,'(' ,01  ,'+' ,01  ,'+' ,'(' ,01  ,
+'0' ,'0' ,'0' ,'0' ,'0' ,'0' ,'0' ,'0' ,
+'0' ,'0' ,01  ,01  ,01  ,01  ,01  ,01  ,
+01  ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,
+'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,
+'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,'A' ,
+'A' ,'A' ,'A' ,'(' ,01  ,01  ,01  ,01  ,
+01  ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,
+'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,
+'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,'a' ,
+'a' ,'a' ,'a' ,01  ,01  ,01  ,01  ,01  ,
+0};
+char yyextra[] ={
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0,0,0,0,0,0,0,0,
+0};
+/*	ncform	4.1	83/08/11	*/
+
+int yylineno =1;
+# define YYU(x) x
+# define NLSTATE yyprevious=YYNEWLINE
+char yytext[YYLMAX];
+struct yysvf *yylstate [YYLMAX], **yylsp, **yyolsp;
+char yysbuf[YYLMAX];
+char *yysptr = yysbuf;
+int *yyfnd;
+extern struct yysvf *yyestate;
+int yyprevious = YYNEWLINE;
+yylook(){
+	register struct yysvf *yystate, **lsp;
+	register struct yywork *yyt;
+	struct yysvf *yyz;
+	int yych;
+	struct yywork *yyr;
+# ifdef LEXDEBUG
+	int debug;
+# endif
+	char *yylastch;
+	/* start off machines */
+# ifdef LEXDEBUG
+	debug = 0;
+# endif
+	if (!yymorfg)
+		yylastch = yytext;
+	else {
+		yymorfg=0;
+		yylastch = yytext+yyleng;
+		}
+	for(;;){
+		lsp = yylstate;
+		yyestate = yystate = yybgin;
+		if (yyprevious==YYNEWLINE) yystate++;
+		for (;;){
+# ifdef LEXDEBUG
+			if(debug)fprintf(yyout,"state %d\n",yystate-yysvec-1);
+# endif
+			yyt = yystate->yystoff;
+			if(yyt == yycrank){		/* may not be any transitions */
+				yyz = yystate->yyother;
+				if(yyz == 0)break;
+				if(yyz->yystoff == yycrank)break;
+				}
+			*yylastch++ = yych = input();
+		tryagain:
+# ifdef LEXDEBUG
+			if(debug){
+				fprintf(yyout,"char ");
+				allprint(yych);
+				putchar('\n');
+				}
+# endif
+			yyr = yyt;
+			if ( (int)yyt > (int)yycrank){
+				yyt = yyr + yych;
+				if (yyt <= yytop && yyt->verify+yysvec == yystate){
+					if(yyt->advance+yysvec == YYLERR)	/* error transitions */
+						{unput(*--yylastch);break;}
+					*lsp++ = yystate = yyt->advance+yysvec;
+					goto contin;
+					}
+				}
+# ifdef YYOPTIM
+			else if((int)yyt < (int)yycrank) {		/* r < yycrank */
+				yyt = yyr = yycrank+(yycrank-yyt);
+# ifdef LEXDEBUG
+				if(debug)fprintf(yyout,"compressed state\n");
+# endif
+				yyt = yyt + yych;
+				if(yyt <= yytop && yyt->verify+yysvec == yystate){
+					if(yyt->advance+yysvec == YYLERR)	/* error transitions */
+						{unput(*--yylastch);break;}
+					*lsp++ = yystate = yyt->advance+yysvec;
+					goto contin;
+					}
+				yyt = yyr + YYU(yymatch[yych]);
+# ifdef LEXDEBUG
+				if(debug){
+					fprintf(yyout,"try fall back character ");
+					allprint(YYU(yymatch[yych]));
+					putchar('\n');
+					}
+# endif
+				if(yyt <= yytop && yyt->verify+yysvec == yystate){
+					if(yyt->advance+yysvec == YYLERR)	/* error transition */
+						{unput(*--yylastch);break;}
+					*lsp++ = yystate = yyt->advance+yysvec;
+					goto contin;
+					}
+				}
+			if ((yystate = yystate->yyother) && (yyt= yystate->yystoff) != yycrank){
+# ifdef LEXDEBUG
+				if(debug)fprintf(yyout,"fall back to state %d\n",yystate-yysvec-1);
+# endif
+				goto tryagain;
+				}
+# endif
+			else
+				{unput(*--yylastch);break;}
+		contin:
+# ifdef LEXDEBUG
+			if(debug){
+				fprintf(yyout,"state %d char ",yystate-yysvec-1);
+				allprint(yych);
+				putchar('\n');
+				}
+# endif
+			;
+			}
+# ifdef LEXDEBUG
+		if(debug){
+			fprintf(yyout,"stopped at %d with ",*(lsp-1)-yysvec-1);
+			allprint(yych);
+			putchar('\n');
+			}
+# endif
+		while (lsp-- > yylstate){
+			*yylastch-- = 0;
+			if (*lsp != 0 && (yyfnd= (*lsp)->yystops) && *yyfnd > 0){
+				yyolsp = lsp;
+				if(yyextra[*yyfnd]){		/* must backup */
+					while(yyback((*lsp)->yystops,-*yyfnd) != 1 && lsp > yylstate){
+						lsp--;
+						unput(*yylastch--);
+						}
+					}
+				yyprevious = YYU(*yylastch);
+				yylsp = lsp;
+				yyleng = yylastch-yytext+1;
+				yytext[yyleng] = 0;
+# ifdef LEXDEBUG
+				if(debug){
+					fprintf(yyout,"\nmatch ");
+					sprint(yytext);
+					fprintf(yyout," action %d\n",*yyfnd);
+					}
+# endif
+				return(*yyfnd++);
+				}
+			unput(*yylastch);
+			}
+		if (yytext[0] == 0  /* && feof(yyin) */)
+			{
+			yysptr=yysbuf;
+			return(0);
+			}
+		yyprevious = yytext[0] = input();
+		if (yyprevious>0)
+			output(yyprevious);
+		yylastch=yytext;
+# ifdef LEXDEBUG
+		if(debug)putchar('\n');
+# endif
+		}
+	}
+yyback(p, m)
+	int *p;
+{
+if (p==0) return(0);
+while (*p)
+	{
+	if (*p++ == m)
+		return(1);
+	}
+return(0);
+}
+	/* the following are only used in the lex library */
+yyinput(){
+	return(input());
+	}
+yyoutput(c)
+  int c; {
+	output(c);
+	}
+yyunput(c)
+   int c; {
+	unput(c);
+	}
+End
+echo unbundling uchar.c 1>&2
+cat >uchar.c <<'End'
+# include "env.h"
+main() {
+  int i;
+  uchar c;
+
+   i = 250;
+   c = itouc(i);
+   i = uctoi(c);
+   if (i == 250) printf("success\n");
+   else printf("failure\n");
+}
+
+End
+

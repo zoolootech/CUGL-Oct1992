@@ -1,0 +1,126 @@
+/*#pragma cc .chc */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <msdos.cf>
+
+/* call 8514/A AI from protected mode */
+
+int c8514(nentry,pqbl)
+int nentry; /* number of entry to call */
+char *pqbl; /* parameter block */
+/* returns nonzero if call cannot be made */
+
+{
+/* codes needing special treatment */
+#define HQDPS 31 /* query drawing process state size */
+#define HINIT 48 /* initialize state */
+#define HSYNC 49 /* synchronize adapter */
+#define HLDPAL 19 /* load pallette */
+
+#define MAXBLK 20 /* maximum parameter block size */
+
+  /* real mode interrupt parameters */
+  static struct {
+    short jint,jds,jes,jfs,jgs; long heax,hedx;
+  } i_rmipas = {0x7E,0,0,0,0,0,0};
+
+  static int linit = 0;
+  static int iszbuf,lentsb,limbys,numbys,maxbys;
+
+  static char _far *pqdbuf; /* real mode buffer */
+  static char _far *pqpa;   /* real mode parameter */
+
+  int kt,lnth;
+
+  /* initialize first time */
+  if (!linit) {
+
+    /* p8514 must be loaded - check 0x7E interrupt */
+    Registers.AX.W = 0x2503;
+    Registers.CX.W = 0x7E;
+    calldos();
+    if (Registers.BX.W == 0) return (2);
+
+    /* initialize p8514 - do an int 0x7E */
+    i_rmipas.heax = 0;
+    Registers.AX.W = 0x2511;
+    Registers.DX.R = (long)&i_rmipas;
+    Registers.DS.W = 0x0014;
+    calldos();
+    if (Registers.AX.W != 0) return (1);
+
+    /* get address of real mode buffer */
+    *(long *)&pqdbuf = (Registers.CX.W << 4)+
+                       Registers.BX.W;
+    ((short *)&pqdbuf)[2] = 0x0034;
+
+    /* first two bytes have the length of the rest */
+    iszbuf = *(short _far *)pqdbuf;
+    pqdbuf += 2;
+
+    lentsb = 0; /* length of task state buffer */
+    maxbys = iszbuf; /* bytes to use for commands */
+    limbys = maxbys; /* current limit for commands */
+    numbys = 0; /* bytes currently in buffer */
+    linit = 1; /* initialization done */
+  }
+
+  if (nentry >= 0) { /* do command if any */
+
+    /* get the parameter block and check length */
+    lnth = *(short *)pqbl+2;
+    if (lnth > MAXBLK) {
+      printf("parameter block too long\n");
+      exit(1);
+    }
+
+    /* put the command in front of the block */
+    pqdbuf[numbys++] = nentry;
+
+    /* now copy the block into the real mode buffer */
+    pqpa = pqdbuf+numbys;
+    for (kt = 0; kt < lnth; kt++) pqpa[kt] = pqbl[kt];
+    numbys += lnth;
+
+    /* some codes get segment of task state buffer */
+    if (nentry == HINIT || nentry == HSYNC) {
+      *(short _far *)(pqpa+2) =
+                (*(long *)&pqdbuf+iszbuf-lentsb) >> 4;
+    }
+
+    /* set up color values for load palette command */
+    if (nentry == HLDPAL && lnth == 12) {
+      limbys -= 4;
+      *(short _far *)(pqpa+8) =
+                  (*(long *)&pqdbuf+limbys) & 0x000F;
+      *(short _far *)(pqpa+10) =
+                  (*(long *)&pqdbuf+limbys) >> 4;
+      for (kt = 0; kt < 4; kt++) {
+        pqdbuf[limbys+kt] = (*(char **)(pqbl+8))[kt];
+      }
+    }
+  }
+  /* call the adapter interface in some cases */
+  if (nentry == HQDPS || nentry < 0 && numbys > 0 ||
+      numbys+MAXBLK >= limbys) {
+
+    /* call the adapter interface (int 0x7E) */
+    i_rmipas.heax = numbys;
+    Registers.AX.W = 0x2511;
+    Registers.DX.R = (long)&i_rmipas;
+    Registers.DS.W = 0x0014;
+    calldos();
+
+    /* get state buffer length and make a local one */
+    if (nentry == HQDPS) {
+      *(short *)&pqbl[2] = *(short _far *)&pqpa[2];
+      lentsb = *(short *)&pqbl[2];
+      maxbys = iszbuf-lentsb-15;
+    }
+
+    numbys = 0; /* begin buffer next time */
+    limbys = maxbys; /* reset bytes for commands */
+  }
+  return (0);
+}

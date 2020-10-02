@@ -1,0 +1,171 @@
+/*****************************************************/
+/*  mlebug.c                                         */
+/* -- This program attempts to create and destroy    */
+/*    MultiLine EditItems to test if the leaky MLE   */
+/*    bug is present.                                */
+/*****************************************************/
+
+#define NOCOMM
+#include <windows.h>
+#include <stdio.h>
+
+LONG                CwndTestMle(HWND);
+int     FAR PASCAL  WinMain(HANDLE, HANDLE, LPSTR,
+                        int);
+LONG    FAR PASCAL  WndProc(HWND, WORD, WORD, DWORD);
+
+/* Status message. */
+static  char    szMessage[80]   = "Ready";
+
+/* Maximum of MLE create/destroy pairs. */
+#define cwndTest    0x10000L
+#define szMleBug    "MLEBug"    /* Class name. */
+#define IDM_TEST    1           /* Menu command. */
+
+int FAR PASCAL
+WinMain(HANDLE hins, HANDLE hinsPrev, LPSTR lsz, int w)
+/*****************************************************/
+/* -- hins        : This program's instance.         */
+/* -- hinsPrev    : Previous program's instance.     */
+/* -- lsz         : Command line I was invoked with. */
+/* -- w           : ShowWindow command.              */
+/*****************************************************/
+    {
+    MSG     msg;
+    POINT   pt;
+
+    if (hinsPrev == NULL)
+        {
+        WNDCLASS    wcs;
+
+        /* First instance is responsible for */
+        /* registering a class. */
+        wcs.style = CS_HREDRAW | CS_VREDRAW;
+        wcs.lpfnWndProc = WndProc;
+        wcs.cbClsExtra = 0;
+        wcs.cbWndExtra = 0;
+        wcs.hInstance = hins;
+        wcs.hIcon = NULL;
+        wcs.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wcs.hbrBackground =
+            GetStockObject(WHITE_BRUSH);
+        wcs.lpszMenuName = szMleBug;
+        wcs.lpszClassName = szMleBug;
+
+        if (!RegisterClass(&wcs))
+            return FALSE;
+        }
+
+    *(LONG *)&pt = GetDialogBaseUnits();
+    if (CreateWindow(
+        szMleBug,
+        "MLE Bug Tester",
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        CW_USEDEFAULT,
+        w,
+        pt.x * 40,      /* 40 chars wide. */
+        pt.y * 5,       /* 5 char high. */
+        NULL,
+        NULL,
+        hins,
+        NULL) == NULL)
+        return FALSE;
+
+        while (GetMessage(&msg, NULL, 0, 0))
+            {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            }
+
+        return 0;
+        }
+
+LONG FAR PASCAL
+WndProc(HWND hwnd, WORD wm, WORD mp1, DWORD mp2)
+/*****************************************************/
+/* -- WindowProc for our main window.                */
+/* -- hwnd    : Main window.                         */
+/* -- wm      : Message type.                        */
+/* -- mp1, mp2: Message parameters.                  */
+/*****************************************************/
+    {
+    switch (wm)
+        {
+    default:
+        return DefWindowProc(hwnd, wm, mp1, mp2);
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        break;
+
+    case WM_COMMAND:
+        if (mp1 == IDM_TEST)
+            {
+            LONG    cwnd    = CwndTestMle(hwnd);
+
+            sprintf(szMessage, "%ld edits: %s", cwnd,
+                cwnd == cwndTest ? "Ok" :
+                   "Leaky edit");
+            InvalidateRect(hwnd, NULL, TRUE);
+            }
+        break;
+
+    case WM_PAINT:
+        {
+        PAINTSTRUCT wps;
+        RECT        rect;
+
+        BeginPaint(hwnd, &wps);
+        GetClientRect(hwnd, &rect);
+        DrawText(wps.hdc, szMessage, -1, &rect,
+            DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        EndPaint(hwnd, &wps);
+        }
+        break;  /* End case WM_PAINT. */
+        }       /* End switch wm. */
+    return 0L;
+    }
+
+LONG
+CwndTestMle(HWND hwndReport)
+/*****************************************************/
+/* -- We do the actual work here.                    */
+/* -- Create and destroy an MLE window, repeatedly,  */
+/*    cwndTest times or until CreateWindow() fails.  */
+/* -- Return the number of MLE's we were able to     */
+/*    create.                                        */
+/* -- hwndReport  : Window to display results into.  */
+/*****************************************************/
+    {
+    LONG    iwnd;
+    HANDLE    hins;
+
+    hins = GetWindowWord(hwndReport, GWW_HINSTANCE);
+    for (iwnd = 1L; iwnd <= cwndTest; iwnd++)
+        {
+        HWND    hwnd;
+
+        if ((hwnd = CreateWindow(
+            "edit",
+            NULL,
+            WS_CHILD | ES_MULTILINE | WS_VSCROLL,
+            0, 0, 0, 0,
+            hwndReport,
+            1,
+            hins, NULL)) == NULL)
+            break;
+
+        DestroyWindow(hwnd);
+
+        if (iwnd % 10L == 0L)
+            {
+            /* Display every 10 times. */
+            sprintf(szMessage, "%ld MLEs", iwnd);
+            InvalidateRect(hwndReport, NULL, TRUE);
+            UpdateWindow(hwndReport);
+            }
+        }
+
+    return iwnd - 1L;
+    }
+

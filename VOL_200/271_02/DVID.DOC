@@ -1,0 +1,144 @@
+
+
+        NAME
+               Direct Video Access Routines
+
+
+        SYNOPSIS
+               (void) dvid_attrib(attribute);  set an attribute
+               (void) dvid_bios();             force use of bios routines
+               (void) dvid_chgattrib(srow, scol, erow, ecol, attribute);
+                                               alter attribute in an area
+               (void) dvid_done();             de-initialize the functions
+               (void) dvid_e2eol();            erase cursor to end of line
+               (void) dvid_e2eos();            erase cursor to end of screen
+               (void) dvid_flush();            update real cursor position
+               attribute = dvid_getattr();     fetch the current attribute
+               value = dvid_getchr(row, col);  get character and attribute
+               (void) dvid_init();             initialize the functions
+               (void) dvid_move(row, col);     set internal cursor position
+               (void) dvid_putchr(ch);         write a character to the screen
+               (void) dvid_scroll(lines, srow, scol, erow, ecol, attribute);
+                                               scroll a region of the screen
+               (void) dvid_setpage(page, mode); set video page for writing,
+                                                reading, and display
+               (void) dvid_sync(mode);         enable or disable video sync
+
+               int attribute;          video attribute
+               int value;              attribute/character as packed word
+               int srow;               starting row number
+               int erow;               ending row number
+               int row;                absolute row number
+               int scol;               starting column number
+               int ecol;               ending column number
+               int col;                absolute column number
+               int lines;              mode for region scroll
+               int page;               video page number 0-7
+               int mode;               BOOLEAN flag (TRUE or FALSE)
+               char ch;                8 bit character value
+
+
+        DESCRIPTION
+        The direct video access functions are described in some detail
+        in the users manual accompanying "Steve's Library".  They are
+        only briefly reviewed here.  Be sure to look at the utility
+        file "dump.c" for examples of function usage.
+
+direct video functions,      page 2
+
+        dvid_attrib(attribute) sets the video (attribute) used for
+                    subsequent memory writes.
+        dvid_bios() may be called to force use of rom-bios services
+                    if problems are encountered using memory access.
+        dvid_chgattrib(srow, scol, erow, ecol, attrib) may be used to
+                    alter the attributes on a region of the screen
+                    starting at row (srow) and column (scol), up
+                    to and including (erow) and (ecol), to the
+                    new (attribute).  This provides a means of
+                    changing the color of a region of the screen
+                    from 1 character to the full screen without
+                    altering the character data in memory.
+        dvid_done() is called before exiting a program to restore
+                    screen characteristics.  It may also be used
+                    from within a program to restore all default
+                    values within the direct video package.
+        dvid_e2eol() and dvid_e2eos() are used to erase (to spaces)
+                    the screen from the current internal cursor
+                    position to the end of the line (e2eol) or the
+                    end of the current video page (e2eos).
+        dvid_flush() is called to force the onscreen cursor to
+                    the position defined by the "internal" cursor
+                    position.  During video writes, an internal
+                    cursor position is maintained, but the onscreen
+                    cursor is NOT automatically updated to reflect
+                    the current writing position.  This function
+                    resolves the discrepancy.
+        dvid_getattr() is used to return the current attribute used
+                    for writing.  It will return the value previously
+                    set with dvid_attrib().
+        dvid_getchr(row, col) returns the character and screen attribute
+                    at (row) and (col) on the current video page.
+                    The value is returned as a 16 bit value, with
+                    the low 8 bits being the character, and the upper
+                    8 bits the attribute.
+        dvid_init() MUST be called before any other dvid* functions are
+                    used.  This function discovers the type of video
+                    card and mode in use and sets internal variables
+                    accordingly.
+        dvid_move(row, col) sets the "internal" cursor to the specified
+                    (row) and (col) positions.  Subsequent writes to
+                    the screen will begin at this position.
+        dvid_putchr(char) is the real workhorse of these functions.  It
+                    is this function which writes the specified (char)
+                    to the screen memory with the current attribute
+                    at the current internal row/col position.
+        dvid_scroll() scrolls a region of the screen.  If the first
+                    argument is equal to 0 the region is cleared.
+                    If less than zero, the region is scrolled down.
+                    If greater than zero, scrolled up.
+
+direct video functions,      page 3
+
+        dvid_setpage(page, mode) is used ONLY with CGA cards, which
+                    may switch their video "pages".  In 40 column modes,
+                    there are 8 pages numbered 0-7.  In 80 column modes,
+                    there are 4 pages, numbered 0-3.  Any page may be
+                    set for reading or writing, while setting a different
+                    or the same page for actual display.  The (page)
+                    argument specifies the page number desired for
+                    writing, and is checked against the current video
+                    mode for correctness.  The (mode) argument is 0
+                    to select the page for writing/reading only,
+                    without changing the page current specified for
+                    display.  (mode) set to 1 also changes the displayed
+                    page to the indicated (page).  This function may
+                    therefore be used to alter not only the destination
+                    for direct memory writes, but also may be used to
+                    switch the display to the various pages.
+         dvid_sync(mode) is used to control video synchronization on CGA
+                    cards.  Normally, the functions default to sync enabled
+                    to prevent video "snow" during writes.  (mode) may be
+                    set to FALSE to disable video sync.  On some color
+                    cards, no snow will result evem without sync.  For
+                    all cards, disabling sync will speed up access, although
+                    the resulting "snow" may be objectionable.
+                    N.B.: Often, there will be a little snow on the left
+                    edge of the screen, even with video sync enabled.
+                    Turning off the visible cursor using cursor_style()
+                    in this library can often eliminate the snow, which
+                    is actually caused by the cursor itself.
+
+
+        To fully understand all the implications of video access, please
+        refer to one of the several good texts on MS-DOS programming.
+        Some are:
+            "Programmer's Guide to the IBM-PC"
+                Norton, Peter    Microsoft Press
+            "Assembly Language Book for the IBM-PC"
+                Norton, Peter et. al.    Prentice-Hall Press
+            "Advanced MS-DOS"
+                Duncan, Ray      Microsoft Press
+
+
+        These functions is found in SMTCx.LIB for the Turbo-C Compiler.
+

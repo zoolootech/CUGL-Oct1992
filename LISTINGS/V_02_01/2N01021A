@@ -1,0 +1,466 @@
+Listing 2.  Timer Package Source Code.
+
+        TITLE   TIMER - STARLITE Timer System.
+
+;***    TIMER -- Lightweight Timer Package.
+;
+;1.     Functional Description.
+;       This module of STARLITE contains all of the code
+;       necessary to implement the timer object used inside
+;       the system.
+;
+;       The system is implemented in a very straightforward
+;       and fast way that also burns system memory pool.
+;       It is an a priori assumption that these timers almost
+;       never fire, they are usually set and reset very
+;       frequently (thousands of times per second).
+;
+;       The basic implementation is that a block of memory
+;       is allocated at initialization time, and that block
+;       is used as an array of timer objects.  Exported handles
+;       are offset addresses of the elements (relative to the
+;       beginning of DOSDATA), since system pool is addressable
+;       in DOSDATA.
+;
+;       Starts and stops are made very fast (in fact, single
+;       instructions) while scans through the timer database
+;       are actually fairly fast (at least, faster than a
+;       linked list of them), although this is less important
+;       since the timer database is scanned every 32ms
+;       (basically, on a timer tick).
+;
+;       Allocations and deallocations also happen to be quick,
+;       since the allocator just scans the array for a free
+;       entry, and the deallocator just clears the "in use"
+;       bit of an entry.
+;
+;2.     Modification History.
+;       S. E. Jones     90/06/15.       Original for 1.0.
+;
+;3.     NOTICE.
+;       This software is a derivative of the timer code
+;       that is licensed as a part of General Software's
+;       STARLITE architecture.  The code in this article
+;       can be freely incorporated into programs without
+;       licensing STARLITE architecture from General Software.
+;
+;4.     Build Environment.
+;       MASM 5.10, no special switches.
+
+;       Here are some useful macros to define
+;       procedures and call them.  They eliminate
+;       the need to manually declare EXTRN's.
+
+DefProc MACRO   name
+        PUBLIC  name
+name    PROC    NEAR
+        ENDM
+
+EndProc MACRO   name
+        ret
+        ASSUME  NOTHING
+name    ENDP
+        ENDM
+
+Pcall   MACRO   name
+        IF2
+        IFNDEF  name
+        EXTRN   name:NEAR
+        ENDIF
+        ENDIF
+        call    name
+        ENDM
+
+longword        struc
+lo              dw      ?
+hi              dw      ?
+longword        ends
+
+;       Package constants.
+
+MILLISECONDS_PER_TICK   = 55    ; time between ExpireTimer runs.
+
+;       Define a timer object.
+
+TIMER           struc
+timer_timeout   dd      ?       ; absolute time of expiration.
+timer_rtn       dd      ?       ; address of routine to execute.
+timer_flags     dw      ?       ; conditions on this timer.
+timer_context   dw      ?       ; context value passed to routine.
+TIMER           ends
+
+TIMER_FLAGS_ALLOCATED   = 0001h ; timer object is in use.
+TIMER_FLAGS_RUNNING     = 0002h ; timer is running.
+
+TIMERCODE SEGMENT PARA PUBLIC 'CODE'
+TIMERCODE ENDS
+
+CGROUP    GROUP TIMERCODE       ; add other code segs here.
+
+TIMERDATA SEGMENT PARA PUBLIC 'DATA'
+
+;       The following statics are private to the package.
+
+TimeCounter     dd      ?       ; milliseconds since power-on.
+
+MAX_TIMERS      =       100     ; number of timers in system.
+StaticArray     db      MAX_TIMERS dup (type TIMER)
+TimerArray      dw      0       ; offset pointer to timer array.
+
+TIMERDATA ENDS
+
+DGROUP    GROUP TIMERDATA       ; add other data segs here.
+
+TIMERCODE SEGMENT
+
+;***    InitializeTimerSystem - Initialize the Timer System.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called by the application to
+;       initialize the timer package.
+;
+;   ENTRY.
+;       none.
+;
+;   EXIT.
+;       none.
+;
+;   USES.
+;       flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc InitializeTimerSystem
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    ds
+        mov     ax, DGROUP
+        mov     ds, ax                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+        lea     di, CGROUP:StaticArray  ; (DI) = adr, database.
+        mov     TimerArray, di          ; save database address.
+
+;       Initialize timer database.
+
+        mov     cx, MAX_TIMERS          ; (CX) = number of entries to reset.
+InitializeTimerSystem_Loop:
+        mov     timer_flags.[di], 0     ; reset this timer.
+        add     di, (SIZE TIMER)        ; (DI) = FWA, next timer.
+        loop    InitializeTimerSystem_Loop ; do the rest of 'em.
+
+;       Reset the current time up-counter.
+
+        sub     ax, ax
+        mov     TimeCounter.lo, ax
+        mov     TimeCounter.hi, ax
+
+        pop     ds
+        ASSUME  DS:NOTHING
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+EndProc InitializeTimerSystem
+
+;***   ExpireTimers - Fire Any Expired Timers.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called by interrupt 8 to expire
+;       system timers.  Expired timers are called with
+;       interrupts ENABLED and with a context in (BX).
+;       All timer routines are called with FAR linkage,
+;       so they must return with RETF.
+;
+;   ENTRY.
+;       none.
+;
+;   EXIT.
+;       none.
+;
+;   USES.
+;       flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc ExpireTimers, PUBLIC
+        push    ax
+        push    bx
+        push    cx
+        push    dx
+        push    si
+        push    di
+        push    ds
+        mov     ax, DGROUP
+        mov     ds, ax                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+        cli                             ; BEGIN CRITICAL SECTION.
+        add     TimeCounter.lo, MILLISECONDS_PER_TICK
+        adc     TimeCounter.hi, 0       ; do 32-bit update.
+        sti                             ; END CRITICAL SECTION.
+
+ExpireTimers_Scan:
+        nop                             ; widen interrupt window.
+        nop
+        nop
+        mov     ax, DGROUP
+        mov     ds, ax                  ; (DS) = DGROUP.
+
+        cli                             ; BEGIN CRITICAL SECTION.
+        mov     dx, TimeCounter.hi
+        mov     ax, TimeCounter.lo      ; (DX:AX) = current time.
+        mov     di, TimerArray          ; (DI) = FWA, 1st timer in system.
+        or      di, di                  ; is there a timer array?
+        jz      ExpireTimers_Exit       ; if not.
+        sub     di, (SIZE TIMER)        ; backup one for algorithm.
+        mov     cx, MAX_TIMERS          ; number of timers in system.
+
+ExpireTimers_Loop:
+        dec     cx                      ; (CX) = one less timer to go.
+        jz      ExpireTimers_Exit       ; if there are no more, we're done.
+        add     di, (SIZE TIMER)        ; (DI) = FWA, next timer in system.
+
+        test    timer_flags.[di], TIMER_FLAGS_ALLOCATED ; is the timer allocated?
+        jz      ExpireTimers_Loop       ; if not.
+        test    timer_flags.[di], TIMER_FLAGS_RUNNING ; is the timer running?
+        jz      ExpireTimers_Loop       ; if not.
+
+;       If the expiration time is greater than or equal to the current time,
+;       then we call the timer routine and stop the timer.
+
+        cmp     timer_timeout.hi.[di], dx ; is the timer's time > current time?
+        ja      ExpireTimers_Loop       ; if so.
+        jb      ExpireTimers_Expire     ; if expired.
+
+;       The most significant portions of the times match exactly.  Use the
+;       low-order times to compare.
+
+        cmp     timer_timeout.lo.[di], ax ; is the timer's time > current time?
+        ja      ExpireTimers_Loop       ; if so.
+
+;       The timer has expired.  Enable interrupts and call the routine.
+
+ExpireTimers_Expire:
+        and     timer_flags.[di], NOT TIMER_FLAGS_RUNNING ; turn off running bit.
+        mov     timer_timeout.hi.[di], -1    ; extend timeout to make it fast.
+        mov     timer_timeout.lo.[di], -1
+        push    cs                      ; push return address on stack.
+        lea     ax, CGROUP:ExpireTimers_Scan
+        push    ax
+
+        push    timer_rtn.hi.[di]       ; push target routine address on stack.
+        push    timer_rtn.lo.[di]
+
+        mov     bx, timer_context.[di]  ; (BX) = context to pass to rtn.
+        sti                             ; END CRITICAL SECTION.
+        retf                            ; leap into timer context.
+
+;       We made it through the timer list without finding a timer.
+
+ExpireTimers_Exit:
+        sti                             ; END CRITICAL SECTION.
+        pop     ds
+        ASSUME  DS:NOTHING
+        pop     di
+        pop     si
+        pop     dx
+        pop     cx
+        pop     bx
+        pop     ax
+EndProc ExpireTimers
+
+;***    AllocateTimer - Allocate a Timer Object.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called to allocate a timer object
+;       so that it may be used.  The object itself is
+;       allocated internally to this module.  A handle to
+;       the timer is returned to the caller.  In this actual
+;       implementation, the handle is the offset address
+;       from within DGROUP of the allocated timer object.
+;
+;       The caller also passes the address of a timer
+;       expiration routine to execute and a context value.
+;       These parameters are stored in the timer object.
+;
+;   ENTRY.
+;       AX      - timer context.
+;       BX:CX   - address, timer expiration routine.
+;
+;   EXIT.
+;       CY      - clear if successful, else set if failure.
+;       AX      - handle to timer if success.
+;
+;   USES.
+;       AX, flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc AllocateTimer
+        push    ds
+        push    di
+        push    dx
+        push    cx
+        mov     dx, cx                  ; (BX:DX) = FWA, expiration routine.
+
+        mov     cx, DGROUP
+        mov     ds, cx                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+;       Scan timer database looking for free timer object.
+
+        mov     cx, MAX_TIMERS          ; (CX) = # of timers to scan.
+        mov     di, TimerArray          ; (DI) = FWA, 1st timer.
+        sub     di, (SIZE TIMER)        ; backup one for algorithm.
+        cli                             ; BEGIN CRITICAL SECTION.
+AllocateTimer_Loop:
+        add     di, (SIZE TIMER)        ; (DI) = FWA, next timer.
+        test    timer_flags.[di], TIMER_FLAGS_ALLOCATED ; is this timer in use?
+        jz      AllocateTimer_Found     ; nope.  we can use him.
+        loop    AllocateTimer_Loop      ; go scan the rest.
+
+;       We ran out of timers in the system.  Return with failure.
+
+        sti                             ; END CRITICAL SETION.
+        pop     cx
+        pop     dx
+        pop     di
+        pop     ds
+        stc                             ; indicate failure.
+        ret                             ; return with failure.
+
+;       We found a vacant timer object.  Allocate it now.
+
+AllocateTimer_Found:
+        mov     timer_flags.[di], TIMER_FLAGS_ALLOCATED ; reserve it.
+        mov     timer_context.[di], ax  ; save caller's context.
+        mov     timer_rtn.lo.[di], dx   ; save caller's expiration routine.
+        mov     timer_rtn.hi.[di], bx
+        mov     ax, di                  ; return timer handle.
+        sti                             ; END CRITICAL SETION.
+        pop     cx
+        pop     dx
+        pop     di
+        pop     ds
+        clc                             ; indicate success.
+EndProc AllocateTimer
+
+;***    DeallocateTimer - Deallocate a Timer Object.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called to dispose of an allocated
+;       timer object.
+;
+;   ENTRY.
+;       AX      - handle to timer object.
+;
+;   EXIT.
+;       none.
+;
+;   USES.
+;       flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc DeallocateTimer, PUBLIC
+;       DISPLAY 'SysDeallocateTimer: Entered.'
+        push    ds
+        push    di
+        mov     di, DGROUP
+        mov     ds, di                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+;       Simply clear the allocated bit, and we're done.
+
+        mov     di, ax                  ; (DI) = FWA, timer object.
+        mov     timer_flags.[di], 0     ; clear allocated bit.
+
+        pop     di
+        pop     ds
+EndProc DeallocateTimer
+
+;***    StartTimer - Schedule Timeout.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called to start a timer, making
+;       it eligible to receive a timeout interrupt.  All
+;       we really do is set the RUNNING bitflag in the
+;       timer object and calculate the timeout, which is
+;       specified as a relative number of milliseconds and
+;       is converted to an absolute millisecond value by
+;       adding it to the current millisecond up-count.
+;
+;   ENTRY.
+;       AX      - handle to timer object.
+;       CX      - number of milliseconds until timer will expire.
+;
+;   EXIT.
+;       none.
+;
+;   USES.
+;       flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc StartTimer, PUBLIC
+        push    ds
+        push    di
+        mov     di, ax                  ; (DI) = FWA, timer object.
+        mov     ax, DGROUP
+        mov     ds, ax                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+;       Reset timeout value.  He specified relative
+;       milliseconds in (AX), so we get absolute milli-
+;       seconds (compatible with the units in TimeCounter)
+;       by adding it to TimeCounter.
+
+        cli                             ; BEGIN CRITICAL SECTION.
+        or      timer_flags.[di], TIMER_FLAGS_RUNNING
+        push    TimeCounter.lo          ; set timeout = current time.
+        push    TimeCounter.hi
+        pop     timer_timeout.hi.[di]
+        pop     timer_timeout.lo.[di]
+        add     timer_timeout.lo.[di], cx ; add the 16-bit delta time.
+        adc     timer_timeout.hi.[di], 0  ; get 32-bit arithmetic result.
+        sti                             ; END CRITICAL SECTION.
+
+        pop     di
+        pop     ds
+EndProc StartTimer
+
+;***    StopTimer - Terminate Scheduled Timeout.
+;
+;   FUNCTIONAL DESCRIPTION.
+;       This routine is called to stop a timer, making it
+;       ineligible to receive a timeout interrupt.
+;
+;   ENTRY.
+;       AX      - handle to timer object.
+;
+;   EXIT.
+;       none.
+;
+;   USES.
+;       flags.
+
+        ASSUME  CS:CGROUP, DS:NOTHING, ES:NOTHING, SS:NOTHING
+DefProc StopTimer, PUBLIC
+        push    ds
+        push    di
+        mov     di, ax                  ; (DI) = FWA, timer object.
+        mov     ax, DGROUP
+        mov     ds, ax                  ; (DS) = DGROUP.
+        ASSUME  DS:DGROUP
+
+        and     timer_flags.[di], NOT TIMER_FLAGS_RUNNING
+
+        pop     di
+        pop     ds
+EndProc StopTimer
+
+TIMERCODE ENDS
+
+        END

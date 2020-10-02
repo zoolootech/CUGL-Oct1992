@@ -1,0 +1,76 @@
+/****************** LISTING 2 - server.c ******************/
+ 
+#include "ipc.h"
+ 
+extern  RCVBUF msgque[QSIZE];
+extern  BOOL qfull, qempty, qovrflo;
+extern  int qtail, qhead;
+ 
+main()
+{
+int     status, i;
+CLIENT  *p, *root = NULL;
+char    mbxname[16];
+MSGBUF  msgbuf;
+USHORT  rcvmbx;
+ 
+/*++++++ Startup ++++++*/
+ 
+status = open_comm_link(&rcvmbx,sizeof(MSGBUF),"SERVERMBX");
+status = SYS$DCLAST(&receive, rcvmbx, PSL$C_SUPER);
+ 
+/*++++++ Main loop ++++++*/
+ 
+FOREVER {
+  status = SYS$WAITFR(RCVEF);
+  status = SYS$CLREF(RCVEF);
+  while (!qempty) { 
+    dequeue(&msgbuf);
+    switch(msgbuf.cmdtyp) {
+ 
+      case ADDMBX:
+          p = search_list(root, msgbuf.xmt_prcnum);
+          if (p == NULL) {
+              insert_list_item(&root, msgbuf.xmt_prcnum);
+              sprintf(mbxname, "CLIENTMBX%d", 
+                      msgbuf.xmt_prcnum);
+              open_comm_link(&root->mbxid, 
+                      sizeof(MSGBUF), mbxname);
+          }
+          break;
+ 
+      case DELMBX:
+          p = search_list(root, msgbuf.xmt_prcnum);
+          if (p) {
+              close_comm_link(p->mbxid);
+              delete_list_item(&root, msgbuf.xmt_prcnum);
+          }
+          break;
+ 
+      case PASSTHRU:
+          p = search_list(root, msgbuf.rcv_prcnum);
+          if (p)
+              send(p->mbxid, &msgbuf, sizeof(MSGBUF));
+          break;
+ 
+      case BROADCAST:
+          broadcast(&msgbuf, sizeof(MSGBUF), root);
+          break;
+ 
+      case SHUTDOWN:
+          msgbuf.msgtyp = SHUTDOWN;
+          broadcast(&msgbuf, sizeof(MSGBUF), root);
+          while (root) { 
+              close_comm_link(root->mbxid);
+              root = root->link;
+          }
+          close_comm_link(rcvmbx);
+          exit(SUCCEED);
+          break;
+         
+       default:
+          break;
+    } 
+  }
+}  
+} 

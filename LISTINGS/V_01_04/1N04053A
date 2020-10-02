@@ -1,0 +1,134 @@
+#include	<stdio.h>
+#include	<graphics.h>
+#include	<stdlib.h>
+
+extern	struct	menu	*m;
+extern	int		current;	/* index into menu array */
+
+#define	MAX_MENU_CHOICES	400
+#define	INVALID				-1
+#define	MOUSE_L				-2
+#define	MOUSE_R				-3
+#define	MOUSE_OFF			-4
+#define	MOUSE_UP			-5
+#define	MOUSE_N				-6
+#define	NOT_FOUND			-1
+
+/*
+************************************************************************
+*	disp_menu - display menu/return item selected/display menu help
+*
+*	Parameters:
+*		button (in) - mouse button pressed
+*			MOUSE_N: none
+*			MOUSE_L, MOUSE_R: mouse left or right button
+*			Other key: other key pressed
+*		x (in) - mouse cursor x position when button pressed
+*		y (in) - mouse cursor y position when button pressed
+*
+*	Global:
+*		m[]->action - number representing action to take on selection
+*					  (defined by calling program)
+*		m[]->help - pointer into menu.hlp file for help string
+*		m[]->level - menu level in hierarchy
+*		current - current menu choice
+*
+*	Files:
+*		menu.hlp - File containing help for each m[] choice.
+*
+*	Returns:
+*		Returns m[]->action or INVALID
+*
+*	Notes:
+*		x and y are not used if button == MOUSE_N.
+*		x and y are in absolute screen coordinates.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+*		Copyright 1989 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************
+*/
+
+int	disp_menu(int button, int x, int y)
+{
+			FILE	*fp;
+	static	int		menu_edges [MAX_MENU_CHOICES] [6]; /* l, t, r, b, key, choice */
+			int		choice;		/* index into menu_edges array */
+			int		level;
+			int		retval = INVALID;
+			char	string[81];
+	struct	environment *e;
+
+	e = save_environment();
+	setviewport(0,0,getmaxx(), getmaxy(),NO_CLIP);
+
+	if (button == MOUSE_UP) button = MOUSE_L;
+
+	if (button == MOUSE_N) 		/* redisplay current menu */
+	{
+		out_menu(menu_edges);
+	}
+	else
+	{
+		choice = find(x, y, button, menu_edges);
+
+		if (choice == NOT_FOUND)
+		{
+			disp_help("Click on a menu choice.");
+		}
+		else
+		{
+			if (button != MOUSE_R)
+			{
+				current = menu_edges[choice][5];
+				retval = m[current].action;
+				if (menu_edges[choice+1][0] == INVALID)	/* last value is quit */
+				{
+					level = m[current].level;
+					if (level != 0)		/* zero means quit program was selected */
+					{
+						/* find first element higher in hierarchy */
+						while (m[--current].level >= level);
+
+						/* display resultant menu */
+						out_menu(menu_edges);
+					}
+				}
+				/* see if lower level exists for selected menu choice */
+				else if (m[current +1].level > m[current].level)
+				{
+					/* descend to next menu hierarchy level */
+					current++;
+					out_menu(menu_edges);
+				}
+			}
+			if (button == MOUSE_R)
+			{
+				current = menu_edges[choice][5];
+				fp = fopen ("menu.hlp","rb");
+				if (fp == NULL)
+				{
+					error(12,"disp_menu");
+					return INVALID;
+				}
+				if (fseek(fp,m[current].help,SEEK_SET) != NULL)
+				{
+					error(13,"disp_menu");
+					fclose(fp);
+					return INVALID;
+				}
+				if (reads(string, 81, fp) == EOF)
+				{
+					error(13,"disp_menu");
+					fclose(fp);
+					return INVALID;
+				}
+				fclose(fp);
+				disp_help(string);
+			}
+		}
+	}
+	restore_environment(e);
+	return retval;
+}

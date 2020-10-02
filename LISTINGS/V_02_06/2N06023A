@@ -1,0 +1,271 @@
+/* ----------------------------------------------------------
+ *  Turbo C++
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be used
+ *  only for non-commercial purposes with appropriate
+ *  acknowledgement of copyright.
+ * ------------------------------------------------------- */
+
+#define NO_EXT_MALLOC
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include <bios.h>
+#include <stdarg.h>
+#include "snooper.h"
+
+struct device_table {
+    char   *d_name;             /* device name */
+    FILE   *d_ptr;              /* stream pointer */
+    void   (*d_setup)(void);    /* setup debugger */
+    void   (*d_exec)(void);     /* execute debugger */
+    };
+
+/* scan codes ...... */
+enum keys { ESC = 1, Y_KEY = 21,
+            F1 = 59, F2 = 60, F3 = 61,
+            F4 = 62, F5 = 63, F6 = 64,
+            F7 = 65, F8 = 66, F9 = 67, F10 = 68 };
+
+void set_scrn(void);
+void exec_scrn(void);
+void open_file(void);
+void no_op(void);
+
+static struct device_table Dtab[] = {
+/*  name        stream  setup         execute
+------------------------------------------------- */
+"",             stderr, set_scrn,     exec_scrn,   /* SCRN */
+"con",          NULL,   open_file,    no_op,       /* CON  */
+"debug.000",    NULL,   open_file,    no_op,       /* FIL0 */
+"debug.001",    NULL,   open_file,    no_op,       /* FIL1 */
+"debug.002",    NULL,   open_file,    no_op,       /* FIL2 */
+"debug.003",    NULL,   open_file,    no_op,       /* FIL3 */
+"lpt1",         NULL,   open_file,    no_op,       /* LPT1 */
+"lpt2",         NULL,   open_file,    no_op,       /* LPT2 */
+"lpt3",         NULL,   open_file,    no_op,       /* LPT3 */
+"com1",         NULL,   open_file,    no_op,       /* COM1 */
+"com2",         NULL,   open_file,    no_op,       /* COM2 */
+0,              0,      0,            0,
+};
+
+static int Dnum = __SCRN__;    /* current Dtab[] index */
+
+/* data for __SCRN__ device .... */
+static void *SaveBuf;           /* video save buffer */
+static void *SwapBuf;           /* video swap buffer */
+static FILE *pEfile = 0;        /* -> echo stream file */
+static char Efile[] = "__SCRN__.CAP";   /* echo file */
+static struct text_info Ti;     /* video state info */
+static char Menu[] = "<Esc>-Continue <F1>-Exit <F2>-Swap"
+            " <F3>-Echo (%s) <F4>-DOS Shell <F5>-Command";
+
+/* Breakpoint locus indicators  .... */
+static const char *Filename;    /* -> __FILE__ */
+static int Line;                /* __LINE__ */
+
+#define getxy(x,y)    x = wherex();   \
+                      y = wherey();
+#define getscan()     (bioskey(0) >> 8)
+#define getkey()        bioskey(0)
+
+static void no_op(void) { }
+
+static void open_file(void)
+{
+   /* Open a file/device for writing debug data */
+    FILE *fp;
+
+    if( Dtab[Dnum].d_ptr == NULL )   {
+            fp = fopen(Dtab[Dnum].d_name, "wt");
+            __WATCH(fp == NULL,__SCRN__,
+                 cprintf("Can't open snooper device %s\n",
+                             Dtab[Dnum].d_name ));
+            Dtab[Dnum].d_ptr = fp;
+            setbuf( fp, NULL );     /* set unbuffered */
+    }
+}
+
+static void print_menu(void)
+{
+        int x, y;
+        getxy(x,y);
+        gotoxy(1,Ti.screenheight);
+        cprintf(Menu,pEfile ? "ON" : "OFF" );
+        gotoxy(x,y);
+}
+
+static void set_scrn(void)
+{
+   /* Save the current application video state and popup
+    * the debugger screen. If a screen save buffer can't
+    * be allocated, application's screen will be trashed
+    * on break to __SCRN__ device.
+    */
+
+    static char malloced = 0;     /* mem alloc flag */
+    size_t bsize;     /* monitor buffer size, bytes */
+
+    gettextinfo( &Ti );
+
+    if( !malloced )    {
+            malloced = 1;
+            bsize = Ti.screenheight * Ti.screenwidth * 2;
+
+            if( !(SaveBuf = malloc( bsize )) )
+                    return ;
+
+            SwapBuf = malloc( bsize );
+    }
+
+    gettext(1,1,Ti.screenwidth,Ti.screenheight,SaveBuf);
+    window( 1,1, Ti.screenwidth,Ti.screenheight );
+    clrscr();
+    d_printf("\n**** Breakpoint in \"%s\", line %d:\n",
+                                        Filename, Line);
+    print_menu();
+}
+
+static void user_input(void)
+{
+    int x, y, depart = 0;
+    char cmd[150];
+
+    getxy(x,y);
+
+    while( !depart )    {
+        switch( getscan() )   {
+        case ESC:   ++depart;   /* continue */
+                    break;
+        case F1:    cprintf("\r\nPress 'Y' to confirm: ");
+                    if( getscan() != Y_KEY )
+                            goto restore_screen;
+                    clrscr();   /* abort */
+                    exit(1);
+                    break;
+        case F2:    if( !SaveBuf )     /* swap screens */
+                            break;
+                    puttext(1,1,Ti.screenwidth,
+                                  Ti.screenheight,SaveBuf);
+                    getkey();
+                    goto restore_screen;
+        case F3:    d_echo( pEfile ? 0 : 1 );
+                    print_menu();  /* toggle echo */
+                    break;
+        case F4:    cmd[0] = '\0';   /* Shell escape */
+                    goto do_shell;
+        case F5:    cprintf( "\r\nCMD>" );
+                    gets(cmd);
+        do_shell:   clrscr();
+                    system(cmd);
+        restore_screen:
+                    if( SwapBuf )
+                        puttext(1,1,Ti.screenwidth,
+                                Ti.screenheight,SwapBuf);
+                    gotoxy(x,y);
+                    break;
+        default:    printf("\a");   break;
+        }
+    }
+}
+
+static void exec_scrn(void)
+{
+       /* Save initial debugger screen .... */
+        if( SwapBuf )
+               gettext(1,1,Ti.screenwidth,
+                           Ti.screenheight,SwapBuf);
+        user_input();
+
+       /* Restore application video state */
+        if( !SaveBuf )
+                return;         /* screen was trashed */
+
+        window( Ti.winleft, Ti.wintop,
+                            Ti.winright,Ti.winbottom );
+        puttext(1,1,Ti.screenwidth,Ti.screenheight,SaveBuf);
+        gotoxy( Ti.curx, Ti.cury );
+}
+
+void d_break(int dh, const char *file, int linenum)
+{
+   /* Initialize application break to debugger using the
+    * specified device handle.
+    */
+
+    if( dh > MAX_DEVICES-1 )    {
+        __BREAK(__SCRN__,
+            cprintf("Invalid debugger handle %d\n", dh));
+        exit(1);
+    }
+
+    Dnum = dh;       /* remember current device */
+    Filename = file;    /* save breakpoint locus */
+    Line = linenum;
+    (*Dtab[dh].d_setup)();
+}
+
+void d_exec(void)
+{
+       /* Called after debugger has been setup and the user-
+        * supplied function has been executed.
+        */
+        (*Dtab[Dnum].d_exec)();
+        Dnum = __SCRN__;    /* reset to default */
+}
+
+void d_printf( const char *format, ... )
+{
+   /* Debugger version of fprintf(). Allows writing of
+    * formatted data to pre-opened stream file associated
+    * with last call to d_break().  If echo mode is set,
+    * all data written to __SCRN__ device is also sent to
+    * disk file. Uses SwapBuf[] as a temporary work buffer.
+    */
+
+    va_list argptr;
+
+    va_start(argptr, format);
+
+    if( Dnum == __SCRN__ && pEfile && SwapBuf )  {
+            vsprintf( SwapBuf, format, argptr );
+            fprintf( stderr, SwapBuf );     /* to SCRN */
+            fprintf( pEfile, SwapBuf );     /* echo it */
+    }
+    else
+            vfprintf( Dtab[Dnum].d_ptr, format, argptr );
+
+    va_end(argptr);
+}
+
+int d_putc( int ch )
+{
+   /* Debugger version of fputc().  Allows writing of <ch>
+    * to pre-opened stream file associated with last call
+    * to d_break().
+    */
+
+    return fputc( ch, Dtab[Dnum].d_ptr );
+}
+
+void d_echo(int mode)
+{
+   /* Set the debugger screen-echo mode. If <mode> is
+    * non-zero, all debug data written to __SCRN__ device
+    * will be sent also to echo file <Efile>, but only if
+    * d_printf() is used in the __BREAK() statement.
+    */
+
+    if( mode && pEfile == NULL )   {
+            pEfile = fopen( Efile, "wt" );
+            __WATCH(pEfile == NULL, __SCRN__,
+                cprintf("Unable to open SCRN echo file" ));
+    }
+    else if( mode == 0 && pEfile )  {
+            fclose(pEfile);
+            pEfile = NULL;
+    }
+}
+
+/* -------------------------------------------------------- */

@@ -1,0 +1,61 @@
+*****Listing 2*****
+
+/*
+ *  TERM.C
+ *
+ *  Copyright (C) Mark R. Nelson 1990
+ *
+ * This file contains the main() procedure for a skeletal
+ * terminal emulator program.  This code has no bells or
+ * whistles, as it exists only to exercise and test the
+ * RS-232 interface code.  Keyboard input is done using the
+ * MS-DOS specific compiler calls to kbhit() and getch().
+ * Screen output is done using standard I/O calls to
+ * stdout.
+ *
+ * To build this program in Turbo C:
+ *
+ * tcc -w term.c com.c
+ *
+ * To build this program in Quick C:
+ *
+ * qcl -W3 term.c com.c
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include "com.h"
+
+main()
+{
+    PORT *port;
+    int c;
+
+    port = port_open( COM1_UART, COM1_INTERRUPT );
+    if ( port== NULL ) {
+        printf( "Failed to open the port!\n" );
+        exit( 1 );
+    }
+    port_set( port, 2400L, 'N', 8, 1 );
+/*
+ * The program stays in this loop until the user hits the
+ * Escape key.  The loop reads in a character from the
+ * keyboard and sends it to the COM port.  It then reads
+ * in a character from the COM port, and prints it on the
+ * screen.
+ */
+    for ( ; ; ) {
+        if ( kbhit() ) {
+            c = getch();
+            if ( c == 27 )
+                break;
+            else
+                port_putc( (unsigned char) c, port );
+        }
+        c = port_getc( port );
+        if ( c >= 0 )
+            putc( c, stdout );
+    }
+    port_close( port );
+    return( 0 );
+}

@@ -1,0 +1,106 @@
+/* 4 MAY 81 */
+/*
+   Suggestion for compiling and linking -change to suit.
+
+  compile roff1 and roff2                 
+  then link them together
+  */
+
+int 	debug;
+int PAGESTOP;
+
+#define MAXLINE 300
+/* send error messages to console while in DIO */
+
+#define DEBUG		( debug != 0 )
+#define HUGE		135	/* generally large number */
+#define PAGEWIDTH	80	/* see RM_DEF */
+#define	COMMAND		'.'	/* all commands starts with this */
+#define	CONSOLE		-5	/* one of output options */
+#define PRINTER 	-4	/* another */
+#define FILE		-3	/* another */
+#define	UNKNOWN		-1	/* returned if doesn't recg. command */
+#define	NO_VAL		-32760	/* returned when no argument w/commad */
+#define WE_HAVE_A_WORD   1       /* returned by getwrd func. */
+#define	NO		0
+#define	YES		1
+#define UNDERLINE	'\137'
+#define	CR		0x0D
+#define BACKSPACE	'\b'
+#define NUMSIGN		'#'	/* for title strings */
+#define NEWLINE		'\n'
+#define TAB		'\t'
+#define BLANK		' '
+#define SQUOTE		0x27	/* single quote */
+#define DQUOTE		0x22	/* double quote */
+#define PAGELEN		66
+
+#define FI		1	/* fill lines */
+#define TI		2	/* temporary indent */
+#define BP		3	/* begin page  */
+#define BR		4	/* causes break */
+#define CE		5	/* center line(s) */
+#define IN		7	/* left indent */
+#define LS		8	/* line spacing */
+#define NF		9	/* no fill */
+#define PL		10	/* set page length */
+#define RM		11	/* set right margin */
+#define SP		12	/* add blank line(s) */
+#define UL		13	/* underline line(s) */
+#define FO		14	/* footer title */
+#define HE		15	/* header title */
+#define M1		16	/* top margin */
+#define M2		17	/* second top margin */
+#define M3		18	/* first bottom margin */
+#define M4		19	/* bottom-most margin       */
+
+
+int FILL;	/* set to YES or NO */
+int LSVAL;	/* line spacing value -> default will be 1 */
+int TIVAL;	/* temporary indent -> default  0 */
+int INVAL;	/* left indent -> default  0 */
+int RMVAL;	/* right margin -> default  PAGEWIDTH */
+int CEVAL;	/* set equal to number of lines to be centered	*/
+/* default is 0                                   */
+int ULVAL;	/* set equal to number of lines to be underlined */
+int SPVAL;	/* blank lines to be spaced down */
+
+
+int CURPAG;	/* current output page number; init = 0 */
+int NEWPAG;	/* next output page number; init = 1 */
+int LINENO;	/* next line to be printed; init = 0 */
+int PLVAL;	/* page length in lines; init=66 */
+int M1VAL;	/* margin before and including header */
+int M2VAL;	/* margin after header */
+int M3VAL;	/* margin after last text line */
+int M4VAL;	/* bottom margin, including footer */
+int BOTTOM;	/* last live line */
+
+char HEADER[ MAXLINE ];	/*  header title */
+char FOOTER[ MAXLINE ];	/* footer title */
+
+
+/* defaults for global parameters */
+
+#define FI_DEF		1
+#define	LS_DEF		1
+#define	IN_DEF		0
+#define	RM_DEF		80
+#define	TI_DEF		0
+#define	CE_DEF		0
+#define	UL_DEF		-1
+#define M1_DEF		2
+#define M2_DEF		2
+#define M3_DEF		2
+#define M4_DEF		2
+
+
+int DIR;	/* for "spreading" of lines    */
+int OUTWRDS;	/* no. words in outbuf; init = 0 */
+char OUTBUF [ MAXLINE*2 ];	/* lines to be filled collected here */
+ch 
+aren't. For instance:
+
+.fi
+.ti 0
+this is a line of text

@@ -1,0 +1,119 @@
+(*
+        Minimal MicroSoft Mouse Driver Interface Unit
+
+        **************************************************
+        NOTE:   All compilations should have the boolean
+                evaluation option set to "short-circuit"
+        **************************************************
+
+        June 26, 1990       Michael Kelly 	Version 1.01	*)
+
+Unit Mouse;
+
+Interface
+Uses Dos;
+
+    Const
+        MouseInterrupt : Byte = $33;
+
+    Var
+        MouseOn,
+        MouseVisible    : Boolean;
+
+
+ 
+Procedure MouseInit;    { initializes mouse driver if one is present }
+
+Procedure ToggleMouseVisibility; { toggles mouse cursor visible/hidden }
+
+Procedure MouseReset; { resets mouse driver, if active, to default state }
+
+(*
+ *  stores mouse coordinates and button state info in
+ *  parameters if mouse driver active
+ *
+ *  returns:
+ *              True if mouse driver is active
+ *
+ *              False if mouse driver is not active
+ *)
+Function GetMousePosition(Var MouseX, MouseY, MouseButtons : Word) : Boolean;
+
+
+Implementation
+
+Procedure MouseInit;
+    Var
+        Regs        : Registers;
+        Vector      : Pointer;
+	OpCode	    : ^Byte;
+
+Begin
+  GetIntVec(MouseInterrupt, Vector);
+
+  If (Vector = Nil) then
+    Exit;
+  OpCode := Vector;     { mouse interrupt vector }
+  If OpCode^ = $CF then { interrupt return opcode indicates no mouse driver }
+    Exit;
+  Regs.ax := 0;
+  Intr(MouseInterrupt, Regs);
+  If Regs.ax = $FFFF then   { -1 indicates mouse driver active }
+  Begin
+    MouseOn := True;
+    MouseVisible := False;
+  End;
+End;
+(* MouseInit *)
+
+Procedure ToggleMouseVisibility;
+    Var
+        Regs         : Registers;
+
+Begin
+  If MouseOn then
+  Begin
+    If MouseVisible then
+      Regs.ax := $0002
+    Else
+      Regs.ax := $0001;
+    Intr(MouseInterrupt, Regs);
+    MouseVisible := not MouseVisible; { track mouse visible/hidden state }
+  End;
+End;
+(* ToggleMouseVisibility *)
+
+Procedure MouseReset;
+Begin
+  If MouseVisible then
+    ToggleMouseVisibility;
+  MouseInit;
+End;
+(* MouseReset *)
+
+Function GetMousePosition(Var MouseX, MouseY, MouseButtons : Word) : Boolean;
+    Var
+        Regs : Registers;
+
+Begin
+  If not MouseOn then   { if mouse driver not active, return False }
+  Begin
+    GetMousePosition := False;
+    Exit;
+  End;
+  Regs.ax := $0003;
+  Intr(MouseInterrupt, Regs);
+  MouseButtons := Regs.bx;      { store mouse button state }
+  MouseX := Regs.cx;            { store mouse x coordinate }
+  MouseY := Regs.dx;            { store mouse y coordinate }
+  GetMousePosition := True;     { return True }
+End;
+(* GetMousePosition *)
+
+{ Initialization }
+
+Begin
+  MouseOn  := False;
+  MouseVisible := False;
+End.
+

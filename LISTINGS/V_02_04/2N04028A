@@ -1,0 +1,382 @@
+{ Listing 3  -- floppy.c}
+
+
+**  This file contains the various functions used to 
+**  control the Floppy Disk Controller (FDC).
+*/
+#include    <stdio.h>
+#include    <dos.h>
+#include    "floppy.h"
+#include    "delay.h"
+
+/* Global data */
+byte Results[7];
+
+/* Command Strings */
+static byte SpecifyCmd[] = { FdcCmdSpecify, 0, 0 };
+static byte SenseDriveCmd[] = { FdcCmdSenseDrive, 0 };
+static byte SenseIntCmd[] = { FdcCmdSenseInt };
+static byte RecalCmd[] = { FdcCmdRecalibrate, 0 };
+static byte SeekCmd[] = { FdcCmdSeek, 0, 0 };
+static byte ReadCmd[] = { FdcCmdRead, 0, 0, 0, 0, 2, 9, 
+                          0x2a, 0xff };
+static byte ReadTrackCmd[] = { FdcCmdReadTrack, 0, 0, 0, 
+                               0, 2, 9, 0x2a, 0xff };
+static byte WriteCmd[] = { FdcCmdWrite, 0, 0, 0, 0, 2, 9, 
+                           0x2a, 0xff };
+static byte FormatTrackCmd[] = { FdcCmdFormatTrack, 0, 2, 
+                                 9, 0x50, 0xff };
+
+/* Local data */
+static byte StepRateTime = 0x0c,
+            HeadUnloadTime = 0x0f,
+            HeadLoadTime = 0x02;
+static byte Drive;
+static byte Cylinder = 0, Head = 0;
+static unsigned BytesPerSector = 512;
+static byte SectorsPerTrack = 9;
+volatile static byte Interrupt = 0;
+static void interrupt (*oldFdcInt)(void);
+
+#define TRUE    1
+#define FALSE   0
+
+/* Process FDC Interrupt request */
+void interrupt fdcInterrupt(void)
+{
+    Interrupt = TRUE;
+    (*oldFdcInt)();
+}
+
+/* Set local drive parameters value */
+void fdcSetDriveParms(byte srt, byte hut, byte hlt)
+{
+    StepRateTime = srt;
+    HeadUnloadTime = hut;
+    HeadLoadTime = hlt;
+
+    SpecifyCmd[1] = (StepRateTime << 4) | HeadUnloadTime;
+    SpecifyCmd[2] = HeadLoadTime << 1;
+
+    /* Setup interrupt hook, if not already set */
+    if (oldFdcInt == NULL)
+    {
+        oldFdcInt = getvect(0x0e);
+        setvect(0x0e, fdcInterrupt);
+    }
+}
+
+/* Reset FDC interupt vector */
+void fdcResetParms(void)
+{
+    if (oldFdcInt != NULL)
+    {
+        setvect(0x0e, oldFdcInt);
+        oldFdcInt = NULL;
+    }
+}
+
+/* Reset FDC and drives */
+void fdcReset(void)
+{
+    /*
+    ** Turn on the FDC's reset mode, disable DMA 
+    ** transfers, and turn off all drive motors.
+    */
+    fdcSetDOR(FdcDorReset | FdcDorDmaDisable);
+
+    fdcDelay();
+
+    /* turn off reset mode and enable DMA transfers */
+    fdcSetDOR(FdcDorClearReset | FdcDorDmaEnable);
+
+    /* Get the drive status  */
+    fdcSenseDrive();
+
+    /* Remind the controller what parameters we are using */
+    fdcSpecify();
+}
+
+/* Select, and turn on, the specified drive */
+void fdcSelectDrive(byte drive)
+{
+    drive &= 0x03;    /* Limit drive numbers from 0 to 3 */
+    Drive = drive;
+
+    /* Set Command strings based on drive number */
+    SenseDriveCmd[1] = (SenseDriveCmd[1] & ~0x03) | Drive;
+    RecalCmd[1] = Drive;
+
+    fdcSetDOR((FdcDorDriveOn << drive) | FdcDorDmaEnable |
+        FdcDorClearReset | drive);
+}
+
+/* Specify drive parameters */
+int fdcSpecify(void)
+{
+    fdcSendCmd(SpecifyCmd, sizeof(SpecifyCmd));
+    return fdcResultPhase(FALSE, 0);
+}
+
+/* Sense Drive Status */
+unsigned fdcSenseDrive(void)
+{
+    fdcSendCmd(SenseDriveCmd, sizeof(SenseDriveCmd));
+    return fdcResultPhase(TRUE, 1);
+}
+
+/* Get information concerning the last drive interrupt */
+unsigned fdcSenseInterrupt(void)
+{
+    fdcSendCmd(SenseIntCmd, sizeof(SenseIntCmd));
+    return fdcResultPhase(TRUE, 2);
+}
+
+/* Recalibrate the drive */
+unsigned fdcRecalibrate(void)
+{
+    Cylinder = Head = 0;
+
+    fdcSendCmd(RecalCmd, sizeof(RecalCmd));
+
+    fdcWaitForInt();
+    return fdcSenseInterrupt();
+}
+
+/* Seek the drive heads to the specified cylinder */
+unsigned fdcSeek(int head, int cylinder)
+{
+    Cylinder = cylinder;
+    Head = head;
+
+    SeekCmd[1] = (head << 2) | Drive;
+    SeekCmd[2] = cylinder;
+
+    fdcSendCmd(SeekCmd, sizeof(SeekCmd));
+
+    fdcWaitForInt();
+    return fdcSenseInterrupt();
+}
+
+/*
+** Read a number of sectors from the current track into 
+** the read buffer passed by the caller.
+*/
+unsigned fdcReadSectors(int sector, unsigned nsect, 
+                        void* buffer)
+{
+    unsigned byteCount = nsect * BytesPerSector;
+
+    /* Test for buffer fitting within a single DMA page */
+    if (!dmaPageTest(buffer, byteCount))
+        return -5;
+
+    /* Setup DMA Controller */
+    dmaSetup(DmaCmdRead, byteCount, buffer);
+
+    ReadCmd[1] = (Head << 2) | Drive;
+    ReadCmd[2] = Cylinder;
+    ReadCmd[3] = Head;
+    ReadCmd[4] = sector;
+
+    fdcSendCmd(ReadCmd, sizeof(ReadCmd));
+    return fdcResultPhase(FALSE, 7);
+}
+
+unsigned fdcReadTrack(void* buffer)
+{
+    /* Test for buffer fitting within DMA boundries */
+    if (!dmaPageTest(buffer, SectorsPerTrack * 
+        BytesPerSector))
+          return -5;
+
+    /* Setup DMA Controller */
+    if (!dmaSetup(DmaCmdRead, SectorsPerTrack * 
+        BytesPerSector, buffer))
+          return -5;
+
+    ReadTrackCmd[1] = (Head << 2) | Drive;
+    ReadTrackCmd[2] = Cylinder;
+    ReadTrackCmd[3] = Head;
+
+    fdcSendCmd(ReadTrackCmd, sizeof(ReadTrackCmd));
+    return fdcResultPhase(FALSE, 7);
+}
+
+/*
+** Write a number of sectors from the current track from 
+** the read buffer passed by the caller.
+*/
+unsigned fdcWriteSectors(int sector, unsigned nsect, 
+                         void* buffer)
+{
+    unsigned byteCount = nsect * BytesPerSector;
+
+    /* Test for buffer fitting within a single DMA page */
+    if (!dmaPageTest(buffer, byteCount))
+        return -5;
+
+    /* Setup DMA Controller */
+    dmaSetup(DmaCmdWrite, byteCount, buffer);
+
+    WriteCmd[1] = (Head << 2) | Drive;
+    WriteCmd[2] = Cylinder;
+    WriteCmd[3] = Head;
+    WriteCmd[4] = sector;
+
+    fdcSendCmd(WriteCmd, sizeof(WriteCmd));
+    return fdcResultPhase(FALSE, 7);
+}
+
+/* Format the current track */
+unsigned fdcFormatTrack(void* buffer)
+{
+    /* Test for buffer fitting within DMA boundries */
+    if (!dmaPageTest(buffer, SectorsPerTrack * 4))
+        return -5;
+
+    /* Setup DMA Controller */
+    if (!dmaSetup(DmaCmdWrite, SectorsPerTrack * 4, buffer))
+        return -5;
+
+    FormatTrackCmd[1] = (Head << 2) | Drive;
+    FormatTrackCmd[2] = Head;
+
+    fdcSendCmd(FormatTrackCmd, sizeof(FormatTrackCmd));
+    return fdcResultPhase(FALSE, 7);
+}
+
+int fdcSendCmd(byte* cmd, unsigned cmdlen)
+{
+    int rqmTimeout, i;
+
+    /* Send the command to the FDC */
+    for (i = 0 ; i < cmdlen ; ++i)
+    {
+        fdcDelay();
+
+        /* Wait for the RQM flag */
+        rqmTimeout = 0;
+        while ((fdcGetStatus() & FdcMsrRequest) != 
+                FdcMsrRequest)
+        {
+            if (++rqmTimeout > 1000)
+                return -1;
+        }
+
+        /* Check that the FDC is ready for input */
+        if ((fdcGetStatus() & FdcMsrDirection) != 0)
+            return -2;
+
+        fdcWriteCmd(*cmd);
+        ++cmd;
+    }
+
+    return 0;
+}
+
+/* Wait for an interrupt */
+void fdcWaitForInt(void)
+{
+    while (!Interrupt)
+        ;
+
+    Interrupt = FALSE;
+}
+
+/* Wait for result data */
+int fdcResultPhase(int immediate, int nres)
+{
+    /* wait for interrupt if not immediate result phase */
+    if (!immediate)
+        fdcWaitForInt();
+
+    /* Turn off the interrupt flag */
+    Interrupt = FALSE;
+
+    /* Input results from the FDC */
+    if (immediate || (fdcGetStatus() & FdcMsrFdcBusy) != 0)
+    {
+        /* operation is completed, get FDC result bytes */
+        int i, rqmTimeout;
+
+        for (i = 0 ; i < nres ; ++i)
+        {
+            fdcDelay();
+
+            /* Wait for the RQM flag */
+            rqmTimeout = 0;
+            while ((fdcGetStatus() & FdcMsrRequest) != 
+                    FdcMsrRequest)
+            {
+                if (++rqmTimeout > 1000)
+                    return -1;
+            }
+    
+            /* Check that the FDC is ready for input */
+            if ((fdcGetStatus() & FdcMsrDirection) == 0)
+                return -2;
+
+            Results[i] = fdcGetResult();    
+        }
+
+        /* Make sure that FDC has completed sending data */
+        if ((fdcGetStatus() & FdcMsrFdcBusy) != 0)
+            return -3;
+    }
+    else
+        /* Catch all hiddin interrupts */
+        while (fdcSenseInterrupt() != 0);
+
+    return 0;
+}
+
+/* Test to see if buffer fits within a single DMA page, 
+ * return TRUE is ok 
+ */
+int dmaPageTest(byte far* buf, unsigned length)
+{
+    unsigned page1, page2;
+
+    page1 = (unsigned)(ptrToLong(buf) >> 16) & 0x000f;
+    page2 = (unsigned)(ptrToLong(buf + length) >> 16) 
+             & 0x000f;
+
+    return (page1 == page2);
+}
+
+/* Setup the DMA controller */
+int dmaSetup(int fcn, unsigned nbytes, void far* addr)
+{
+    unsigned long ptr = ptrToLong(addr);
+
+    disable();
+
+    /* Set DMA mode and reset the first/last flip-flop */
+    outportb(DmaModePort, fcn);
+    fdcDelay();
+    outportb(DmaFFPort, 0);
+    fdcDelay();
+
+    /* Set DMA Address */
+    outportb(DmaAddrPort,  ptr & 0x000000ffL);
+    fdcDelay();
+    outportb(DmaAddrPort, (ptr & 0x0000ff00L) >> 8);
+    fdcDelay();
+    outportb(DmaPagePort, (ptr & 0x000f0000L) >> 12);
+    fdcDelay();
+
+    /* Set transfer word count */
+    --nbytes;
+    outportb(DmaWcPort, nbytes & 0x00ff);
+    fdcDelay();
+    outportb(DmaWcPort, (nbytes & 0xff00) >> 8);
+    fdcDelay();
+
+    enable();
+
+    /* Start the DMA channel */
+    outportb(DmaMaskPort, DmaFdcChannel);
+
+    return 0;
+}

@@ -1,0 +1,336 @@
+/*  VERSION 0006  (DATE: 28/04/87)  (TIME: 13:48)  */
+/*
+	e (qed) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	Modified: Aug-Dec	1984:	BDS-C 'e'(vers 4.6a) to 'qe' (J.W. Haefner)
+			  March		1985:	BDS-C 'qe' to DeSmet-C 'qed' (J.W. Haefner)
+
+ 	FILE: qed3
+
+	FUNCTIONS: putline,putoffset,putstatusline,putlineno,,putpage,
+			putmess,unmess,putstr,rewrite,calcoffset,
+			resetcursor,setstatusname
+
+	PURPOSE: write text to screen
+
+*/
+
+#include "qed.h"
+
+putline(line,y)
+int line, y;
+{
+	char *getline();
+	register char *p, c;
+	int bright, lastcol, off, x;
+	register int nblank,cp;
+
+	deleteline(0,y);
+	if (line <= lastl) {
+
+#if (SCRNDIMMD)					/* highlight blocked lines */
+		bright= line == cline;
+		if (blocking && !bright) {
+			if (to) bright= (line >= from) && (line <= to);
+			else bright= (line >= (from > cline ? cline : from)) &&
+			(line <= (from > cline ? from  : cline));
+			}
+#else							/* dim blocked lines if screen is brite */
+		bright = YES;
+		if (blocking) {		/* dim blocked lines */
+			if (to) bright= !( (line >= from) && (line <= to) );
+			else bright= !( (line >= (from > cline ? cline : from)) &&
+			(line <= (from > cline ? from  : cline)) );
+			}
+#endif
+		
+		lastcol=SWIDTH;
+		off=x=0;
+		p=getline(line);
+		if ( (line == cline && calcoffset()) || (blockscroll && offset) ) {
+			lastcol+=offset-1;
+			off=offset;
+			x=1;
+			makedim(); 
+			putch('<');
+			makebright();
+			}
+
+		if (!bright) makedim();
+
+		for (cp=nblank=0; *p && cp < lastcol; p++) {
+			if (*p == '\t')
+				do {
+					if (cp >= off && cp < lastcol)
+						nblank++;
+					}
+			while (++cp % tabwidth);
+			else {
+				if (cp++ >= off) {
+					if (*p == ' ') nblank++;
+					else {
+						if (nblank)  {
+							x+=nblank;
+							if (nblank < GOTOLEN)
+								for (; nblank; nblank--)
+									_os(DIRIO,' ');
+							else {
+								gotoxy(x,y);
+								nblank=0;
+								}
+							}
+						dispch(*p);
+						x++;
+						}
+					}
+				}
+			}
+		if (*p && y < SHEIGHT) {
+			if (bright) makedim(); 
+			else makebright();
+			putch('>');
+			}
+		makebright();
+			/* check for input and save if there at end of line */
+		if ( (c=_os(DIRIO,0xff))) inbuf[inbufp++]=c & ~PARBIT;
+		}
+}
+
+putoffset()
+{
+	int i;
+
+	gotoxy(0,0);
+	if (offset) for(i=3-uspr(offset,0L); i>0; i--) putch(' ');
+	else putstr("   ");
+	gotoxy(0,cursory);
+}
+
+putstatusline(line)
+int line;
+{
+	deleteline(FNPOS,0);
+	makedim();
+	/*putstr(filename);*/
+/* put only the file name, not also path */
+	putstr(justfile);
+	putlineno(line);
+	makebright();
+	if (errmess != NULL) {
+		gotoxy(EMPOS,0);
+		putstr(errmess);
+		}
+}
+
+putlineno(line)
+int line;
+{
+	int i;
+
+	if (!displaypos) return;
+	gotoxy(LNPOS,0);
+	makedim();
+	i=uspr(line,0L);
+	putch(':');
+	for (i=8-i-uspr(cursorx+1,0L); i > 0; i--) _os(DIRIO,' ');
+	makebright();
+}
+
+putpage()	/*display page more or less centered about 'cline'*/
+{
+	int y,line;
+	char c;
+
+	pfirst= loc(cline,(topline-SHEIGHT)/2);
+	plast = loc(pfirst,SHEIGHT-topline);
+	putstatusline(cline);
+	for (line=pfirst, y=topline; line <= plast; line++, y++) {
+		if (cline == line) {
+			cursory = y;
+			cursorx = adjustc(cursorx);
+			}
+		putline(line,y);
+		if (inbufp && (cline != 1) && (cline != lastl) )
+			if(((c=inbuf[0]) == tran[DOWNPAGE])
+			 	|| (c == tran[UPPAGE])) return;
+		}
+	if (y <= SHEIGHT) delpage(y);
+}
+
+putmess(message)
+char *message;
+{
+	int lines;
+/*	sint inc;*/
+	
+	if ((blankedmess) && (topline > blankedmess)) {
+		gotoxy(3,blankedmess++);
+		putstr(message);
+		return;
+		}
+
+	if (topline == (helpon ? HELPLINES : 1)) lines=2;
+	else lines=1;
+	if (cursory <= (topline+=lines)) {
+ 		lines = cursory-(topline-lines);
+		cursory-=lines;
+		gotoxy(0,cursory);
+		for ( ; cursory < topline; cursory++) {
+				insertline();
+				if (plast != lastl) plast--;
+				}
+		cursory+=lines;
+		}
+	else pfirst+= lines;
+	deleteline(0,topline-2);
+	deleteline(0,topline-1);
+	gotoxy(3,topline-2);
+	putstr(message);
+}
+
+/* xprtmess -- if expert user, short message on statusline*/
+xprtmess(message)
+char *message;
+{
+	deleteline(EMPOS,0);
+	putstr(message);
+	blankedmess=NO;
+}
+
+/* xmessoff -- blank expert prompt*/
+xmessoff()
+{
+	if (errmess==NULL) deleteline(EMPOS,0);
+	blankedmess=YES;
+}
+
+/* unmess -- blank verbose prompt */
+unmess()
+{
+	int l, i, newtop, diff;
+
+	newtop= (helpon ? HELPLINES : 1);
+	if (!(diff=(topline-newtop)) ) return;
+	if ((diff < PAGEOVERLAP) && ((pfirst-diff) < 1)) {
+		if (blankedmess == newtop) return;
+		for (l=newtop; l < topline; l++) deleteline(0,l);
+		blankedmess=newtop;
+		return;
+	}
+	blankedmess=NO;
+	if ((pfirst-=diff) < 1) {
+		topline=newtop;
+		putpage();
+	}
+	else {
+        pfirst=loc(pfirst,0);
+		for (l=newtop, i=0; l < topline; l++, i++) putline(pfirst+i,l);
+		topline=newtop;
+	}
+}
+
+putstr(s)
+char *s;
+{
+	int dim;
+	char c;
+
+	dim=NO;
+	while ( (c=*s++) )
+		switch(c) {
+		case BRIDIM :
+			(dim=!dim) ? begdim() : enddim(); 
+			break;
+		case '\n':	
+			putch('\r');
+		default  :	
+			putch(c);
+			}
+	if (dim) enddim();
+}
+
+rewrite(cp,x)	/*rewrites current line from char 'cp', col 'x', onwards*/
+int cp, x;
+{
+	int i, begmark;
+	char cc,c;
+
+	begmark= (calcoffset() > 0);
+	i= x-offset+begmark;
+	deleteline((i>0 ? i : 0),cursory);
+	if (!x && begmark) { 
+		begdim(); 
+		putch('<'); 
+		enddim(); 
+		}
+	while (x < SWIDTH+offset-begmark && (c=text[cp++])) {
+		if (c == '\t') {
+			for (i=tabwidth-x%tabwidth; i>0 && x<SWIDTH+offset-begmark; x++, i--)
+				if (x >= offset) _os(DIRIO,' ');
+			}
+		else if (x++ >= offset) {
+			dispch(c);
+				/* check for input and save if there */
+			if ( (cc=_os(DIRIO,0xff))) inbuf[inbufp++]=cc & ~PARBIT;
+			}
+		}
+	if (c && cursory < SHEIGHT) {
+		begdim(); 
+		putch('>'); 
+		enddim(); 
+		}
+}
+
+calcoffset()
+{
+	/*for (offset=0; cursorx >= SWIDTH+offset-(offset>0); offset+=OFFWIDTH);*/
+	for (offset=(cursorx < lastoff ? 0 : lastoff);
+	cursorx >= SWIDTH+offset-(offset>0); offset+=OFFWIDTH);
+	return offset;
+}
+
+resetcursor()
+{
+	int line, y;
+
+	if (lastoff != calcoffset()) {
+		if (blockscroll) {
+			for (line=pfirst, y=topline; line <= plast; line++, y++)
+				if (line != cline) putline(line,y);
+			}
+		putoffset();
+		rewrite(0,0);
+		lastoff=offset;
+		}
+	gotoxy(cursorx-offset+(offset>0),cursory);
+}
+
+setstatusname()		/*copy just filename w/o path for 'putstatusline' */
+{
+	char *np,c;
+
+	if (filename[0]=='\0') {
+		justfile[0]='\0';
+		/*_move(4,"\0\0\0\0",defext);*/
+		return;
+		}
+	np=filename;
+	while(*(np++));		/*find end*/
+		/*find last '\',if any*/
+	while( ((c=*(--np)) != '\\') && c!=':' && (np != filename)) {
+		if (c=='.') {
+			if ( *(np+1) == '\0') *(np) = '\0';
+			strcpy(defext,np);
+			}
+		}
+	if (!(*np)) strcpy(justfile,filename);
+	else {
+		_move(2,filename,justfile);
+		strcpy(&justfile[2],++np);
+		}
+}
+

@@ -1,0 +1,201 @@
+/*********************************************************
+ *	MAXL.C: Analyze line lengths to help slim down 
+ *		code listings for publications such as CUJ
+ *	Written by Leor Zolman, 12/89, 2/91
+ *	What it does:	
+ *	Scans the input file, keeping track of the number of
+ *	lines of each varying length encountered.
+ *	Displays first instance of each of the n longest
+ *	line lengths encountered, along with frequency.
+ *	Hard tab interpretation may be set to any value.
+ *
+ *	Usage: maxl [-t#] [-d%] [-f$] filename
+ *	  # = soft tab setting (defaults to 4)
+ *	  % = how many different lengths to display (def. 3)
+ *	  $ = flag lines longer than this length (def. 79)
+ *  Compile:
+ *		Borland C:
+ *			bcc maxl.c
+ *		Xenix C:
+ *			cc maxl.c -o maxl
+ ********************************************************/
+
+
+#include <stdio.h>
+
+#define MAXLINE 300			/* longest allowable line	*/
+#define DEFAULT_TAB	4		/* default soft tab setting */
+#define DIFF_SIZES	3		/* # of diff. sizes to show	*/
+#define DEF_FLAG	79		/* flag lines longer than...*/
+
+void putrule(int);			/* draw a horizontal line	*/
+void putline(char *, int);
+
+struct line {
+	int first;				/* line # of first instance	*/
+	char *text;				/* the text of 1st instance	*/
+	int how_many;			/* # of lines that length	*/
+} lines[MAXLINE];			/* one for each length		*/
+
+int tabstop = DEFAULT_TAB;
+int diffsizes = DIFF_SIZES;
+int flaglen = DEF_FLAG;
+
+void main(argc, argv)
+int argc;
+char **argv;
+{
+	int v_col;				/* virtual column number		*/
+	int lineno;				/* line number of current line	*/
+	char lbuf[MAXLINE];		/* input line buffer			*/
+	char c, *lp;
+	FILE *fp;
+	int i, j;
+	
+	for (i = 1; i < argc; i++)
+		if (argv[i][0] == '-')
+		{
+			switch (tolower(argv[i][1]))
+			{
+				case 't':	tabstop = atoi(&argv[i][2]);
+							break;
+
+				case 'd':	diffsizes = atoi(&argv[i][2]);
+							break;
+
+				case 'f':	flaglen = atoi(&argv[i][2]);
+							break;
+
+				default:	printf("Unknown option: '%s'\n", 
+									argv[i]);
+							exit(0);
+			}
+			for (j = i; j < argc - 1; j++)
+				argv[j] = argv[j + 1];
+			argc--;
+			i--;
+		}
+
+	if (argc != 2)
+	{
+		fprintf(stderr,
+		  "Usage:  %s [-t#] [-d#] [f#] file\n",  argv[0]);
+		fprintf(stderr,
+			"-t#: Set hard tab value\n");
+		fprintf(stderr,
+			"-d#: Set number of different lengths to show\n");
+		fprintf(stderr,
+			"-f#: Flag lines longer than # characters\n");
+		exit(1);
+	}
+	
+	if ((fp = fopen(argv[1], "r")) == NULL)
+		exit(printf("Can't open %s for input.\n", argv[1]));
+	
+	for (i = 0; i <= MAXLINE; i++)
+		lines[i].how_many = 0;		/* none found yet			*/
+	lineno = 1;
+
+	while (fgets(lbuf, MAXLINE, fp) != NULL)
+	{
+		v_col = 1;					/* track virtual column #	*/
+		for (lp = lbuf; c = *lp; lp++)
+		{
+			if (c == '\n')			/* newline is end of line	*/
+				break;
+			
+			if (c == '\t')			/* tab is interpreted as a	*/
+				while (v_col++ % tabstop)	/* # of spaces	*/
+					;
+			else if (c == '\r')		/* CR sans newline is a	*/
+			{						/* special twisted case	*/
+				fprintf(stderr,
+				  "WARNING: CR before newline in line %d\n",
+							lineno);
+				v_col = 1;			/* back to the left margin	*/
+			}
+			else
+				v_col++;			/* all printing chars		*/
+		}
+		v_col--;					/* adjust to ending col. #	*/
+		if (v_col >= flaglen)
+			fprintf(stderr, 
+				"\aLine #%d: %d columns exceeds maximum (%d)\n",
+						lineno, v_col , flaglen);
+									/* bump counter for length	*/
+		if (!lines[v_col].how_many++)	/* first time for	*/
+		{						/* this length? if so...	*/
+			lines[v_col].first = lineno;	/* save line #,	*/
+			if ((lines[v_col].text =		/* & save text	*/
+				(char *) malloc(strlen(lbuf) + 1)) == NULL)
+			{
+				fprintf(stderr,
+					"Out of memory in line %d\n", lineno);
+				exit(1);
+			}
+			strcpy(lines[v_col].text, lbuf);
+		}
+		lineno++;
+	}
+	
+	printf("\n");
+	j = 0;							/* # of diff. lengths shown		*/
+	for (i = MAXLINE - 1; i > 0; i--)			/* display results	*/
+	{
+		if (!lines[i].how_many)
+			continue;
+		printf("Length: %d    First instance: line #%d",
+				i, lines[i].first);
+		printf("   Quantity: %d\n", lines[i].how_many);
+		putline(lines[i].text, i);
+		if (++j == diffsizes)
+			break;
+		printf("\n");
+	}
+	fclose(fp);
+}
+
+
+/*
+ * putline(): Display a line of text, with rule line 
+ *			  before and after
+ */
+
+void putline(line, length)
+char *line;
+int length;
+{
+	char *lp, c;
+	int v_col;
+	
+	putrule(length);
+	for (lp = line, v_col = 1; c = *lp; lp++)
+		switch (c)
+		{
+			case '\t':			/* translate tabs to spaces */
+				do 
+					putchar(' ');
+				while (v_col++ % tabstop);
+				break;
+			default:
+				putchar(c);
+				v_col++;
+		}
+	putrule(length);
+}
+
+
+/*
+ * putrule(): display a horizontal line so trailing 
+ *			  whitespace is detectable
+ */
+
+void putrule(ncols)
+int ncols;
+{
+	int i;
+
+	for (i = 0; i < ncols; i++)
+		putchar('=');
+	putchar('\n');
+}

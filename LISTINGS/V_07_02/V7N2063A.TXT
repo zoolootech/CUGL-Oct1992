@@ -1,0 +1,99 @@
+/* RQH.H **	Device Driver definitions and templates.
+		 **	The DOS device header and DOS Request Header is mapped.
+													-- R.D.Allen, 9/3/87
+Copyright 1987, 1988 PARS Service Partnership
+*/
+
+/* Convenient method for mapping an INTEL far pointer in C */
+
+union _farp {
+	struct {
+		unsigned int offset;
+		unsigned int segment;
+	} address;
+	char far *string;
+};
+
+/* A method to map the device header structure required by DOS
+   and declared in the startup file DVR_MAIN.ASM 				*/
+
+extern struct _header {
+	union _farp next_dev;
+	union _ioctl {
+		unsigned int word;
+		struct {
+			unsigned int stout	: 1;	/* Bit 0 ** Is stdout device		*/
+			unsigned int stin	: 1;	/* Bit 1 ** Is stdin device			*/
+			unsigned int nul	: 1;	/* Bit 2 ** Is the NULL device		*/
+			unsigned int clock	: 1;	/* Bit 3 ** Is the $CLOCK device	*/
+			unsigned int rsv4	: 1;	/* Bit 4 **	reserved				*/
+			unsigned int raw	: 1;	/* Bit 5 ** Raw mode status			*/
+			unsigned int eof	: 1;	/* Bit 6 ** At end of file status	*/
+			unsigned int isdev	: 1;	/* Bit 7 ** Is a device				*/
+			unsigned int rsv810	: 3;	/* Bits 8 - 10 ** reserved			*/
+			unsigned int ocr	: 1;	/* Bit 11 ** I forgot?				*/
+			unsigned int rsv12	: 1;	/* Bit 12 ** reserved				*/
+			unsigned int obusy	: 1;	/* Bit 13 ** Output busy status		*/
+			unsigned int ioctl	: 1;	/* Bit 14 ** Supports IOCTL calls	*/
+			unsigned int cdev	: 1;	/* Bit 15 ** Character device		*/
+		} bits;
+	} io;
+	unsigned int strat;					/* Address of STRATEGY Routine      */
+	unsigned int intr;					/* Address of INTERRUPT Routine		*/
+	char name[8];						/* DOS file name of device			*/
+} header;
+
+/* The tail of a Request Header is mapped differently for different
+   commands. These structures will define all necessary access methods.		*/
+
+struct _init {			/* Command tail used only during initialization		*/
+	char	units;			/* Number of Units as required for Block Device	*/
+	union	_farp end;		/* Ending address of driver reported to DOS		*/
+	union	_farp args;		/* CONFIG.SYS line after "DEVICE="				*/
+	char	devnum;			/* Beginning Device Number, this Block Device	*/
+};
+
+struct _io {			/* Command tail used for most other commands		*/
+	char	media;				/* Block Device media field					*/
+	union	_farp data;			/* Address for data Input/Output			*/
+	int		count;				/* Number of bytes to be transferred		*/
+	int		sec_num;			/* Block Device sector number				*/
+	union	_farp volume;		/* Block Device Volume label				*/
+};
+
+/* A union to hold all the different Request Header command tail formats.	*/
+					
+union _rq_tail {
+	struct _init	init;			/* Initialization command tail			*/
+	struct _io		io;				/* Most read, write routines			*/
+	char			peek;			/* Non-destructive read, no wait		*/
+};
+
+/* DOS Request Header format. This structure unites all the different
+   parts of a request header so they may be accessed in C. 					*/
+
+struct _rq_hdr {
+	char	count;				/* total bytes in header					*/
+	char	unit_code;			/* Block Device Garbage (not used)			*/
+	char	command;			/* Device driver command					*/
+	struct	_st_bits {			/* Bit fields to map Status word			*/
+		unsigned int err_type	: 8;	/** DOS error to report				*/
+		unsigned int done		: 1;	/** Done status (normally returned) */
+		unsigned int busy		: 1;	/** Busy status (normal not used)	*/
+		unsigned int reserved	: 5;		
+		unsigned int err_flag	: 1;	/** If set, ERR_TYPE should used	*/
+	} status;						/* Status word returned to DOS			*/
+	struct	_rq_hdr far *next_rq;	/* RESERVED -- front pointer			*/
+	struct	_rq_hdr	far *pending;	/* Chain pointer for queued req.		*/
+	union	_rq_tail tail;			/* Request Header Command Tail			*/
+};
+
+/* Request Header address storage as used by STRATEGY routine. */
+
+union _ptr {
+	struct {
+		unsigned int offset;
+		unsigned int segment;
+	} address;
+	struct _rq_hdr far *rq;			/* far pointer to access request header */
+};

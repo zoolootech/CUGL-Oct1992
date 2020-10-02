@@ -1,0 +1,387 @@
+MEL - a Metalanguage Data Processor
+
+
+
+INTRODUCTION:
+
+As a mechanical engineer, my experiences with analysis programs are in the areas of structural stress, fluid dynamics, heat conduction, and thermal/hydraulic system simulation.  Such programs present the technical software developer with a number of unique problems, not least of which is providing a user-friendly interface.  That's because even though program users tend to be computer literate, input data can be voluminous and tedious (and error prone) to prepare.  Also, the user typically makes many runs with only slight changes; as design optimization is often accomplished by repeated analysis.  Another consideration is that both input and output must be stored and presented in a manner that allows independent verification and validation by a checker or some official entity.  Finally, the information output from one program may be required as input by another.
+
+Another big headache is that modern (i.e., graphical) user interfaces tend to be hardware or system-software specific.  What is needed is a universal interface that frees the developer from the nuances of different types of machines and operating systems, while at the same time representing a standard that machine-specific routines can work with.
+
+A solution I have arrived at for making such technical programs more user-friendly and modularized is called MEL.  MEL (which stands for MEtaLanguage data processor) is a set of input/output (I/O) utilities that provides a standard interface between the program and the user.  It can translate input data written in "pseudo-English" (Example 1) and makes it available to the program as variables (Example 2).  It can also take program variables (Example 3) and translate them into pseudo-English (Example 4).  Effort was taken in providing data objects that could easily be incorporated into almost any engineering analysis program (Example 5).  
+
+You should find the MEL interface useful in developing your own technical programs.  Firstly, the pseudo-English look of MEL means that I/O will be more readable and comprehensible to the user (or checker).  Secondly, MEL is object oriented in that it provides a structured and encapsulated I/O interface (more about this later).  Thus, your development time will be reduced and future changes can be made to your program more easily.  Thirdly, MEL's grammar is simple and unambiguous, with both input and output formats being identical.  This means output from one program may serve directly as input to another.  Finally, MEL can read and write data directly to a file so that a permanent record of a run and its results are available. 
+
+DESCRIPTION OF MEL:
+
+The smallest unit of pseudo-English I/O in MEL is called a "descriptor."  Its purpose is to describe something, either data or a command, to a program.  The general format for descriptors is much like function calls in typical programming languages.  An I/O unit consists of a descriptor name (somewhat like a function name), followed by a parameter list, followed by an end-of-unit symbol (the semicolon).  For example, consider the following MEL descriptor which could be used as part of the input to a piping network analysis program I have written: 
+
+	pipe, length = 100 (ft), diameter = 6 (in);
+
+This is a "pipe" descriptor whose parameters are "length" and "diameter".  The values assigned to these parameters would be 100 and 6, and in units of feet and inches, respectively.  Although the tokens (names and parameters) making up descriptors are customized by the developer for each individual application program, the above grammar remains the same for all programs using MEL.  (For more, see Examples 1 and 4.) 
+
+The format for MEL was chosen for its simplicity, while allowing for as much flexibility as possible without introducing ambiguity.  I won't list all of the details here, but let me just say: tokens may be abbreviated (shortened, as long as they remain uniquely identifiable), a default parameter order will be assumed if parameter names are missing, comments may be included by enclosing them in double quotes, parameter values may be labeled as "unknown," etc.  The point was to make programs incorporating MEL as convenient to the user as possible. 
+
+INCORPORATING MEL: 
+
+In order to incorporate MEL into one of your own programs you must first create a "dictionary" for both input and output that defines the proper spelling, number, and types (integer, array, etc.) of data associated with each descriptor and parameter.  This is done by customizing the mel.h header file which you then include in your application source code file.  (Note that by simply changing spellings in the dictionary you could go from pseudo-English to "pseudo-French" or some other "pseudo-language.")  The task of defining dictionaries has been made as painless as possible by giving complete instructions and an example program on the MEL diskette.  (MEL is available through the CUG library.  The diskette contains MEL source code, header file, documentation and instructions, an example program, and a conversion factor routine.  Since a listing of all MEL routines would run over 50 pages, a complete listing has not been included with this article.)  You will also need to prepare documentation defining the dictionaries to the user and explaining what the tokens mean.  This can be included with your other user documentation. 
+
+To obtain data from a descriptor you must first read it, and then extract the data.  One way of doing this is shown in Example 2.  An example of outputing data is shown in Example 3.  If you wish to allow the user to input data with different units, conversion to internal units will be required (ASTM, 1982).  Included on the MEL diskette is a routine that can convert between more than 150 different units.  Additional units and conversion factors can easily be added to the source code. 
+
+HOW MEL WAS DEVELOPED:
+
+An early decision was to write MEL in C.  FORTRAN is the traditional language for scientific programs; however, engineers like myself are beginning to realize that there is more to technical software development than simply correctly coding a complex algorithm.  ANSI C has a number of significant nonnumerical advantages over FORTRAN (Kempf, 1987).  C is a popular and standardized language that, in my opinion, allows for more flexible structured programing and data encapsulation techniques to be applied (also see Jeffery, 1989).  C has more operators and program control constructs than FORTRAN.  C allows indirection (pointers) where FORTRAN does not.  C more easily interfaces to existing system software since much of this software is itself written in C.  Also, C is a popular language for unconventional computer architectures such as parallel processors (Lusk, 1987) and neural networks.  (Let me also mention some of C's shortcomings, which are related to its relative naivete for scientific purposes.  Dynamic array dimensioning in C is convoluted (Press, 1988).  C does not have the numerical library that FORTRAN does.  And finally, C does not allow operator overloading for data structures (complex numbers for example) nor does it have an exponentiation operator.  However, I do not think these defects in C are not difficult to overcome.) 
+
+Another decision was to "objectify" MEL.  (Object oriented programing is certainly the latest fad, and the arguments its adherents present for its advantages have not yet been disproven.  They may even be true.  Partly as an experiment to form my own opinion, the design of MEL incorporates the object oriented paradigm.)  Since C was not designed as an object oriented language, but, nevertheless, is a very flexible one, there were many ways in which I could have expressed the concept.  I chose to make use of C's preprocessor to restrict the visibility of public type, function, and data declarations to just those objects your application program may need at a certain place.  To see, in a general manner, how this was done consider Example 5.  (The private type, function, and variable data needed by the MEL routines themselves are not shown in the example and are hidden from your program by use of other defined/undefined manifest constants.)  For another approach refer to the article by Jeffery.
+
+SUMMARY AND FUTURE ENHANCEMENTS:
+
+Software engineering is rapidly evolving and it seems everyone has his or her own ideas about what makes a good user-interface.  I believe MEL is a practical answer to the spectrum of interface problems confronting either the developer or the user of complex technical programs. 
+
+Some may criticize MEL on its verbosity (as compared to FORTRAN's fixed field format), the necessity of the user spending time learning how to use MEL (versus a more interactive interface), and the somewhat clumsy way objects must be (or at least, were) encoded in C.  These complaints are legitimate and they are inherent in MEL's design.  All that can be said is that no design can be all things to all people.  A design's strength can also be viewed as its weakness.  
+
+Since few programmers are familiar with C++, it may be some time before it is worthwhile to port MEL to a "real" object oriented language.  Thus, the next steps in the evolution of MEL would seem to be incorporating it into a language sensitive editor, a graphical output post-processor, and perhaps later, into an expert system shell specialized for the type of analysis being performed. 
+
+BIBLIOGRAPHY: 
+
+George M. Crews, "HAPN - A Hydraulic Analysis of Piping Networks Program," Masters Thesis in Engineering Science, University of Tennessee, Knoxville, 1989.  A portion of this thesis describes MEL and how it was developed and used for a specific analysis program. 
+
+David Jeffery, "Object-Oriented Programming in ANSI C," Computer Language Magazine, February, 1989.  This article discusses the object oriented paradigm and a way to implement it in C. 
+
+James Kempf, Numerical Software Tools in C, Prentice-Hall, Inc., 1987.  This book contains an introduction to both numerical programming and C.  The emphasis of the text is on creating small routines that can be used as building blocks for larger programs.  Possible shortcomings are its lack of data hiding and that it treats doubly dimensioned arrays statically rather than dynamically. 
+
+Ewing Lusk, Overbeek, et al., Portable Programs for Parallel Processors,  Holt, Reinhart and Winston, Inc., 1987.  This book describes a set of C tools for use on a broad range of parallel machines. 
+
+William H. Press, Flannery, et al., Numerical Recipes in C, Cambridge University Press, 1988.  Based on an earlier FORTRAN edition, this is a great cookbook giving a wide range of oven-tested recipes for the numerical gourmet.  It shows the correct way to handle multidimensioned arrays (dynamically).  A complaint sometimes heard is that a few of the algorithms are getting obsolete due to rapid advances in numerical techniques being made. 
+
+ASTM E 380-82 Standard for Metric Practice, American Society for Testing Materials, 1982.  This standard contains many useful conversion factors between English and metric units. 
+
+Example 1.  An Example of MEL Input for a Hydraulic Analysis Program.  (Note that tokens will be unique to each application.) 
+
+title, 'Example Problem Illustrating MEL'; 
+fluid, "water" 
+	density = 62.4 (lbm/ft3), 
+	viscosity = 1 (cp); 
+node, 1, pressure = 8.67 (psi); "20 ft of water" 
+branch, 100, from_node = 1, to_node = 2; 
+	pipe, 
+		length = 100 (ft), 
+		id = 6 (in), 
+		material = steel; 
+end_of_branch; 
+node, 2, pressure = 6.5 (psi); "15 ft of water" 
+next; 
+
+
+Example 2.  Example of Obtaining Data From a MEL Descriptor:
+
+
+Descriptor:
+    
+pipe, length = 100 (ft), diameter = 6 (in);
+    
+Code fragment:
+    
+double pipe_length, diameter;
+    
+union meli_param_data data;   /* see Example 5. */
+char units[MAX_STRING_LEN+1];
+int array_len;
+int unknown_flag;
+    
+meli();  /* reads descriptor */
+    
+meli_data("length", &data, units, &array_len,
+	&unknown_flag);  /* gets pipe length */
+pipe_length = data.real;  /* will equal 100 */
+
+meli_data("diameter", &data, units, &array_len,
+	&unknown_flag);  /* gets pipe diameter */
+diameter = data.real;  /* will equal 6 */
+
+/* note that units, array_len, and unknown_flag
+   are not considered (used). */
+
+
+Example 3.  Example of Outputting a MEL descriptor:
+
+Code Fragment:
+
+double pipe_length = 100, diameter = 6;
+    
+union melo_param_data data;   /* see Example 5. */
+char length_units[] = "ft";
+char diameter_units[] = "in";
+int array_len = 0;
+int unknown_flag = 0;
+
+melo_init("pipe");  /* initialize */
+
+/* get data ready to output: */
+data.real = pipe_length;
+melo_data("length", &data, length_units, array_len, 
+	unknown_flag);
+data.real = diameter;
+melo_data("diameter", &data, diameter_units, 
+	array_len, unknown_flag);
+
+melo();  /* translates data into string */
+
+Descriptor:
+
+pipe, 
+	length = 100 (ft), 
+	diameter = 6 (in);
+
+
+Example 4.  An Example of Output Generated by a Hydraulic Analysis Program using MEL.  (From the input data given in Example 1.)
+
+
+program, 
+	name = 'HAPN - Hydraulic Analysis of Piping Networks', 
+	problem_title = 'Example Problem Illustrating MEL'; 
+message, 
+	text = 'Date: Thu Jul 13 09:02:11 1989'; 
+message, 
+	text = 'Input filename: input'; 
+equations, 
+	node = 0, 
+	loop = 0, 
+	iterations = 7; 
+branch, 
+	number = 100, 
+	type = 'independent_branch', 
+	flow_rate = 436238 (lbm/h), 
+	flow_change = -6.20476e-007 (%), 
+	flow_dp = 2.17 (psi), 
+	elevation_dp = 0 (psi); 
+component, 
+	branch_number = 100, 
+	component_number = 0, 
+	type = 'pipe', 
+	resistance = 4.95228 (Pa*s2/kg2), 
+	change_resistance = -1.24095e-008 (%), 
+	pressure_drop = 2.17 (psi); 
+node, 
+	number = 1, 
+	pressure = 8.67 (psi); 
+node, 
+	number = 2, 
+	pressure = 6.5 (psi); 
+next; 
+
+
+Example 5.  Public Interface Between MEL and Any Application Program Using It.  (Excerpted from mel.h header file.) 
+
+/* if using MEL for input (#define MEL_INPUT), then must 
+   define the MEL input data object: */ 
+#ifdef MEL_INPUT 
+		
+/* firstly, define input constants (all must be 
+   CUSTOMIZED for specific application program): */ 
+		
+#define MELI_MAX_DESCRIP_STR_LEN 256 
+	/* maximum number of characters in any input descriptor 
+	   string. */ 
+#define MELI_MAX_PARAMS 6 
+	/* maximum number of parameters for any descriptor (min 
+	   num = 1). */ 
+#define MELI_MAX_PARAM_STR_LEN 80 
+#define MELI_MAX_PARAM_ARRAY_STR_LEN 1 
+	/* largest allowable parameter string lengths (min size 
+	   = 1) */ 
+#define MELI_MAX_PARAM_INT_ARRAY_LEN 1 
+#define MELI_MAX_PARAM_REAL_ARRAY_LEN 1 
+#define MELI_MAX_PARAM_STR_ARRAY_LEN 1 
+	/* maximum number of elements in parameter data arrays 
+	   (min = 1). */ 
+#define MELI_UNITS_STR_LEN 80 
+	/* maximum length of units associated with any param 
+	   (min = 1) */ 
+		
+/* secondly, define input data structures: */ 
+		
+union meli_param_data { 
+	int integer;  /* also holds boolean type */
+	double real; 
+	char string[MELI_MAX_PARAM_STR_LEN+1]; 
+	int integer_array[MELI_MAX_PARAM_INT_ARRAY_LEN]; 
+	double real_array[MELI_MAX_PARAM_REAL_ARRAY_LEN]; 
+	char string_array[MELI_MAX_PARAM_STR_ARRAY_LEN] 
+				[MELI_MAX_PARAM_ARRAY_STR_LEN+1]; 
+}; 
+/* this is used for input parameter data. it may either be 
+   an integer, real, string, array of integers, array of 
+   reals, or an array of strings. (to save space a union was 
+   used.) */ 
+		
+/* thirdly, define input variables: */ 
+		
+char meli_descriptor_string[MELI_MAX_DESCRIP_STR_LEN+1]; 
+	/* global storage for the input descriptor string. */ 
+		
+/* lastly, define input functions (typically they return 0 
+   if no error encountered, else some nonzero error 
+   code): */ 
+		
+int meli_file(FILE *meli_file_handle); 
+	/* read a descriptor string from the input stream and 
+	   call meli(). also, put copy of string read into 
+	   meli_descriptor_string. */ 
+int meli(void); 
+	/* translate meli_descriptor_string and put information 
+	   into a private data structure (meli_datum). */ 
+char *meli_descrip_type(void); 
+	/* return pointer to name of type of descriptor read by 
+	   meli(). */ 
+int meli_num_params(void); 
+	/* return number of parameters read by meli(). */ 
+int meli_param(int param_num, char *param, union 
+	meli_param_data *data, char *units, int *array_len, int 
+	*unknown_flag); 
+	/* fill arguement list with param_num'th parameter read 
+	   by meli(). (start with param_num = 0.) */ 
+int meli_data(char *param, union meli_param_data *data, 
+	char *units, int *array_len, int *unknown_flag); 
+	/* see if *param was input. if it was, then fill 
+	   argument list with data from meli_datum. */ 
+
+#endif /* MEL_INPUT */ 
+		
+/* if using MEL for output, must define the MEL output data 
+   object: */ 
+#ifdef MEL_OUTPUT 
+		
+/* firstly, define output constants (all must be 
+   CUSTOMIZED): */ 
+		
+#define MELO_MAX_DESCRIP_STR_LEN 256 
+	/* how many characters can be in an output descriptor 
+	   string? */ 
+#define MELO_MAX_PARAMS 6 
+	/* maximum number of parameters for any descriptor. */ 
+#define MELO_MAX_PARAM_STR_LEN 80 
+#define MELO_MAX_PARAM_ARRAY_STR_LEN 1 
+	/* largest allowable parameter string length. */ 
+#define MELO_MAX_PARAM_INT_ARRAY_LEN 1 
+#define MELO_MAX_PARAM_REAL_ARRAY_LEN 1 
+#define MELO_MAX_PARAM_STR_ARRAY_LEN 1 
+	/* maximum number of elements in array of parameter 
+	   data. */ 
+#define MELO_UNITS_STR_LEN 80 
+	/* maximum string length of any units associated with a 
+	   param. */ 
+		
+/* secondly, define output data structures: */ 
+		
+union melo_param_data { 
+	int integer; 
+	double real; 
+	char string[MELO_MAX_PARAM_STR_LEN+1]; 
+	int integer_array[MELO_MAX_PARAM_INT_ARRAY_LEN]; 
+	double real_array[MELO_MAX_PARAM_REAL_ARRAY_LEN]; 
+	char string_array[MELO_MAX_PARAM_STR_ARRAY_LEN] 
+				[MELO_MAX_PARAM_ARRAY_STR_LEN+1]; 
+}; 
+/* this is for output parameter data. it may either be an 
+   integer, real, string, array of integers, array of reals, or 
+   an array of strings. (to save space a union was used.) */ 
+		
+/* thirdly, define output variables: */ 
+		
+char melo_descriptor_string[MELO_MAX_DESCRIP_STR_LEN+1]; 
+	/* global storage for the output descriptor string. */ 
+		
+/* lastly, define output functions (typically return 0 if no 
+   error): */ 
+		
+int melo_init(char *descrip_type); 
+	/* initialize private data structure (melo_datum) to 
+	   accept parameter data from following functions. 
+	   output descriptor type will be descrip_type. returns 
+	   0 if no errors were encountered. */ 
+int melo_data(char *param, union melo_param_data *data, char 
+	*units, int array_len, int unknown_flag); 
+	/* put data for parameter *param into the proper place 
+	   in melo_datum. returns zero if no errors were 
+	   encountered. */ 
+void melo(int melo_verbose_flag); 
+	/* takes the information in melo_datum and translates it 
+	   into melo_descriptor_string. user must set 
+	   melo_verbose_flag = 1 to make output as readable as 
+	   possible, set it equal to zero to make output as 
+	   terse as possible (and still remain in MEL 
+	   format). */ 
+int melo_file(FILE *melo_file_handle, int melo_verbose_flag); 
+	/* take the information in melo_datum, translate it into 
+	   melo_descriptor_string, and output it to file. */ 
+
+#endif /* MEL_OUTPUT */
+
+/* now define data objects common to both input and 
+   output: */ 
+
+/* if an error occurs, MEL will try and tell you what 
+   happened. so define required error handling 
+   information: */ 
+
+#define MEL_MAX_ERR_MSG_LEN 80 
+
+struct mel_errors { 
+	enum {   /* which error occured? */ 
+		mel_no_err,
+		mel_read_err, 
+		mel_write_err, 
+		mel_end_of_file_err, 
+		mel_end_of_data_err, 
+		mel_syntax_err, 
+		mel_unknown_descrip_name_err, 
+		mel_unknown_param_name_err, 
+		mel_missing_param_name_err,		 
+		mel_param_data_err, 
+		mel_missing_paren_err, 
+		mel_too_many_param_err,		 
+		mel_missing_bracket_err, 
+	} type; 
+	int start_line;   /* on which lines did err occur? */ 
+	int end_line;	 /* (meaningful for input only.) */ 
+	char msg[MEL_MAX_ERR_MSG_LEN+1];   
+			/* additional info describing err */ 
+} mel_err;  /* (not same as messages below). */ 
+
+#define MEL_MAX_NUM_ERR_MESSAGES 13 
+
+#ifdef MEL_INIT 
+
+/* the following describes each type of enumerated error: */ 
+char mel_err_msg[MEL_MAX_NUM_ERR_MESSAGES]
+			[MEL_MAX_ERR_MSG_LEN+1] 
+	={"No errors encountered", 
+	  "Can't read file", 
+	  "Can't write file", 
+	  "Unexpected end of file encountered", 
+	  "End of input data encountered", 
+	  "Descriptor/parameter syntax error", 
+	  "Unknown descriptor name", 
+	  "Unknown parameter name", 
+	  "A (or another) parameter name was expected but is "
+		  "missing", 
+	  "Unable to read parameter value(s) for this "
+		  "descriptor", 
+	  "Missing right parenthesis while reading units", 
+	  "Too many (or duplicate) parameters given for this "
+		  "descriptor", 
+	  "Missing brackets around array data"}; 
+
+#else 
+
+extern char mel_err_msg[MEL_MAX_NUM_ERR_MESSAGES]
+				[MEL_MAX_ERR_MSG_LEN+1]; 
+
+#endif /* MEL_INIT */
+ 
+
+About The Author:
+
+George M. Crews received his bachelors in General Engineering from the University of Nevada at Las Vegas, and his masters in Engineering Science from the University of Tennessee at Knoxville.  He is a "generalist" with over 15 years experience in mechanical and software engineering design and analysis.  He may be contacted at 109 Ashland Lane, Oak Ridge, TN 37830. (615) 481-0414.
+

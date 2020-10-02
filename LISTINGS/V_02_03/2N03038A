@@ -1,0 +1,420 @@
+
+/* plot1024.c Copyright 1990 by Gary R. Olhoeft */
+/* 
+   Compile with the MicroWay NDP C-386 v2.1.0 compiler and run
+   with the Phar Lap 386|DOS extender. 
+*/
+#include <dos.h>
+#include <stdio.h>
+#include <math.h>
+#include <grex.h>    /* MicroWay NDP C-386 extended graphics library */
+#include <reg8514.h> /* VESA 8514/A registers after Richter & Smith (1990) */
+#define outpw(p,v) dx = p; ax = v; asm(dx,ax,"     out     dx,ax")
+unsigned char **image();
+void free_image();
+void plot_image_tseng();
+void grey_vga();
+void plot_image_hgsc();
+void grey_hgsc();
+void plot_image_8514();
+void grey_8514();
+void set_hgsc();
+  union REGS reg;                      /* required by DOS INT */
+  int _pmode;
+/* VESA 8514/A 1024x768x256 timing control register parameters */
+  static short  initRegs[] =
+      { DISP_CNTL, ADVFUNC_CNTL, V_TOTAL, V_SYNC_STRT,
+        V_DISP, H_TOTAL, H_SYNC_STRT, H_DISP,
+        H_SYNC_WID, V_SYNC_WID, DISP_CNTL, 0 };
+  static short  mode1024x8[] =
+      { 0x0053, 0x0007, 0x0660, 0x0600,
+        0x05FB, 0x009D, 0x0081, 0x007F,
+        0x0016, 0x0008, 0x0033 };
+  int _pmode;
+  unsigned char hpgl_page;
+
+main ()
+  {
+  reg$eax unsigned short ax, v; /* required by inline assembler */
+  reg$edx unsigned short dx, p;
+  FILE *stream_in;
+  char file_in[80];  
+  unsigned char str[4096], **image_array;
+  int i,j,k;
+  char hstr[20];
+  asm("hstdata  equ  0C7000h");  /* HGSC 34010 host addresses */
+  asm("hstctrl  equ  0C7D00h");  /* for inline assembler use */
+  asm("hstadrl  equ  0C7E00h");
+  asm("hstadrh  equ  0C7F00h");  
+  _pmode=0x8000;                 /* binary disk access */
+
+/* read in the image to be displayed (Jupiter's moon Io from Voyager I) */
+    strcpy(file_in,"e:\\img\\c1636828.img\0"); 
+    if ((stream_in = fopen(file_in,"r")) == NULL)
+       {
+         printf("Cannot find File %s\n",file_in); exit(0);
+       }
+    else
+       {
+         printf("Reading Image File %s\n",file_in);
+         i=fread(str,1,2*836,stream_in); /* ignore PDS header */
+         image_array = image(768,1024);  /* create space for image */
+         for (i=0; i<768; i++) fread(&image_array[i][0], 1, 836, stream_in);
+         i=fclose(stream_in);
+       }
+     
+/* Tseng 4000 STB EM-16 Plus PowerGraph 1024x768x256 */
+    blk_mb(str, 0x34, 0xC0000, 500); /* read BIOS area */
+    k = -1;
+    strcpy(hstr," STB \0");
+    for (i=0; i<480; i++) {j = memcmp(str+i,hstr,5); if (j==0) k=j;}
+    if (k != -1)
+      {
+        k = -1;
+        strcpy(hstr,"AWARD\0");
+        for (i=0; i<480; i++) { j = memcmp(str+i,hstr,5); if (j==0) k = j;}
+        if (k != -1) /* Tseng 4000 (STB EM-16 Plus PowerGraph) found */
+          {
+            reg.b.ah = 0;
+            reg.b.al = 56; 
+            int386(0x10,&reg,&reg);        /* set mode */
+            /* set grey scale using MicroWay libGREX palette function */
+            /* up to 2. sec */    
+            for (i=0; i<256; i++) {j = i>>2; vga_palette(i,j,j,j);}
+            plot_image_tseng(image_array); /* plot image in 0.193 sec */
+            getch();                       /* wait for keypress */
+          }
+      }
+
+/* IBM 8514/A 1024x768x256 setup after Richter and Smith (1990) */
+    outp(DAC_MASK, 0x00); /* blank screen by turning all planes off */
+    outpw(SUBSYS_CNTL, GPCTRL_RESET | CHPTEST_NORMAL); /* reset 8514/A */
+    outpw(SUBSYS_CNTL, GPCTRL_ENAB | CHPTEST_NORMAL);
+    outpw(ERR_TERM, 0xFFFF);      /* test for 8514/A card */
+    if (inpw(ERR_TERM) == 0xFFFF) /* 8514/A card found */
+      {
+        i = inpw(SUBSYS_STAT);        /* get board status information */
+        if ((i & MONITORID_MASK) == MONITORID_8514) /* 1024x768 monitor */
+          {
+            outpw(MULTIFUNC_CNTL, MEM_CNTL | VRTCFG_4 | HORCFG_8);
+            i = 0; /* setup 1024x768 timing parameters */
+            while (initRegs[i]) { outpw(initRegs[i], mode1024x8[i]); i++;}
+            outpw(DAC_MASK, 0xFF);        /* enable all 8 planes */
+            outpw(FRGD_MIX, FSS_FRGDCOL | MIX_REPLACE);
+            outpw(BKGD_MIX, BSS_BKGDCOL | MIX_REPLACE);
+            /* clip to full drawable space (0,0 to 1023,1023) */
+            outpw(MULTIFUNC_CNTL, SCISSORS_T | 0x000);
+            outpw(MULTIFUNC_CNTL, SCISSORS_L | 0x000);
+            outpw(MULTIFUNC_CNTL, SCISSORS_B | 0x3FF);
+            outpw(MULTIFUNC_CNTL, SCISSORS_R | 0x3FF);
+            outpw(WRT_MASK, 0xFFFF);      /* enable writes to all planes */
+            outpw(MULTIFUNC_CNTL, PIX_CNTL | 0); /* clear lower bits */
+            WaitQueue(6);                 /* wait until 8514 queue ready */
+            outpw(FRGD_COLOR, 0);         /* set color */
+            outpw(CUR_X, 0);              /* set origin */
+            outpw(CUR_Y, 0);
+            outpw(MAJ_AXIS_PCNT, 1023);   /* set size */
+            outpw(MULTIFUNC_CNTL, MIN_AXIS_PCNT | 1023);
+            outpw(CMD, CMD_RECT | INC_Y | INC_X | DRAW | PLANAR | WRTDATA);
+            WaitQueue(4);
+            outpw(CUR_X, 0);              /* reset draw position to (0,0) */
+            outpw(CUR_Y, 0);
+            outpw(FRGD_COLOR, 0xFFFF);    /* foreground all on */
+            outpw(BKGD_COLOR, 0);         /* background all off */
+            grey_8514();                  /* setup 8514 grey scale 0.00087 sec*/
+            outpw(FRGD_MIX, FSS_PCDATA | MIX_REPLACE);
+            plot_image_8514(image_array); /* plot image in 0.385 sec */
+            getch();                      /* wait for key press */
+            outpw(ADVFUNC_CNTL, 6);       /* restore 8514/A to VGA */
+          }
+      }
+
+/* Hercules Graphics Station Card GB1024 TI34010 1024x768x256 */
+    blk_mb(str, 0x34, 0xC0000, 500); /* read BIOS area */
+    k = -1;
+    strcpy(hstr,"Hercules\0");
+    for (i=0; i<480; i++) {j = memcmp(str+i,hstr,8); if (j==0) k=j;}
+    if (k != -1)
+      {
+        k = -1;
+        strcpy(hstr,"Graphics Station\0");
+        for (i=0; i<480; i++) { j = memcmp(str+i,hstr,16); if (j==0) k = j;}
+        if (k != -1)                       /* HGSC found */
+          {
+            set_hgsc();                    /* set 34010 mode 1024x768 */
+            grey_hgsc();                   /* setup grey scale 0.00082 sec */
+            plot_image_hgsc(image_array);  /* plot image in 0.275 sec */
+            getch();                       /* wait for key press */
+            setvga();                      /* restore HGSC to VGA modes */
+            /* setvga is found in TECH Specialist, v.1, n.5, p.35 */
+          }
+      }
+
+    free_image(image_array, 768);     /* free image memory */
+    set_video_mode(0x02);             /* restore text mode */
+} 
+
+unsigned char **image(row,col)
+int row,col;
+{   /* allocates 8-bit 2D image matrix with range [0...row-1][0...col-1] */
+    int i;
+    unsigned char **m; /* no error checking: assumes enough memory exists */
+    m = (unsigned char **) malloc((unsigned)(row)*sizeof(unsigned char *));
+    for (i=0; i<row; i++)
+       m[i] = (unsigned char *) malloc((unsigned)(col)*sizeof(unsigned char));
+    return m;
+}
+
+void free_image(m,row)
+unsigned char **m;
+int row;
+{        /* frees memory malloc'd by image function in Listing 2 */
+    int i;
+    for (i=row-1; i>=0; i--) free(m[i]);
+    free(m);
+}
+
+void plot_image_tseng(image_array) /* Tseng 4000 chipset 1024x768x256 */
+unsigned char **image_array;
+{ 
+    reg$eax unsigned short ax; /* required by inline assembler */
+    reg$esi unsigned esi;
+    reg$edi unsigned edi;
+    reg$ecx unsigned ecx;
+    int j, jj, k, vcol, row;
+    unsigned int cm;
+    unsigned short pel;
+    vcol = 1024;                        /* length of horizontal screen row */
+    row = -vcol;
+    asm("     push   es");              /* save es register */
+    asm("     mov    ax, 034h");        /* set Phar Lap LDT to access */
+    asm("     mov    es, ax");          /* first megabyte of real memory */
+    hpgl_page = 99;                     /* force first page */
+    for (j=0; j<768; j++)               /* vertical lines (rows) on screen */
+      {
+        row += vcol;
+        ax = (unsigned char)(row >> 16);/* divide by 64k to determine page */ 
+        if (ax!=hpgl_page)              /* don't page unless changed */
+          {
+            hpgl_page = ax;             /* save new page */
+            asm("     pushfd");         /* save flags */
+            asm("     cli     ");       /* clear interrupts */
+         asm(ax,"     or      al,40h"); /* 8 64k pages */
+            asm("     mov     dx,3cdh");/* GDC segment select register */
+            asm("     out     dx,al");  /* select page */
+            asm("     popfd     ");     /* restore flags */
+          }
+        esi = &image_array[j][0];       /* 386 address of image row */
+        cm = (row % 65536);             /* determine where in 64k page */
+        edi = 655360 + cm;              /* VGA video address of row */
+        ecx = 256;                      /* number of pixels/4 to move */
+        asm(ecx,esi,edi, " rep movsd"); /* 256 double word mov's */
+      }
+    asm("     pop    es");              /* restore es register */
+}
+
+
+void grey_8514()
+{
+  asm("     xor    eax,eax");        /* eax = 0 */
+  asm("     mov    dx,02ECh");          
+  asm("     out    dx,al");          /* starting palette index */
+  asm("     mov    dx,02EDh");
+  asm("     xor    ebx,ebx");        /* ebx = 0 */
+  asm("lll: mov    eax,ebx");
+  asm("     shr    eax,2");          /* divide by 4 for 6-bit palette */
+  asm("     out    dx,al");          /* red */
+  asm("     out    dx,al");          /* green */
+  asm("     out    dx,al");          /* blue */
+  asm("     inc    ebx"); 
+  asm("     cmp    ebx,256");        /* 256 palette entries */
+  asm("     jl     lll");
+}
+
+void plot_image_8514(image_array)
+unsigned char **image_array;
+{ 
+  reg$eax unsigned eax;                /* required by inline assembler */
+  reg$eax unsigned short ax, v;
+  reg$ecx unsigned ecx;
+  reg$edx unsigned short dx, p;
+  reg$esi unsigned esi;
+  int i;
+  unsigned short pel;
+  WaitQueue(8);                        /* wait until queue is empty */
+  outpw(MULTIFUNC_CNTL, 0);            /* line width 0 = single pixel */
+  outpw(MAJ_AXIS_PCNT, 1023);          /* line length = 1024 pixels */
+  pel = BYTSEQ | _16BIT | CMD_LINE | PCDATA | LINETYPE | DRAW | WRTDATA;
+  for (i=0; i<768; i++)                /* cycle through rows (y) */
+    {
+      outpw(CUR_Y, (short)(i));        /* y position in 8514/A memory */
+      outpw(CUR_X, 0);                 /* x position in 8514/A memory */
+      outpw(CMD, pel);                 /* setup transfer command */
+      dx = PIX_TRANS;                  /* port for transfer to 8514 */
+      ecx = 512;                       /* 16-bit words to move */
+      esi = &image_array[i][0];        /* address of line in 386 memory */
+      asm(dx, esi, ecx, "rep   outsw");/* send whole line of pixel pairs */
+    }
+}
+
+void set_hgsc()
+{
+  asm("     push    es");        /* save es register */
+  asm("     mov     ax,034h");   /* setup Phar Lap LDT to first MByte */
+  asm("     mov     es,ax");
+  asm("     mov     cx,0C000h");
+  asm("     mov     ax,0B040h"); /* dpyctl = enable video, interlaced */
+  asm("     and     ax,7FFFh");  /* blank video */
+  asm("     mov     bx,80h");
+  asm("     call    write");     /* write ax to cx:bx in 34010 */
+  asm("     mov     ax,157");    /* htotal */
+  asm("     mov     bx,30h");   
+  asm("     call    write");  
+  asm("     mov     ax,156");    /* hsblnk; hsblnk-heblnk = 1024/8 */
+  asm("     mov     bx,20h");   
+  asm("     call    write");     
+  asm("     mov     ax,28");     /* heblnk; increase to move screen right */
+  asm("     mov     bx,10h");   
+  asm("     call    write");     
+  asm("     mov     ax,21");     /* hesync */
+  asm("     mov     bx,0");     
+  asm("     call    write"); 
+  asm("     mov     ax,407");    /* vtotal */
+  asm("     mov     bx,70h");   
+  asm("     call    write");   
+  asm("     mov     ax,405");    /* vsblnk; vsblnk-veblnk = 768/2 */
+  asm("     mov     bx,60h");   
+  asm("     call    write");   
+  asm("     mov     ax,21");     /* veblnk; increase to move screen down */
+  asm("     mov     bx,50h");   
+  asm("     call    write");    
+  asm("     mov     ax,4");      /* vesync */
+  asm("     mov     bx,40h");   
+  asm("     call    write");   
+  asm("     mov     ax,0");      /* dpytap */
+  asm("     mov     bx,1B0h");  
+  asm("     call    write");   
+  asm("     mov     ax,0FFFCh"); /* dpystrt; 1 scan line per refresh */
+  asm("     mov     bx,90h"); 
+  asm("     call    write");   
+  asm("     mov     cx,600h");      
+  asm("     mov     bx,0E0h");   /* 0600:00E0 write config.2 reg. */
+  asm("     mov     ax,0Fh");    /* bppsync = 8 bpp, -horz, -vert sync */
+  asm("     call    write");
+  asm("     mov     bx,0C0h");   /* 0600:00C0 write config.1 reg. */
+  asm("     mov     ax,12");     /* cmdfreq = 44.9 MHz, cmd & overlay */
+  asm("     call    write");
+  asm("     mov     bx,20h");    /* 0600:0020 = cmd register in DAC */
+  asm("     mov     ax,05Bh");   /* daclut = 8bpp + 24-bit LUT, no overlay */
+  asm("     call    write");
+  asm("     mov     bx,0C0h");   /* 0600:00C0 = write config. 1 */
+  asm("     mov     ax,4");      /* normfreq = 44.9 Mhz, normal palette */
+  asm("     call    write");
+  asm("     mov     ax,0C000h"); /* no autoincrement */
+  asm("     mov     es:hstctrl,ax"); /* setup 34010 */
+  asm("     mov     cx,0C000h");
+  asm("     mov     ax,0B040h"); /* dpyctl */
+  asm("     mov     bx,80h");
+  asm("     call    write");     /* enable video */
+  asm("     pop     es");        /* restore es register */
+  asm("     ret");               /* return to calling program */
+
+  asm("write   proc    near");   /* create subroutine */
+  asm("        mov     es:hstadrl,bx");  
+  asm("        mov     es:hstadrh,cx");  
+  asm("        mov     es:hstdata,ax"); /* write ax to cx:bx */
+  asm("        ret");
+  asm("write   endp");
+}
+
+void grey_hgsc()
+{
+  asm("     push   es");             /* save es register */
+  asm("     mov    ax,034h");        /* setup Phar Lap LDT to first Mbyte */
+  asm("     mov    es,ax");
+  asm("     pushfd");                /* save flags */
+  asm("     cli");                   /* disable interrupts */
+  asm("     mov    ax,0C000h");
+  asm("     mov    es:hstctrl,ax");  /* turn off autoincrement */
+  asm("     mov    ax,01E0h");
+  asm("     mov    es:hstadrl,ax");
+  asm("     mov    ax,0600h");
+  asm("     mov    es:hstadrh,ax");  
+  asm("     mov    cx,es:hstdata");  /* read & save config 2 */
+  asm("     mov    ax,80h");
+  asm("     mov    es:hstadrl,ax");
+  asm("     mov    ax,0C000h");
+  asm("     mov    es:hstadrh,ax");
+  asm("     mov    ax,es:hstdata");  /* read dpyctl */
+  asm("     push   eax");            /* save eax (dpyctl) */
+  asm("     and    ax,7FFFh");
+  asm("     mov    es:hstdata,ax");  /* blank video */
+  asm("     mov    ax,00E0h");
+  asm("     mov    es:hstadrl,ax");
+  asm("     mov    ax,0600h");
+  asm("     mov    es:hstadrh,ax");  
+  asm("     mov    ax,0Ch");         /* -H -V sync VGA control VRAM */
+  asm("     mov    es:hstdata,ax");  /* write config 2 for VGA */
+  asm("     xor    eax,eax");        /* can only change palette in VGA */
+  asm("     mov    dx,03C8h");
+  asm("     out    dx,al");          /* starting palette index */
+  asm("     mov    dx,03C9h");
+  asm("     xor    eax,eax");
+  asm("ll:  out    dx,al");          /* red */
+  asm("     out    dx,al");          /* green */
+  asm("     out    dx,al");          /* blue */
+  asm("     inc    eax"); 
+  asm("     cmp    eax,256");        /* 256 palette entries */
+  asm("     jl     ll");
+  asm("     mov    es:hstdata,cx");  /* restore original config 2 */
+  asm("     mov    ax,80h");
+  asm("     mov    es:hstadrl,ax");
+  asm("     mov    ax,0C000h");
+  asm("     mov    es:hstadrh,ax");
+  asm("     pop    eax");            /* get saved eax */
+  asm("     mov    es:hstdata,ax");  /* restore dpyctl, enable video */
+  asm("     popfd");                 /* restore flags (interrupts) */
+  asm("     pop    es");             /* restore es register */
+}
+
+void plot_image_hgsc(image_array)   /* 1024x768x256 HGSC */
+unsigned char **image_array;
+{ 
+  reg$ebx unsigned ebx;             /* required by inline assembler */
+  reg$esi unsigned esi;
+  esi = &image_array[0][0];         /* image array address in 386 memory */
+  ebx = 12;                         /* lines = height/64 */
+  asm(esi,ebx,"     push   es");    /* send esi & ebx to assembler, save es */
+  asm("     mov    ax,034h");       /* setup Phar Lap LDT to first Mbyte */
+  asm("     mov    es,ax");
+  asm("     mov    ax,0D800h");
+  asm("     mov    es:hstctrl,ax"); /* setup 34010 for transfer */
+  asm("     cld");                  /* set direction of movsd */
+  asm("     xor    eax,eax");       /* eax = 0 */
+  asm("     mov    es:hstadrl,ax");
+  asm("     mov    es:hstadrh,ax"); /* starting address in 34010 memory */
+  asm("     mov    dx,46E8h");
+  asm("     out    dx,ax");         /* disable VGA */ 
+
+  asm("     align  4");
+  asm("slp: lea    edi,es:[655360]"); /* starting address of hstdata shadow */
+  asm("     mov    eax,64");        /* 64 lines per shadow page */
+  asm("llp: mov    ecx,256");       /* 256 double words per 1024 pixel line */
+  asm("rep  movsd");                /* move 1024 pixel line */
+  asm("     add    esi,8");         /* skip array pointers */
+  asm("     dec    eax");
+  asm("     cmp    eax,0");
+  asm("     jnz    llp");           /* loop 64 lines/page */
+  asm("     dec    ebx");
+  asm("     cmp    ebx,0");
+  asm("     jnz    slp");           /* loop 12 pages/image */
+
+  asm("     mov    dx,46E8h");
+  asm("     mov    ax,0Eh");
+  asm("     out    dx,ax");         /* enable VGA */
+  asm("     mov    ax,0C000h");     /* turn off autoincrement */
+  asm("     mov    es:hstctrl,ax");
+  asm("     pop    es");            /* restore es register */
+}
+
+

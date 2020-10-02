@@ -1,0 +1,163 @@
+; (c) Copyright 1991, Martin Stitt
+; recv_par.asm - parallel port data --> direct video.
+; to be run at the monitor machine.
+
+inport	equ	0278h
+
+cols	equ	80		; # of cols on display
+rows	equ	25		; # of rows on display
+rowbytes equ	cols*2		; bytes per row
+scrbytes equ	rowbytes*rows	; total bytes in screen
+vidattr	equ	07h		; display attribute
+
+_TEXT	segment para public 'CODE'
+        assume  cs:_TEXT,ds:_TEXT,es:_TEXT,ss:_TEXT
+	org	0100H
+start:
+	jmp	begin
+
+vid_ptr	label dword		; ptr for video writes
+vid_ofs	dw	0
+vid_seg	dw	0
+strobe	db	?		; tracks strobe bit
+
+;= char2vid ===========================================
+; in:	al = the character to dislay (or cr or lf)
+;	ds -> local data segment
+;
+; out:	crashes ah,bx,cx,dx,si,di,es,flags
+;======================================================
+        assume  ds:_TEXT,es:nothing,ss:nothing
+char2vid:
+	cmp	al,13
+	jne	chv1		; if a carriage return
+	mov	ax,[vid_ofs]	;  calc start of row
+	xor	dx,dx
+	mov	bx,rowbytes
+	div	bx
+	mul	bx
+	mov	[vid_ofs],ax
+	xor	ax,ax
+	jmp	short chv2
+chv1:
+	cmp	al,10
+	jne	chv2		    ; if a linefeed
+	add	[vid_ofs],rowbytes  ;  calc next line
+	xor	ax,ax
+chv2:
+	les	di,[vid_ptr]	; if vid_ofs > lim, 
+	cmp	di,scrbytes	;  scroll the screen 
+	jb	chv3		;  and reset [vid_ofs]
+	push	ax
+	push	ds
+	mov	si,es
+	mov	ds,si
+	assume	ds:nothing
+	mov	si,rowbytes			
+	xor	di,di
+	mov	cx,(scrbytes-rowbytes)/2
+	rep	movsw
+	mov	di,(scrbytes-rowbytes)
+	mov	cx,cols
+	mov	al,20h
+	mov	ah,vidattr
+	rep	stosw
+	mov	di,(scrbytes-rowbytes)
+	pop	ds
+	assume	ds:_TEXT
+	pop	ax
+chv3:
+	or	ax,ax		; if not control code
+	jz	chv4		;  display the char
+	mov	ah,7		; normal video attr
+	stosw
+chv4:
+	mov	[vid_ofs],di	; update offset
+	ret
+
+;= poll ===============================================
+; in:	none
+;
+; out:	crashes ax,bx,dx,es + crashed by char2vid
+;======================================================
+        assume  ds:_TEXT,es:nothing,ss:nothing
+poll:
+	mov	dx,inport	; address base
+	mov	al,0		; clear bit to raise
+	out	dx,al		;  ready signal
+	jmp	$+2
+	mov	ax,40h		; address the 40:17
+	mov	es,ax		; shift state byte
+	assume	es:nothing
+	inc	dx		; address base+1
+poll2:
+	test	byte ptr es:[17h],3 ; if either shift 
+	jnz	poll3		    ; key down, exit
+	in	al,dx		; read strobe
+	jmp	$+2
+	and	al,40h
+	cmp	al,[strobe]	; wait until strobe 
+	je	poll2		;  changes
+	mov	[strobe],al	; update record 
+	dec	dx		; address base
+	mov	al,1
+	out	dx,al		; set bit to lower
+	jmp	$+2		;  ready signal
+	inc	dx
+	in	al,dx		; read parallel ports
+	jmp	$+2		; form data byte value
+	mov	ah,al
+	mov	bl,al
+	and	bl,80h
+	shl	ah,1
+	and	ah,70h
+	inc	dx
+	in	al,dx
+	jmp	$+2
+	and	al,0fh
+	or	al,ah
+	or	al,bl
+	xor	al,8bh
+	call	char2vid	; display the character
+	jmp 	poll
+poll3:
+	ret
+
+;==== main routine
+        assume  ds:_TEXT,es:_TEXT,ss:_TEXT
+begin:
+	mov	[vid_seg],0b000h  ; determine video seg
+	mov	ax,40h
+	mov	es,ax
+	assume	es:nothing
+	cmp	byte ptr es:[49h],7
+	je	have_vseg
+	mov	[vid_seg],0b800h
+have_vseg:
+	mov	es,[vid_seg]	; clear the screen
+	mov	al,20h
+	mov	ah,vidattr
+	mov	cx,scrbytes/2
+	xor	di,di
+	cld
+	rep	stosw
+	mov	dx,inport	; init ports for input
+	xor	al,al
+	out	dx,al		; turn off busy signal
+	inc	dx
+	out	dx,al		; enable input
+	jmp	$+2
+	in	al,dx
+	jmp	$+2
+	and	al,40h
+	mov	[strobe],al	; init strobe state
+	inc	dx
+	mov	al,4h
+	out	dx,al		; enable input
+	call	poll		; listen to the port
+	mov	ax,4c00h
+	int	21h
+_TEXT	ends
+	end	start
+
+

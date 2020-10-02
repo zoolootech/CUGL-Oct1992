@@ -1,0 +1,40 @@
+#include <dos.h>
+sread_a(int row, int col, int *attr)
+/* This will read the attr at row,col and place the attr into
+   the area pointed to by attr.
+*/
+{
+  extern int color, mono, cga, ega, scrseg, bios;
+  union REGS inregs;
+  int   scrofs, orow, ocol;
+  char pchar;
+  char far *base;
+  char far *work;
+	if(mono) base=(char far *)0xb0000000;
+	else base=(char far *)0xb8000000;
+  if(bios) {
+        locate(row,col) ;
+        inregs.h.ah=0x08;
+        inregs.h.bh=0x00;
+		int86(0x10,&inregs,&inregs);
+        *attr=inregs.h.ah;
+        return(0);
+  }
+	scrofs = ((((row+1) * 160) - 160) + ((col+1) * 2)) - 2;
+	work = base + scrofs + 1;
+	asm les bx,work
+	if(cga) {
+			asm 	mov	dx,03dah
+			asm		in	al,dx
+            asm		test al,1
+			asm		jnz $-3
+			asm		in	al,dx
+			asm		test al,1
+			asm		jz $-3
+		}
+	asm mov cl,byte ptr es:[bx]
+	asm mov pchar,cl
+	*attr = pchar;
+	return(0);
+}
+

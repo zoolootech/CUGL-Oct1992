@@ -1,0 +1,1245 @@
+
+
+
+
+
+
+
+
+
+
+
+                          TMS9900/99105 Cross-assembler
+
+
+                                    Rev. 1.0
+
+                Derived from the original William C. Colley, III.
+                              M6800 Cross Assembler
+
+                                       by
+
+
+                                Alexander Cameron 
+
+                     Written and modified during June 1984.
+
+
+
+
+                            The Manual Such As It Is.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 1
+
+
+                1.1       Format of Cross-assembler Commands
+                1.1.1     Command Strings
+
+                          Tï   ruî  thå 990° cross-assembler¬   typå  thå 
+                          followinç commanä line:
+
+                          A>a99 filename options
+
+                          filenameº 
+                          Thå   namå   oæ  thå  sourcå  inpuô   filå   ió 
+                          filename.a99¬  thå lisô caî gï tï filename.l99¬ 
+                          anä thå heø filå caî gï tï filename.h99.
+
+                          options:   See next section.
+
+                1.1.2     Options
+
+                          Thå   sourcå  filå  comeó  froí  thå  currentlù  
+                          loggeä  disë drivå  unlesó  iô ió redirecteä bù 
+                          puttinç  thå  strinç "sd¢ iî thå optionó field®  
+                          ó  specifieó thå sourcå filå anä ä ió á  devicå 
+                          codå froí thå followinç list:
+
+                          a, b, c, d   Disk drives.
+                          -            The currently logged in disk drive.
+
+                          Lineó   oæ inpuô containinç erroró wilì  alwayó 
+                          bå  outpuô tï thå consolå device®   Iæ thå fulì 
+                          listinç  ió desired¬  iô musô bå calleä foò  bù 
+                          puttinç  thå strinç "ld¢ iî thå optionó  field®  
+                          ì specifieó lisô filå anä ä ió á devicå codå aó 
+                          peò thå sourcå file¬  oò onå oæ thå  followingº 
+                         
+                          ø              Consolå device.
+                          y              List device.
+
+                          Thå   heø filå wilì noô bå outpuô unlesó calleä  
+                          foò  aó peò thå lisô file.
+
+                          Optionó   musô  bå ruî togetheò intï  á  singlå 
+                          strinç witè nï embeddeä blanks.
+
+                1.1.3     Examples
+
+                          A>a99 barf       source -- a:barf.a99
+                                              list   -- none.
+                                              hex    -- none.
+
+                          A>a99 barf sblxha source -- b:barf.a99
+                                              list   -- con:
+                                              hex    -- a:barf.h99
+
+                          A>a99 barf ly    source -- a:barf.a99
+                                              list   -- lst:
+                                              hex    -- none.
+
+
+                          A>b:a99 barf sbh-  source -- b:barf.a99
+                                              list   -- none.Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 2
+
+
+                                              hex    -- a:barf.h99
+
+
+                1.2       Format of TMS9900 Cross-assembler Source Files
+
+                          Lineó oæ sourcå inpuô arå terminateä witè CR/LÆ  
+                          pairs®  Internally¬ thå characteò beforå thå LÆ 
+                          ió discarded¬ sï iæ thå CÒ ió missing¬ thå lasô 
+                          characteò  oæ thå linå wilì bå eateî  up®   Thå 
+                          internaì linå buffeò wilì holä á 12°  characteò 
+                          line®    Thió  maù bå changeä bù  alterinç  thå  
+                          "#definå  LINLEÎ  120¢ statemenô iî  xasm99.gbì 
+                          anä  recompilinç thå cross-assembler®    Excesó 
+                          characteró iî thå linå arå throwî out.
+
+                          Loweò   caså   letteró arå converteä  tï  uppeò 
+                          caså iî  aó fe÷ placeó aó possible®  Theù are:
+
+                               1)  In opcodes,
+
+                               2)  In checking for keywords such as NOT, and
+
+                               3)  In command strings.
+
+                          Thió  meanó thaô "not"¬   "NOT"¬   "Not"¬  etc®  
+                          arå   alì  possiblå  spellingó oæ  thå  logicaì 
+                          inversioî   operator®  Thió  alsï   meanó  thaô 
+                          "foo¢   anä   "FOO¢   arå   differenô  symbols®  
+                          Watcè  thió iæ yoõ starô encounterinç Õ  erroró 
+                          oæ symboló thaô yoõ "know¢ yoõ defined.
+
+                1.2.1     Statements
+
+                          Sourcå fileó inpuô tï thå 990°  Cross-assembleò  
+                          consisô oæ statementó oæ thå form:
+
+                          [label] [opcode] [arguments] [;comments.]
+
+                          Labeló   arå  recognizeä bù theiò beginninç  iî 
+                          columî  1® Iæ  iô  doesn'ô  begiî there¬  iô ió 
+                          assumeä  tï   bå   aî  opcode®     Labeló   arå  
+                          assigneä  thå  currenô  prograí counteò   valuå  
+                          unlesó  thå line'ó opcodå ió  "EQU¢  oò "SET".
+
+                          Opcodeó    maù   bå  eitheò  990°   instructioî  
+                          mnemonicó  oò pseudo-ops.
+
+                          Thå   argumentó followinç thå opcodå wilì  varù 
+                          witè  thå opcode®   Iî thå caså oæ opcodeó sucè 
+                          aó "NOP"¬ theù maù bå absenô entirely.
+
+                          Lineó  terminatå witè eitheò á CR/LÆ paiò oò  á 
+                          semicoloî  thaô  ió  noô embeddeä iî á   quoteä  
+                          string®   Anythinç afteò á semicoloî ió ignoreä 
+                          bù  thå  assembler¬  buô  wilì  appeaò  iî  thå 
+                          listing®   Notå  thaô  á semicoloî iî columî  ± 
+                          wilì makå thå entirå linå á comment.
+                1.2.2     Symbols
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 3
+
+
+                          Symboló  maù  bå oæ anù length¬   buô onlù  thå  
+                          firsô   ¸ characteró  arå  significant®    Thió 
+                          maù  bå  changeä   bù  changinç   thå  "#definå 
+                          SYMLEÎ   8¢   statemenô    iî    a68.gbì    anä   
+                          recompilinç   thå   assembler®      Notå   thaô   
+                          thió  increaseó   thå storagå requireä  bù  thå 
+                          symboì  tablå   aó eacè  entrù  iî  thå  symboì 
+                          tablå  ió  SYMLEN+²  byteó   iî  length®    Thå  
+                          followinç    characteró   arå   legaì   iî    á 
+                          symbol:
+
+                               A-Z  a-z  !  &  .  :  ?  [  \  ]  ^  _  `
+                                         {  |  }  ~  0-9
+
+                          Notå   thaô  symboló maù noô begiî witè 0-¹  aó 
+                          thió woulä makå  theí impossiblå tï distinguisè 
+                          froí Inteì  formaô numbers.
+
+                          Á   speciaì   symboì ¤ ió alwayó equaì  tï  thå 
+                          addresó  oæ thå firsô bytå oæ codå generateä bù 
+                          á giveî line.
+
+                1.2.3     Numeric Constants
+
+                          Numberó  begiî  witè  0-9,%®  ¥  leadinç   baså  
+                          designatoò  represenô  binary®  Iæ  thå  numbeò 
+                          beginó witè 0-9¬  thå  assembleò  lookó foò onå 
+                          oæ thå trailinç  baså designatoró B¬  O¬  Q¬ D¬ 
+                          oò  H®   Iæ thå numbeò doeó noô enä witè onå oæ 
+                          these¬  iô ió assumeä tï bå decimal®  Â ió  thå  
+                          baså designatoò foò binary¬   Ï anä Ñ  arå  foò 
+                          octal¬   Ä   ió  foò decimal¬   anä È  ió   foò  
+                          hexidecimal®  Trailinç baså designatoró anä thå 
+                          heø digitó A-Æ caî bå iî  eitheò uppeò oò loweò 
+                          case®    Notå  thaô  heø numberó  thaô    starô  
+                          witè   A-Æ   anä   arå   specifieä   witè   thå 
+                          designatoò   È  musô havå á leadinç zerï  addeä  
+                          tï  keeğ theí froí beinç mistakeî foò  symbols®  
+                          Foò example:
+
+                          0ff80h                   evaluate to ff80 hex.
+                          128 and 128d             evaluate to 80 hex.
+                          35o, and 35q             evaluate to 1d hex.
+                          %0111000 and 0111000b    evaluate to 39 hex.
+
+                          Á  characteò  constanô ió á strinç composeä  oæ 
+                          zero¬  one¬ oò twï ASCIÉ characters¬  delimiteä 
+                          bù  eitheò singlå oò doublå  quoteó (§  oò  ")®   
+                          Notå  thaô  singlå quoteó onlù  balancå  singlå 
+                          quotes¬  anä doublå quoteó onlù  balancå doublå 
+                          quotes®   Thuó  á characteò constanô oæ 2²  heø 
+                          caî bå specifieä bù '"'®  Foò example:
+
+                               "ab"           evaluates to 6162 hex.
+                               ""             evaluates to 0000 hex.
+                               "'"            evaluates to 0027 hex.
+                               'A'            evaluates to 0041 hex.
+
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 4
+
+
+
+                          Notå   thaô  iî  thå  two-characteò   characteò 
+                          constant¬   thå left-hanä characteò wilì appeaò 
+                          iî  thå  upper-ordeò bytå anä   thå  right-hanä 
+                          characteò wilì appeaò iî thå lower-ordeò byte.
+
+                1.2.4     Strings
+
+                          Stringó   arå   formeä  iî  thå  samå  waù   aó  
+                          characteò constantó  excepô thaô theù maù bå oæ 
+                          anù lengtè uğ  tï anä includinç 25µ characters®  
+                          Thå  firsô  characteò  wilì bå  placeä  iî  thå 
+                          lowest-ordeò   memorù   byte®     Á   line-feeä 
+                          characteò  maù  noô  bå  embeddeä iî  á  strinç  
+                          aó   iô terminateó  thå linå anä wilì  yielä  á  
+                          quotå   imbalancå error®    Notå  thaô  stringó  
+                          arå  onlù  valiä  iî  thå arguemenô fielä oæ aî 
+                          "TEXT¢ pseudo-op.
+
+                1.3       Expression Evaluation
+
+                          Thå   followinç   operatoró  arå  alloweä    iî  
+                          expressions®  Thå operatoró arå listeä iî ordeò 
+                          oæ precedence.
+
+                               Unary Plus, Unary Minus
+
+                               *, /, MOD, SHL, SHR
+
+                               +, -
+
+                               >, >=, <, <=, <>, =
+                                         (These can also be written as
+                                              GT, GE, LT, LE, NE, EQ.)
+
+                               NOT       (1's complement)
+
+                               AND       (Bitwise logical AND)
+
+                               OR, XOR   (Bitwise logical OR and Exclusive 
+                                          OR)
+
+                               HIGH, LOW
+                          Parentheseó  arå  useä tï changå thå  ordeò  oæ 
+                          precedence®     Durinç     evaluatioî   oæ   aî 
+                          expression¬   aó  sooî aó á  ne÷  operatoò   ió 
+                          encountereä  thaô haó precedencå lesó  thaî  oò   
+                          equaì   tï   thå  lasô  operatoò   encountered¬   
+                          alì  operationó  uğ  tï thå  ne÷  operatoò  arå 
+                          performed®      Thaô    is¬      subexpressionó  
+                          involvinç   operatoró  oæ    higheò  precedencå 
+                          arå computeä first.
+
+                          Alì operatoró excepô +¬   -¬  *¬  /¬ =¬ <>¬ >=¬ 
+                          <=¬ >¬ ¼ musô  bå separateä froí theiò operandó 
+                          bù aô leasô  onå spacå oò tab.
+
+                          Thå  "HIGÈ mumble¢ ió equivalenô tï "mumblå SHÒ 
+                          8¢   anä "LO× mumble¢ ió equivalenô tï  "mumblå Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 5
+
+
+                          ANÄ 0ffH".
+
+                          Thå relationaì operatoró (=¬  >¬ etc.© evaluatå 
+                          tï 0ffffè iæ thå relationshiğ ió true¬  ° iæ iô 
+                          ió false.
+
+                          Expressionó     arå   terminateä   bù   commas¬  
+                          semicolons¬  oò CR/LÆ pairs.
+
+                1.4       990 Family Instructions
+
+                          Thå     instructionó    oæ    thå    9900/9910µ 
+                          microprocessoò  falì  intï severaì  catagories®   
+                          Eacè requireó á certaiî  seô  oæ argumentó  anä 
+                          disallowó  otheò arguments®   Argumentó maù  bå  
+                          specifieä  iî  anù ordeò anä arå  separateä  bù  
+                          commaó    Blankó    maù    bå    useä    freelù  
+                          throughouô   thå argumenô fielä (excepô  withiî 
+                          symboló  oò operatoró sucè aó  NOT© tï  enhancå 
+                          thå readabilitù oæ thå sourcå code®  
+                          The basic syntax is as follows:
+
+                          [label]   LI  R1,expression   ;The expression 
+                                                        ;is evaluated 
+                                                        ;from left to 
+                                                        ;right.
+
+                          Thå  typå  oæ  addressinç eacè  instructioî  ió 
+                          alloweä  alonç witè thå numbeò oæ operandó  thå 
+                          assembleò  expectó thå instructioî tï have¬  ió 
+                          carrieä iî thå ATTRIÂ bytå whicè ió returneä bù 
+                          thå  GETOPÃ  function®    Thå  ATTRIÂ  bytå  ió 
+                          ió  madå  uğ  oæ twï ´ biô  nibbleó  thå  leasô 
+                          significaô  describinç operanä ± anä  thå  mosô 
+                          significanô  describinç  operanä  2®  (Seå  thå 
+                          headinç commentó oæ GETOPÃ whicè ió parô oæ thå 
+                          filå A99TBLS.CSM)®    Thå ATTRIÂ bytå wilì alsï 
+                          telì  thå  assembleò whicè onå oæ thå  ·  basiã 
+                          instructioî  formató á particularå  instructioî 
+                          falló into®   Theó formats/groupó arå discusseä 
+                          iî thå followinç sections.
+
+                1.4.1     Addressing Modes 
+
+                          Thå  9900/9910µ instructioî seô allowó µ  basiã 
+                          addressinç  modes®  These are:
+
+                           Mode                          Example  
+                           ----                          -------
+
+                           Workspace register            MOV R1,R3
+                           Workspace register indirect   A *R1,R2
+                           Symbolic                      CLR @expr
+                           Indexeä                       A @expr(R1),R2
+                           Workspacå registeò indirecô   DEC *R7+
+                           (autï increment)
+
+                           Theså modeó wilì iî generaì bå writteî iî  thå 
+                           form:Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 6
+
+
+
+                                 R, *R, *R+, @X, @X(R)
+
+                          wherå  R  referó  tï  á Registeò anä  Ø  tï  aî 
+                          address.
+
+
+                1.4.2     Instruction Formats
+
+                          Thå  assembleò wilì properlù evaluatå  ·  basiã 
+                          instrucion formats; these are:
+
+                                 Format 0  -  No operands at all (N)
+                                 Format 1  -  R,*R,*R+,@X,@X(R)
+                                 Format 2  -  Displacement (Disp)
+                                 Formaô ³  -  Destinatioî Field only (D)
+                                 Format 4  -  Signed Displacement (SD)
+                                 Format 5  -  Workspace Register (W or C)
+                                 Format 6  -  Immediate Operands (IOP)
+                                 Formaô ·  -  Biô Manipulatioî Instrucions
+                                              (TMS99105 only)  
+
+                          Dependinç  oî thå instructioî theså formató maù 
+                          liå  withiî  eitheò thå sourcå  oò  destinatioî 
+                          fields.
+                1.4.3     Group 1 Instructions 
+
+                          This group contains the following opcodes:
+                           
+                               NOP 
+                               RSET IDLE CKOF CKON LREX
+                               RTWP      
+
+                          Theså  opcodeó permiô nï arguments¬  anä  hencå 
+                          are of format 0.
+
+                1.4.4     Group 2 Instructions
+                            
+                          Thió grouğ oæ instructionó arå oæ Formaô typå ± 
+                          anä arå Duaì Operanä Instructionó witè Multiplå 
+                          Addressinç  Modeó  foò Sourcå  anä  Destinatioî 
+                          Operand. 
+
+                          This group contains the following opcodes:
+
+                                  Á  AÂ Ã CÂ Ó SÂ SOÃ SOCÂ 
+                                  SZÃ  SZCÂ  MOÖ MOVB
+                                 
+                          Instruction format:  [opcode|format1|format1]
+
+                          Example:             A *R1+,R2
+
+                1.4.5     Group 3 Instructions
+
+                          Thió  grouğ  oæ instructionó arå  Duaì  Operanä 
+                          Instructionó witè Multiplå Addressinç Modeó foò 
+                          thå  Sourcå  Operanä  anä  Workspacå   Registeò 
+                          Addressifnç foò thå Destination.
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 7
+
+
+                          This group contains the following opcodes:
+                                 
+                                 COC CZC XOR MPY DIV XOP LDCR STCR
+
+                          Instruction format:  [opcode|format3|format1]
+
+                          Example:              XOP @LABEL,3  
+
+                1.4.6     Group 4 Instructions
+
+                          Thió   grouğ  oæ  instructionó  allo÷  Multiplå 
+                          Addressinç  modeó foò thå sourcå  Operand¬  anä 
+                          thus a single operand instructions.
+
+                          Thió  followinç  instructionó  belonç  tï  thió 
+                          group:
+
+                                 Â BÌ BLWĞ CLÒ SETÏ INÖ NEÇ ABÓ SWPB
+                                 INC INCT DEC DECT X
+                                 BIND(a TMS99105 instruction)
+
+                          Instruction format:  [opcode|format1]
+
+                          Example:             INC @LABEL(R3)
+
+                1.4.7     Group 5 Instructions
+
+                          Thió  grouğ oæ instructionó arå CRÕ  Single-Biô 
+                          Instructions.
+
+                          Thå  followinç  instructionó  belonç  tï   thió 
+                          group:                           
+
+                                 SBO SBZ TB
+
+                          Instruction format:  [opcode|format4]
+
+                          Example:             SBO 25
+
+
+                1.4.8     Group 6 Instructions
+
+                          Thió   grouğ   coveró  thå   Conditionaì   Jumğ 
+                          instrucions®     Notå    thaô    thå    maximuí 
+                          displacemenô range is +127 to -128 words.
+
+                          Thå   followinç  instructionó  belonç  tï  thió 
+                          group:
+                            
+                                 JEQ JGT JH JHE JL JLE JLT JMP JNC JNE
+                                 JNO JOC JOP
+
+                          Instruction format:  [opcode|format2]
+
+                          Example:             JEQ LABEL
+
+
+                1.4.9     Group 7 Instructions
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 8
+
+
+                          Thió  grouğ  havå aî Immediatå  Sourcå  Operanä 
+                          witè  aî Workspacå Registeò aó thå  Destinatioî 
+                          Operand.
+
+                          Thå   followinç  instructionó  belonç  tï  thió 
+                          group:
+
+                                 AI ANDI CI LI ORI
+                                 BLSK (a TMS99105 instruction)
+
+                          Instruction format:   [opcode|format5]
+                                                [    format6   ]         
+
+                          Example:              AI R3,128
+
+
+                1.4.10    Group 8 Instructions
+
+                          Thió  grouğ  coveró thå Internaì Registeò  Loaä 
+                          Immediatå  Instructionó anä havå  aî  Immediatå 
+                          Sourcå Operanä only.
+
+                          Thå  followinç  instructionó  belonç  tï   thió 
+                          group:
+                                 
+                                 LWPI LIMI
+
+                          Instruction format:   [ opcode  ]
+                                                [ format6 ]
+
+                          Example:              LIMI 3
+
+
+                1.4.11    Group 9 Instructions
+
+                          Thió  grouğ coveró thå Internaì Registeò  Storå 
+                          Instructionó  anä  havå  Destinatioî  Workspacå 
+                          Register Addressing only.
+
+                          Thå   followinç  instructionó  belonç  tï  thió 
+                          group:
+
+                                 STST STWP
+                                 LSÔ  LWĞ ( TMS9910µ instructions )  
+
+                          Instruction format:   [opcode|format5]
+                            
+                          Example:              STST R3
+
+                1.4.12    Group 10 (TMS99105 only)
+                  
+                          Thió grouğ coveró thå Bit-Manipulatioî instruc-
+                          tionó peculiaò tï thå TMS99105®  Thió grouğ haó 
+                          á  differenô instructioî formaô thaî thå  basiã 
+                          990°  seô  insofaò aó thå formaô fieldó liå  iî 
+                          thå 2nä word®   Thå instructionó iî thió  grouğ 
+                          are:
+                                 TMB TCMB TSMC
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 9
+
+
+                          Instruction format:   [     opcode     ]
+                                                [ format3|format1]
+                                   
+                          Example:              TMB @BITMAP(R3),8
+
+                1.5       Pseudo-operations
+                1.5.1     END
+
+                          Wheî   thió  statemenô  ió   encountered¬   thå  
+                          assembleò  decideó   thaô   thå   enä  oæ   thå  
+                          sourcå   filå  haó  beeî reached®     Iæ   thió  
+                          statemenô   ió  missinç  oò  iî  á  conditionaì 
+                          assemblù blocë thaô ió noô beinç assembled¬ thå  
+                          assembleò  wilì  encounteò end-of-filå  oî  thå 
+                          sourcå  file®    Iî thió case¬   thå  assembleò 
+                          wilì  attacè aî ENÄ statemenô  anä wilì flaç aî 
+                          error®   Thå syntaø  ió  aó follows:
+
+                          [label]   END
+
+                          Iæ  anù IÆ statemenô ió noô closeä witè aî ENDÉ 
+                          aô thió point, an error will be flagged.
+
+                          This statement permits no arguments.
+
+                1.5.2     EQU
+
+                          Thió  statemenô ió useä tï assigî  á  permenanô 
+                          valuå  tï  á symbol®    Thió valuå maù  noô  bå 
+                          subsequentlù changeä bù á SET¬  anotheò EQU¬ oò 
+                          bù  writinç thå symboì iî columî ± aó á  label®  
+                          Thå syntaø ió aó follows:
+
+                          label     EQU  expression
+
+                          Á   phasinç  (P©  erroò  wilì  resulô  iæ   anù   
+                          forwarä  referenceó   arå  encountereä  iî  thå 
+                          evaluatioî  oæ  thå expression.
+
+                1.5.3     BYTE
+
+                          Thió  statemenô  ió  useä  tï  placå  byteó  iî 
+                          memory®     Eacè   bytå    ió  defineä  bù   aî 
+                          expression®    Multiplå byteó caî bå defineä bù 
+                          expressionó  separateä  bù  commas®     Iæ   aî 
+                          expressioî  evaluateó tï á quantitù outsidå thå 
+                          rangå -12¸  tï 255¬  aî erroò ió flagged®   Thå 
+                          syntaø  ió  aó follows:
+
+                          [label]   BYTE  [expr1][,epxr2].....
+
+                1.5.4     TEXT
+
+                          Thió  statemenô  ió useä tï  placå  stringó  iî 
+                          memory®   Itó  argumentó  maù onlù bå  strings®  
+                          Multiplå stringó maù bå placeä  iî  memorù   iæ  
+                          thå  stringó  arå  separateä  bù  commas®   Thå 
+                          syntaø ió aó follows:
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 10
+
+
+                          [label]   TEXT  [string][,string].....
+
+
+                1.5.5     WORD
+
+                          Thió  statemenô  ió  useä  tï  placå  wordó  iî 
+                          memory®     Eacè   worä    ió  defineä  bù   aî 
+                          expression®    Multiplå wordó maù bå defineä bù 
+                          expressionó separateä bù  commas®    Wordó  arå  
+                          placeä  iî memorù witè theiò high-ordeò bytå iî 
+                          thå low-ordeò memorù locatioî anä thå low-ordeò 
+                          bytå  iî thå high-ordeò memorù  location®   Thå 
+                          syntaø ió aó follows:
+
+                          [label]   WORD  [expr1][,expr2].....
+
+                1.5.6     BSS (Block Starting with Symbol)
+
+                          Thió  statemenô ió useä tï reservå á  blocë  oæ 
+                          memorù   foò  workinç   storage¬    etc®     Iô 
+                          requireó onå argumenô thaô giveó thå numbeò  oæ 
+                          byteó  oæ storagå tï  reserve®    Thå syntaø ió 
+                          aó follows:
+
+                          [label]   BSS  expression
+
+                1.5.7     EVEN
+
+                          Thió  statemenô  ió useä tï forcå thå assembleò 
+                          tï  aligî codå oî aî eveî worä boundarù iæ  thå 
+                          presenô  programmå  counteò  ió  odd®   Iæ  thå 
+                          programmå counteò ió odä á zerï bytå ió  outpuô 
+                          iæ   eveî  thå  statemenô  ió   ignored®    Thå 
+                          assembleò wilì alsï flaç aî erroò ió aî attempô 
+                          ió madå tï outpuô codå tï aî odä address®   Thå 
+                          syntax is as follows:
+                            
+                          [label]   EVEN 
+         
+                1.5.8     DXOP
+
+                          Thió statemenô allowó thå programmeò tï  definå 
+                          theiò   owî   macrï  instructionó  arounä   thå 
+                          Extendeä  Operatioî  Instructioî  (XOP)®    Thå 
+                          assemblå  wilì  substitutå thå XOĞ codå  foò  á 
+                          giveî instructioî iî placå oæ thå namå assigneä 
+                          to the XOP.  The syntax is as follows:
+
+                                 DXOP PUSH,3    ;assign the name PUSH to
+                                                ;XOP number 3
+                          
+                          Foò  examplå iæ PUSÈ ió á previouslù codeä  XOĞ 
+                          whicè  pusheó  registeró  ontï thå  stacë  theî 
+                          insteaä  oæ codinç thió XOĞ instructioî aó  XOĞ 
+                          R3,³  yoõ caî codå PUSÈ R³ - thió wilì  producå 
+                          thå  samå codå aó XOĞ R3,³ buô wilì   generallù 
+                          makå  thå  programmå faò morå easù  tï  follow®  
+                          Thå 99° CPU'ó allo÷ uğ tï 1µ XOP's.
+                            Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 11
+
+
+                            
+                1.5.9     Conditional Assembly
+
+                          Blockó   oæ  codå  caî  bå  assembleä  oò   noô 
+                          assembleä    baseä  oî   thå  valuå   oæ   somå 
+                          expression®   Thå basiã syntaø ió as follows:
+
+                                    IF   expression
+
+                               (lines of code)
+
+                                    ENDI
+
+                          Iæ  thå  expressioî evaluateó tï 0¬   thå  codå 
+                          wilì noô bå assembled®    Thå sourcå lineó wilì 
+                          bå  transfereä  tï thå  listing¬   buô  nï  heø 
+                          outpuô wilì bå generated®    Iô  ió recommendeä  
+                          thaô   á  valuå  oæ $fffæ bå useä foò  á   truå 
+                          valuå  sincå iô turnó intï á falså valuå  undeò  
+                          bitwiså inversion.
+
+                          Iî    addition¬     thå   ELSÅ   directivå   ió  
+                          supporteä  aó follows:
+
+                                    IF   expression
+
+                               (lines of code)
+
+                                    ELSE
+
+                               (more lines of code)
+
+                                    ENDI
+
+                          This is equivalent to:
+
+                                    IF   expression
+
+                               (lines of code)
+
+                                    ENDI
+                                    IF   NOT expression
+
+                               (more lines of code)
+
+                                    ENDI
+
+                          Notå   thaô   labeló  arå  noô   permitteä   oî  
+                          conditionaì  assemblù directives®    Alsï  notå 
+                          thaô   aî  ENÄ   statemenô  caî   faiì   tï  bå 
+                          recognizeä iæ iô ió iî  á  conditionaì assemblù 
+                          blocë witè á falså expression.
+
+                          Á  phasinç  (P© erroò wilì bå flaggeä iæ  therå 
+                          arå  anù forward references in the expression.
+
+                1.5.10    AORG
+
+                          Thió   statemenô   ió  useä  tï loaä  á   valuå  Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 12
+
+
+                          intï  thå assemblù prograí counter®   Thå valuå 
+                          ió  obtaineä  froí thå  expression®    Iæ   thå 
+                          expressioî  containó   forwarä  references¬   á 
+                          phasinç  (P© erroò wilì result®  Iæ á labeì  ió 
+                          present¬  iô  wilì bå EQUeä tï thå ne÷  prograí 
+                          counteò value.  The syntax is:
+
+                          [label]   AORG  expression
+
+                1.5.11    SET
+
+                          Thió  statemenô ió useä tï assigî  á  temporarù 
+                          valuå  tï  á symbol®    Thå  symboì maù noô  bå 
+                          redefineä bù aî EQÕ oò bù  writinç iô iî columî 
+                          ±  aó á label¬   buô iô  maù  bå  redefineä  bù 
+                          anotheò  SEÔ  statement®    Thå valuå  foò  thå 
+                          symboì ió obtaineä froí thå expression®   Iæ iô 
+                          containó  forwarä  references¬   á phasinç  (P© 
+                          erroò wilì  result®  
+                          The syntax is:
+
+                          label     SET  expression
+
+                1.6       Error Messages
+
+                          Erroò   messageó   arå flaggeä witè  á   singlå  
+                          letteò   iî columî  ±  oæ thå offendinç linå iî 
+                          thå   listing®    Thå  meaninç oæ  eacè  letteò 
+                          follows.
+
+                               A    Presently not implemented.
+
+                               B    Distancå  oî  á  brancè   instructioî  
+                                    ió    toï   great®     Uså   á   jumğ 
+                                    instructioî  witè á brancè arounä it¬  
+                                    oò rearrangå youò codå tï shorteî thå 
+                                    distance.
+
+                               D    Digiô  toï  largå foò  thå  baså  waó 
+                                    encountered®   Iî particular¬   watcè 
+                                    foò ¸ oò ¹ iî aî  octaì numbeò anä a-
+                                    æ iî á decimaì number.
+
+                               E    Expressioî ill-formed®   Looë foò noî 
+                                    arithmetiã   characteró  iî   indexeä 
+                                    addressing modes.
+
+                               I    Iæ  stacë imbalance®    Looë foò ELSÅ 
+                                    oò   ENDÉ  withouô   aî IÆ oò  aî  IÆ 
+                                    stilì opeî aô thå enä of the file.
+
+                               L    Invaliä  label®    Labeì maù  contaiî  
+                                    invaliä characteró  oò  bå equaì tï á  
+                                    reserveä  worä likå NOT®    Labeì maù 
+                                    bå presenô oî  á conditionaì assemblù 
+                                    directive.
+
+                               M    Labeì   multiplù   defined®     Labeì 
+                                    defineä   morå  thaî  oncå  anä   alì Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 13
+
+
+                                    definitions are not SET statements.
+
+                               O    Invaliä     opcode®       Looë    foò  
+                                    misspellings¬  missinç semicolons¬ oò 
+                                    opcodeó iî columî 1.
+
+                               P    Phasinç error®   Looë foò expressionó 
+                                    iî   ORG¬    EQU¬    SET¬    oò    IÆ  
+                                    directiveó    thaô   contaiî  forwarä 
+                                    references®  Iæ nonå exist¬ somethinç 
+                                    wierä ió goinç oî aó á labeì thaô waó 
+                                    defineä   iî  pasó   ±   mysteriouslù 
+                                    vanisheä iî pasó 2.
+
+                               R    Registeò valuå toï large®   Registeró 
+                                    valueó  betweeî  °  anä 1µ  onlù  arå 
+                                    allowed®  Thió erroò wilì mosô likelù 
+                                    occuò  iæ á registeò valuå  ió  beinç 
+                                    evaluateä  froí  aî expressioî  whicè 
+                                    overflows.
+
+                               S    Syntaø  error®    Checë  youò  syntaø 
+                                    againsô  mù samples.
+
+                               T    Toï     manù   argumentó   oî    thió  
+                                    line®     WORÄ  directiveó  maù  onlù 
+                                    definå  12·  words¬   whilå TEXÔ  anä  
+                                    BYTÅ directiveó maù onlù definå   25µ 
+                                    bytes®      Oî    otheò   statements¬   
+                                    yoõ    puô  superfluouó argumentó  oî 
+                                    thå line.
+
+                               U    Undefineä     symboì      encountereä     
+                                    durinç expression evaluation.
+
+                               V    Valuå     ouô    oæ   bounds®      Iî  
+                                    particular¬   FCÂ expressionó  anä 8-
+                                    biô  immediatå valueó  musô  evaluatå  
+                                    tï -12¸ tï 255¬   whilå indeø  valueó 
+                                    musô evaluatå tï ° tï 255.
+
+                               *    Thió   statemenô  generateä  bù   thå  
+                                    assembler®   Righô   now¬   thió onlù 
+                                    happenó   iæ   yoõ   droğ   aî    ENÄ   
+                                    statemenô      oò      removå      iô    
+                                    througè conditional assembly.
+
+                               "    Quotå   imbalancå  error®    Beaò  iî 
+                                    minä  thaô  § wilì  noô  terminatå  á 
+                                    strinç  starteä   witè  ¢  anä  vice-
+                                    versa.
+
+                               (    Parenthesió  imbalancå error®   Counô 
+                                    them!
+
+                1.7       Assembler Abort Conditions
+
+                          Undeò  certaiî circumstances¬   thió  assembleò 
+                          wilì  jusô givå uğ anä quiô iî thå middlå oæ aî Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 14
+
+
+                          assembly®    Iæ yoõ don'ô  geô thå erroò  counô 
+                          diagnostiã oî  thå  console¬ reaä  youò  screeî 
+                          foò sure¡   Thå  followinç  messageó occur:
+
+                               1)   Can't open source.
+
+                                    Thå    sourcå  filå  doeó  noô  exisô  
+                                    oî  thå specified disk drive.
+
+                               2)   Can't open list.
+                                    Can't open hex.
+
+                                    Nï   directorù  entrieó lefô  oî  thå 
+                                    disë  drivå in question.
+
+                               3)   Illegal command line.
+
+                                    Bone up on command lines.
+
+                               4)   No file info supplied.
+
+                                    Bone up on command lines.
+
+                               5)   If stack overflow.
+
+                                    IÆ   directiveó  maù onlù  bå  nesteä  
+                                    1¶   deep®    Rebuilä   youò   sourcå  
+                                    codå  tï  reducå  youò nestinç depth¬ 
+                                    oò  changå  thå "#definå IFDEPTÈ  16¢  
+                                    statemenô iî xasm99.gbì anä recompilå 
+                                    thå assembler.
+
+                               6)   Disk read error.
+
+                                    Sourcå   filå   haó  á  baä  CRÃ   oò  
+                                    somå  otheò difficulty.
+
+                               7)   Disk write error.
+
+                                    Ouô oæ disë oò directorù spacå oî thå 
+                                    lisô oò hex file.
+
+                               8)   Error closing file.
+
+                                    Probleí    closinç   lisô   oò    heø  
+                                    file®    Yoõ shouldn't get this one.
+
+                               9)   Symbol Table Overflow.
+
+                                    Youò  sourcå prograí defineó toï manù 
+                                    symbols®   Thå  currenô limiô ió 500®   
+                                    Iæ  yoõ havå morå memorù thaî  É  do¬ 
+                                    yoõ  caî changå thå "#definå  SYMBOLÓ    
+                                    500¢ linå iî a99.gbì  anä   recompilå 
+                                    thå    assembler®    Otherwise¬   yoõ 
+                                    musô worë oî youò sourcå code.
+
+                1.8       Compiling the Assembler
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 15
+
+
+                          Tï   compilå thå assembleò aó iô  stands¬   yoõ 
+                          wilì  neeä the following items:
+
+                               1)   40K of RAM.
+
+                               2)   The BDS C Compiler Version 1.5
+                                    (good box, Leor!!).
+
+                               3)   Digitaì   Research'ó   ASÍ   oò   MAÃ 
+                                    assembler®   (Noteº   Onlù  needeä iæ 
+                                    yoõ wanô tï plaù  witè thå  functionó  
+                                    iî  a99tbls.maã aó theù  exisô iî   á  
+                                    forí  digestiblå  bù  CLINË  iî   thå  
+                                    filå xasm99.crl.)
+
+                          Tï  geô  a99tbls.crì  uğ  froí  scratch¬    yoõ  
+                          dï   thå  following®    É   assumå   alì  fileó 
+                          includinç ASÍ oò MAÃ livå oî drivå A.
+
+                               A>casm a99tbls        ;source a99tbls.csm
+
+                          This should yield a file a99tbls.asm on drive A.
+
+                               A>maã  a99tbló $pú -ó  ;maù uså así fn.aaú 
+
+                               A>cloaä  a99tbló       ;producå CRÌ filå 
+
+                         You  should  now have a99tbls.crl on  drive  A.
+
+                          No÷  yoõ  arå readù tï compilå thå resô oæ  thå 
+                          beast.
+
+                               A>cc a99
+                               A>cc a99asmlnc
+                               A>cc a99evalc
+                               A>cc a99getc
+                               A>cc a99putc
+                               A>cc a99symbc
+
+                          Now you can link it all together.
+
+                               A>clink a99 -s
+
+                               *a99asmln
+                               *a99eval
+                               *a99get
+                               *a99put
+                               *a99symb
+                               *a99tbls
+
+                          And, as if by magic, you've got a99.com!
+
+                          Notå  thaô  thå linkagå caî alì bå donå oî  onå 
+                          line¬   buô mù papeò isn'ô widå enougè herå  tï 
+                          dï  iô  thaô way®  Notå  thaô iæ yoõ havå  morå 
+                          thaî 40Ë oæ  RAM¬   yoõ  maù wanô  tï  increaså 
+                          youò symboì tablå size®    Symboló arå 1° byteó 
+                          each¬ sï plaî accordingly.
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 16
+
+
+
+                1.9       Final Comments
+                          Happù   assembling¡    Iæ yoõ havå questionó oò 
+                          notå   anù bugs¬    I'ä   appreciatå  á   shouô  
+                          aô    (617)258-1204¬  (617)266-317¹  oò oî  thå 
+                          Bostoî CBBÓ aô  (617)963-8310®   Thå  questionó 
+                          wilì  poinô uğ weaknesseó iî thå   manual¬  anä 
+                          thå bugó neeä tï bå stampeä upoî unmercifully.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Š
+
+
+
+
+
+
+
+               TMS9900/99105 Cross-assembler  Rev. 1.0                    Page 17
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,182 @@
+/*
+ *  stgen.c - C++ program to GENerate State Tables.
+ */
+
+#include <stream.hpp>   /* Zortech uses ".hpp", not ".h" */
+#include <stdlib.h>
+#include <ctype.h>
+
+const   MAXSYM  = 32+1; /* Maximum length of symbol     */
+const   MAXSYMS = 100;  /* Max # of inputs or actions   */
+
+enum toktype {
+    END,    NAME,   NUMBER,     LPAREN = '(',   RPAREN = ')',
+    COLON = ':',    NWLN = '\n'
+    };
+
+struct  symtab  {
+    char    table[MAXSYMS][MAXSYM];
+    int     n;      /* # of symbols in table */
+    int     find(char *sym) {   /* find symbol in table */
+        for(int i = 0; i < n; ++i)
+            if(!strcmp(table[i], sym))
+                return i;
+        return -1;
+        }
+    };
+
+int     linumb = 1;     /* current line number in input file */
+
+main(int argc, char **argv) {
+    void    getinpact(symtab *, symtab *);
+    void    doheader(char *, symtab *, symtab *, char *, int);
+    int     dostate(char *, symtab *, symtab *, symtab *, char *);
+    void    synerr(char *);
+    toktype lex(char *);
+    char    tok[MAXSYM], matrix[MAXSYM], defact[MAXSYM];
+    int     nstates;
+    toktype tt;
+    static  symtab  inputs, actions, allinputs;    /* too big for stack */
+
+    while((tt=lex(matrix)) == NWLN) /* eat empty lines */
+        ;
+    if(tt != NAME)
+        synerr( "Expecting name of state transition matrix." );
+    if(lex(tok) != LPAREN)
+        synerr( "Expecting left paren." );
+    if(lex(defact) != NAME)
+        synerr( "Expecting name of default action." );
+    if(lex(tok) != RPAREN)
+        synerr( "Expecting right paren after default action." );
+    if(lex(tok) != NUMBER)
+        synerr( "Expecting # of states after right paren." );
+    else
+        nstates = atoi(tok);
+    if(lex(tok) != NWLN)
+        synerr( "Expecting newline after # of states." );
+    getinpact(&allinputs, &actions);
+    doheader(matrix, &allinputs, &actions, defact, nstates);
+    while((tt=lex(tok)) == NWLN)    /* eat empty lines */
+        ;
+    if(tt != NAME || lex(tok) != NWLN)
+        synerr( "Expecting definition for state." );
+    while(nstates-- && dostate(tok, &inputs, &actions, &allinputs, defact))
+        ;
+    if(nstates >= 0)
+        synerr( "Expecting more states." );
+    else
+        cout << "};\n";
+    }
+
+
+toktype lex(char *buf) {    /* return next lexical token    */
+    char    c;
+
+    while(cin.get(c))   /* while not EOF */
+        if(c == ')' || c == '(' || c == ':' || c == '\n') {
+            if(c == '\n')
+                ++linumb;
+            return( c );
+            }
+        else if(c == '\\') {    /* delete backslash newline */
+            if(cin.get(c))
+                if(c != '\n')
+                    cin.putback(c);
+                else
+                    ++linumb;
+            }
+        else if(c == '/') {     /* eat comment  */
+            while(cin >> c)
+                if(c == '*' && (cin >> c) && c == '/')
+                    break;
+            }
+        else if(isdigit(c)) {
+            for(*buf++ = c; cin.get(c) && isdigit(c); *buf++ = c)
+                ;
+            *buf++  = '\0'; /* terminate the string */
+            cin.putback(c); /* put back char that stopped scan */
+            return NUMBER;
+            }
+        else if( isalpha(c) || c == '_' ) {
+            for(*buf++ = c; cin.get(c) && (isalnum(c) || c=='_'); *buf++ = c)
+                ;
+            *buf++  = '\0'; /* terminate the string */
+            cin.putback(c); /* put back char that stopped scan */
+            return NAME;
+            }
+    return END;
+    }
+
+void    synerr(char * msg) {
+    cerr << "Line " << linumb << ": " << msg << "\n";
+    exit( EXIT_FAILURE );   /* defined in stdlib.h  */
+    }
+
+/*
+ *  getinpact - read list of inputs and actions in the form:
+ *      inp1 ... inpN : act1 ... actN
+ */
+void    getinpact(symtab *inp, symtab *act) {
+    toktype getlist(symtab *table);
+
+    if(getlist(inp) != COLON)
+        synerr( "Expecting colon after list of inputs." );
+    else if(getlist(act) != NWLN)
+        synerr( "Expecting newline after list of actions." );
+    }
+
+toktype getlist(symtab *t) { /* read list of names   */
+    toktype tt;
+
+    for(t->n = 0; (tt=lex(t->table[t->n])) == NAME; ++t->n)
+        ;
+    return tt;
+    }
+
+void    doheader(char *matname, symtab *inp, symtab *act,
+                char *defact, int nstates) {
+    cout << "/* Define machine inputs */\n";
+    for(int i = 0; i < inp->n; ++i)
+        cout << "#define " << inp->table[i] << " " << i << "\n";
+    cout << "/* Define machine actions */\n";
+    for(i = 0; i < act->n; ++i)
+        cout << "#define " << act->table[i] << " "<< i << "\n";
+    cout << "#define " << defact << " " << i << "  /* default */\n";
+    cout << "\n" << matname << "[" << nstates << "][" 
+            << inp->n << "] = {\n";
+    }
+
+int     dostate(char *buf, symtab *inp, symtab *act,
+                    symtab *allinp, char *defact) {
+    char    state[MAXSYM];
+    toktype tt;
+    static  symtab  temp;
+        
+    strcpy(state, buf); /* remember state   */
+    for(int i=0; i < MAXSYMS; ++i)  /* init with default action */
+        strcpy(temp.table[i], defact);
+    for(int lines=0; ; ++lines) {
+        tt  = getlist(inp);
+        if(inp->n <= 0 || (tt == NWLN && inp->n == 1))
+            break;
+        if(((tt=getlist(act)) != NWLN && tt != END) || act->n <= 0)
+            synerr( "Expecting list of inputs : action." );
+        if(act->n > 1)
+            synerr( "Can't have more than one action per input." );
+        for(i=0; i < inp->n; ++i) {
+            int j = allinp->find(inp->table[i]);
+            if(strcmp(temp.table[j], defact))
+                synerr( "Can't have more than one action per input." );
+            else
+                strcpy(temp.table[j], inp->table[i]);
+            }
+        }
+    strcpy(buf, inp->table[0]); /* name of next state */
+    if(!lines)
+        return( 0 );
+    cout << "/* State '" << state << "' */\n{ ";
+    for(i = 0; i < allinp->n; ++i)
+        cout << (i?", ":"") << temp.table[i];
+    cout << " },\n";
+    return( 1 );
+    }

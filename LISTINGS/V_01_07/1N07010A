@@ -1,0 +1,43 @@
+@echo off
+rem	SEARCH.BAT:
+rem   Written by Vincent D. O'Connor
+rem   Searches for text in files, supporting Boolean connectives
+rem usage:
+rem	  search <filespec> <pattern> [and <pattern>] [or <pattern>]
+rem								  [not <pattern>]...
+
+rem If no args, perform a reset:
+IF "%1" == "" GOTO END
+
+SET FILE=%1
+SHIFT
+FIND "%1" %FILE% >fileinfo
+:CONTINUE
+SHIFT
+SHIFT
+IF "%0" == "and" GOTO AND
+IF "%0" == "AND" GOTO AND
+IF "%0" == "or" GOTO OR
+IF "%0" == "OR" GOTO OR
+IF "%0" == "not" GOTO NOT
+IF "%0  == "NOT" GOTO NOT
+TYPE fileinfo | FIND /V "---------- " | MORE
+GOTO END
+:AND
+FIND "%1" fileinfo >tempfile
+DEL fileinfo
+REN tempfile fileinfo
+GOTO CONTINUE
+:OR
+fIND "%1" %FILE% >tempfile
+COPY fileinfo + tempfile fileinfo >NUL
+GOTO CONTINUE
+:NOT
+FIND /V "%1" fileinfo >tempfile
+DEL fileinfo
+REN tempfile fileinfo
+GOTO CONTINUE
+:END
+ECHO.
+SET FILE=
+DEL fileinfo

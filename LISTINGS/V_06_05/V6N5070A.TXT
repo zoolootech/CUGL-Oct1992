@@ -1,0 +1,67 @@
+
+name  set_env
+COMMENT;------------------------------------------------------
+Purpose: to write directly to the original environment using 
+undocumented interrupt number 2Eh - For command line usage: 
+set_env string_name Revised/Reassembled Under MASM v.5.0 03/02/88 
+- Ron Schroeder First assemble, link and then use EXE2BIN to 
+convert to .com file   
+
+;-----------------------------
+code_seg       segment
+               assume cs:code_seg, ds:code_seg,es:code_seg,ds:code_seg
+               org       100h           ; com file format
+
+main           proc      near
+
+               jmp       short  START   ;skip over data area
+       
+;----------------------------------------------------------------
+
+set            db        ODh            ; chars in `SET STRING=` (11)
+               db        'SET STRING='  ;environmental literal
+setting        db        20h   dup(0)   ;arbitrary size envp buffer
+;----------------------------------------------------------------
+
+START:         mov       ah,4Ah         ; first modify memory location
+               mov       bx,offset FREE ; make room for command.com
+               dec       bx
+               mov       cl,o4h
+               shr       bx,cl
+               inc       bx
+               int       21h            ; do it
+
+               xor       ch,ch          ; zero out ch (defensive move
+               mov       si,0080h       ; get command line length
+               mov       cl,byte ptr[si]; put it in cl
+               dec       cl             ; adjust it
+               jcxz      ERROR1         ; error if no command line    
+               add       set,cl         ; add cmd line size to literal
+               mov       si,0082h       ; beginning of command line
+               mov       di,offset setting  ; destination 
+               rep       movsb          ; put all in setting for length
+                                        ; in cx
+               xor       bh,bh          ; zero out bh (defensive move)
+               mov       bl,set         ; 'new' length of env string
+               mov       set[bx][1],0Dh ;0Dh is cr at end of string
+               mov       si,offset set
+               int     2Eh              ; write ds:si to original environment
+               
+               xor      al,al          ; zero out al for zero error code ret 
+
+EXIT:          mov       ah,4Ch         ; quit
+               int       21h
+
+ERROR1:        mov       al,01h         ; if no characters entered
+               jmp       short EXIT     ; then error
+
+FREE           label     byte           ; to determine memory
+                                        ; allocation for this program
+main           endp                     ; end of procedure
+
+;----------------------------------------------------------------
+
+code_seg       ends
+               end       main
+
+

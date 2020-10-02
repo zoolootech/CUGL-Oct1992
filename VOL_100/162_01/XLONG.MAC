@@ -1,0 +1,54 @@
+;	file xlong.mac
+	NAME	('XLONG')
+	INCLUDE DEQ.MAC
+	EXTRN	CMDBYT,CMDIO
+	EXTRN	FLSD.B,FLRD,FLDR
+	.Z80
+LMODCC: ; Long modulo command chain
+	DB	PXL,RDL,RDL,XY.L,RDL,PXL
+	DB	RDL,XY.L,.LDIV,.LMUL,.LSUB,0
+
+L.mod::
+	LD	HL,LMODCC
+	LD	(COMSTR),HL
+
+	EQUJPS	,FLSD.B,FLRD,LR.CIO,FLDR
+
+SAVA:	DB	0
+SAVIX:	DW	0
+COMSTR: DW	0	; Points to current string of commands
+
+; The following segment labelled 'LR.CIO'
+; pumps a chain of instructions to the AM9511 device,
+; producing in this application a long modulo result.
+; This segment substitutes itself for the
+; single command handler labelled 'CMDIO' (external),
+; while using 'CMDIO' from inside a loop.
+
+LR.CIO: LD	(SAVIX),IX	; save contents of IX
+	LD	(SAVA),A	; save accumulator
+	LD	IX,TOLP 	; addr of 'top of loop'
+	LD	IY,(COMSTR)	; command chain/string
+TOLP:
+	LD	A,(IY + 0)	; get next command byte
+	LD	(CMDBYT),A	; to where CMDIO will find it
+	INC	IY		; advance the pointer
+	CP	0		; compare A to zero
+	JR	Z,EXLP		; if true, exit from loop
+	JP	CMDIO		; then loop back to TOLP
+EXLP:
+	LD	IX,(SAVIX)	; restore IX
+	LD	A,(SAVA)	; restore A
+	JP	(IX)		; just like CMDIO exit
+	.8080
+	END
+
+
+
+
+ to TOLP
+EXLP:
+	LD	IX,(SAVIX)	; restore IX
+	LD	A,(SAVA)	; restore A
+	JP	(IX)		; just like CMDIO exit
+	.8080

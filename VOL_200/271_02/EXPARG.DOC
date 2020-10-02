@@ -1,0 +1,95 @@
+
+
+        NAME
+                expand_arg -- expand command line wildcard filenames
+
+        SYNOPSIS
+                nargc = expand_arg(argc, argv);
+                int nargc;
+                int argc;
+                char *argv[];  (or char **argv, if you prefer)
+                extern char **nargv;
+
+
+
+        DESCRIPTION
+        In the UNIX (tm) world, the command line processor expands
+        wildcard filenames to all matching occurances and passes them
+        in (argc, argv) as though they had been entered discreetly
+        on the command line.  This makes wildcard expansion totally
+        transparent to the programmer.  Most implementations of
+        C comnpilers for MS-DOS (Turbo-C included) do NOT provide this
+        expansion.  Therefore, if one command line argument is "*.ASM",
+        this becomes one of the arguments to a program, instead of all
+        files which will match the expansion.  expand_arg() will take
+        the (argc, argv) passed through the main() function, and make a
+        NEW array, called (nargc, nargv) which will contain the expanded
+        parameters.  If there are no wildcards to expand, the new array
+        winds up being the same as the old array.  In addition, certain
+        arguments will NOT be expanded, as they will be considered possible
+        "options" or "literals".  Any argument beginning with a hyphen (-),
+        fraction bar (/), or single/double quote (" ') will not be expanded.
+        Arguments beginning with a reverse slash (\) will be assumed to
+        contain a directory name as part of a potential filename.
+        Arguments will be expanded if they contain either of the wildcard
+        characters (*) or (?).  No matches to the specification will
+        return no filenames.  A filename without a wildcard designator
+        will be passed to the new array without testing for existence.
+        Filenames expanded will, of course, exist, or they wouldn't have
+        been found.
+        The label "nargc" is not a mandatory label.  It is chosen merely
+        for convenience in designating the new argument count.  However,
+        the array name "nargv" is a requirement, since the objeect module
+        expand_arg defines that item.  If you use the file "smdefs.h",
+        the external reference to nargv will be done automatically, and
+        you needn't worry about it.
+        expand_arg() does dynamic memory allocation and re-allocation,
+        and therefore should be called as the FIRST function after
+        main(), and NEVER called again within the program.  Violation
+        of this requirement may cause some arguments to be lost if
+        this function has to reallocate memory during expansion.
+        Since wildcard expansion may result in more or less arguments
+        than originally passed, nargc will seldom equal argc.  It may be
+        either larger or smaller.
+        After calling expand_arg(), the variables nargc and nargv may be
+        used anywhere you would normally have used argc and argv.
+        If expand_arg() fails (usually a memory allocatiion problem),
+        it will return a value of 0.  No command line options would return 1,
+        since the program name itself is a command line argument.
+
+        expand_arg()         page 2
+
+
+        EXAMPLE
+           #include <stdio.h>
+           #include <smdefs.h>
+           int nargc;
+
+           main(argc, argv) int argc; char *argv[]; {
+              int i;
+              nargc = expand_arg(argc, argv);
+              if(nargc == 0) error("Memory allocation error");
+              for(i = 0; i < nargc; i++)
+                 printf("Argument %d is %s\n", i, nargv[i]);
+              }
+
+
+        SEE ALSO:
+           File TESTEXP.C contains a demo similar to the one above.
+
+
+        INTERESTING NOTE:
+          In a recent issue of Borland's "Turbo Technix" magazine, sent
+          to owners of a Turbo product, they contain the listings of
+          routines and modifications to do exactly what is done with
+          expand_arg().  However, they do NOT make exceptions for
+          option characters nor quoted strings, and their method is
+          much more complex to implement.  Occasionally, the "little guy"
+          can be smarter than the "big guy"!
+
+
+
+        This function is found in SMTCx.LIB for the Turbo-C Compiler
+        This function introduced in Version 1.31 of SMTCx.LIB for
+        Turbo-C Version 1.5 only.
+

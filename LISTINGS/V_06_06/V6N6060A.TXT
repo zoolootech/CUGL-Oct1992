@@ -1,0 +1,504 @@
+/* *********************************************************************
+*
+ *
+ *  A Simple Model for Hiding Surfaces
+ *  Jay Martin Anderson
+ *  Franklin & Marshall College, Lancaster, Pennsylvania
+ *  Tymlabs Corporation, Austin, Texas
+ *
+ *  This program draws a three-dimensional object described by a table
+ *  of faces using hidden-surface elimination.
+ *  The algorithm is described briefly in M. Berger, "Computer Graphics
+ *  with Pascal," (Benjamin/Cummings, 1986), and in somewhat greater
+ *  detail by R. J. Rost, reported in Creative Computing, February, 1984
+.
+ *
+ *  Implemented for HP CRTs on HP 3000, using Pascal and AGL (HP's graph
+ics
+ *     language, April, 1984; revised, April, 1986; March, 1988;
+ *     implemented in Tymlabs' C/3000 for the HP 3000, May 1988.
+ *
+ *  Implemented May, 1988, for the Apple Macintosh (monochrome), using
+ *     Lightspeed C and Quickdraw graphics (Macintosh toolbox).
+ *
+ * ********************************************************************
+*/
+
+ /* ********************* #INCLUDEd files *****************************
+*/
+ #include "stdio.h"
+  /* Use the "stdio" window provided by Lightspeed C, which is
+   * 500 pixels wide by 288 pixels tall, rather than using window
+   * management from Mac toolbox directly.
+   */
+ #include "unix.h"
+ #include "Quickdraw.h"
+ #include "math.h"
+
+ /* ********************* Some Common DEFINEs *************************
+*/
+ #define MAXFACES 60     /* maximum number of faces */
+ #define MAXPTS 100                    /* maximum number of vertices */
+ #define NVF 4       /* vertices/face; squares  */
+ #define HUGE_VAL 1.0E77    /* very large number */
+ #define TRUE  1
+ #define FALSE 0
+ #define sysPatListID 0     /* Resource ID, patterns */
+ typedef float MATRIX[4][4];            /* 4x4 matrix of real numers */
+ struct faceS
+ {
+  float z;    /* smallest Z, eye coords, for face */
+  int color;    /* "color" of this face; a Mac gray pattern */
+  int v[NVF];    /* list of vertices for this face */
+ };
+
+ /* ********************* Global Variables ****************************
+*/
+ int v[MAXFACES][NVF];      /* vertex list */
+ float x0[MAXPTS], y0[MAXPTS], z0[MAXPTS]; /* original coordinates */
+ float xt[MAXPTS], yt[MAXPTS], zt[MAXPTS]; /* transformed coordinates */
+ float xs[MAXPTS], ys[MAXPTS];    /* screen coordinates */
+ struct faceS faceList[MAXFACES];   /* list of faces */
+ MATRIX view;        /* viewing transformation */
+ float eyex, eyey, eyez;     /* position of eye or viewer */
+ float fx, fy, fz;       /* where eye is focussing */
+ float ds;         /* scale factor */
+ float horizRotn;       /* rotation of horizon */
+ float n1, n2, n3;       /* normal to a face */
+ int numFaces, numVertices, numVisFaces;
+ FILE *theFile;        /* points to data file */
+
+ int readFaceData()
+ {
+  /* Hardcoded to read from a file 9 cubes:  72 vertices and
+   * 54 faces.  The name of the file is "cubedata," and it is
+   * presumed to be in the same folder as this project.  Standard
+   * C-library I/O is used, rather than Macintosh Toolbox I/O.
+   * File is opened in "initStuff" and closed in "finishStuff".
+   */
+
+  int i;
+
+ for (i = 0; i < numVertices; i++)
+  fscanf(theFile, "%f %f %f",&x0[i],&y0[i],&z0[i]);
+ for (i = 0; i < numFaces; i++)
+  fscanf(theFile, "%d %d %d %d",&v[i][0],&v[i][1],&v[i][2],&v[i][3]);
+ fseek(theFile, 0L, 0); /* rewind the file */
+ if (ferror(theFile))
+ {
+  puts("error reading CUBEDATA file");
+  return(FALSE);
+ }
+ else
+ {
+  return(TRUE);
+ }
+ }
+
+ int getParams()
+ {
+   /* Hardcoded for one reasonable view of the scene of 9 cubes. */
+
+   /* Position of eye */
+  eyex = 20.0; eyey = 25.0; eyez = 25.0;
+  /* Focus point; where eye is looking */
+   fx = fy = fz = 0.0;
+
+   return(TRUE);
+ }
+
+ void initMat(M)
+ MATRIX M;
+ {
+  /* Construct a 4x4 idenity matrix */
+  int i, j;       /* subscript; loop index */
+
+  for (i = 0; i < 4; i++)
+   for (j = 0; j < 4; j++)
+    M[i][j] = (i != j) ? 0.0 : 1.0;
+ }
+
+ void multMat(M3, M1, M2)
+ MATRIX M1, M2, M3;
+ {
+  /* Multiply M1 x M2 and put result in M3; 4x4 square matrices */
+  int i, j, k;
+
+  for (i = 0; i < 4; i++)
+   for (j = 0; j < 4; j++)
+   {
+    M3[i][j] = 0.0;
+    for (k = 0; k < 4; k++) M3[i][j] += M1[i][k]*M2[k][j];
+   }
+ }
+
+ void calcViewMatrix()
+ {
+  /* Calculates the viewing transformation matrix */
+  int i, j;      /* subscript; loop index */
+  MATRIX t1, t2;     /* temp matrices for transformation */
+  double d1, d2;     /* temp results */
+
+  initMat(view);
+
+  /* translate origin to eye position */
+  view[3][0] = -eyex;
+  view[3][1] = -eyey;
+  view[3][2] = -eyez;
+  initMat(t1);
+
+  /* rotate about x-axis by 90 degrees */
+  t1[1][1] = 0.0;
+  t1[2][2] = 0.0;
+  t1[1][2] = -1.0;
+  t1[2][1] = 1.0;
+  multMat(t2, view, t1);
+  for (i = 0; i < 4; i++)
+   for (j = 0; j < 4; j++) view[i][j] = t2[i][j];
+ initMat(t1);
+
+  /* rotate about y-axis by an angle dependent on focus point */
+  fx = eyex - fx;
+  fy = eyey - fy;
+  fz = eyez - fz;
+  d1 = sqrt((double)(fx*fx + fy*fy));
+  if (fabs(d1) > 0.0001)
+  {
+   t1[0][0] = -fy/d1;
+   t1[2][2] = -fy/d1;
+   t1[0][2] =  fx/d1;
+   t1[2][0] = -fx/d1;
+   multMat(t2, view, t1);
+   for (i = 0; i < 4; i++)
+    for (j = 0; j < 4; j++) view[i][j] = t2[i][j];
+  }
+  initMat(t1);
+
+  /* rotate about x-axis by angle dependent on focus point */
+  d2 = sqrt((double)(fx*fx + fy*fy  + fz*fz));
+  if (fabs(d2) > 0.0001)
+  {
+   t1[1][1] = d1/d2;
+   t1[2][2] = d1/d2;
+   t1[1][2] = fz/d2;
+   t1[2][1] = -fz/d2;
+   multMat(t2, view, t1);
+   for (i = 0; i < 4; i++)
+    for (j = 0; j < 4; j++) view[i][j] = t2[i][j];
+  }
+  initMat(t1);
+
+  /* rotate about z-axis to rotate horizon */
+  horizRotn *= PI/180.0; /* convert degrees to radians */
+  t1[0][0] = t1[1][1] = (float)cos((double)horizRotn);
+  t1[0][1] = (float)sin((double)horizRotn);
+  t1[1][0] = -t1[0][1];
+  multMat(t2, view, t1);
+  for (i = 0; i < 4; i++)
+   for (j = 0; j < 4; j++) view[i][j] = t2[i][j];
+  initMat(t1);
+
+  /* invert the z-axis */
+  t1[2][2] = -1.0;
+  /* and scale according to D/S ratio */
+  t1[0][0] = ds;
+  t1[1][1] = ds;
+  multMat(t2, view, t1);
+  for (i = 0; i < 4; i++)
+   for (j = 0; j < 4; j++) view[i][j] = t2[i][j];
+}
+
+void initStuff()
+{
+ /* Whatever needs to be initialized; may be device-dependent;
+  * may be implementation-dependent.  Includes fixed parameters
+  * for this example.
+  */
+
+ numVertices = 72;
+ numFaces = 54;
+
+ /* Write at upper left of console window */
+ gotoxy(0,0);
+ puts("Example 2.  Cube of cubes.");
+
+ /* Open the data file */
+ theFile = fopen("cubedata","r");
+ if (theFile == NULL)
+ {
+  puts("error opening CUBEDATA file");
+ }
+
+   /* Horizon rotation */
+   horizRotn = 0.0;
+   /* Scaling factor */
+   ds = 1.0;
+
+}
+
+void finishStuff()
+{
+ /* Whatever needs to be closed, etc.  May be device-dependent;
+  * may be implementation-dependent.
+  * In this example, close the data file.
+  */
+ fclose(theFile);
+}
+
+void transform(px, py, pz)
+float *px, *py, *pz;
+{
+ /* Transforms a point, pointed to be px, py, pz, by the view transf. */
+
+ float temp1, temp2, temp3;
+ /* Transforms a point, pointed to by px, py, pz, by view transform */
+ temp1 = *px, temp2 = *py, temp3 = *pz;
+ *px = view[0][0]*temp1+view[1][0]*temp2+view[2][0]*temp3+view[3][0];
+ *py = view[0][1]*temp1+view[1][1]*temp2+view[2][1]*temp3+view[3][1];
+ *pz = view[0][2]*temp1+view[1][2]*temp2+view[2][2]*temp3+view[3][2];
+
+}
+
+void transformAll()
+{
+ /* Transforms all points */
+ int i;
+ for (i = 0; i < numVertices; i++) transform(&xt[i],&yt[i],&zt[i]);
+}
+
+void getCrossProduct(nv1,nv2,nv3)
+int nv1,nv2,nv3;
+{
+ /* Computes cross-product of vectors representing two sides of a face;
+  * the two sides are the vectors from nv2-nv1 and nv3-nv1.  The
+  * cross-product is the outward normal to this face; its three
+  * components are stored in the global variables n1, n2, n3.
+  */
+ float v1, v2, v3, w1, w2, w3;
+
+ v1 = xt[nv2] - xt[nv1];
+ v2 = yt[nv2] - yt[nv1];
+ v3 = zt[nv2] - zt[nv1];
+ w1 = xt[nv3] - xt[nv1];
+ w2 = yt[nv3] - yt[nv1];
+ w3 = zt[nv3] - zt[nv1];
+ n1 = v2*w3 - v3*w2;
+ n2 = v3*w1 - v1*w3;
+ n3 = v1*w2 - v2*w1;
+}
+
+void getDotProduct(pdot, nv1)
+float *pdot;       /* the dot product */
+int nv1;        /* which vertex */
+{
+ /* Computes the dot product of the outbound normal from a face,
+  * kept in the global variables n1, n2, n3, with a vector from
+  * the eye to the face, using a vector from the eye to vertex nv1.
+  */
+ *pdot = n1*xt[nv1] + n2*yt[nv1] + n3*zt[nv1];
+}
+
+void eyeToScreen(x, y, z, px, py)
+float x, y, z, *px, *py;
+{
+ /* Transforms a point from x, y, z eye coordinates to
+  * x, y screen coordinates.  This includes the projection
+  * and the use of the physical screen size in pixels
+  */
+ float xC, yC;     /* center of screen */
+ float xR, yR;     /* width of screen */
+
+ /* hardcoded for Lightspeed "stdio window" for now */
+ xC = 250, yC = 144;
+ xR = 500, yR = 288;
+ *px = xR*(x/z) + xC;
+ *py = yR - (yR*(y/z) + yC);
+}
+
+int zcompare(pFace1, pFace2)
+struct faceS *pFace1, *pFace2;
+{
+ /* Comparison function used by C library function "qsort" to do
+  * sorting.  This function compares the minimum z coordinate of
+  * the faces, so that faces are sorted in the order of distance
+  * from the eye.  This is a DESCENDING sort!!
+  */
+ if (pFace1->z < pFace2->z) return(1);
+ else if (pFace1->z > pFace2->z) return(-1);
+      else return(0);
+}
+
+void sortFaces()
+{
+ /* Sorts the faceList in ascending order of Z for a Z-buffer
+  * display; uses quicksort as implemented in library.
+  * Requires the preceding function which compares z values for
+  * faces.
+  */
+
+ qsort(faceList, numVisFaces, sizeof(struct faceS), zcompare);
+ }
+
+/* ******************** QUICKDRAW GRAPHICS PROCEDURES *****************
+*/
+void drawFace(f)
+int f;
+{
+ /* This procedure draws a face.  It is device- and implementation-
+  * dependent.  In this implementation, it uses the Lightspeed C
+  * "stdio" or console window, and Macintosh Quickdraw procedures.
+  *
+  * Each face is a polygon, and is developed with the sequence
+  * OpenPoly...MoveTo or LineTo...ClosePoly.  The "color" of a
+  * face is interpreted as a QuickDraw pen pattern, and is looked
+  * up in the system pattern list.  The system pattern list is
+  * presumed to be available.  It consists of 38 patterns.  The
+  * first six of these patterns are used for the six faces of
+  * the cubes.  Each face is then "framed," that is, outlined
+  * in solid black.
+  *
+  * In this example, a transparent face is marked with color 0.
+  * Transparent faces are not filled with pattern.
+  */
+ PolyHandle aFace;
+ Pattern thePattern;
+
+ aFace = OpenPoly();
+ MoveTo((int)xs[faceList[f].v[0]],(int)ys[faceList[f].v[0]]);
+ LineTo((int)xs[faceList[f].v[1]],(int)ys[faceList[f].v[1]]);
+ LineTo((int)xs[faceList[f].v[2]],(int)ys[faceList[f].v[2]]);
+ LineTo((int)xs[faceList[f].v[3]],(int)ys[faceList[f].v[3]]);
+ LineTo((int)xs[faceList[f].v[0]],(int)ys[faceList[f].v[0]]);
+ ClosePoly();
+ if (faceList[f].color > 0)
+ {
+  GetIndPattern(thePattern, sysPatListID, faceList[f].color);
+  PenPat(thePattern);
+  PaintPoly(aFace);
+ }
+ PenPat(black);
+ FramePoly(aFace);
+ KillPoly(aFace);
+}
+
+void screenAll()
+{
+ /* Projects from eye coordinates to screen coordinates */
+ int i;
+
+ for (i = 0; i < numVertices; i++)
+ {
+  eyeToScreen(xt[i], yt[i], zt[i], &xs[i], &ys[i]);
+ }
+}
+
+void doFace(f, ff, opaque)
+int f,      /* index into vertex list */
+    ff,      /* index into faceList */
+    opaque;     /* TRUE/FALSE: is face opaque? */
+{
+ /* Adds a face to the visible face list and computes its z */
+ float zmin;
+ int i;
+
+ zmin = HUGE_VAL;
+ for (i = 0; i < NVF; i++)
+ {
+  faceList[ff].v[i] = v[f][i];
+  if (zt[v[f][i]] < zmin) zmin = zt[v[f][i]];
+ }
+ faceList[ff].z = zmin;
+ /* If the face is opaque, fill it with one of the first six
+  * Macintosh patterns.  Otherwise, set its color to 0 for
+  * transparency.
+  */
+ if (opaque) faceList[ff].color = (f%6) + 1;
+ else faceList[ff].color = 0;
+}
+
+void copyData()
+{
+ /* Copies the original data so we can transform it without
+  * destroying the original
+  */
+ int i;
+
+ for (i = 0; i < numVertices; i++)
+  xt[i] = x0[i], yt[i] = y0[i], zt[i] = z0[i];
+}
+
+void drawPicture()
+{
+ /* This prcoedure draws the scene, with hidden surfaces removed */
+ int i;      /* subscript; loop index */
+ float dot;     /* the dot product */
+
+ transformAll();
+ screenAll();
+
+ /* First, do the opaque faces (8 cubes on the 8 corners) */
+ numVisFaces = 0;
+ for (i = 0; i < numFaces - 6; i++)
+ {
+  /* ***** HERE IS THE HIDDEN SURFACE REMOVAL ALGORITHM!! *****
+   * Compute the cross-product of any two sides of a face (we use
+   * the sides 1-0 and 2-0).  This gets an outbound normal from
+   * the face.  Then take the dot product of the outbound normal
+   * with a vector from the eye to the face (we use the vector from
+   * the eye to vertex 0).  If the dot product is non-negative,
+   * the face is visible.
+   * ********************************************************** */
+  getCrossProduct(v[i][0], v[i][1], v[i][2]);
+  getDotProduct(&dot, i);
+  if (dot >= 0.0)
+  {
+   doFace(i, numVisFaces, TRUE);
+   numVisFaces++;
+  }
+ }
+
+ /* Now do the transparent faces (1 large cube); all faces are
+  * visible and uncolored!
+  */
+ for (i = numFaces - 6; i < numFaces; i++)
+ {
+  doFace(i, numVisFaces, FALSE);
+  numVisFaces++;
+ }
+
+ /* Arrange the faces in decreasing order of distance-from-eye, so
+  * that the last face drawn is the one nearest the viewer.  This
+  * extends the basic algorithm to allow sences to be made up
+  * of more than one solid figure, in some cases.  It is called a
+  * z-buffer algorithm, because the faces to be drawn are buffered
+  * in order of their "z" value.  Notice that the z-buffer algorithm
+  * fails (partly) in this case, because the faces of the one
+  * large transparent cube penetrate the faces of the eight small
+  * opaque cubes.  The algorithm cannot accomodate penetrating
+  * surfaces.
+  */
+ sortFaces();
+ for (i = 0; i < numFaces; i++) drawFace(i);
+}
+
+ main()
+ {
+  int ok;
+  int i,j;
+  initStuff();
+
+  ok = readFaceData();
+  copyData();
+  if (ok)
+  {
+   ok = getParams();
+   if (ok)
+   {
+    calcViewMatrix();
+    drawPicture();
+   }
+  }
+  finishStuff();
+ }
+
+

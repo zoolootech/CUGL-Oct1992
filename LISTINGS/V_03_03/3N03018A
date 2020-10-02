@@ -1,0 +1,104 @@
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=Begin Listing1-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+/*****************************************************/
+/* zapuser.c                                         */
+/* -- A program to patch the USER dll with the       */
+/*    signed version of the shift right instruction. */
+/* -- This patch removes the bug with MLE's created  */
+/*    with the ES_CENTER style.                      */
+/*****************************************************/
+
+#include <fcntl.h>
+#include <sys\types.h>
+#include <sys\stat.h>
+#include <io.h>
+#include <process.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+/* Offset of SHR AX,1 instruction in the dll file. */
+#define ibDebugA    0x2b940
+#define ibRetailA   0x2b660
+
+#define wSHR        0xe8d1  /* SHR AX,1 in hex. */
+#define wSAR        0xf8d1  /* SAR AX,1 in hex. */
+
+int
+main(int csz, char * rgsz[])
+/*****************************************************/
+/* -- Entry point.                                   */
+/* -- csz   : Argument count.                        */
+/* -- rgsz  : Array of argument strings.             */
+/*****************************************************/
+    {
+    int         nfd;            /* File descriptor. */
+    unsigned    wInstruction;   /* Opcode from file. */
+    long        ib;             /* Offset of opcode. */
+
+    /* Test command line for validity.  Must have 3 */
+    /* arguments: */
+    /* -- program name, */
+    /* -- name of USER dll. */
+    /* -- windows version, r: retail, d: debug. */
+    if (csz != 3 ||
+      (rgsz[2][0] != 'r' && rgsz[2][0] != 'd'))
+        {
+        fprintf(stderr,
+          "Usage: rgsz[0] filename {r|d}\n");
+        exit(0);
+        }
+
+    /* Get file offset based on version. */
+    ib = rgsz[2][0] == 'd' ? ibDebugA : ibRetailA;
+
+    /* Open file. */
+    if ((nfd = open(rgsz[1], O_RDWR)) == -1)
+        {
+        fprintf(stderr, "Unable to open file %s\n",
+          rgsz[1]);
+        exit(0);
+        }
+
+    /* Make sure SHR AX,1 is at the known file */
+    /* offset.  Seek to the offset and read the code */
+    /* found there.*/
+    if (lseek(nfd, ib, SEEK_SET) == -1 ||
+      read(nfd, &wInstruction, sizeof wInstruction) !=
+      sizeof wInstruction)
+        {
+        fprintf(stderr, "Premature EOF on file %s\n",
+          rgsz[1]);
+        goto MainError;
+        }
+
+    switch (wInstruction)
+        {
+    default:
+        fprintf(stderr, "Unknown version of %s\n",
+          rgsz[1]);
+        goto MainError;
+
+    case wSAR:
+        fprintf(stderr,
+          "%s has already been patched\n", rgsz[1]);
+        goto MainError;
+
+    case wSHR:
+        break;
+        }   /* End switch wInstruction. */
+
+    /* Seek back to offset and replace with */
+    /* SAR AX,1. */
+    lseek(nfd, ib, SEEK_SET);
+    wInstruction = wSAR;
+    if (write(nfd, &wInstruction, sizeof wInstruction) !=
+      sizeof wInstruction)
+        fprintf(stderr, "Error writing file %s\n",
+          rgsz[1]);
+
+MainError:  /* Jump point to save a bunch of calls */
+            /* to close() in case of error. */
+    close(nfd);
+    return 0;
+    }
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-End Listing1=

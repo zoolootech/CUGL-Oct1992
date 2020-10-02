@@ -1,0 +1,1261 @@
+The  e   screen editor                             Page 1
+
+
+
+
+
+
+
+
+
+
+                                     
+                                  eeeee      
+                                 ee    ee 
+                                ee      ee
+                               eeeeeeeeeee
+                               ee         
+                                ee        
+                                 eeeeeeeee
+
+
+                  TUTORIAL GUIDE AND IMPLEMENTATION MANUAL
+
+
+
+
+
+The   e   screen  editor  is full-screen editor designed  for  creating  and 
+modifying the source text of programs.  It is not, and it is not intended to 
+be, a word processor.
+
+
+
+
+
+It is released through the C Users Group for private non-profitmaking use by
+
+                              G. Nigel Gilbert
+                                 MICROLOGY
+
+
+
+
+                        Version 4.8     October 1984
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 2
+
+
+Contents
+
+1.   Prerequisites
+
+2.   Introduction
+
+3.   Development history
+
+4.   Why  e  was written
+
+5.   How  e  works
+
+6.   Using  e
+
+7.   Implementing  e  on your terminal
+
+8.   Changing the default settings of the options
+
+9.   Compiling and loading  e
+
+
+
+
+
+
+
+
+                              1. Prerequisites
+
+The  editor is written in the programming language C and the source code  is 
+available  in the public domain for non-profit use.   It is recommended that 
+you also have to hand a copy of the BDS C compiler,  version 1.50 or  later, 
+if  you need to reconfigure the editor to suit your terminal and your choice 
+of default option settings.
+
+The  editor can be configured simply to run under CP/M with  any  moderately 
+sophisticated  terminal.   The  following screen control functions  must  be 
+available  with the terminal:  clear to end of line,  clear to end of  page, 
+line insert, and line delete.  It is probably not worth using or adapting  e  
+to run on terminals that do not support these functions (among the terminals 
+which  DO support these functions are:  the TVI  910,  912,  920,  925,  950 
+series,  Hazeltine 1420,  1500, Executive and Esprit series, ADM-31 (but not 
+the  ADM-3a),  DEC VT52 and VT100,  ADDS range,  Visual 50 and 55 and  other 
+terminals which offer emulations of these).
+
+Also required is CP/M,  version 2, or CP/M 3.1 (CP/M Plus), and at least 48K 
+(and preferably 56K) of RAM.  Other versions of CP/M might well do.
+
+
+
+                              2. Introduction
+
+This document has sections on:
+
+     the  'philosophy'  of e - why it was written to work the  way  it  does 
+          (sections 3, 4 and 5)
+     using e (section 6)
+     implementing  e (sections 7, 8, and 9)
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 3
+
+
+
+
+
+                           3. Development history
+
+e was written over a period of about two years to satisfy my own need for  a 
+decent  screen editor to use for programming,  primarily in C,  but also  in 
+FORTRAN  and Pascal.   During that time,  it has developed and  changed.   I 
+expect  that it will continue to do so,  and hope that other users will keep 
+in contact with me about what they think of it, what changes they make to it 
+and how it could be improved.  
+
+I can be contacted at:
+
+          G. Nigel Gilbert
+          MICROLOGY
+          4 Deanery Road
+          Godalming GU7 2PQ
+          Surrey
+          England
+
+
+
+                           4. Why  e was written 
+
+The design of e was determined largely by my own specific needs.   I already 
+possessed  a  copy  of  WordStar,  the  well-known,  massive  and  generally 
+excellent  word processing package.    I also possessed a copy of the  well-
+known and entirely excellent BDS C compiler.   Unfortunately, the two do not 
+mesh well together.  In practice, programming in C (or in any other compiled 
+language)  requires  one to edit a program file,  run the file  through  the 
+compiler,  locate  errors,  then re-edit the file to make  corrections,  and 
+repeat all this a large number of times.   The faster the cycle can proceed, 
+the faster is program development.   However,  because WordStar is a big and 
+powerful  package,  with two overlays to read off disk into memory,  it  can 
+take over 25 seconds from the moment the command line is typed to being able 
+to  edit  the program text.   Moreover,  the C compiler,  like many  others, 
+reports  syntax errors by line number;  WordStar has no command to move  the 
+cursor to a specified line number.   All in all, WordStar is great for text, 
+and not much good for programs.
+
+I resolved, therefore, to write an editor more adapted to my needs.  Such an 
+editor  would  have  the  following  characteristics  (in  rough  order   of 
+priority):
+
+    Small run file, with no overlays
+    No initial menu - one would go straight into editing the text
+    A command to jump to a given line number
+    Random access to the text;  as far as possible, it should be as quick to 
+     move from line 500 to line 1 as from line 1 to line 500
+    As few 'modes' as possible - I don't like editors (such as, for instance 
+     the  UCSD editor) where one can only insert in the 'insert'  mode,  and 
+     only delete in the 'delete' mode 
+    No (unreasonable) limit on the size of files which can be edited
+    As  crash proof as possible - including guards against BDOS  errors  and 
+     disk and directory full errors
+    Auto-indent feature for structured programming languages
+    Capability  of  listing  selcted portions of programs  to  the  printer, 
+     whilst remaining inside the editor
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 4
+
+
+
+e  does all of these.   On the other hand,  there are a number of facilities 
+which  other  editors possess,  but which  e  does not have.   They are  all 
+features which, if implemented, would conflict with one or more of the above 
+'desirables'.   An  editors  is  the kind of the thing  for  which  personal 
+preferences are important and varied,  and thus your favorite feature may be 
+in the list below, rather than the list above.  If so, you can always have a 
+go implementing it.  (If you do, I'd be glad to have a copy, and so probably 
+would the User Group).
+
+    Macros and multiple commands executed repeatedly (in my view,  these are 
+     more  appropriate to a batch,  rather than an interactive editor;  and, 
+     anyway,  such  commands  are  difficult to formulate so  that  they  do 
+     exactly what is wanted and neither more nor less)
+    Wild  characters and regular expressions in defining search strings  for 
+     the  Find and Alter commands (possible to implement,  but would  reduce 
+     the searching speed significantly)
+    An  'Overwrite'  mode  as well as an 'Insert' mode (see  comments  above 
+     about modes)
+    Word processing capabilities,  such as word wrap and re-formating (I use 
+     WordStar)
+    Block  moves  of arbitrary blocks,  rather than just blocks of  complete 
+     lines (fine, but the coding is hair-raising)
+
+At one time or another, I've tried all these latter features, but eventually 
+given up or thrown them out as unnecessary or unproductive.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 5
+
+
+                              5. How  e  works
+
+The  above  list  of  desirables more or  less  dictated  the  basic  design 
+principles  of   e.   For  instance,  the need to get to a  particular  line 
+suggested  that  the  text being edited should be  organised  in  lines  (as 
+opposed to a continuous block of text,  including end-of-line markers).  The 
+former  organisation is that adopted by  e  (and by EDIT-80);  the latter by 
+ED  and  WordStar.   The choice has a profound impact on the  style  of  the 
+resulting editor.
+
+Since  text lines are of variable length,  it would not be sensible to store 
+then in fixed length 'holes'.   e therefore keeps a list,  in line order, of 
+pointers to the text itself,  which is kept packed in no particular order in 
+a  large  block  of memory.   Text moving commands therefore  have  only  to 
+manipulate  the pointers,  not the text itself.   Deleting a line just means 
+deleting  a  pointer,  by  shifting the following line  pointers  down  one.  
+Inserting a line requires adding the text to the block of memory and  making 
+room in the list of pointers for a new one, to point to the new text.
+
+In  fact,  things are rather more complicated because it is not possible  to 
+keep  all  the text of large files in memory.   When e runs  out  of  memory 
+space, it switches to using 'virtual memory'.  The block of real memory used 
+to  store text is divided logically into 1K byte 'pages'.   When there is no 
+more  room,  the  least recently used page is written to a scratch  file  on 
+disk,  thus making available another 1K bytes.  e  keeps track of where each 
+page is located - in memory or on disk - and if the text of a line on a page 
+which  is  currently not in memory is required (to display  or  change,  for 
+instance),  another  page is swapped out to disk,  and the required page  is 
+swapped  in.    This  technique means that any line can be  accessed  either 
+immediately  (if its text is already in memory),  or in the time  needed  to 
+write  out  a 1K block and read in another.   It might appear that the  only 
+file  size  limitation that this would impose would be the  amount  of  disk 
+space available,  but in fact one needs to keep all the line pointers in RAM 
+for  the sake of reasonable speed of line insertion and deletion.  Thus  the 
+limitation  is not in the size of the file which can be edited,  but in  the 
+number  of lines (the limit is quite large - about 4000 lines in a 56K  CP/M 
+system).
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 6
+
+
+                                 6. Using e
+
+This section describes how one uses e.   It assumes that you have it already 
+implemented for your terminal.  Guidance on how to do that is to be found in 
+sections 7 to 9.
+
+This  section  is  organised as a tutorial.   It is best to  carry  out  the 
+operations  on  your own terminal as they are described.   The notes in  the 
+left hand margin are provided for quick reference.
+
+Start up      a)  Login to a drive (say, drive B:) containing a disk holding 
+              (at  least)  the  files  e.com (the editor)  and  e.doc  (this 
+              document), and type
+                        
+                   e
+
+              b)  This will start the editor.  You should see a screen which 
+              is  blank except for the message '1:1' near the middle of  the 
+Status line   top line, and the cursor at the start of the second line.  The 
+              top  line  is  used  by  e  as  its  'Status  Line',   showing 
+              information about what it is doing.   The '1:1' shows that the 
+              cursor is on line 1, at column 1.
+
+              c)  Type 
+                   
+                   I am using the e screen editor
+
+              You  will see what you type appearing on the screen,  and  the 
+              cursor keeping ahead of the characters you type.
+
+              d)  Now hold down the control (CTRL) key, and type V  (ie type 
+              ^V).   The  top few lines will be filled by the  'help  menu', 
+Help menu     guidance  on the commands e will accept.   The line you typed, 
+              and the cursor, will have moved down to make room for the help 
+              menu.
+
+              e)   The keys you press to issue commands to e will  generally 
+              be  either control keys (ie the 'control' key  in  combination 
+              with  one of the letter keys),  or special keys particular  to 
+Key-command   the terminal you are using.   For instance, to move the cursor 
+assignments   to the end of the text using a TeleVideo terminal, one presses 
+              the key marked HOME.  Other terminals may not have such a key, 
+              and  would use a control key instead.   The following tutorial 
+              uses  the  key assignments used with  the  TeleVideo  terminal 
+              range,  but  remember  that there may be differences for  your 
+              terminal.   The help menu will tell you which particular  keys 
+              you should be using.
+
+              f)   Press  the  left arrow key.   The cursor  will  move  one 
+              position  to  the  left,  so that it is on top of the  'r'  of 
+left arrow    'editor'
+key
+              g)  Type ^S.   The cursor will jump leftwards to the beginning 
+left word     of the previous word,  'screen'.   Type ^D, and it will jump a 
+              word to the right,  back to the 'e' of 'editor'. Now press the 
+right arrow   right  arrow  key several times to move the cursor  along  the 
+              word 'editor' to the end of the sentence.   Note that when the 
+              cursor reaches the end,  it will not move any further, even if 
+              you keep pressing the right arrow key.
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 7
+
+
+
+beginning of  h)  Type ^B.   The cursor jumps to the Beginning of the  line.  
+line          ^E takes it to the End of the line.   Try it.   Type ^B again, 
+end of line   and then type
+
+                        Now
+
+              followed by a space.   See how the new word is inserted before 
+              what you had there.   This editor is always in 'insert' mode - 
+              whatever  you type (that isn't a command) goes into the  text, 
+              pushing aside anything already there.
+
+              i) Press the Return key.   This puts the cursor,  and whatever 
+Return        is  under and following it on a new line.   On terminals which 
+              support  the  feature,  only the line on which the  cursor  is 
+              resting will be in 'bright' characters;  the rest of the  text 
+              will be dimmer.  Type
+
+                        at this moment
+
+new line      and  then type ^N.   Note how,  like Return,  ^N inserts a new 
+              line,  but this time,  the cursor has stayed where it was, and 
+              did not move down to the new line.
+
+              j)  Using the up arrow and down arrow keys,  and the keys  you 
+up arrow      have used before,  'steer' your way round the text, noting how 
+down arrow    you  can't escape the invisible boundaries which surround  it.  
+end of text   The HOME key will take you to the end of the text,  and the ^U 
+beginning     key will take you to the beginning.  
+of text   
+              Move to the end of the text, and type Return to bring you onto 
+              the next line.   Now type a tab (ie press the key marked  Tab, 
+              or if there isn't one, type ^I).   The cursor will have jumped 
+              across to column 8.  Type the word 
+auto indent                   
+                         Auto
+
+              Now  press Return again.   The cursor moves to the next  line, 
+              but not at the beginning but under the A of Auto.   Type a tab 
+              and then the word
+
+                         indent
+
+              and press Return.   This time,  the cursor is positioned under 
+              the  i  of indent.   This is the auto indent feature at  work: 
+              whenever  you  type Return and the previous line  begins  with 
+              'white space' (blanks or tabs), the cursor is left immediately 
+              under the first non-blank and non-tab character of that  line.  
+              It  is  very  useful when writing programs  that  are  'block-
+              structured'  (such  as C and Pascal) as it helps line  up  the 
+              indentations  of each block without you having to worry  about 
+              counting  tabs or spaces.   If you need to 'un-indent',  it is 
+              easy to delete the unwanted spaces and tabs (we'll see how  in 
+              a moment).
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 8
+
+
+              k)  Move to the beginning of the text and type ^F.   A  prompt 
+find          under the menu will ask
+
+                   Find?
+
+              Type 
+
+                   ito
+
+              and press Return.  A second prompt will ask
+                   
+                   Search Backwards/Ignore case/number of time?
+
+              Just  press  Return.   The cursor will jump to the  characters 
+find options  'ito',  in  the middle of the word 'editor',  and the  prompts 
+              will disappear.  You have found 'ito'.  Now move the cursor to 
+              the  end of the text (HOME),  and press ^F again.   After  the 
+              prompt has appeared, type ^R.  The previous characters to find 
+              ('ito') will be Retrieved.  Press Return, to get the 
+
+                   Search Backwards/Ignore case/number of times?
+
+              prompt.   This time,  type 'b' (or 'B',  or '^B',  it  doesn't 
+              matter)  to mean that the search is to go backwards,  and then 
+              press Return.  The cursor will once again be positioned on the 
+              'ito' of 'editor'.
+
+              l)  Type ^R.   e will repeat the last Find command, attempting 
+              to  find another 'ito',  again  working  backwards.   However, 
+repeat        since  there  is no other 'ito' in the text,  the search  will 
+last find/    fail,  and  a message to say that appears on the status  line.  
+alter         The cursor remains where it is.  This is what happens whenever 
+              you ask  e  to search for something it cannot find.
+
+              m)   Now  type  ^A.   This is the command  to  Alter  (change, 
+              exchange) one set of charactacters (string) for another.   The 
+alter         familiar Find?  prompt will appear.   Type the letter e.   You 
+              will be asking  e  to change all the 'e's in the text to 'z's.  
+              Press Return, to get another prompt:
+
+                   Alter to?
+
+              Type z, and press Return.  Then comes the third prompt:
+
+              Back/Global/To end (start)/Ignore case/Without asking/number?
+alter 
+options       You can now enter one or more of the initial letters - B G T I 
+              or W - of these options, and/or a number.  The options mean:
+Back      search  backwards,  towards  the beginning of the  file  from  the 
+          current cursor position
+Global    replace  all occurences of the specified string wherever they  are 
+          in the text
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 9
+
+
+To end    replace  all  occurences of the specified string from  the  cursor   
+   start  position  to  the end of the file (or the beginning  if  the  Back 
+          option is also chosen)
+Ignore    search  for the find string without regard to the case,  upper  or 
+case      lower, of the characters
+Without   replace without first verifying that the replacement is desired
+asking
+number    find the next (number) occurences of the string
+
+              To change all the 'e's in the text to 'z's, type
+
+                   g
+
+              and Return.  e  will find the first 'e', place the cursor over 
+              it, and then ask, on the status line, whether a replacement of 
+              this  'e' is required.   Type Y (or  y  or ^y) to  effect  the 
+              replacement.  The cursor will move on to the next 'e'.  Type N 
+              to skip replacing this one.  Then the next ... please yourself 
+Escape        whether you change this one.  And the next... press the Escape 
+key           (ESC)  key this time,  and the Alter command will be  aborted, 
+              without making this change.
+
+              This  is the first use you have made of the Escape key,  which 
+              plays an important role with  e.    The Escape key will almost 
+              always  either abort the current command or skip some part  of 
+              it.  Another example of the useful Escape key:
+
+              Move the cursor to the beginning of the file (^U).   Type  ^F, 
+              and ask to find 'ito'.   Of course, you have done this before.  
+              But instead of pressing the Return key (and getting the Search 
+              Backwards/Ignore  case/number  prompt),   press  Escape.   The 
+              cursor  skips  straight  to the desired  string  in  the  word 
+              'editor', using the default options: search forwards, once.
+
+              n)   Your  text  is probably getting to be a bit  of  a  mess.  
+delete left   Let's  delete  it.    Press  the  DEL  key  (RUBOUT  on   some 
+              keyboards).   The  character  to the left of the  cursor  gets 
+delete right  erased.    Now  type  ^G.   The  character  under  the  cursor 
+              disappears.   Move  the  cursor to the beginning of  the  file 
+delete word   again (^U),  and type ^T.  The word to the right of the cursor 
+              (it  should be Now,  if you've followed all these instructions 
+              exactly) is rubbed out.   Try ^T again - nothing happens.   ^T 
+              will not erase newlines.   ^Y will, though.  ^Y will erase the 
+delete line   whole of the line containing the cursor,  and put  the  cursor 
+              on the first character of the next line.  Move the cursor onto 
+              the  line containing the  word 'using' and type ^Y.   It  will 
+              disappear. 
+
+              Move  the  cursor to the end of the  text  (HOME),  and  press 
+delete space  Return.  The auto indent will leave the cursor in column 16 on 
+provided by   the next line.  Press DEL (RUBOUT) once,  and note how the Tab 
+auto indent   provided by the auto indent is deleted, moving the cursor back 
+              to column 8.   Press DEL again,  and the cursor is back at the 
+              left hand margin, in column 1.
+
+              Sometimes  you might erase a  word (or make other changes)  by 
+undo          accident,  or as an experiment to see how things look.   e has 
+              an  'undo' key which will put the text back into  the  exactly 
+              the  state  it  was in before the last  change.   In  fact,  e 
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 10
+
+
+              remembers  the last 40 text changing commands you  have  made, 
+              and  pressing the 'undo' key repeatedly will undo each of them 
+              in  turn.   Position the cursor at the beginning of  the  word 
+              'this'  and type ^T.   'this' will disappear.   Now press  the 
+              'undo' key (^\).   'this' reappears.  Keep pressing the 'undo' 
+              key, and watch the changes you made being undone.  When all is 
+              undone, the message, 'Nothing to undo' will appear.
+
+              o) Type ^Q, to get the prompt
+quit
+                   Write edited text to file, Abandon all edits, or Return?
+
+              R,  for  Return,  will get you back into editing,  and W,  for 
+              Write,  will ask for a name to file the text under.   But  you 
+              will probably not want to save your work this time,  so type A 
+quit options  (or a or ^A).  This results in:
+
+                   Exit to CP/M, Return to this file, or edit Another file?
+
+              E,  for  exit,  will put you back into CP/M.   R is the  panic 
+              button to return you to the text you were editing, in case you 
+              decided  you didn't really mean that you wanted to abandon all 
+              that  you had done.   A,  for another file,  is the one  we'll 
+              choose this time.  Type A.
+
+              (Incidentally,  suppose  you had wanted to file your text  and 
+              exit to CP/M - the most common sequence.   You would type Q  W 
+              E,  to quit, write and exit, a quick and easy set of commands, 
+              since Q W and E are the top left keys on a QWERTY keyboard)
+
+              p)   The  screen will change to a display of the directory  of 
+              the   currently logged in directory.   See that the amount  of 
+              room  you  have left on the disk is displayed  at  the  bottom 
+changing      righthand corner of the screen.  To look at another directory, 
+drive or      type  the drive letter,  followed by a colon and Return.   For 
+user area     instance, try typing
+
+                        A: 
+              followed by pressing Return.   This now becomes the  'default' 
+              drive  for  reading and writing files.   You can also can  the 
+              user  area you are logged into by typing the user area  number 
+              followed by a / and Return.
+
+              Now get back to the original directory,  and type E.DOC as the 
+              file to edit.  We shall be trying out some editing commands on 
+              this document file.  Press Return.
+
+              q)   You  should now be looking at the first sixteen lines  of 
+              this  document.   There  are a few more  commands  for  moving 
+down screen   around the text.  ^Z (try it!) moves you down a 'screen full'; 
+up screen     ^W moves up a screen full.  (These letters were chosen because 
+              they  are near the control key,  and therefore easy to  type).  
+              ^W at the top of the keyboard takes you up the file, ^Z on the 
+              bottom  row  takes you down the file.   The last command  that 
+              moves  you  around  the text is ^X.   This is  a  most  useful 
+jump          command,  because  it lets you jump straight to  a  particular 
+              line.  Typing ^X gives the prompt
+
+                  Jump to?
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 11
+
+
+
+              Enter 72, and press Return.  The cursor moves to line 72.
+
+              r)   All this time,  you will have had the help menu displayed 
+              on  the  screen.   Once you have got the hang of  the  various 
+              commands,  (and  that takes a surprisingly short time)  you'll 
+              probably want to get rid of it,  and use the screen space  for 
+help menu     text.  Typing ^V (for Viewing the menu) will make it disappear 
+switch        - another ^V will make the menu appear again, but leave it off 
+              for the moment.
+
+              s)   Now you can try out the block commands.   These allow you 
+              to manipulate a whole block of lines of text as a  body.   The 
+block         block  will start with the line on which the cursor lies  when 
+commands      you type the block command,  ^O,  and will extend either above 
+              or  below the cursor line as you choose.   
+
+              Type  ^O,  and  you  should get a line across the top  of  the 
+              screen, below the Status Line, saying:
+
+                 Write to file,  Print, Shift, Move, Copy, or Delete block ?
+
+              To  choose one of these options,  you type its initial letter.   
+              A copy of the block may written out to a file,  may be printed 
+              on your printer,  may be bodily shifted to the left or to  the 
+              right  relative  to  the margins,  the block may be  moved  to 
+              another  position  in the text,  a copy of the  block  may  be 
+              inserted elsewhere into the text, or the block may be deleted. 
+                   To  start with,  try deleting a block - type D to  select 
+              the Delete option.   The further prompt:
+delete block
+                   Put cursor on line ending block and press [return]
+
+              will  appear.   You  can  now  use any of  the  cursor  moving 
+              commands (left,  up,  right and down arrow,  left word,  right 
+              word,  beginning or end of line,  up or down a screen, as well 
+              as  jump to a line,  and find a character string) to move  the 
+              cursor.  Move it to the line where you would like the block to 
+              end  - either above or below the line where  you  started.  If 
+              your terminal has this feature, you will see the block you are 
+              selecting illuminated more brightly than the surrounding text.  
+              When  you have chosen the block ending line (it doesn't matter 
+              where  this is for the purposes of this tutorial),  press  the 
+              Return key,  and the marked block will disappear;  it has been 
+              deleted.  The cursor finishes up on the line below the deleted 
+              block.   If needed,  the 'undo' key will restore the block you 
+              have just deleted.
+
+              The other block commands behave similarly.  Move the cursor to 
+              the beginning of the block,  type ^O to start a block command, 
+              select the approriate option,  then mark the end of the block.  
+
+write block   The 'Write to a file' option will next ask for the name of the 
+to file       file  to  write to (and ask for confirmation if the  name  you 
+              give is that of an already existing file) before a copy of the 
+              block  is written to the file.   
+
+print block   The 'Print' option prints as soon as you define the end of the 
+              block.  
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 12
+
+
+
+move block    The  'Move' and 'Copy' options both request  that,  after  the 
+copy block    block  has been defined,  the cursor be moved to the  position 
+              where  the block itself (or with the 'Copy' option,  a copy of 
+              the block) is to go.
+
+              The 'Shift' option is a little more complicated.   It is meant 
+              particularly  for occasions when you want to move a  block  of 
+shift block   text  'sideways',  ie by adding or deleting spaces or tabs  at 
+              the  beginning  of each line in the block (useful to  preserve 
+              the  indentation  pattern when modifying programs  written  in 
+              block-structured  languages).   After  you  have  defined  the 
+              block, the cursor will be placed at the beginning of the first 
+              line of the block.   You can then type spaces or tabs,  or use 
+              the  DEL  (RUBOUT) key to delete tabs or spaces,  to  get  the 
+              first line in its right position.   Then press Return, and the 
+              other lines in the block will follow suit,  moving to the left 
+              or right in parallel with the first line.  
+Escape and         Have  a  go  on a piece of the text and  experiment  will 
+block         these  block  commands.   If  you change your  mind  half  way 
+commands      through  a block command,  press the Escape  key.   This  will 
+              interrupt the command, and return you to ordinary editing.
+
+              t)  The command ^C allows you to examine and change the 'Edit' 
+context       and the 'File' contexts.   Type ^C, and the text on the screen 
+              will be replaced by a screen showing the current Edit context.  
+              The current settings of a number of options are shown, and you 
+              can  change these now you are in the Edit context.   You  have 
+              already  come across the Auto Indent feature,  which  provides 
+              the indentation useful for block structured languages.
+auto indent   Typing   A    will  change the  Auto  indent  option  setting, 
+              turning it on or off.  
+              Similarly,  typing B will change the Backup option.   When you 
+backup        file  the  text you are editing,  if this option  is  on,  any 
+              previously  existing version of the file you have been editing 
+              will have its name changed so that it ends with the  extension 
+              ".BAK"  (if a ".BAK" file already existed,  it will be deleted 
+              first),  so that you always have the last version of your text 
+              as  a backup to the current version.   With the backup  option 
+              off,  the  new  text  simply replaces the  old  text  in  your 
+              existing file. 
+
+              The  Tab  stops  option  allows you to change  the  number  of 
+tab stops     columns  skipped for every tab (usually it is 8).   Type T  to 
+              change it;  you will then be asked for the new setting.   Note 
+              that this option only changes the number of columns skipped by  
+              e ,  and it will have no effect on,  for instance, the display 
+              produced by the CP/M utility TYPE.
+                   Normally, e ignores any trailing (right hand edge) spaces 
+              or  tabs  that you might stick on the end of a line  of  text, 
+strip         since  such 'white space' is usually no more than a  nuisance.  
+trailing      But  sometimes it is useful to be able to enter such  trailing 
+blanks        white  space,  and the Strip option can be changed (type S) to 
+              allow this.
+                   You  will have seen that the cursor  position,  line  and 
+              column  number,  is displayed at the top of the screen.   Some 
+display of    people find the constant updating of this position  disturbing 
+cursor        or irritating, so the L option is provided to turn off (or on) 
+position      this display.
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 13
+
+
+                   When a line is too long to display it all on the  screen, 
+              only  the first part is shown.   If you move the cursor on  to 
+              the  'hidden'  part  of  the line,  e shifts  the  whole  line 
+horizontal    leftwards,  thus  ensuring that the part of the line on  which 
+scrolling     the  cursor rests is displayed.   This is known as  horizontal 
+by line or    scrolling.  Usually, the scroll affects only the current line, 
+page          the  rest of the screen being displayed as  normal.   Changing 
+              the  H option,  however,  makes the whole screen  scroll as  a 
+              unit.   This  has the advantage that you can see more  clearly 
+              what  you are doing in relation to the rest of the  text,  and 
+              the  disadvantage that the scroll operaton has to rewrite  the 
+              whole screen, which takes time.
+                   Finally,  the display shows you how many lines of text  e  
+              can hold.  As explained in the section above on how  e  works, 
+max size of   there  is  no limit on the amount of text  e   can  handle  at 
+file          once,  but  there is a (large) limit on the number of lines of 
+              text.   What  the limit is depends on the setting of  the  'x' 
+              command line option (see below) and on the amount of memory in 
+              your computer.   With the 'x' option on,  or with more memory, 
+              the limit is larger.
+
+              There are two more options you may choose in the Edit context: 
+              typing Return takes you back to normal editing;   and F  takes 
+file          you into the File context.  So, for now, type F.
+context
+                   The File context will be displayed.   It is a list of the 
+              files on the currently logged-in disk,  with an indication  of 
+              how  much free space there is left on the disk.   There are  a 
+file context  number of further commands available here:
+commands           V lets you look at another directory's files.
+                   R allows you to change the name of a file, other than the 
+                         one you are currently editing.
+                   D will delete a file.
+                   C enables you to change the name of the file in which the 
+                         text you are editing will eventually be saved.
+                   [return] will take you back to editing your text.
+
+              u)   That more or less concludes our tour through   e.   There 
+entering      are one or two extras to mention.  Escape has one more use, to 
+control       enter control characters into the text.   Type Escape and then 
+characters    a  letter  of  the alphabet.   If your terminal  supports  the 
+              feature,  the  letter will appear dimmer than the rest of  the 
+              line,  to indicate that it is not an ordinary character, but a 
+              control character.
+
+              Now type ^Q,  ^A,  and ^E to exit from  e , without saving the 
+              results of your practice editing.
+              There remains only the command line options to describe.   All 
+              the  Edit context options and a number of further options  can 
+command       be  set by adding single letter 'flags',  each preceded  by  a 
+line          dash,  on  the command line when you start up e.   The options 
+option flags  available are:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 14
+
+
+-A   change  the  setting  of the Auto indent option from that  set  as  the 
+     default  (see  below for how to establish the default settings for  all 
+     these options).
+
+-B   change the setting of the Backup option from the deafult
+
+-D   this  flag  should be followed by a letter,  in the range A  to  P,  to 
+     indicate  the  drive  on  which  e  temporary  buffer  file  should  be 
+     created,  if one is needed.   If this flag is not given on the  command 
+     line,  the  currently  logged-in disk is used to keep the buffer  file.  
+     The buffer file is only created if the file being edited is too big  to 
+     fit  into  memory,  and it is always deleted automatically  before  you 
+     leave the editor.   If created,  the buffer file will be visible as the 
+     file e$$$.$$$ in the directory displayed by the File context.
+
+     Example:    A> e myfile -d b
+
+-S   change  the setting of the Strip trailing blanks and tabs  option  from 
+     the default.
+
+-T   this  option should be followed a space and then a number  to  indicate 
+     the  tab  stop  width desired.   It changes the tab setting  from  that 
+     established by default.
+
+     Example:    A> e myfile -t 6
+
+-V   if  by default the editor starts with the help menu  displayed,  giving 
+     this  option on the command line will cause it to start with  the  help 
+     menu not displayed, and vice versa.
+
+-X   normally,  e  saves  time by using a trick to avoid CP/M doing a  'warm 
+     boot' each time you leave e.    However,  this takes up memory.  Giving 
+     the  -X flag on the command line instructs  e  to maximise  its  memory 
+     usage,  and  it will therefore exit with a warm boot.   Setting the  -X 
+     option allows an additional 700 lines or so of text to be edited.
+
+-99  a  dash followed by a number (rather than a letter,  as with the  other 
+     options)  tells 'e' to start with the current line set to that  number.  
+     For instance, if you edit a file using the command line
+
+     Example:   A> e myprogram -34
+
+     the  cursor will be placed on line 34 when you start editing.   This is 
+     useful if a compiler has reported that there is a bug on that line, for 
+     example.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 15
+
+
+
+                    7. Implementing  e  on your terminal
+
+e    has to be configured for the characteristics of,  and the control codes 
+used by, your terminal.  This section describes how to do so.
+
+Implementation is straightforward for TeleVideo 912/920, Hazeltine 14xx, and 
+ADDS terminals,  and the KayPro portable computer, since the requisite files 
+are provided as part of the  e  package.     If you have a terminal made  by 
+Televideo  or  one  which can emulate a Televideo  terminal,  you  can  pass 
+straight  on  to  the next section of this manual,  which describes  how  to 
+establish the default option settings.   If you have an ADM-31, you are also 
+in luck,  because the terminal control codes this terminal uses are the same 
+as those of the TeleVideo range - pass straight on to the next section.   If 
+your terminal is one of the others mentioned (or offers an emulation of  one 
+of them) you need to take the following two steps:
+
+     1.   Change  the name of the file 'eterm' supplied on the  distribution 
+disk to 'etvi', using the CP/M command:
+
+          ren etvi=eterm
+
+     2.    Change the name of the supplied file 'ehaze', 'eadds', or 'ekay', 
+as appropriate, to 'eterm', thus:
+          
+          ren eterm=ehaze
+
+Now proceed to the next section on setting default options.
+
+
+Implementation  on  other  terminals requires a  passing  knowledge  of  the 
+programming  language C,  since you will have to modify one of the e program 
+files.  You will also need an editor of some kind to do the modifications.
+
+The  interface  between  the terminal and the rest of the  editor  is  coded 
+entirely  in the supplied file 'eterm',  and this is probably the only  file 
+which  will  need  modification to suit e  to  your  terminal.   'eterm'  is 
+supplied  configured for a TeleVideo.   'eterm' includes extensive  comments 
+describing the terminal interface to help you with any changes which may  be 
+needed.
+
+Before  starting configuring 'eterm',  you should have to hand the  terminal 
+manual to guide you on the control codes to use.  You will need to establish 
+what  codes  should  be  sent  to the  terminal  to  perform  the  following 
+functions:
+*    put  the  cursor  on  any specified position  on  the  screen  ('cursor 
+     addressing')
+*    clear  the line from the cursor position to the right hand edge of  the 
+     screen to spaces (clear to end of line)
+*    delete  the  line on which the cursor is resting,  and  move  following 
+     lines up one (delete line)
+*    delete the line containing the cursor and all the lines below it to the 
+     end of the screen (delete to end of page)
+*    insert  a  blank line at the cursor line,  moving the cursor  line  and 
+     lines below down one (insert line)
+*    if  available - start and stop displaying characters in 'dim' or  half-
+     intensity  mode  (note  that these are optional,  and  will  only  work 
+     properly with  e if they do not themselves take up space on the screen).
+The conventional names for these operations are those given in brackets.
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 16
+
+
+Using  the  C functions provided in 'eterm' as a  guide,  new  functions  to 
+implement these terminal control sequences should be written and edited into 
+'eterm'.
+
+Next, you need to determine which keys should be used to request each of e's 
+commands.   It  is  as  well to keep to the  command  - key  correspondences 
+normally  used by e,  at least to start with,  although you may want to take 
+adavantage  of  any special keys offered on your terminal's  keyboard.   The 
+first  step is to alter the help menu so that it is appropriate to your  key 
+selections.
+
+At  the  end of the file 'eterm' is the C function which provides  the  help 
+menu.  Edit this to make it correspond to your selected command-key choices.  
+Note  that the vertical bar included in the help menu text is not  displayed 
+as part of the menu - it is used to signal a change from dim to bright (half 
+to  full  intensity) text and vice versa (if you have  not  implemented  the 
+codes  to  change  intensity,  the  vertical bar  character  is  ignored  in 
+displaying the help menu).
+
+Finally,  modify  the  key  translation  table to be  found  in  C  function 
+keytransalate  (located  immediately above the help  menu  function).   This 
+table  converts  the  codes  sent  by  your  terminal  in  response  to  key 
+depressions into the internal codes used by e to represent editing commands.  
+Some  terminals send two codes when certain keys are depressed:  a 'lead in' 
+character, followed by a character to indicate which key was pressed.  There 
+are comments in the keytranslate function about how to deal with such cases.
+
+e assumes that the terminal's display screen is 80 columns wide and 24  rows 
+deep.   If  your screen is smaller (eg 64 by 16),  you will need to (a) edit 
+the help menu to fit it into the smaller width; (b) reduce the width of some 
+of the command prompts (these are scattered about the program text); and (c) 
+change  the values of the defined constants SWIDTH and SHEIGHT.   These  two 
+constants  are  defined in the header file 'e.h',  and should be set to  one 
+less than the terminal screen width,  in columns,  and height,  in rows.  If 
+your   screen  is  larger  than  80  by  24,   adjust  SWIDTH  and   SHEIGHT 
+appropriately.  The help menu will probably not need changing.  Note that  e  
+has not been tested with screens of size other than 80 by 24.
+
+
+
+
+
+              8. Changing the default settings of the options
+
+The  options  settable using flags on the command line each have  a  default 
+value defined in the 'main' function of  e.  This function is to be found in 
+the supplied file 'e',  and is clearly commented and marked out.   You  will 
+probably  not  need to change any of the default option settings,  at  least 
+until you have got used to using the editor.
+
+You amy also want to set the value of CURSORWAIT, defined at the top of file 
+e.h,  to suit the clock rate of your microprocessor.   This just affects the 
+speed  at  which the cursor flips between brackets and between the  Replace? 
+prompt and the string to replace in the Alter command, so getting CURSORWAIT 
+right is not vital for the operation of the editor.
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 17
+
+
+                         9. Compiling and loading e
+
+e  is written in the programming language C, and was developed using the BDS 
+C  compiler  for CP/M,  version 1.50a.  It is not recommended that  you  use 
+versions of BDS C earlier than 1.46 - e uses facilities that were introduced 
+with  1.46.   With other C compilers,  you will need to do some  preliminary 
+work  to  make the source code compatible.   There may be trouble  with  the 
+setjmp()  and longjmp() library functions,  and with the file i/o.   You are 
+warned!  
+
+The following files make up the  e  package:
+
+     e.doc          this file
+     e.sub          a command file to compile and load e
+     l2.com         Mark of the Unicorn's space saving loader (included here 
+                    for convenience - e MUST be loaded with this loader, not 
+                    with the standard BDS C loader, clink)
+     e              the  first  program  source file for  e  - contains  the 
+                    'main' function (and others)
+     e1..e10        the rest of the source code
+     eterm          the terminal interface functions (supplied set up for  a 
+                    TeleVideo terminal)
+     ehaze          the same as eterm, but set up for a Hazeltine terminal
+     eadds          ... for the ADDS range of terminals
+     ekay           ... for the KayPro portable computer
+     e.com          the  e  editor,  compiled and loaded,  for  a  TeleVideo 
+                    terminal
+
+To  compile  and  load the editor,  it is best to PIP the  following  BDS  C 
+compiler  files onto the disk containing the above files (only  these  files 
+are needed):
+     cc.com
+     cc2.com
+     c.ccc
+     deff.crl
+     deff2.crl
+
+Then put the disk in drive A: and use CP/M's SUBMIT utility with e.sub to do 
+all  the  work.   The compilation and loading will need about 300K  of  disk 
+space.   If you don't have that much to spare,  you can move e.doc elsewhere 
+first, to save about 40K.
+
+The  e.sub  file  specifies  the address the C compiler is  to  use  as  the 
+location of the bottom of the external data area,  and the address where the 
+stack  is to start.   These addresses should allow about 400 bytes of  stack 
+space (which is just enough).   The stack space is reported by the L2 linker 
+at the end of the link.  The remaining memory from the stack top to the base 
+of CP/M is used as work space to store pages of the text being  edited.   If 
+you  are  using other versions of BDS C,  a complex 'eterm' file,  or  other 
+compilers,  you will probably have to change these addresses.   Try to  keep 
+them  as  low as possible,  whilst still not allowing the data  and  program 
+areas to overlap, and keeping about 400 bytes of stack space.
+
+The addresses are defined in the '-e' option to the cc compiler, in the '-t' 
+option to the L2 loader, and in the header file 'e.h'.  
+
+
+
+
+
+
+
+
+
+
+
+
+The  e   screen editor                             Page 18
+
+
+If  you  need to change these addresses,  be sure to make all the  following 
+amendments:
+ .   change the address of the external data area specified to the compiler, 
+by altering the -e option setting for all cc compiler comands in the command 
+file 'e.sub'.
+ .    change the address of the 'top' of the data area,  specified in the -t 
+option to L2 in the file 'e.sub'.
+ .    change  the value of the #defined constant TOP in file 'e.h' to  match 
+the L2 -t option
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

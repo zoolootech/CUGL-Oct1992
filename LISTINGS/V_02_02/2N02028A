@@ -1,0 +1,249 @@
+if  _32bit
+   .386P
+   Aax             equ   EAX
+   Abx             equ   EBX
+   Acx             equ   ECX
+   Adx             equ   EDX
+   Asi             equ   ESI
+   Adi             equ   EDI
+   Abp             equ   EBP
+   Asp             equ   ESP
+   BytesPerPush    equ   4
+else
+   .286P
+   Aax             equ   AX
+   Abx             equ   BX
+   Acx             equ   CX
+   Adx             equ   DX
+   Asi             equ   SI
+   Adi             equ   DI
+   Abp             equ   BP
+   Asp             equ   SP
+   BytesPerPush    equ   2
+endif
+
+if  monocode   ;offset of first stack argument
+   FirstParm equ 2*BytesPerPush  
+   else
+   FirstParm equ 3*BytesPerPush
+endif
+
+if  _32bit
+makeseg macro segname, segclass
+&segname segment dword public &segclass
+        endm
+else
+makeseg macro segname, segclass
+&segname segment word  public &segclass
+        endm
+endif
+
+if  huge
+dseg    macro
+makeseg cc_data, 'DATA'
+        assume   ds:cc_data
+        endm
+endds   macro
+cc_data ends
+     endm
+else
+dseg        macro
+DGROUP  group _DATA
+makeseg _DATA, 'DATA'
+        assume  ds:DGROUP
+endm
+endds   macro
+_DATA   ends
+        endm
+endif
+
+pseg    macro  name
+if monocode
+makeseg _TEXT, 'CODE'
+        assume cs:_TEXT
+else
+makeseg cc_text, 'CODE'
+        assume  cs:cc_text
+endif
+endm
+
+endps  macro  name
+if monocode
+_TEXT   ends
+else
+cc_text ends
+endif
+endm
+
+prolog  macro name, local
+        public  _&name
+
+if multicode
+_&name  proc far
+else
+_&name  proc near
+endif
+
+        push    Abp
+        mov     Abp, Asp
+        sub     Asp, local
+        push    Adi
+        push    Asi
+
+if _32bit
+        push    Abx
+        push    es
+endif
+
+if multidata
+        push    ds
+endif
+endm
+
+endlog  macro name
+if multidata
+        pop     ds                
+endif
+   
+if _32bit
+        pop     es
+        pop     Abx               
+endif
+
+        pop     Asi
+        pop     Adi
+        mov     Asp, Abp
+        pop     Abp
+        ret
+_&name  endp
+endm
+
+isrprolog macro name, variable
+        public _&name
+
+_&name  proc   far
+if _32bit
+        push   gs
+        push   fs
+endif
+        push   es
+        push   ds
+        push   ss
+        push   Aax
+        push   Abx
+        push   Acx
+        push   Adx
+        push   Asp
+        push   Abp
+        push   Adi
+        push   Asi
+if _32bit
+        mov    ax, cs
+        xor    ax, 18h
+        mov    ds, ax
+        mov    es, ax
+else
+        mov    ax, SEG variable
+        mov    ds, ax
+        mov    es, ax
+endif
+endm
+
+isrendlog macro name
+        pop    Asi
+        pop    Adi
+        pop    Abp
+        pop    Asp
+        pop    Adx
+        pop    Acx
+        pop    Abx
+        pop    Aax
+        pop    ss
+        pop    ds
+        pop    es
+if _32bit
+        pop    fs
+        pop    gs
+        iretd
+else
+        iret
+endif
+
+_&name        endp
+endm
+
+extern  macro name, size
+   ifidn <&size>,<c_integer>   ;native C integer
+if _32bit               
+      extrn _&name:dword    ;32 bits MetaWare or Watcom 386 compilers
+else   
+      extrn _&name:word     ;16 bits for real mode DOS compilers
+endif
+   else
+   ifidn <&size>,<c_farptr>  ;segmented far C pointer
+if _32bit
+      extrn _&name:fword     ;48 bits for MetaWare or Watcom 386
+else   
+      extrn _&name:dword     ;32 bits for real mode DOS compilers
+endif
+   else
+   ifidn <&size>,<c_nearptr> ;offset for near C pointer
+if _32bit
+      extrn _&name:dword     ;32 bits for MetaWare or Watcom 386
+else   
+      extrn _&name:word      ;16 bits for real mode DOS compilers
+endif
+   else
+   ifidn <&size>,<c_realptr> ;segmented real mode DOS address
+      extrn _&name:dword     ;always 32 bits regardless of compiler
+   else
+   ifidn <&size>,<c_farproc> ;far C function
+      extrn _&name:FAR
+   else
+   ifidn <&size>,<c_nearproc>;near C function
+      extrn _&name:NEAR
+   else
+   ifidn <&size>,<c_proc>    ;far or near (model dependent) C function
+if multicode
+      extrn _&name:FAR       ;32/48 bits depending on 16/32 bit compiler
+else
+      extrn _&name:NEAR      ;always 32 bits regardless of compiler
+endif
+   else
+   extrn _&name:&size	     ;use the size specified to macro
+   endif
+   endif
+   endif
+   endif
+   endif
+   endif
+   endif
+   name  equ _&name  ;always alias "name" with a prepended underscore
+endm
+
+extern  clock_x,            c_integer
+extern  UpdateClock,        c_proc
+
+;
+; Name:         NewTimerISR()
+;
+; Function:     Replaces default timer interrupt handler; chains to
+;               default handler which has been revectored to INT 90h.
+;               Upon regaining control, NewTimerISR() updates a string
+;               with the current time whenever the seconds component 
+;               changes and then calls a routine to update the graphics 
+;               window.
+;
+                pseg  _TEXT
+                isrprolog  NewTimerISR, clock_x
+
+                int   90h
+                call  UpdateClock
+
+                isrendlog  NewTimerISR
+
+                endps _TEXT
+                END
+
+
+

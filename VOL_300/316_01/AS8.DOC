@@ -1,0 +1,472 @@
+		AS8, a Z8 Crossassembler
+		========================
+
+	by:	H.-G. Willers
+		Gartenstrasse 11
+		D-8047 Karlsfeld
+		WEST GERMANY
+
+
+		This document dated 11-jan-90
+
+
+			Intro
+			=====
+
+	This document briefly describes the features
+	of my crossassembler for the Z8 microprocessor,
+	called AS8.
+
+	This assembler is based on some code found in
+	a crossassembler for the Z80 microprocessor as
+	published on the DECUS tape 11-SP-18.
+	The code was polished up (e.g. adding a hashtable
+	for the symbols instead of linear search) and
+	many bugs were fixed.
+
+	The resulting code acts as a skeleton for my
+	assemblers like this one: AS8.
+
+	The source code was compiled, using:
+
+	o  Mark Williams Let's C (Vers. 3.0.2)
+
+	o  Microsoft QuickC (Vers. 1.01)
+
+	o  System 5.3 UNIX C for 68020
+
+	o  Interactive UNIX 386 3.2 2.1
+
+	To compile and link under Mark Williams C the file
+	'time.c' contains some hacks to simulate the missing
+	library functions.
+
+
+	The code is provided on an 'as is' basis.
+
+	No responsibility for any malfunction of the
+	assembler per se or any assembled program can
+	be taken. You use it at your own risk.
+
+	Please send comments and improvements to the
+	author at the above address.
+
+
+
+		Commandline Syntax
+		==================
+
+	AS8 is invoked by the following commandline:
+
+	as8 [-nl] sourcefile.ext
+
+	The options mean:
+
+	-l	generates a listing named sourcefile.l
+
+	-n	do not generate an object file
+
+	In the process of producing a name for the
+	object file or the listing file the extension
+	of the sourcefile is stripped. Any possible
+	restrictions of filename use in a given
+	operating system may apply.	
+
+
+		Source Syntax
+		=============
+
+	The syntax of a source line for AS8 is as follows:
+	
+	label:	opc	src, dst	/ comment
+
+	The 'label' is optional; if used, it must be followed
+	by a colon.
+
+	'Opc' is the memonic representation for the
+	instruction to be used.
+
+	The source and destination operands are written
+	as source first, then destination.
+
+	Comments are introduced by the character '/'.
+
+	Multiple statements per line are separated by ';',
+	for example:	nop ; nop ; nop
+
+
+		Symbols
+		=======
+
+	A symbol in as8 is a entity with a label set by
+	a label or a direct assignment. The number of
+	characters per symbol is 33 as distributed.
+	It can be changed by adjusting the defined
+	constant 'NCPS' to the desired value.
+
+	Symbols can consist of the characters of
+	the ASCII character set, but must begin with either
+	a-z, A-Z, or the characters '.' or '_' (see
+	the routine 'isidc(c)' ).
+
+		Local Labels
+		============
+
+	There are 9 local labels: 1 - 9. references in the
+	forward direction are indicated by a 'f', appended
+	to the label number, references backwards are
+	indicated by a trailing 'b'.
+	For example:
+
+	1:	nop
+		sob	w16,1b		/ label 1 backwards
+		...
+
+		call	2f		/ label 2 forward
+		...
+
+	2:	ret
+
+	Each local label is reassigned to its new value
+	when reused.
+
+
+		Number Representation
+		=====================
+
+	The default radix is decimal. The allowed digits
+	range from 0 - 9.
+
+	Base 16 numbers (hex) are denoted by a leading '0x'.
+	For example: 0x20 is the same as 32.
+
+	Base 8 numbers (octal) are denoted by a leading '0'.
+	For example:  012 is the value of the ascii character CR.
+
+	Base 2 numbers are preceeded by a '0B'.
+	For example:  0B01010101 is the same as 0x55.
+
+
+
+		Literals
+		========
+
+
+	Literal constants are enterd by the character ' ,
+	followed by the desired ASCII character.
+
+
+
+		Expressions
+		===========
+
+	Expressions are made up from numbers (or symbols)
+	and arithmetic operators.
+
+	Expression evaluation is done from left to right.
+	This order can be changed by parenthesis with '[ .. ]'.
+
+	The binary arithmetic operators are + , -, *, and %.
+	The operator '%' in AS8 means / ( because comments
+	are introduced by '/' ).
+
+	The bitwise logical operators are
+
+		&   bitwise AND
+		|   bitwise inclusive OR
+		^   bitwise exclusive OR
+		>   right shift
+		<   left shift
+
+	The following unary operators are supported:
+
+		-   two's complement
+		!   one's complement
+
+
+
+		Pseudo Operators
+		================
+
+
+	.byte	symbol
+
+	Generates one byte consisting of the value of 'symbol'.
+
+	Example:
+
+	.byte	0x20		/ one byte (ascii space)
+
+
+	.word	symbol
+
+	Generates one word consisting of the value of 'symbol'.
+	The word is generated with the byte ordering of the Z8:
+	nameley the upper 8 bits first (big endian byte ordering).
+
+	Example:
+
+	.word	0x1000		/ generates the bytes 0x10 and 0
+
+
+	.ascii	string
+
+	Generates the named string as a sequence of ascii characters.
+	The first character of the string is taken as a terminator.
+	The string ends, when the terminator is found again.
+
+	Example:
+
+	.ascii	"Hi there!"	/ ascii string
+
+
+	.asciz	string
+
+	Generates the named string as a sequence of ascii characters.
+	The string is followed by a null-character. The first character
+	of the string is taken as a terminator.	The string ends, when
+	the terminator is found again.
+
+	Example:
+
+	.asciz	"Hi there!"	/ ascii string with trailing zero
+
+
+	.blkb	count [, value]
+
+	Space for 'count' bytes is left free. If the optional 'value'
+	is not given, null bytes are taken for filling; bytes
+	with the 'value' are taken otherwise.
+
+	Examples:
+
+	.blkb	100, 0x20	/ 100 (decimal) bytes of content 0x20
+				/ are filled up
+	.blkb	0x1000		/ 4096 bytes of content 0
+
+
+	.page
+
+	The listing is advanced by one page.
+
+
+	.title	string
+
+	The title line for the listing is set. The string starts
+	with a terminator, which also end the string.
+
+	Example:
+
+	.title	"simple demo"
+
+
+	.hlist
+
+	Sets the radix for number output in the listing to
+	hex.
+
+
+	.olist
+
+	Sets the radix for number output in the listing to
+	octal.
+
+
+	.list
+
+	Starts listing generation. This is the default state.
+
+
+	.nlist
+
+	Stops listing generation.
+
+
+	.end	symbol
+
+	The entrypoint of the loaded program is set to 'symbol'.
+	The start record of the produced intel-hex-tape is set
+	to this value.
+
+	Example:
+
+	.end	_main		/ program starts at _main
+
+
+
+		Location Counter
+		================
+
+	The location counter is set by the assignment of '.' to
+	the desired value.
+
+	Example:
+
+	.	=	0x1000		/ sets the location counter
+					/ to 0x1000
+
+
+		Addressing Modes
+		================
+
+	(See file z8tst.z8 for clarification)
+
+	Register:		r0 - r255
+
+	Working Register:	w0 - w15
+
+	Register Indirect:	e.g. ...  (r0)
+
+	Working Register Ind.:	e.g. ...  (w6)
+
+	Indexed:		e.g.	mov  r100(w0),w1
+
+	Immediate:		e.g.	add  $1,w0
+
+	Direct, relative	indicated by a label
+
+
+
+		Instruction Description
+		=======================
+
+	AS8	ZILOG      switch in 'xasm'	base opcode
+	---	-----      ----------------
+
+	ccf	ccf		S_OP0		0xef
+	di	di		S_OP0		0x8f
+	ei	ei		S_OP0		0x9f
+	reti	iret		S_OP0		0xbf
+	nop	nop		S_OP0		0xff
+	rcf	rcf		S_OP0		0xcf
+	ret	ret		S_OP0		0xaf
+	scf	scf		S_OP0		0xdf
+
+	srp	srp		S_OP2		0x31
+
+	clr	clr		S_OP3		0xb0
+	com	com		S_OP3		0x60
+	da	da		S_OP3		0x40
+	dec	dec		S_OP3		0
+	pop	pop		S_OP3		0x50
+	push	push		S_OP3		0x70
+	rl	rl		S_OP3		0x90
+	rlc	rlc		S_OP3		0x10
+	rr	rr		S_OP3		0xe0
+	rrc	rrc		S_OP3		0xc0
+	sra	sra		S_OP3		0xd0
+	swap	swap		S_OP3		0xf0
+
+	call	call		S_OP4
+
+	jmp	jp  DA		S_OP5		0x8d
+	jcs	jp  c,DA	S_OP5		0x7d
+	jcc	jp  nc,DA	S_OP5		0xfd
+	jeq	jp  z,DA	S_OP5		0x6d
+	jne	jp  nz,DA	S_OP5		0xed
+	jpl	jp  pl,DA	S_OP5		0xdd
+	jmi	jp  mi,DA	S_OP5		0x5d
+	jov	jp  ov,DA	S_OP5		0x4d
+	jnov	jp  nov,DA	S_OP5		0xcd
+	jge	jp  ge,DA	S_OP5		0x9d
+	jlt	jp  lt,DA	S_OP5		0x1d
+	jgt	jp  gt,DA	S_OP5		0xad
+	jle	jp  le,DA	S_OP5		0x2d
+	juge	jp  uge,DA	S_OP5		0xfd
+	jult	jp  ult,DA	S_OP5		0x7d
+	jugt	jp  ugt,DA	S_OP5		0xbd
+	jule	jp  ule,DA	S_OP5		0x3d
+
+	br	jr  DA		S_OP6		0x8b
+	bcs	jr  c,DA	S_OP6		0x7b
+	bcc	jr  nc,DA	S_OP6		0xfb
+	beq	jr  z,DA	S_OP6		0x6b
+	bne	jr  nz,DA	S_OP6		0xeb
+	bpl	jr  pl,DA	S_OP6		0xdb
+	bmi	jr  mi,DA	S_OP6		0x5b
+	bov	jr  ov,DA	S_OP6		0x4b
+	bnov	jr  nov,DA	S_OP6		0xcb
+	bge	jr  ge,DA	S_OP6		0x9b
+	blt	jr  lt,DA	S_OP6		0x1b
+	bgt	jr  gt,DA	S_OP6		0xab
+	ble	jr  le,DA	S_OP6		0x2b
+	buge	jr  uge,DA	S_OP6		0xfb
+	bult	jr  ult,DA	S_OP6		0x7b
+	bugt	jr  ugt,DA	S_OP6		0xbb
+	bule	jr  ule,DA	S_OP6		0x3b
+	sob	djnz  wr,RA	S_OP7		0x0a
+
+	add	add		S_OP8
+	adc	adc		S_OP8		0x10
+	sub	sub		S_OP8		0x20
+	sbc	sbc		S_OP8		0x30
+	or	or		S_OP8		0x40
+	and	and		S_OP8		0x50
+	tcm	tcm		S_OP8		0x60
+	tm	tm		S_OP8		0x70
+	cmp	cmp		S_OP8		0xa0
+	xor	xor		S_OP8		0xb0
+
+	mov	ld  dst,src	S_OP9
+
+	incw	incw		S_OP10		0xa0
+	decw	decw		S_OP10		0x80
+
+	inc	inc		S_OP11		0x20
+	dec	dec		S_OP12
+
+	movp	ldc     'move from/to program memory'
+	movd	lde     'move from/to data memory'
+	movpi	ldci    'move from/to prog. mem autoincr.
+	movdi	ldei	'move from/to data mem autoincr.'
+
+
+		Error Messages
+		==============
+
+	Errors in the source code are flagged in the listing
+	and in the terminal output by a one letter indicator.
+
+	This is a list of the error indicators:
+
+	a	assembly error
+		o branches out of range
+		o 'srp' with wrong value
+		o illegal addressing modes
+
+	e	argument not even (e.g. working reg. pair)
+
+	m	symbol multiply defined
+
+	o	undefined opcode name
+
+	p	phase error: labels do not have the
+		same values in pass1 and pass2 of assembly
+
+	q	questionable syntax:
+		o digit without ':'
+		o .ascii or .asciz directive with no args
+		o '[' and ']' not paired
+	
+	r	types of arithmetic expression do not
+		match
+
+	t	value of a byte to be output is
+		out of range
+
+	u	symbol undefined
+
+	z	object buffer overflow
+
+		Disclaimer
+		==========
+
+	The original source code (Z80 crossassembler as found
+	on DECUS 11-SP-18) is to the best of my knowledge in
+	the public domain.
+
+	My software for AS8 (opcode handling, misc. changes)
+	is hereby released into the public domain.
+
+	All registered trade marks belong to their owners.
+

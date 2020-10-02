@@ -1,0 +1,68 @@
+/*
+ *  lexgen.c - Portable program to GENerate LEXical tables.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#if __STDC__            /* if ANSI C compiler   */
+#include <limits.h>
+#endif
+
+#ifndef UCHAR_MAX       /* define it ourselves as last resort. */
+#define UCHAR_MAX   ((unsigned)255)
+#endif
+
+#include "chclass.h"
+
+#define OUTFILE "cctable.c"
+#define UALPHA  "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+#define LALPHA  "abcdefghijklmnopqrstuvwxyz"
+#define DIGIT   "0123456789"
+
+char    _cctable[1];        /* dummy to satisfy extern in chclass.h */
+
+
+main(int argc, char **argv){
+    unsigned char *gentab = (unsigned char *)calloc(UCHAR_MAX+1, sizeof(char));
+    void    settab(unsigned char *table, int bit, char *chars);
+    void    prntab(unsigned char *table, FILE *fout);
+    FILE    *fout;
+
+    if( (fout = fopen(OUTFILE, "w")) == NULL){
+        fprintf(stderr, "%s: Can't open '%s' for output\n", argv[0], OUTFILE);
+        exit(EXIT_FAILURE);
+        }
+    
+    settab(gentab, _CCID1_,     UALPHA LALPHA "_");
+    settab(gentab, _CCID_,      UALPHA LALPHA "_" DIGIT);
+    settab(gentab, _CCEXP_,     "eE");
+    settab(gentab, _CCSIGN_,    "-+");
+    prntab(gentab, fout);
+    fclose(fout);
+}
+
+void    settab(unsigned char *table, int  bit, char *chars) {
+    while(*chars)
+        table[*chars++]   |= bit;       /* turn on correct bit  */
+}
+
+void    prntab(unsigned char *table, FILE *fout) {
+    unsigned    i;
+
+    fprintf(fout, "\
+/*\n\
+ *  %s - character classification table.\n\
+ */\n\
+\n\
+char    _cctable[]  =   {\n\
+",                                          OUTFILE);
+
+    for(i = 0; i <= UCHAR_MAX; ++i) {
+        if(i)
+            fputs(",", fout);
+        fprintf(fout, (i%8) ? " " : "\n    ");
+        fprintf(fout, "0x%0X", table[i]);
+        }
+    fprintf(fout, "\n    };\n");
+    }

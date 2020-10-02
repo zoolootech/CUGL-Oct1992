@@ -1,0 +1,58 @@
+/* DOSIO.C **	MS-DOS Input/Output routines for Character Device Driver.
+														-- R.D.Allen, 9/4/87
+Copyright 1987, 1988, PARS Service Partnership
+*/
+
+#include	<stdio.h>
+#include	"driver.h"				/* Function prototypes */
+#include	"rqh.h"					/* Request header structure */
+
+#define	DF_MAX		17
+						/* Jump Table used only here to route DF command
+							proccessing.									*/
+int		(*jmp_table[DF_MAX])() = {
+	df_init,		/* CMD 0 -- Initialization							*/
+	df_noop,		/* CMD 1 --	Media Check (Block Only)				*/
+	df_noop,		/* CMD 2 -- Build BPB (Block Only)					*/
+	df_ioctl,		/* CMD 3 -- I/O Control Input (Read from DOS)		*/
+	df_read,		/* CMD 4 --	Normal Device Read						*/
+	df_peek,		/* CMD 5 --	Non-destructive input, no wait 			*/
+	df_rstat,		/* CMD 6 -- Read Status 							*/
+	df_rflush,		/* CMD 7 -- Read Flush 								*/
+	df_write,		/* CMD 8 --	Normal Device Write 					*/
+	df_write,		/* CMD 9 -- Write with verify (Same as write, here) */
+	df_wstat,		/* CMD A -- Write Status 							*/
+	df_wflush,		/* CMD B -- Write Buffer Flush 						*/
+	df_ioctl,		/* CMD C --	I/O Control Output (Write to DOS) 		*/
+	df_open,		/* CMD D --	Device Open (new for 3.0)				*/
+	df_close,		/* CMD E -- Device Close (new for 3.0) 				*/
+	df_noop,		/* CMD F --	Removable Media (Block Only) 			*/
+	df_write		/* CMD 10 -- Write until busy (Same as write, here) */
+};
+
+/*********
+*    NAME:	DOSIO		(a far function)
+*     USE:	This is called directly by DOS to parse a command header.
+*			Use the command number passed and call the appropriate
+*			processor. The return value is the error flag.
+*   INPUT:	void (use global Request Header pointer from STARTEGY)
+*  OUTPUT:	void (but a non-zero result from jump table list is an
+*				  error value and the error status bit is set)
+*********/
+
+void far dosio(void)
+{
+static int result;			/* Must be static to live after stack_new		*/
+
+	stack_new();			/* Switch to local stack for this module		*/
+	
+	result = (*jmp_table[ptr.rq->command])(ptr.rq->command);
+
+	if(result) {
+		ptr.rq->status.err_type = result;
+		ptr.rq->status.err_flag = 1;
+	}
+	ptr.rq->status.done = 1;
+	
+	stack_old();			/* Switch back to callers stack			*/
+}

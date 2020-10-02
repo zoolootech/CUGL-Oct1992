@@ -1,0 +1,75 @@
+Listing 3. Datagram sockets example. The server program.
+
+
+/* services -- a datagram transmission example. server program. Works with 
+ * the  client program 'getservice'. The program receives the name of a service
+ * from a client running on the same machine or on a remote host. If it finds
+ * the service in the "/etc/services" file, it sends to the client an answer
+ * that includes the service name, the port number and the protocol used with
+ * the service. Otherwise it sends a negative answer.
+ *
+ *   Usage:  services &
+ */
+
+#include   <sys/types.h>
+#include   <sys/socket.h>
+#include   <netinet/in.h>
+#include   <netdb.h>
+
+#define    FAIL   1
+#define    SUCC   0
+#define    PORT_NUMBER   2228   /* arbitrarily chosen free port number
+                                 * for client-server communication. Must
+                                 * be the same in both client and server
+                                 */
+
+/* ------------------------------------------------------------------- */
+
+main(ac, av)
+    int ac;   char **av ;
+{
+    int sock ;                        /* socket descriptor */
+    struct sockaddr_in sock_addr ;    /* local socket address structure */
+    struct sockaddr_in peer_addr ;    /* client's socket address structure */
+    char *progr_name = av[0] ;        /* the present program name */
+    char service_name[30] ;           /* name of the service sougth by the client */
+    char response[256] ;              /* response to be sent to the client */
+    struct servent *serv_info, *getservbyname() ;
+    void error() ;                    /* same routine as printed in listing 1 */
+    int addr_len = sizeof(struct sockaddr_in) ;
+
+
+    /* allocate a datagram socket descriptor */
+    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+        error(progr_name, ": error opening socket") ;
+
+    /* copy server address and type to socket structure */
+    sock_addr.sin_port        = PORT_NUMBER ;
+    sock_addr.sin_family      = AF_INET ;
+    sock_addr.sin_addr.s_addr = INADDR_ANY ;
+
+    /* bind the local address to the socket */
+    if (bind(sock, (struct sockaddr *)&sock_addr, sizeof sock_addr) != 0)
+        error(progr_name, ": error binding to datagram socket") ;
+
+    /* loop to receive client's requests */
+
+    setservent(1) ;    /* keeps the "/etc/services" file open */
+    for ( ; ;)  {
+        if (recvfrom(sock, service_name, sizeof service_name,
+                        0, &peer_addr, &addr_len) < 0)
+            error(progr_name, ": receive error") ;
+        if ((serv_info = getservbyname(service_name, (char *)0)) == NULL)  
+            strcpy(response, "Service Not Found") ;
+        else  
+            sprintf(response, "%s service found at port %d with protocol %s",
+                serv_info->s_name, serv_info->s_port, serv_info->s_proto) ;  
+
+        /* send response back to the client using its address
+         * "peer_addr" obtained with "recvfrom"
+         */
+        if (sendto(sock, response, sizeof response, 0, &peer_addr, addr_len) == -1) 
+            error(progr_name, ": send to client failed") ;
+    }
+}
+

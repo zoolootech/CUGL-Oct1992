@@ -1,0 +1,340 @@
+;**********
+;
+; Listing two: COMPLEX.ASM
+; Lee Daniel Crocker
+; 3/15/90
+;
+
+.model small, c
+.8087
+
+@fstat macro
+      fstsw [status]          ; Can be replaced with
+      mov   ax, [status]      ; fstsw ax on 287
+      sahf
+      endm
+
+qptr  equ   <qword ptr> ; To save typing
+
+.data
+
+degree      dw    8
+degreem1    dw    7
+ilimit      dw    1000
+status      dw    0
+
+floatmin    dq    1.175494351e-38
+epsilon     dq    0.000001
+
+oldr        dq    ?
+oldi        dq    ?
+newr        dq    ?
+newi        dq    ?
+
+extrn       eps2:qword, roots:qword
+
+;**********
+;
+; C-callable functions.  Pretty straightforward stuff:
+; just load the parameters onto the 8087 stack, call
+; the routine that does the work, and pop the result
+; back to memory.
+;
+
+.code
+
+;
+; void cmult(COMPLEX *f1, COMPLEX *f2, COMPLEX *result);
+;
+
+cmult proc f1:ptr qword, f2:ptr qword, result:ptr qword
+      mov   bx, [f1]
+      fld   qptr [bx+8]
+      fld   qptr [bx]
+
+      mov   bx, [f2]
+      fld   qptr [bx+8]
+      fld   qptr [bx]
+
+      call  docmult
+
+      mov   bx, [result]
+      fstp  qptr [bx]
+      fstp  qptr [bx+8]
+      fwait             ; synchronize memory write
+      ret
+cmult endp
+
+;
+; int cdiv(COMPLEX *f1, COMPLEX *f2, COMPLEX *result);
+;
+
+cdiv proc f1:ptr qword, f2:ptr qword, result:ptr qword
+      mov   bx, [f1]
+      fld   qptr [bx+8]
+      fld   qptr [bx]
+
+      mov   bx, [f2]
+      fld   qptr [bx+8]
+      fld   qptr [bx]
+
+      call  docdiv
+
+      mov   bx, [result]
+      fstp  qptr [bx]
+      fstp  qptr [bx+8]
+      fwait             ; synchronize memory write
+      ret
+cdiv endp
+
+;
+; void cpower(COMPLEX *base, unsigned exp,
+;             COMPLEX *result);
+;
+
+cpower proc base:ptr qword, exp:word, result:ptr qword
+      mov   bx, [base]
+      fld   qptr [bx+8]
+      fld   qptr [bx]
+
+      mov   ax, [exp]
+      call  docpower
+
+      mov   bx, [result]
+      fstp  qptr [bx]
+      fstp  qptr [bx+8]
+      fwait             ; synchronize memory write
+      ret
+cpower endp
+
+;
+;
+;
+
+onenewton:
+      fld   [oldi]
+      fld   [oldr]
+      mov   ax, [degreem1]
+      call  docpower
+
+      fld   st(1)
+      fld   st(1)
+      fld   [oldi]
+      fld   [oldr]
+      call  docmult     ; - nr  ni  tr  ti
+
+      fild  [degreem1]
+      fmul  st(2), st
+      fmul
+      fld1
+      fadd
+
+      fild  [degree]
+      fmul  st(4), st
+      fmulp st(3), st
+
+      fincstp
+      fxch  st(2)
+      fdecstp
+      fxch  st(2)
+      call  docdiv
+
+      sub   dx, dx
+      or    ax, ax      ; cdiv's return
+      jnz   overf
+
+      fld   [oldr]
+      fsub  st, st(1)
+      fabs
+      fcomp [epsilon]
+      @fstat
+      ja    onout
+
+      fld   [oldi]
+      fsub  st, st(2)
+      fabs
+      fcomp [epsilon]
+      @fstat
+      ja    onout
+overf:
+      inc   dx
+onout:
+      ret
+
+;
+; int calcnewton(COMPLEX *point);
+;
+
+calcnewton proc point:ptr qword
+      mov   bx, [point]
+      fld   qptr [bx]
+      fstp  [oldr]
+      fld   qptr [bx+8]
+      fstp  [oldi]
+
+      mov   cx, [ilimit]
+ltop:
+      call  onenewton
+
+      or    dx, dx
+      jz    lbot
+
+      fstp  [newr]
+      fstp  [newi]
+      jmp   short lbreak
+lbot:
+      fst   [newr]
+      fstp  [oldr]
+      fst   [newi]
+      fstp  [oldi]
+      loop  ltop
+lbreak:
+      mov   dx, [ilimit]
+      sub   dx, cx
+
+      mov   bx, [degreem1]
+      mov   cl, 4
+      shl   bx, cl
+      mov   cx, [degreem1]
+      add   bx, offset DGROUP:roots
+      fld   [eps2]
+      fld   [newi]
+      fld   [newr]
+l2top:
+      fld   qptr [bx]
+      fsub  st, st(1)
+      fabs
+      fcomp st(3)
+      @fstat
+      ja    l2next
+
+      fld   qptr [bx+8]
+      fsub  st, st(2)
+      fabs
+      fcomp st(3)
+      @fstat
+      jna   l2out
+l2next:
+      sub   bx, 16
+      loop  l2top
+l2out:
+      ffree st(2)
+      ffree st(1)
+      ffree st    ; Now dx=iterations and
+                  ; cx=root.
+      mov   ax, cx
+      and   ax, 3
+      ret
+calcnewton endp
+
+;
+; Subroutines used in various functions:
+;
+; Multiply complex [a,b] by [c,d].
+; Uses only two extra stack elements.
+;
+                        ; - FORTH-style 8087
+                        ; - stack trace:
+
+docmult:                ; - a  b  c  d
+      fld   st(2)       ; - c  a  b  c  d
+      fmul  st, st(1)   ; - ac  a  b  c  d
+      fld   st(4)       ; - d  ac  a  b  c  d
+      fmul  st, st(3)   ; - bd  ac  a  b  c  d
+      fsub              ; - rx=(ac-bd)  a  b  c  d
+      fincstp           ; - a  b  c  d  ?  ?  ?  rx
+      fmulp st(3), st   ; - b  c  ad  ?  ?  ?  rx
+      fmul              ; - bc  ad  ?  ?  ?  rx
+      fadd              ; - ry=(ad+bc)  ?  ?  ?  rx
+      fld   st(4)       ; - rx  ry  ?  ?  ?  rx
+      ffree st(5)       ; - rx  ry
+      ret
+
+;
+; Divide complex [c,d] by [a,b].
+; Uses every stack element.
+;
+
+docdiv:                 ; - a  b  c  d
+      fld   st(1)       ; - b  a  b  c  d
+      fmul  st, st(2)   ; - bb  a  b  c  d
+      fld   st(1)       ; - a  bb  a  b  c  d
+      fmul  st, st(2)   ; - aa  bb  a  b  c  d
+      fadd              ; - m  a  b  c  d
+
+      fcom  [floatmin]  ; Note: m is always
+      @fstat            ; positive here.
+      jb    overflow
+
+      fld1              ; - 1  m  a  b  c  d
+      fdivr             ; - m  a  b  c  d
+      fstp  st(5)       ; - a  b  c  d  m
+      fincstp           ; - b  c  d  m  ?  ?  ?  a
+      fchs              ; - -b  c  d  m  ?  ?  ?  a
+      fdecstp           ; - a  -b  c  d  m
+      call  docmult     ; - rx  ry  m
+      fxch  st(2)       ; - m  ry  rx
+      fmul  st(1), st   ; - m  m*ry  rx
+      fmul  st, st(2)   ; - m*rx  m*ry  rx
+      ffree st(2)       ; - rx  ry
+
+      sub   ax, ax
+      ret
+overflow:
+      sbb   ax, ax      ; sets AX=-1
+      ret
+
+;
+; Raise complex [a,b] to integer power in AX.
+; Uses every stack element.
+;
+
+docpower:               ; - a  b
+
+      shr   ax, 1 ; Shift bit 0 of exp into CF.
+      jc    bit0
+
+      fldz              ; - ry=0  a  b
+      fld1              ; - rx=1  ry=0  a  b
+      jmp   short whiletop
+bit0:
+      fld   st(1)       ; - ry=b  a  b
+      fld   st(1)       ; - rx=a  ry=b  a  b
+
+whiletop:         ; Square [a,b].
+
+      fld   st(2)       ; - a  rx  ry  a  b
+      fadd  st, st(4)   ; - (a+b)  rx  ry  a  b
+      fld   st(3)       ; - a  (a+b)  rx  ry  a  b
+      fsub  st, st(5)   ; - (a-b)  (a+b)  rx  ry  a  b
+      fmul              ; - t2  rx  ry  a  b
+      fxch  st(3)       ; - a  rx  ry  t2  b
+      fmul  st, st(4)   ; - ab  rx  ry  t2  b
+      fst   st(4)       ; - ab  rx  ry  t2  ab
+      faddp st(4), st   ; - rx  ry  t2=a  2ab=b
+
+      shr   ax, 1       ; Shift next bit of exp into CF
+      jnc   nomult      ; If bit is set, multiply result
+                        ; by [a,b].
+
+      fld   st(2)       ; - a  rx  ry  a  b
+      fmul  st, st(1)   ; - a*rx  rx  ry  a  b
+      fld   st(4)       ; - b  a*rx  rx  ry  a  b
+      fmul  st, st(3)   ; - b*ry  a*rx  rx  ry  a  b
+      fsub              ; - t2  rx  ry  a  b
+      fld   st(3)       ; - a  t2  rx  ry  a  b
+      fmulp st(3), st   ; - t2  rx  a*ry  a  b
+
+      fld   st(4)       ; - b  t2  rx  a*ry  a  b
+      fmul  st, st(2)   ; - b*rx  t2  rx  a*ry  a  b
+      faddp st(3), st   ; - t2  rx  ry  a  b
+
+      fstp  st(1)       ; - rx  ry  a  b
+nomult:
+      or    ax, ax      ; Set ZF if no more exp.
+      jnz   whiletop
+
+      ffree st(3)       ; - rx  ry  a
+      ffree st(2)       ; - rx  ry
+      ret
+end

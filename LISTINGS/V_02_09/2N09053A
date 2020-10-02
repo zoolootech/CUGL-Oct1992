@@ -1,0 +1,442 @@
+        PAGE    ,132
+        TITLE   SCROLOCK -- Holds screen every page
+
+COMMENT $
+        SCROLOCK.EXE -- Locks scrolling of screen
+
+        Generate EXE file using the following commands:
+        MASM SCROLOCK;
+        LINK SCROLOCK;
+
+        Load from CONFIG.SYS file by use of the command:
+        DEVICE=SCROLOCK.EXE followed by an optional line count
+        and an optional keyword ON. If no line count is given,
+        the CGA normal line count of 25 will be used. If the
+        keyword ON is used, Scroll-Lock will be turned on.
+
+        Load at system command or from within AUTOEXEC.BAT.
+        Type: SCROLOCK followed by an optional line count and
+        an optional keyword ON as above.
+
+        To use, toggle the Scroll-Lock key to activate and
+        deactivate. If active, the screen will fill to the 
+        bottom, then it will scroll until the line where the 
+        cursor was when the last key was struck is now at the
+        top of the screen, then it will freeze with the 
+        cursor in the bottom left corner. To get the next 
+        screen-full, hit any key. Note: The key will be used 
+        later, so if you want just another screen-full, hit 
+        the Alt or either Shift key.
+        $
+
+;       ************************************************************
+;       *                                                          *
+;       *               Dummy Device Driver Header                 *
+;       *                                                          *
+;       ************************************************************
+
+CSEG    SEGMENT
+        ORG     0000H                   ; For all device drivers
+
+Header          DD      -1              ; One device
+                DW      08000H          ; Character device
+StratA          DW      Strat           ; Strategy entrance
+IntrA           DW      Intr            ; Interrupt entrance
+                DB      'Scrolock'      ; 8 character dummy name
+
+;       ************************************************************
+;       *                                                          *
+;       *                     Resident data                        *
+;       *                                                          *
+;       ************************************************************
+
+;       ROM BIOS DATA AREAS
+;       -------------------
+BIOS_DATA               SEGMENT AT 00040H
+                ORG     00017H
+KB_FLAG         DB      ?
+SCROLL_STATE    EQU     010H
+                ORG     00050H
+
+CURSOR_POSN     DW      8 DUP(?)        ; 8 pages of cursor positions
+CURSOR_MODE     DW      ?               ; Current cursor mode setting
+ACTIVE_PAGE     DB      ?               ; Current page being displayed
+BIOS_DATA       ENDS
+
+;       RESIDENT DATA
+;       -------------
+OldIntr09       DW      ?               ; Interrupt vector storage
+                DW      ?
+OldIntr10       DW      ?
+                DW      ?
+LineCount       DB      ?               ; Line counter
+OddEven         DB      0               ; CR sets even = 0
+MaxRows         DB      25              ; Maximum screen rows
+
+;       ************************************************************
+;       *                                                          *
+;       *                     Resident code                        *
+;       *                                                          *
+;       ************************************************************
+
+;       Intercept of Interrupt 10H -- BIOS Video Call
+;       ---------------------------------------------
+
+        ASSUME  CS:CSEG, DS:NOTHING, ES:NOTHING
+NewIntr10:
+        STI                             ; Allow interrupts
+        PUSH    DS                      ; Save registers
+        PUSH    ES
+        PUSH    AX
+        PUSH    BX
+        PUSH    CX
+        PUSH    AX
+        MOV     AX,SEG BIOS_DATA        ; Set ES = BIOS_DATA segment
+        MOV     ES,AX
+        POP     AX
+        PUSH    CS                      ; Set DS = CS
+        POP     DS
+        ASSUME  DS:CSEG, ES:BIOS_DATA
+        TEST    KB_FLAG,SCROLL_STATE    ; Scroll-Lock on?
+        JZ      ExitIntr10              ; No, not locked
+        CMP     AH,000H                 ; Change video mode?
+        JE      ClrScr                  ; Yes, stop at bottom
+        CMP     AX,00600H               ; Clear video screen?
+        JE      ClrScr                  ; Yes, stop at bottom
+        CMP     AX,00601H               ; Roll up one line?
+        JE      RollUp                  ; Yes, do that type
+        CMP     OddEven,002H            ; Is roll active?
+        JE      ExitIntr10              ; Yes, don't do cursor
+        CMP     AH,002H                 ; Cursor command?
+        JE      CurMov                  ; Yes, test what move
+ExitIntr10:
+        POP     CX                      ; Restore registers
+        POP     BX
+        POP     AX
+        POP     ES
+        POP     DS
+        ASSUME  DS:NOTHING, ES:NOTHING
+        JMP     DWORD PTR OldIntr10     ; Perform video request
+
+
+        ASSUME  DS:CSEG, ES:BIOS_DATA
+ClrScr:
+        MOV     AL,MaxRows
+        MOV     LineCount,AL            ; Do not allow any roll
+        MOV     OddEven,000H            ; Reset CR LF counter
+        JMP     ExitIntr10              ; Exit Intr svc.
+
+RollUp:
+        CMP     CX,000H                 ; From first line?
+        JNE     ExitIntr10              ; No, exit
+        MOV     AL,MaxRows
+        CMP     DH,AL                   ; To last line?
+        JNE     ExitIntr10              ; No, exit
+        INC     LineCount               ; Yes, now count lines
+        MOV     OddEven,002H            ; Turn off cursor type
+RollLoop:
+        CMP     LineCount,AL            ; Maximum roll?
+        JA      RollLoop                ; Yes, loop until key pressed
+        JMP     ExitIntr10              ; No, roll some more
+
+CurMov:
+        CMP     BH,ACTIVE_PAGE          ; Cursor for active page?
+        JNE     ExitIntr10              ; No, set for other page
+        MOV     BL,BH                   ; Get cursor pointer
+        SUB     BH,BH
+        SHL     BX,1
+        MOV     CX,[BX+CURSOR_POSN]     ; Get cursor position
+        CMP     CH,MaxRows              ; At bottom row?
+        JNE     ExitIntr10              ; No, don't do anything
+        OR      DL,DL                   ; To column 0?
+        JNE     ExitIntr10              ; No, exit
+        CMP     DH,MaxRows              ; To last line?
+        JNE     ExitIntr10              ; No, exit
+        OR      CL,CL                   ; From column 0?
+        JE      NotEven                 ; Yes, probably a LF
+        MOV     OddEven,000H            ; A CR for sure - even up
+NotEven:
+        NOT     OddEven                 ; Alternate CR LF
+        CMP     OddEven,000H            ; Probable LF?
+        JE      ExitIntr10              ; Yes, skip LFs
+        INC     LineCount               ; No, now count lines
+        CMP     LineCount,AL            ; Maximum roll?
+        JNA     ExitIntr10              ; No, roll some more
+        MOV     AH,002H                 ; Put cursor in corner
+        MOV     BH,ACTIVE_PAGE
+        PUSHF
+        CALL    DWORD PTR OldIntr10
+        MOV     AL,MaxRows              ; Needed for release
+        JMP     RollLoop                ; Loop as above
+
+;       Intrercept of Intrerrupt 9H -- Hardware Keyboard
+;       ----------------------------------------------
+
+NewIntr09:
+        ASSUME  DS:NOTHING, ES:NOTHING
+        PUSH    AX                      ; Save registers
+        IN      AL,060H                 ; Read scan code
+        TEST    AL,080H                 ; Key pressed?
+        JNE     ExitIntr09              ; No, exit
+        PUSH    BX                      ; Save registers
+
+        PUSH    CX
+        PUSH    DX
+        PUSH    ES
+        MOV     AX,SEG BIOS_DATA        ; Set ES = BIOS_DATA segment
+        MOV     ES,AX
+        ASSUME  ES:BIOS_DATA
+        MOV     BL,ACTIVE_PAGE          ; Get cursor pointer
+        SUB     BH,BH
+        SHL     BX,1
+        MOV     DX,[BX+CURSOR_POSN]     ; Get cursor position
+        MOV     AH,MaxRows              ; Calculate rows to bottom
+        SUB     AH,DH
+        MOV     LineCount,AH            ; Allow roll again
+        POP     ES
+        ASSUME  ES:NOTHING
+        POP     DX                      ; Restore registers
+        POP     CX
+        POP     BX
+ExitIntr09:
+        POP     AX
+        JMP     DWORD PTR OldIntr09     ; Perform keyboard request
+
+;       ************************************************************
+;       *                                                          *
+;       *                   Installation data                      *
+;       *                                                          *
+;       ************************************************************
+
+Init    PROC    FAR
+
+Packet          DD      0               ; Request packet address
+;       DEVICE DRIVER REQUEST PACKET
+;       ----------------------------
+IOPacket        STRUC
+IO_CMDLEN       DB      ?
+IO_UNIT         DB      ?
+IO_CMD          DB      ?
+IO_STATUS       DW      ?
+                DB      8 DUP(?)
+IO_MEDIA        DB      ?
+IO_ADDRESS      DW      ?
+                DW      ?
+IO_COUNT        DW      ?
+IO_START        DW      ?
+IOPacket        ENDS
+
+Message         DB      'SCROLOCK installed',00DH,00AH,'$'
+
+;       ************************************************************
+;       *                                                          *
+;       *                   Installation code                      *
+;       *                                                          *
+;       ************************************************************
+
+        ASSUME  DS:NOTHING, ES:NOTHING
+Strat:
+        MOV     WORD PTR Packet,BX      ; Save Packet info
+        MOV     WORD PTR Packet+2,ES
+        PUSH    BX                      ; Save registers
+        PUSH    DS
+
+        PUSH    AX
+        PUSH    DX
+        PUSH    ES
+        PUSH    SI
+
+;       NORMAL TSR INSTALLATION
+;       -----------------------
+        LDS     BX,DWORD PTR Packet     ; Get command line location
+        LDS     SI,DWORD PTR [BX+IO_COUNT]
+        SUB     BX,BX                   ; Zero counter
+Bypass:
+        LODSB                           ; Get CMD character
+        CMP     AL,00DH                 ; CR code?
+        JE      Install                 ; Yes, done with analysis
+        CMP     AL,00AH                 ; LF code?
+        JE      Install                 ; Yes, done with analysis
+        CMP     AL,01AH                 ; EOF code?
+        JE      Install                 ; Yes, done with analysis
+        CALL    Delimit                 ; Is it a delimiter?
+        JNE     Bypass                  ; No, skip garbage
+CommandLoop:
+        LODSB                           ; Get a character
+        CMP     AL,00DH                 ; CR code?
+        JE      Install                 ; Yes, done with analysis
+        CMP     AL,00AH                 ; LF code?
+        JE      Install                 ; Yes, done with analysis
+        CMP     AL,01AH                 ; EOF code?
+        JE      Install                 ; Yes, done with analysis
+        CMP     AL,'0'                  ; Below digits?
+        JB      CommandLoop             ; Yes, ignore all
+        CMP     AL,'9'                  ; Within digits?
+        JNA     Digits                  ; Yes, accumulate count
+        AND     AL,NOT 020H             ; Translate lower case
+        CMP     AL,'N'                  ; N of ON?
+        JNE     CommandLoop             ; No, ignore all
+        PUSH    DS                      ; Yes, set Scroll-Lock
+        MOV     AX,SEG BIOS_DATA        ; bit in low
+        MOV     DS,AX                   ; memory 0040:0017
+        ASSUME  DS:BIOS_DATA
+        OR      KB_FLAG,SCROLL_STATE
+        POP     DS
+        ASSUME  DS:CSEG
+        JMP     CommandLoop             ; and look for more
+
+Digits:
+        SUB     AL,'0'                  ; Convert to value
+        SHL     BL,1                    ; Multiply BL by 10
+        ADD     AL,BL                   ; by shifts and adds
+        SHL     BL,1
+        SHL     BL,1
+        ADD     BL,AL                   ; Keep value in BL
+        JMP     CommandLoop             ; Get more
+
+Install:
+        OR      BL,BL                   ; Any value found?
+        JNZ     HasDigits               ; Yes, bypass set-to-25
+        MOV     BL,25                   ; No, set to 25
+HasDigits:
+        PUSH    CS                      ; DS = CS for DOS functs
+        POP     DS
+
+        ASSUME  DS:CSEG
+        MOV     MaxRows,BL              ; Save for scroll limits
+        DEC     MaxRows                 ; Adjust line count down
+        MOV     LineCount,000H          ; Scroll full page
+        MOV     AX,03509H               ; Get interrupt 9 vector
+        INT     021H
+        MOV     OldIntr09,BX            ; Save it
+        MOV     OldIntr09+2,ES
+        MOV     DX,OFFSET NewIntr09     ; Set new interrupt 9 vector
+        MOV     AX,02509H
+        INT     021H
+        MOV     AX,03510H               ; Get interrupt 10 vector
+        INT     021H
+        MOV     OldIntr10,BX            ; Save it
+        MOV     OldIntr10+2,ES
+        MOV     DX,OFFSET NewIntr10     ; Set new interrupt 10 vector
+        MOV     AX,02510H
+        INT     021H
+        MOV     DX,OFFSET Message       ; Show installed message
+        MOV     AH,009H
+        INT     021H
+;       SPECIAL DDD TERMINATION
+;       -----------------------
+        POP     SI                      ; Restore registers
+        POP     ES
+        POP     DX
+        POP     AX
+        ASSUME  DS:NOTHING, ES:NOTHING
+        LDS     BX,DWORD PTR Packet     ; Restore Packet info
+        MOV     WORD PTR [BX+IO_ADDRESS],OFFSET Init
+                                        ; Set memory request
+        MOV     WORD PTR [BX+IO_ADDRESS+2],CS   ; to be resident
+        MOV     [BX+IO_STATUS],00100H   ; Set done bits
+        POP     DS                      ; Restore registers used
+        POP     BX
+Intr:
+        RET                             ; Exit device installaion
+Init    ENDP
+
+Delimit PROC    NEAR
+        CMP     AL,9                    ; Tab?
+        JE      DelimitEnd
+        CMP     AL,' '                  ; Space?
+        JE      DelimitEnd
+        CMP     AL,'/'                  ; Switch?
+        JE      DelimitEnd
+        CMP     AL,'-'                  ; Unix switch?
+        JE      DelimitEnd
+        OR      AL,AL                   ; Null?
+DelimitEnd:
+        RET                             ; Exit Z or NZ
+Delimit ENDP
+CSEG    ENDS
+
+;       ************************************************************
+;       *                                                          *
+;       *                    Execution data                        *
+;       *                                                          *
+;       ************************************************************
+
+
+EXESEG  SEGMENT PARA
+;       PROGRAM SEGMENT PREFIX
+;       ----------------------
+PSP     SEGMENT AT 00000H
+FilPerProc      EQU     20
+PSP_Exit_Call   DW      ?               ; INT int_abort system terminate
+PSP_block_len   DW      ?               ; size of execution block
+                DB      ?
+PSP_CPM_Call    DB      5 DUP (?)       ; ancient call to system
+PSP_Exit        DD      ?               ; pointer to exit routine
+PSP_Ctrl_C      DD      ?               ; pointer to ^C routine
+PSP_Fatal_abort DD      ?               ; pointer to fatal error
+PSP_Parent_PID  DW      ?               ; PID of parent (terminate PID)
+PSP_JFN_Table   DB      FilPerProc DUP (?)
+                                        ; indices into system table
+PSP_environ     DW      ?               ; seg addr of PSP_environment
+PSP_User_stack  DD      ?               ; stack of self during system calls
+PSP_PAD1        DB      1EH DUP (?)
+PSP_Call_system DB      5 DUP (?)       ; portable method of system call
+PSP_PAD2        DB      6H DUP (?)      ;
+                ORG     00080H
+PSP_CMD_Line    DB      ?
+PSP     ENDS
+
+EXEPacket       IOPacket        <>      ; Requires packet space
+ToStrat         DD      StratA
+ToIntr          DD      IntrA
+
+;       ************************************************************
+;       *                                                          *
+;       *                    Execution code                        *
+;       *                                                          *
+;       ************************************************************
+
+        ASSUME  CS:EXESEG,DS:PSP,ES:NOTHING
+Start   PROC    NEAR                    ; Execute DDD installation
+        PUSH    DS                      ; Save for PSP:0081
+        MOV     AH,049H                 ; Release environment
+        MOV     ES,PSP_environ 
+        INT     021H
+        ASSUME  DS:CSEG
+        LDS     BX,ToStrat              ; Get address of StratA
+        MOV     AX,[BX]                 ; to get address of Strat
+        MOV     WORD PTR ToStrat,AX     ; for FAR CALL
+        LDS     BX,ToIntr               ; Get address of IntrA
+        MOV     AX,[BX]                 ; to get address of Intr
+        MOV     WORD PTR ToIntr,AX      ; for FAR CALL
+        PUSH    CS
+        POP     DS
+        PUSH    CS
+        POP     ES
+        ASSUME  DS:EXESEG,ES:EXESEG
+        POP     EXEPacket.IO_COUNT+2    ; Put PSP:0081 address in packet
+        MOV     EXEPacket.IO_COUNT,OFFSET PSP_CMD_Line+1
+        SUB     AL,AL                   ; 0 = Initialize DDD
+        MOV     EXEPacket.IO_CMD,AL     ; Put command in packet
+        MOV     BX,OFFSET EXEPacket     ; ES:BX = packet address
+        CALL    ToStrat                 ; Perform strategy
+        CALL    ToIntr                  ; Perform interrupt
+        MOV     DX,EXEPacket.IO_ADDRESS ; Get ending address
+
+        ADD     DX,0010FH               ; Add PSP and round up
+        MOV     CL,4                    ; Convert to paragraphs
+        SHR     DX,CL
+        ADD     DX,EXEPacket.IO_ADDRESS+2
+                                        ; Add highest segment
+        SUB     DX,SEG CSEG             ; Subtract lowest segment
+        MOV     AX,03100H               ; DOS stay resident function
+        INT     021H
+Start   ENDP
+EXESEG  ENDS
+
+STACK   SEGMENT STACK
+                DW      0100H DUP (?)
+STACK   ENDS
+        END     Start
+; End of File

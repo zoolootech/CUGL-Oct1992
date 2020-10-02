@@ -1,0 +1,52 @@
+; Listing 4 written for the Phar Lap 386|ASM assembler
+
+code      segment  dword public use32
+          assume   cs:code        ; set HGSC to VGA mode 
+          align    4              ; Copyright 1990 by Gary R. Olhoeft
+hstdata   equ      0C7000h        ; C000:7000 
+hstctrl   equ      0C7D00h
+hstadrl   equ      0C7E00h
+hstadrh   equ      0C7F00h
+          public   _setvga_    
+          public   _setvga        ; function name, no parameters
+_setvga_  proc     near
+_setvga:  push     ebp            ; save old base page (frame pointer)
+          mov      ebp,esp        ; make new frame pointer
+          push     es             ; save es
+          mov      ax,034h        ; access first Mbyte real memory through LDT
+          mov      es,ax          ; es points to first Mbyte real memory
+          mov      ax,0D800h      ; set 34010 autoincrement
+          mov      es:hstctrl,ax  ; write it to 34010 control register
+          mov      ax,0C0h
+          mov      es:hstadrl,ax
+          mov      ax,600h        ; 0600:00C0 = set osc. (config.1 reg)
+          mov      es:hstadrh,ax
+          mov      ax,0Ah         ; 1010 = current VGA pixel clock; cmd & overlay
+          mov      es:hstdata,ax
+          mov      ax,0E0h
+          mov      es:hstadrl,ax
+          mov      ax,600h        ; 0600:00E0 = write configuration (config.2 reg)
+          mov      es:hstadrh,ax
+          mov      ax,0Ch         ; 1100 = -h/-v sync, VGA control
+          mov      es:hstdata,ax
+          mov      dx,3C6h
+          mov      ax,4Bh
+          out      dx,al          ; port 3C6h, VGA pel mask
+          mov      ax,0C0h
+          mov      es:hstadrl,ax
+          mov      ax,600h        ; 0600:00C0 = set osc.
+          mov      es:hstadrh,ax
+          mov      ax,2           ; 0010 = current VGA clock, normal color palette
+          mov      es:hstdata,ax
+          mov      ax,0         
+          mov      es:hstadrl,ax
+          mov      es:hstadrh,ax  ; set memory address to start
+          mov      ax,3
+          int      10h            ; video display ah = function 00h, al = mode
+          pop      es             ; restore es
+          pop      ebp            ; restore base page
+          ret                     ; return to caller
+_setvga_  endp
+code      ends
+          end
+

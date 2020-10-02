@@ -1,0 +1,349 @@
+unit Timers;
+
+interface
+
+uses WinTypes,WObjects;
+
+type
+    PTimer      = ^TTimer;
+
+    TTimer      = object
+        LastEvent       : Longint;
+        ThisEvent       : Longint;
+        EventId         : integer;
+
+        constructor InitEvent(EventId_:integer);
+        constructor Init;
+        destructor  Done; virtual;
+        function        Start(NewInterval:Longint):boolean;
+        procedure       Stop;
+        procedure       Fire; virtual;
+        function        GetInterval:Longint;
+    {static}
+        function        OutOfTimers:boolean; virtual;
+    private
+        Next            : PTimer;
+        Interval        : Longint;
+        function        SetInterval(NewInterval:Longint):boolean;
+        function        ReviseInterval:boolean;
+        function        SetBaseInterval(Interval_:Longint):boolean;
+        end;
+
+    PWindowTimer        = ^TWindowTimer;
+    TWindowTimer        = object(TTimer)
+        WindowHandle: PWindowsObject;
+        constructor Init(WindowHandle_:PWindowsObject);
+        constructor InitEvent(WindowHandle_
+                                :PWindowsObject;
+                                EventId_:integer);
+                procedure       Fire; virtual;
+        end;
+
+function TimerGetInterval:Longint;
+
+
+{----------------------------------------------}
+
+implementation
+
+uses    WinProcs;
+
+var
+        ActiveCount     : integer;
+    TailPtr     : PTimer;
+    TimerId             : integer;
+    IntervalGcd : Longint;
+    CallBack    : TFarProc;
+
+const
+        TIMER_MAX_RESOLUTION
+        = 65535;
+    TIMER_MIN_RESOLUTION
+        = 55;
+
+{ Gcd - Greatest Common Divisor }
+function Gcd(a,b:Longint):Longint;
+var
+    Remainder   : Longint;
+begin
+    Remainder   := a;
+    if (a = 0) or (b = 0) then
+        Gcd     := 0
+    else
+        begin
+            Remainder  := b mod a;
+            while Remainder <> 0 do
+                begin
+                b               := a;
+                a               := Remainder;
+                Remainder       := b mod a;
+                end;
+            Gcd := a;
+        end;
+end;
+
+function TTimer.SetBaseInterval(Interval_:Longint):boolean;
+var
+    NewInterval : Longint;
+    TempReal    : real;
+    Finished    : boolean;
+begin
+        SetBaseInterval := TRUE;        { Assume success }
+    if IntervalGcd <> 0 then
+        NewInterval     := Gcd(IntervalGcd, Interval_)
+    else
+        NewInterval     := Interval_;
+    if  NewInterval < TIMER_MIN_RESOLUTION then
+        NewInterval     := TIMER_MIN_RESOLUTION;
+    if  NewInterval > TIMER_MAX_RESOLUTION then
+    { Use heuristic to get "nice" interval }
+        begin
+        while NewInterval > TIMER_MAX_RESOLUTION do
+                NewInterval     := NewInterval div 2;
+        NewInterval     := (NewInterval div 1000) * 1000;
+        end;
+    if NewInterval <> IntervalGcd then
+        begin
+        if TimerId <> 0 then
+            KillTimer(0, TimerId);
+            TimerId     := SetTimer(0, 0, NewInterval,
+                                                                CallBack);
+        repeat
+                Finished        := TRUE;
+                if (TimerId = 0) then
+                if OutOfTimers = TRUE then
+                        begin
+                        TimerId := SetTimer(0, 0,
+                                NewInterval,CallBack);
+                    Finished    := FALSE;
+                    end;
+        until Finished;
+        if TimerId = 0 then
+                SetBaseInterval := FALSE
+        else
+                IntervalGcd             := NewInterval;
+        end;
+end;
+
+function TTimer.SetInterval(NewInterval:Longint):boolean;
+var
+        TimerWasOn, TimerIsOn, Result
+        : boolean;
+begin
+        Result          := TRUE;        { Assume success }
+    TimerWasOn  := Interval <> 0;
+    TimerIsOn   := NewInterval <> 0;
+
+    { If deactivating timer }
+    if TimerWasOn and not(TimerIsOn) then
+        begin
+        ActiveCount     := ActiveCount - 1;
+        if ActiveCount = 0 then
+                begin
+            KillTimer(0, TimerId);
+            TimerId             := 0;
+            IntervalGcd := 0;
+            end
+        else
+                ReviseInterval;
+        end
+    { else if starting a timer }
+    else if TimerIsOn and not(TimerWasOn) then
+        begin
+        Interval        := NewInterval;
+        if NewInterval > TIMER_MAX_RESOLUTION then
+                Result  := ReviseInterval
+        else
+                Result  := SetBaseInterval(NewInterval);
+        if Result = TRUE then
+                ActiveCount     := ActiveCount + 1;
+        end
+        { else if changing timer interval }
+    else if TimerIsOn and (NewInterval <> Interval) then
+        begin
+                Interval        := NewInterval;
+        Result          := ReviseInterval;
+        end;
+        if Result = TRUE then
+        begin
+        Interval        := NewInterval;
+            if NewInterval > TIMER_MAX_RESOLUTION then
+                Result  := ReviseInterval;
+        end;
+    SetInterval := Result;
+end;
+
+function TTimer.Start(NewInterval:Longint):boolean;
+begin
+        if SetInterval(NewInterval) <> FALSE then
+        begin
+        ThisEvent       := GetTickCount;
+        LastEvent       := ThisEvent;
+        Start           := TRUE;
+        end
+    else
+        Start           := FALSE;
+end;
+
+procedure TTimer.Stop;
+begin
+        SetInterval(0);
+end;
+
+procedure       TTimer.Fire;
+begin
+        Abstract;  { User must redefine Fire function }
+end;
+
+function TTimer.OutOfTimers:boolean;
+begin
+        OutOfTimers     := FALSE;  { Give up }
+end;
+
+constructor TTimer.Init;
+begin
+        TTimer.InitEvent(0);
+end;
+
+constructor TTimer.InitEvent(EventId_:integer);
+begin
+    if TailPtr = NIL then
+        begin
+        TailPtr                 := @Self;
+        Next                    := @Self;
+        end
+    else
+        begin
+        Next                    := TailPtr^.Next;
+        TailPtr^.Next   := @Self;
+        TailPtr                 := @Self;
+        end;
+    LastEvent   := 0;
+    ThisEvent   := 0;
+    Interval    := 0;
+    EventId             := EventId_;
+end;
+
+function        TTimer.GetInterval:Longint;
+begin
+        GetInterval     := Interval;
+end;
+
+function        TTimer.ReviseInterval:boolean;
+{
+ReviseInterval recalculates the greatest common
+divisor (gcd) of all the timers in the linked
+list.  If the gcd has changed, ReviseInterval
+resets the Windows timer by calling SetInterval.
+}
+var
+    Rover
+                : PTimer;
+    NewInterval
+        : Longint;
+begin
+    Rover               := TailPtr;
+    NewInterval := 0;
+    repeat
+        Rover   := Rover^.Next;
+        if Rover^.Interval <> 0 then
+                if NewInterval = 0 then
+                        NewInterval     := Rover^.Interval
+                else
+                        NewInterval     := Gcd(NewInterval, Rover^.Interval);
+    until Rover = TailPtr;
+
+    IntervalGcd         := 0;
+    ReviseInterval      := SetBaseInterval(NewInterval);
+end;
+
+
+destructor  TTimer.Done;
+var
+    Rover, Previous
+                : PTimer;
+begin
+    Rover               := TailPtr;
+    Previous    := NIL;
+    repeat
+        if Rover^.Next = @Self then
+                Previous        := Rover;
+        Rover   := Rover^.Next;
+    until Previous <> NIL;
+
+    if Previous^.Next = Previous then
+        TailPtr         := NIL
+    else
+        begin
+        if Previous^.Next = TailPtr then
+                TailPtr := Previous;
+            Previous^.Next      := Previous^.Next^.Next;
+        end;
+        SetInterval(0); { in case timer was active }
+end;
+
+constructor TWindowTimer.Init(WindowHandle_:PWindowsObject);
+begin
+        TWindowTimer.InitEvent(WindowHandle_, 0);
+end;
+
+constructor TWindowTimer.InitEvent(WindowHandle_:PWindowsObject;
+                                        EventId_:integer);
+begin
+        TTimer.InitEvent(EventId_);
+        WindowHandle    := WindowHandle_;
+end;
+
+procedure       TWindowTimer.Fire;
+begin
+        if not(PostMessage(WindowHandle^.HWindow, wm_Timer, EventId, 0)) then
+        SendMessage(WindowHandle^.HWindow, wm_Timer, EventId, 0);
+end;
+
+
+function InternalTimerCallBack(WindowHandle     :HWnd;
+                                                MessageNumber   :WORD;
+                        EventId         :integer;
+                        Dummy           :TFarProc)
+                                                :WORD; export;
+var
+        Time    : Longint;
+    Rover       : PTimer;
+begin
+        if TailPtr <> NIL then  { Sanity check }
+        begin
+        Rover   := TailPtr;
+        repeat
+                Rover   := Rover^.Next;
+                with Rover^ do
+                        begin
+                                if Interval <> 0 then
+                        begin
+                        Time    := GetTickCount;
+                        if (Interval + ThisEvent) <= Time then
+                                begin
+                        LastEvent       := ThisEvent;
+                        ThisEvent       := Time;
+                                Fire;
+                                end;
+                    end;
+                end;
+        until Rover = TailPtr;
+        end;
+end;
+
+function TimerGetInterval:Longint;
+begin
+        TimerGetInterval        := IntervalGcd;
+end;
+
+
+{ Initialization code for Timers unit. }
+
+begin
+        TimerId         := 0;
+    ActiveCount := 0;
+    IntervalGcd := 0;
+    CallBack    := MakeProcInstance(
+                                @InternalTimerCallBack,HInstance);
+end.

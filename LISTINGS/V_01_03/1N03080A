@@ -1,0 +1,93 @@
+
+#include        <conio.h>
+
+/*
+*************************************************************
+*       InputNoWait - waits for key or mouse button press,
+*               then returns value
+*
+*       Parameters:
+*               x (out) - x position of mouse when button
+*                       pressed
+*               y (out) - y position of mouse when button
+*                       pressed
+*
+*       Returns:
+*               For mouse, returns MOUSE_L or MOUSE_R (left
+*                       or right button).
+*               For mouse button release, returns MOUSE_OFF.
+*               For normal key press, returns key code
+*                       (extended ascii).
+*               For extended key press, returns second byte
+*                       of extended key code * -1.
+*               Unlike input, this routine does not wait
+*               for mouse button release prior to returning.
+*
+*       Notes:
+*               This routine blocks waiting user action.
+*               Mouse coordinates are virtual screen
+*               coordinates.
+*               Unlike input, this routine does not wait for
+*               mouse button release prior to returning.
+*
+*       Copyright:
+*               Original code by William H. Roetzheim
+*************************************************************
+*/
+
+#define INVALID         -1
+#define MOUSE_L         -2
+#define MOUSE_R         -3
+#define MOUSE_OFF       -4
+
+int     InputNoWait (int *x, int *y)
+{
+        int     m1, m2, m3, m4;
+        int     mouse;
+        int     ch;
+        int     retval = 0;
+        static  int     mouse_press = FALSE;
+
+        MouseOn ();
+
+        *x = INVALID;
+        *y = INVALID;
+        while (retval == 0)
+        {
+                /* return mouse if pressed */
+                m1 = 3;         /* check button press on mouse */
+                m2 = 0;
+                IntMouse (&m1, &m2, &m3, &m4);
+                if (m2 != 0)
+                {
+                        mouse = m2;
+                        *x = m3;
+                        *y = m4;
+                        if (mouse == 1)
+                        {
+                                retval = MOUSE_L;
+                                mouse_press = TRUE;
+                        }
+                        else retval = MOUSE_R;
+                }
+                else if (mouse_press == TRUE)   /* just released button */
+                {
+                        retval = MOUSE_UP;
+                        mouse_press = FALSE;
+                        m1 = 6;
+                        m2 = 0;
+                        IntMouse (&m1, &m2, &m3, &m4);
+                        *x = m3;
+                        *y = m4;
+                }
+                if (kbhit() != 0)
+                {
+                   ch = getch();
+                   /* get extended key code */
+                   if (ch == 0) ch = -(getch());       
+                   retval = ch;
+                }
+        }
+        MouseOff ();
+        return retval;
+}

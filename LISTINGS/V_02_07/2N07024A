@@ -1,0 +1,214 @@
+
+(*
+    File:           TryEms.Pas;
+    Description:    A Test Bed for a TEmsStream Object.
+    Compiler:       Turbo Pascal V.6.0
+    Date:           3/6/91;
+    Author:         Michael Kelly;
+
+    Comments:       A TEmsStream provides Stream I/O
+                    for Expanded Memory Specification
+                    3.2 and 4.0 type memory.
+
+                    The TEmsStream interface eliminates
+                    the book-keeping that would be
+                    required if calls to Interrupt $67
+                    ( the Ems Interrupt ) were made
+                    directly.
+
+                    This program was debugged using
+                    the AboveDisk+ Expanded Memory
+                    Manager on an XT Clone using
+                    disk space to emulate expanded
+                    memory.
+
+    Copyright:      Put in the Public Domain by
+                    the Author.
+
+                    $$$   Warning  $$$
+
+                    Error recovery should include calling
+                    the TEmsStream destructor ( Done ) if
+                    at all possible, otherwise the user
+                    will have to reboot the machine to
+                    reclaim any memory allocated from Ems.
+
+*)
+
+
+Program TryEms;
+Uses Objects, Dos;
+
+     (*
+      *  minimum and maximum Ems Memory to
+      *  allocate to the TEmsStream.
+      *)
+    Const
+         MinEmsMem: LongInt = 64 * 1024;
+         MaxEmsMem: LongInt = 256 * 1024;
+
+    var
+       MyStream : TEmsStream; { The Ems Stream }
+
+
+(*
+ *  Reads an open file of type "text" a line at
+ *  a time, and writes each line to the Ems
+ *  Stream "MyStream" using the WriteStr method
+ *  inherited from TStream.
+ *
+ *  returns:  False on error, True otherwise.
+ *)
+function LoadFileInEms(var TextFile: text) : Boolean;
+    var
+       file_line: String;
+       len      : Word;
+
+begin
+  while (not Eof(TextFile)) and
+        (MyStream.GetSize < MaxEmsMem) do
+  begin
+    ReadLn(TextFile, file_line);
+    if IOResult <> 0 then
+    begin
+      LoadFileInEms := False;
+      close(TextFile);
+      exit;
+    end;
+    len := Length(file_line) + 1;
+    if (MyStream.GetSize + len) > MaxEmsMem then
+    begin
+      LoadFileInEms := False;
+      close(TextFile);
+      exit;
+    end
+    else
+    begin
+      MyStream.WriteStr(@file_line);
+      if MyStream.Status <> stOk then
+      begin
+	LoadFileInEms := False;
+	close(TextFile);
+	exit;
+      end;
+    end;
+  end;
+  LoadFileInEms := True;
+  close(TextFile);
+end;
+    (* LoadFileInEms *)
+
+(*
+ *  Opens text file entered on the command line
+ *  and calls LoadFileInEms to read the file
+ *  and write it on the TEmsStream.
+ *
+ *  returns:  False on error, True otherwise.
+ *)
+function ReadFile(file_name: String) : Boolean;
+    var
+       FileVar: Text;
+
+begin
+
+  {$I-}  Assign(FileVar, file_name);
+  Reset(FileVar);            {$I+}
+  if IOResult <> 0 then
+  begin
+    ReadFile := False;
+    exit;
+  end;
+  {$I-}  ReadFile := LoadFileInEms(FileVar); {$I+}
+end;
+    (* ReadFile *)
+
+(*
+ *  Seeks to the start of the TEmsStream "MyStream"
+ *  and alternately reads a string from the stream
+ *  and writes it to the screen.  First a byte is
+ *  read from the TEmsStream into the length byte
+ *  of the string, then that number of bytes is
+ *  read into the string at index 1, completing
+ *  the string.  The string is then output to
+ *  the screen using WriteLn.
+ *)
+procedure DisplayEms;
+    var
+       str : String;
+
+begin
+  MyStream.Seek(0);
+  if MyStream.Status <> stOK then
+    exit;
+  WriteLn;
+  WriteLn;
+  WriteLn('File Contexts  ...');
+  WriteLn;
+  while MyStream.GetPos < MyStream.GetSize do
+  begin
+    MyStream.Read(str[0], 1);
+    MyStream.Read(str[1], Word(Byte(str[0])));
+    if MyStream.Status <> stOK then
+      exit;
+    WriteLn(str);
+  end;
+end;
+    (* DisplayEms *)
+
+(*
+ *  When debugging, it's easy to reset the program
+ *  and then realize EMS is allocated (that's why
+ *  they call it oops!).  When this happens, put
+ *  lines like the following at the start of the
+ *  main program body: FreeEmsHandle(1);
+ *                     FreeEmsHandle(2);
+ *                     ....
+ *                     ....
+ *                     Halt;
+ *
+ *  re-compile and run.
+ *
+ *  call FreeEmsHandle as many times as needed
+ *  to free EMS memory without rebooting, then
+ *  delete the lines and re-compile.  Kinda Kludgy
+ *  but better'n rebootin'.
+ *)
+procedure FreeEmsHandle(handle: Word);
+var
+   R:Registers;
+
+begin
+     R.AH := $45;
+     R.DX := handle;
+     Intr($67, R);
+end;
+
+        {  Main  }
+begin
+  if ParamCount < 1 then
+  begin
+    WriteLn('Usage: TryEms text_file');
+    halt;
+  end;
+  MyStream.Init(MinEmsMem, MaxEmsMem);
+  if MyStream.Status <> stOk then
+  begin
+    WriteLn('Could not open Ems Stream');
+    Halt;
+  end;
+  if (not ReadFile(ParamStr(1))) then
+  begin
+    WriteLn;
+    Write('Error Reading File ');
+    WriteLn(ParamStr(1));
+    if MyStream.Status <> stOK then
+      MyStream.Reset;
+    MyStream.Done;
+    halt;
+  end;
+  DisplayEms;
+  if MyStream.Status <> stOK then
+    MyStream.Reset;
+  MyStream.Done;
+end.
+

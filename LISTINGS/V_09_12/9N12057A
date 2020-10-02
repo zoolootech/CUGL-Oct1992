@@ -1,0 +1,76 @@
+/*
+REPRATE.HPP
+
+Header file for periodic event class definitions.
+Paul A. Cornelius, August 1991
+*/
+
+#ifndef REPRATE_HPP
+#define REPRATE_HPP
+
+typedef void (*CALL_ME)();      // user function type
+const unsigned TICKS_PER_SECOND=1024;
+
+#ifndef DLIST_HPP
+    #include <dlist.hpp>
+#endif
+
+class RepRate
+{
+friend class RepRateList;
+private:
+    CALL_ME func;
+    long tick_interval; 
+        // ticks between calls to CALL_ME
+    long count_now;
+    void HandleTick();
+public:
+    RepRate(double Hz,CALL_ME);
+    ~RepRate()                          {}
+    double ChangeRepRate(double Hz);        
+        // returns actual rep rate
+    void ChangeFunction(CALL_ME p)      {func = p;}
+    double GetRepRate()                 
+        // returns actual rep rate
+    {
+        return double(TICKS_PER_SECOND) / 
+         double(tick_interval);
+    }
+};
+
+// The next class supports a list of RepRate objects.
+// An instance is declared globally as TimerList.  
+// There can be only a single RepRateList per program; 
+// attempting to instantiate a second one will
+// cause an assertion failure.
+declare(zGDList,RepRate);
+class RepRateList
+{
+friend void handle_tick();
+    static int On;
+    int TimerOn;
+    int Error;
+    zGDList(RepRate) Replist;
+    void TurnOnTimer();
+    void TurnOffTimer();
+    void HandleTick();
+public:
+    RepRateList();          
+        // Clock does not turn on until first RepRate 
+        // object is linked in
+    ~RepRateList();         // Turns off the clock
+
+    void Linkin(RepRate*);  
+        // Attaches the object to the list, starts 
+        // clock if not already going
+    void Linkout(RepRate*); 
+        // Removes object from list, stops clock if
+        // it is the last one
+    int GetError()          {return Error;}     
+        // 1 linked list error
+};
+
+extern RepRateList TimerList;
+
+#endif
+

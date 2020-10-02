@@ -1,0 +1,58 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     UNLOCK.A     Unlock the File
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int UNLOCK(handle, offset, length, &_carryf)
+;	-----           int handle;
+;	                long offset, /* offset to specified region to lock */
+;	                     length; /* length of section to lock */
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC UNLOCK_
+
+UNLOCK_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the file handle
+	mov	cx,[bp+6]	; low word of offset
+	mov	dx,[bp+8]	; high word of offset
+	mov	si,[bp+10]	; low word of length
+	mov	di,[bp+12]	; high word of length
+	mov	al,1
+	mov	ah,5ch	; the Function No.
+	int	21h
+	jc	UNLOCK_ERROR
+	xor	ax,ax	; prepare for normal return
+	jmp	UNLOCK_QUIT
+UNLOCK_ERROR:
+	mov	si,[bp+14]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+UNLOCK_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

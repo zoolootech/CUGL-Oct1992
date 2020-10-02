@@ -1,0 +1,140 @@
+
+
+*** Listing 2 ***
+
+/*
+ * hn_port.c - MS-DOS version of port-level i/o for the HNL
+ *
+ * Copyright(c) 1988 by Hobart Corporation.
+ * Used with permission.
+ */
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <glc.h>		/* Greenleaf declarations */
+#include <hn.h>
+#include <hn_errno.h>
+
+#define DIM(a) (sizeof(a) / sizeof(a[0]))
+
+static int port_name_to_number(char *name)
+    {
+    struct pair
+        {
+        char *name;
+        int number;
+        };
+    static struct pair table[] =
+        {{"AUX", COM1}, {"COM1", COM1}, {"COM2", COM2}};
+    int i;
+
+    for (i = 0; i < DIM(table); ++i)
+        if (strcmpi(table[i].name, name) == 0)
+            return table[i].number;
+    return -1;
+    }
+
+hn_port *hn_popen(char *dev, hn_bps bps, hn_parity par,
+        unsigned data_bits, unsigned stop_bits)
+    {
+    static unsigned actual_bps[] = {1200, 2400, 4800, 9600};
+    static unsigned dos_bps[] = {1200, 2400, 4800, 9600};
+    static unsigned dos_parity[] = {P_NONE, P_ODD, P_EVEN};
+    hn_port *p = NULL;
+    int err = HN_ENONE, number;
+
+    if ((number = port_name_to_number(dev)) < 0)
+        err = HN_EDEVNAME;
+    else if (bps >= DIM(dos_bps))
+        err = HN_EBPS;
+    else if (par >= DIM(dos_parity))
+        err = HN_EPARITY;
+    else if (data_bits != 7 && data_bits != 8)
+        err = HN_EDATABITS;
+    else if (stop_bits != 1 && stop_bits != 2)
+        err = HN_ESTOPBITS;
+    else
+        err = asiopen(number, ASINOUT | ASCII, 2048, 2048,
+                dos_bps[bps], dos_parity[par], stop_bits,
+                data_bits, OFF, OFF);
+    if (err == HN_ENONE)
+        {
+        if ((p = malloc(sizeof(hn_port))) == NULL)
+            err = HN_ENOPORTS;
+        else
+            err = asihold(number, ASINOUT);
+        }
+    if (err != HN_ENONE)
+        {
+        if (number >= 0)
+            asiquit(number);
+        if (p != NULL)
+            free(p);
+        hn_errno = err;
+        return NULL;
+        }
+    p->number = number;
+    p->errno = HN_ENONE;
+    return p;
+    }
+
+int hn_pclose(hn_port *p)
+    {
+    int err = HN_ENONE;
+
+    if (p != NULL)
+        {
+        if ((err = asiquit(p->number)) != HN_ENONE)
+            {
+            hn_errno = err;
+            return EOF;
+            }
+        free(p);
+        }
+    return 0;
+    }
+
+int hn_penable(hn_port *p)
+    {
+    if ((p->errno = asiresume(p->number, ASINOUT)) == HN_ENONE)
+        return 0;
+    hn_errno = p->errno;
+    return EOF;
+    }
+
+int hn_pdisable(hn_port *p)
+    {
+    if ((p->errno = asihold(p->number, ASINOUT)) == HN_ENONE)
+        return 0;
+    hn_errno = p->errno;
+    return EOF;
+    }
+
+int hn_pgetc(hn_port *p)
+    {
+    int c;
+
+    if ((c = asigetc(p->number)) >= 0)
+        return c;
+    if (c != HN_EBUFEMPTY)
+        hn_errno = p->errno = c;
+    return EOF;
+    }
+
+int hn_pputc(int c, hn_port *p)
+    {
+    if ((p->errno = asiputc(p->number, c)) == HN_ENONE)
+        return c;
+    hn_errno = p->errno;
+    return EOF;
+    }
+
+int hn_pflush(hn_port *p)
+    {
+    while (!istxempty(p->number))
+        ;
+    return 0;
+    }
+

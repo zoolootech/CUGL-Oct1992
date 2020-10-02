@@ -1,0 +1,112 @@
+/* wrld7.cpp */
+
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <typedefs.hpp>
+
+extern "C"
+{
+	#include <tiga.h>
+	#include <extend.h>
+}
+
+#define gspMain( n, p, q )	\
+	dm_ptrx( USER_DM( gspWorld | 0 ), n * sizeof(POINT), \
+		p, n * sizeof(POINT), q )
+
+struct	POINT
+{
+  int	x;
+  int	y;
+};
+
+int	gspWorld;
+
+POINT	snd_points[5] =
+{
+  25, 25, 75, 25, 50, 50, 25, 75, 75, 75
+};
+
+POINT	rcv_points[5];
+
+void		reportPositionTable( )
+{
+  printf( "Text displayed at:\n" );
+  for( int i = 0; i < 5; i++ )
+    printf( "  %4d, %4d  ==> %4d  %4d \n", snd_points[i].x,
+        snd_points[i].y, rcv_points[i].x, rcv_points[i].y );
+}
+
+int		main( int argc, char argv[ ] )
+{
+  
+  if( set_videomode( TIGA, INIT | CLR_SCREEN ) )
+  { 
+    if( install_primitives( ) >= 0 )
+    {
+      gspWorld = install_rlm( "gspWrld7.rlm" );
+      if( gspWorld < 0 )
+      {
+        printf("ERROR: could not load gspWrld7.rlm\n");
+        printf("Error code = %d\n", gspWorld );
+        exit( 7 );
+      }
+      gspMain( 5, snd_points, rcv_points );
+      reportPositionTable( );
+    }
+    else
+    {
+      printf( "ERROR: Can not load TIGA primitives.\n" );
+      return 1;
+    }
+    set_videomode( PREVIOUS, NO_INIT );
+  }
+  else
+  {
+    printf( "ERROR: Please install TIGA and try again.\n" );
+    return 2;
+  }
+  return 0;
+}
+
+/* gspWrld7.c */
+
+#include <gsptypes.h>
+#include <gspglobs.h>
+#include <gsptiga.h>
+
+#define XSIZE	(config.mode.disp_hres)
+#define YSIZE	(config.mode.disp_vres)
+#define	XOR	10
+
+void		gspMain( p )
+short*	p;
+{
+  int count;
+  int x, y, i;
+  int tw;
+  char* hello;
+  short* q;
+  
+  count = *p++;			/* get count (in bytes).	*/
+  count = count /4;		/* number of points		*/
+  q = &p[2 * count + 1];
+
+  set_fcolor( WHITE );
+  set_bcolor( BLACK );
+
+  hello = "   H e l l o   W o r l d   ";
+  tw = text_width( hello );	/* string width for
+                                   centering	*/
+  
+  for( i = 0; i < count; i++ )
+  {
+    *p++ = x = *p * XSIZE / 100;
+    *p++ = y = *p * YSIZE / 100;
+    text_out( x - tw/2, y, "   H e l l o   W o r l d   " );
+  }
+}
+
+
+

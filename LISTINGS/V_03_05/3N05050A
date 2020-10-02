@@ -1,0 +1,44 @@
+DOSSEG
+.Model Medium
+.Stack 100h
+
+.Data
+
+MSG$		DB	"Drive "
+DRIVENUM	DB	"? is type "
+DRIVETYPE	DB	"?"
+		DB	13,10,"$"
+
+.Code
+EXTRN		DisketteType$FAR:FAR
+
+MAIN		PROC
+
+		MOV	BX,DGROUP		;Point DS
+		MOV	DS,BX			; to data segment
+
+		SUB	DI,DI			;Drive number
+MAIN_1:
+		MOV	AX,DI			;Get drive number
+		MOV	DL,AL			;(Save for call)
+		ADD	AL,"0"			;Make ASCII
+		MOV	[DRIVENUM],AL		;Store in string
+
+		CALL	DisketteType$FAR	;Get type
+
+		ADD	AL,"0"			;Convert to ASCII
+		MOV	[DRIVETYPE],AL		;Store in string
+
+		MOV	AH,9			;Display string fn
+		MOV	DX,OFFSET MSG$		; at DS:DX
+		INT	21H			;Thru DOS
+
+		INC	DI
+		CMP	DI,4
+		JBE	MAIN_1
+
+		MOV	AX,4C00H		;Terminate program
+		INT	21H			;Thru DOS
+
+MAIN		ENDP
+		END	MAIN

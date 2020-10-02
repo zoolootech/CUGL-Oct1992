@@ -1,0 +1,1243 @@
+
+C-ACROSS (version 1.02):  README.CA                Page 1
+
+/*
+HEADER:         ;
+TITLE:          C-ACROSS;
+VERSION         1.02
+
+DESCRIPTION:   "Utility for multiple module programs. Produces
+	  Six indexes of functions, prototypes, and globals that
+	  enable user to 'see across' modules for use in checking
+	  and comparison.  One of these is type of hierarchical
+	  functions list, a listing by module of functions
+	  and calls made FROM them; another is alphabetical list
+	  of functions and calls made TO them. Globals listed
+	  in schematic descriptors which record all modifiers
+	  and qualifiers and enable checking of declarators
+	  across modules. Creates, on request, header file
+	  consisting of prototypes constructed from function
+	  definitions. Can list user defined types and some
+	  preprocessor #defines. Full documentation in README.CA";
+
+KEYWORDS:       Utility, Cross Reference, Deubgging;
+SYSTEM:         MS-DOS;
+FILENAME:       FUNC_CA.C;
+
+WARNINGS:      "1. Assumes function definitions conform with
+		ANSI standards and have prototype form. See
+		also "Caveats and Restrictions" in README.CA.
+		2. Assumes syntactically correct source files.
+		3. Written and tested using Microsoft QuickC.
+		4. Copyright retained.  See Copyright
+		information in README.CA.";
+
+SEE-ALSO:      EXITS_CA, FUNC_CA.C, GLOB_CA.C, IFDEF_CA.C, INTF_CA.C,
+	       LINKL_CA.C, PARSE_CA.C, TDEF_CA.C, TYPES_CA.C, UTIL_CA.C,
+	       UTLG_CA.C, XRF_CA.C, README.CA,
+	       CA.H, CA.PRJ, CA.RPT, CDECL_CA.H, KEYWORDS.H;
+AUTHORS:       Myron Turner;
+COMPILERS:     Microsoft C;
+
+*/
+
+
+/***************************  C-ACROSS  ***************************/
+			       v. 1.02
+		       Copyright (C) Myron Turner
+
+			  333 Bartlet Ave.
+			  Winnipeg, Manitoba
+			  Canada R3L 0Z9
+			  (204) 284-8387
+
+/*********************************************************************/
+
+
+
+
+
+C-ACROSS (version 1.02):  README.CA                Page 2
+
+
+/*********************************************************************/
+
+   Version 1.02 of C-ACROSS does essentially the same things as Ver 1.0.
+   The major exception to this statement is that it now treats function
+   pointers as described in II.V. and V.1.f.
+   It has, however, undergone many silent changes and improvements,
+   among them, it has:
+   1. Expanded treatment of typedfes;
+   2. Improved algorithm for treating complex declarators;
+   3. Improved algorithm for checking truth values of preprocessor
+      conditions (#if/defs);
+   4. Added processing of preprocessor conditionals to the parsing
+   of function definitions and prototypes, the absence of which in
+   version 1.0 was a weakness;
+   5. Corrected logical flaw in GLOB_CA, which by both good and
+   bad fortune kept things working while it concealed a number of
+   places where there was room for improvement;
+   6. Added several new switches (and deleted one);
+   7. Fixed small glitch which prevented the recording of certain
+   initialized structure/union variables.
+
+   All in all this is a more accurate and more robust version, offering
+   more options.
+
+
+C-ACROSS (version 1.02):  README.CA                Page 3
+
+
+		INDEX TO HEADINGS
+
+PAGE             HEADING
+
+ 5    I.INTRODUCTION
+ 6    II. TYPES OF LISTS PRODUCED
+ 6      II.1.  "I. FUNCTION DECLARATIONS AND GLOBAL VARIABLES"
+ 7      II.2.  "II.  ALPHABETICAL INDEX OF FUNCTIONS & THEIR MODULES"
+ 7      II.3.  "III. FUNCTIONS (LISTED BY MODULE) AND CALLS"
+ 7      II.4.  "IV.  LIST OF FUNCTIONS AND CALLING FUNCTIONS"
+ 7      II.5.  "V.   LISTINGS OF FUNCTION POINTERS"
+ 7      II.6.  "VI.   GLOBAL VARIABLES LISTED ALPHABETICALLY"
+ 7    III. INSTRUCTIONS
+ 7      III.1. DOS INCLUDE VARIABLE
+ 8      III.2. PATH OF C FILES
+ 8      III.3. COMMAND LINE
+ 10     III.4. Using a PROJECT-FILE
+ 10     III.5. EXAMPLE COMMAND LINES
+ 11   IV.  CAVEATS AND RESTRICTIONS
+ 11    IV.1. PREPROCESSOR
+ 11      IV.1.a.  Conditionals (#if. . .#ifdef..)
+ 12     IV.1.b.  User defined types using #define.
+ 12       IV.1.c. Using #define as compared to typedef.
+ 12    IV.2.  FORMATTING
+ 13    IV.3.  REPORT FILE PATHS
+ 13    IV.4.  COMMENTS
+ 14   IV.5. FUNCTION DEFINITIONS:  MULTIPLE LINES
+ 14   V.  READING C-ACROSS REPORTS
+ 14    V.1. Reading the Main Report File.
+ 14      V.1.a.  Functions and Globals by Module.
+ 15      V.1.b. Alphabetical listing of functions and their modules.
+ 15      V.1.c. A listing of functions by module, in the order in whic
+ 15      V.1.d. Alphabetical listing of functions and the functions wh
+ 16      V.1.e. Alphabetical listing of globals, showing type, storage
+ 20      V.1.f  The Listing and Treatment of Function Pointers.
+ 22    V.2.  The SCRNOUT Report.
+ 22   VI.   ERRORS
+ 22   VII.  FILES INCLUDED ON C-ACROSS DISKS
+ 23   VIII. COPYRIGHT
+
+
+
+C-ACROSS (version 1.02):  README.CA                Page 4
+
+
+
+
+I.INTRODUCTION
+
+  1. C-ACROSS is a utility for multiple module programs.  It states
+relationships between functions and produces annotated listings of
+global variables.  Its purpose is not to produce a hierarchical list
+of functions (although it in part does that) but to enable the programmer
+to see across modules in order to cross-check functions and variables.
+C-ACROSS reads source files and (at the user's discretion) include files.
+Therefore, it does not treat library functions, either standard C library
+functions or functions drawn from a library of the user's own. Nor, for
+the same reason, does it read other symbols, i.e., variables,
+embedded in object files.
+   1.a.  The term Global is used in this document to refer to all
+   variables which are characterized by file scope and external storage,
+   i.e. variables declared outside of functions and which are exported
+   to the linker.  This distinguishes them from static variables which
+   have file scope but are known only to the files in which they are
+   defined.  C-ACROSS does, however, list all static variables as
+   well as globals, even when they appear within functions.
+   1.b.  C-ACROSS assumes that function declarations follow the ANSI
+   format:
+		int function_1(int i, char *p)
+		{
+   It may not read the old form reliably:
+		int function (i, p)
+		     int i;
+		     char *p;
+		 {
+   The reason for this is that it does not expect to find declarations
+   between the closed parenthesis and the opening bracket to the function.
+   While C-ACROSS will probably read the function names correctly,
+   it will treat all or some of the formal parameters as globals.
+   The old form will, additionally, not allow for a correct /CDECLARE
+   file (See III.3.b.5).
+
+  2. Some of the kinds of problems which C-ACROSS will help resolve.
+    2.a. In the case of global variables the following declarations
+  will be accepted by the compiler and processed by the linker:
+
+    FILE_1.C
+    int testvariable;
+    int *_far testfarintp;
+    int i;
+
+    FILE_2.C
+    extern double testvariable;
+    extern int *_near testfarintp;
+    int i;
+
+  "The C compiler," as Harbison and Steele point out, "cannot verify 
+  that declarations in different files are consistent. . . .The lint
+  program, usually supplied. . .in UNIX systems, can check multiple 
+
+C-ACROSS (version 1.02):  README.CA                Page 5
+
+  files for inconsistent declarations." (p. 94)  C-ACROSS should 
+  help programmers without access to a lint program check declarations
+  for consistency:  C-ACROSS produces fully analytical descriptions of 
+  both simple and complex variable declarations, listing them in table
+  form for ease of comparison.  (See V.1.e. for further information.)
+
+    2.b. To facilitate function checking, C-ACROSS will produce a listing of
+  prototypes constructed from the actual function declarations themselves
+  which can then be used as a universal header file to check function calls
+  against the actual declaration statements.  This is good protection
+  against certain illegal pointer errors that are otherwise difficult
+  to locate.
+
+    2.c. C-ACROSS shows at a glance which functions call every
+  user-defined function and marks as UNUSED any unused functions.
+  It was for this particular listing that C-ACROSS was initially
+  undertaken:  to make it simple to determine whether a function
+  was being used and where it was being used.
+
+    2.d.  See section II for a fuller account of the kinds of lists
+  C-ACROSS makes; and for further information on the use of the
+  C-ACROSS listings, see section V.
+
+  3. The report produced by C-ACROSS can run into a considerable number of
+  pages:  it takes something like 40 pages to report on C-ACROSS itself,
+  if its switches are set to analyze all include files ( i.e. both C header
+  files and user created .h files).  It greatest usefulness, therefore, is
+  in some form of word-processing environment which can be easily searched.
+  It can very handily be used while programming, for instance with the
+  QuickC editor.
+
+  The report file produced by C-ACROSS has the extension .rpt and the
+  filename of the first file processed, unless otherwise specified at
+  the prompt.
+
+
+II. TYPES OF LISTS PRODUCED
+(See "V. READING C-ACROSS REPORTS" for detailed examples.)
+
+C-ACROSS makes the following lists under the headings in quotation
+marks:
+
+  II.1.  "I. FUNCTION DECLARATIONS AND GLOBAL VARIABLES"
+  A listing of all functions and globals by module and by line number.
+  These function listings report the full function declarations.  The
+  globals are listed as declared both as to type and as to the relevant
+  storage class, i.e. extern or static.  Statics and externs are reported
+  in all instances, whether they are declared outside or inside a
+  function. C-ACROSS recognizes types which are declared both as typdefs and
+  as defines. In looking for typedefs and defines, it can access up to 8 
+  levels of nesting of include files (see III.3.b below), in addition to
+  reporting all user defined types which occur within the modules proper.
+  (This listing is really two lists:  the function declarations followed 
+  by the list of global variables.)
+
+C-ACROSS (version 1.02):  README.CA                Page 6
+
+   1.a.  When the /CDECLARE switch is set, the function declarations
+   are converted to prototypes by the addition of a semi-colon and a
+   file of all prototypes is created.  (See III.3.b.5)
+
+
+  II.2.  "II.  ALPHABETICAL INDEX OF FUNCTIONS & THEIR MODULES"
+  An alphabetical listing of functions showing the modules in
+  which they occur.
+
+  II.3.  "III. FUNCTIONS (LISTED BY MODULE) AND CALLS"
+  A listing of functions by module, in the order in which they
+  appear, and the user-defined functions which they call. It
+  references each call and gives its line number.
+
+  II.4.  "IV.  LIST OF FUNCTIONS AND CALLING FUNCTIONS"
+  An alphabetical listing of functions and the functions which
+  call them.  It lists each instance in which a caller calls.
+  Functions which show no callers are marked as UNUSED.
+
+  II.5.  "V.   LISTINGS OF FUNCTION POINTERS"
+  There are two listings of function pointers.  The first parallels
+  the list described in II.4:  it lists the Global function pointers
+  and the functions from which they are called.  The second listing
+  lists all function pointers, global and local, in the order in
+  which they appear in the source files, as well as denoting which
+  functions they point to at the time of appearance and which functions
+  they are called from.  It also notes when function pointers are
+  assigned but not called.
+
+
+  II.6.  "VI.   GLOBAL VARIABLES LISTED ALPHABETICALLY"
+  An alphabetical listing of all globals, showing type, storage class
+  (extern or static) and module.  In the case of structures and
+  unions, structure and union identifiers are noted.  In the case
+  of defined types, only the defining identifiers are listed, not
+  their original types, i.e. an unsigned char type-defined as UCHAR
+  is listed as UCHAR. Moreover, types defined using #define are
+  categorized as typedef.  The following sample listing illustrates
+  both these points:
+
+       <description of variable>                       <module >
+       typedef buffer[128]                              FUNC_CA
+	       type:  UCHAR
+
+  In the source code, UCHAR could be defined in either of the following
+  two ways.
+		typedef unsigned char UCHAR;
+		#define UCHAR unsigned char
+
+
+
+III. INSTRUCTIONS
+
+  III.1. DOS INCLUDE VARIABLE
+     1.a. If not already set, set DOS Environment INCLUDE variable to
+
+C-ACROSS (version 1.02):  README.CA                Page 7
+
+  the directory where Include files reside; or,
+    1.b. set command line INCLUDE switch to directory where Include
+  files reside (see Command line Switches in #3 below).
+
+  III.2. PATH OF C FILES
+      2.a. The .C source files to be processed will be assumed to be in
+  the current directory unless a path is supplied with each file name.
+      2.a.  The .C extension is assumed.
+
+  III.3. COMMAND LINE
+
+    3.a. Syntax
+     Command Line Syntax:
+     CA [cfile_1 cfile_2 . . cfile_n] [@PROJECT_FILE]
+	[/[INC]LUDE=INCLUDE_DIRECTORY] [/[LEV]EL]=n] [/[NOI]NCLUDE]
+	[/[RED]IRECT] [/[CDE]CLARE] [/UHF] [/[IFD]EFOFF]
+
+     Switch Syntax:
+     /SWITCH[=][VARIABLE]
+       Example:  /INCLUDE=c:\qc25\include
+     There must be no spaces between the front-slash [/] and the
+     name of the switch.  Spaces are acceptable on either side of the
+     equal sign.  Switches are recognized by the first three characters,
+     as shown in the angle brackets in 3b below, although the whole
+     word will be accepted.  Both upper and lower case or any mixture
+     thereof are acceptable as well.
+
+    3.b. Switches
+
+	3.b.1.   INCLUDE  </INC=c:\qc25\include>
+	 1. C-ACROSS looks for C header files [filename.h] in the directory
+	 specified in the DOS Environment space by the INCLUDE variable.
+	 For Microsoft Quick C users this should already be set.  It can be
+	 set from the command line using the DOS SET command:
+	    SET INCLUDE=directoryname; directoryname. . .
+	 It can also be set by using the C-ACROSS INCLUDE command line switch.
+	 At the end of the C-ACROSS session, the DOS environment will
+	 be reset to the INCLUDE variable which was in effect before
+	 C_ACROSS started up.
+	 2. The search for include files uses the Microsoft _searchenv()
+	 function declared in stdlib.h:  the search begins in the current
+	 directory and then proceeds to the paths path specified in the INCLUDE
+	 environment variable.
+	 3. It is possible to specify more than one directory when using
+	 the </INC=> switch; however, there can be no spaces between the
+	 named paths:
+	    /INCLUDE=C:\QC25\INCLUDE;C:\QC25\MYFILES;D:\;D:\TEMP
+	 Spaces are construed by the DOS command line parser as separations
+	 between distinct arguments. Hence the inclusion of spaces will
+	 corrupt the parsing of switches by C-ACROSS.
+
+      3.b.2.   LEVEL  </LEV=n>
+       LEVEL sets an upper limit on the number of nestings of include files
+       which C-ACROSS will read.  The default value = 5; the maximum
+       value = 8;
+
+C-ACROSS (version 1.02):  README.CA                Page 8
+
+
+      3.b 3.   NOINCLUDE </NOI>
+       If NOI is set, C-ACROSS will not read include files.
+       (See 3.b.12).
+
+      3.b.4.   REDIRECT  </RED>
+       Redirects screen output to a file in the current directory named
+       SCRNOUT.RPT. Screen output reports on include files as they are
+       opened and closed (noting file handles in parentheses), lists
+       the defined types in each module, and reports on conditional
+       preprocessor defines.  See V.2 for further details.
+
+      3.b.5.   CDECLARE </CDE>
+       Creates a function declaration file built from the actual
+       function declarations in each module. Placed at the head of
+       each source file in the program,  it makes a convenient header
+       file for checking prototypes and functions calls.  The default
+       extension for this file is .h$$, and the default filename is
+       the name of the first source file to be processed. For example,
+       if the first file in line to be processed is MENU.C, the
+       declarations file will be named MENU.H$$.  An alternate
+       filespec can be entered at the prompt.
+
+      3.b.6.   UHF </UHF>
+       This switch stands for:  User Header Files Only.  Unless this
+       switch is used, C-ACROSS will analyze All header files, those of
+       the compiler as well as those created by the programmer, e.g.
+       the declarations file produced by CDECLARE.  When this switch
+       is used C-ACROSS will ignore all #include files which are placed
+       between angle brackets:   #include <stdio.h>.  It will process only
+       those include files which are enclosed in quotations marks:
+       #include "mydecl.h".  This means that if you are in the habit of
+       placing your own include files in the same directory as those of
+       the compiler and using angle brackets, you will have to change
+       angle brackets to quotation marks.  For general remarks on the
+       rules governing the search for include files, see III.3.b.1.
+       (See III.3.b.12).
+
+      3.b.7.    IFDEFOFF </IFD>
+       This switch will turn off the processing of preprocessor
+       conditional compilation commands during the Second Pass,
+       when global variables are being analyzed.  This means that
+       you will get a reading of all globals referenced in both
+       header and source files, not just those which apply to the
+       currently defined environment for the program.  Thus, if you have
+       defined pointers to both large and small memory models, both
+       sets of pointers will be listed.  (See also IV.1.a.)
+
+     3.b.8      NCX    </NCX>
+       NCX stands for:  No Complex Declarators.  This switch will turn
+       off the processing of complex declarations, both of variables and
+       of function prototypes.  Thus, setting /NCX will have the effect
+       of setting /NCP as well.  (See III.3.b.9. and  III.3.b.12.)
+
+     3.b.9     FPS  </FPS=n>
+
+C-ACROSS (version 1.02):  README.CA                Page 9
+
+       FPS controls the size of the Function Pointer Stack, where
+       n=maximum number of function pointers which can be processed.
+       The default setting is 15.  If you are not using function
+       pointers set this value to 0 for conservation of ram.  Each
+       stack structure requires 66 bytes (small model).
+
+     3.b.10.   SPLIT_REPORTFILE </SPL=n>
+       The main report file can be split into either two or three files,
+       depending on whether n=2 or n=3.  These files will have the default
+       extension of .RPT, but the last three letters of the report file
+       name will be changed to PT2 and PT3, as required.  A file whose
+       starting name is PROGRAM.RPT will have, when split, the name
+       PROGPT2.RPT for a second part, and PROGPT3.RPT for a third part.
+
+     3.b.11.   VERBOSE </VER>
+     This will switch on the reporting in SCREENOUT.RPT of the
+     processing of Booleans used in preprocessor conditionals.
+
+     3.b.12.   Comments on Use of Switches
+       Setting NOI, UHF, NCX, speeds up the program.  However,
+       if globals and/or the return types of functions use implementation
+       defined typedefs or #defines then using NOI or UHF will cause C-ACROSS
+       to lose necessary information.
+
+  III.4.  Using a PROJECT-FILE
+       You may work from a project-file created with a standard ACII
+       text editor.  You can place the name and path of each .C file on
+       a separate line or you can list as many filespecs as you can
+       fit on a line with spaces between them; in the latter case if you
+       need more than one line, go on to the next line. The project-file
+       does not recognize command line switches; these must be placed
+       on the command line after the project-file name.  A project-file
+       name must be preceded by the @ character and there must be no space
+       between the filename and the @ character:  @makefile.ext.
+       Example 1:
+	  file_1
+	  file_2
+	  c:\thatdir\file_3
+	  .
+	  .
+	  .
+	  file_n
+
+       Example 2:
+	  file_1   file_2  file_3   c:\dir2\file_4
+	  file_5   . . .   c:\dir2\file_n
+
+
+  III.5. EXAMPLE COMMAND LINES
+
+	CA file1 file2 c:\qc\file3 /NOI
+     This will treat two files in the current directory and one in c:\qc, and
+     it will ignore include files.
+
+       CA @project_x  /INCLUDE=C:\QC25\INCLUDE
+
+C-ACROSS (version 1.02):  README.CA                Page 10
+
+     This will read the files listed in the project file named project_x and
+     will look for header files in c:\qc25\include.
+
+
+    If no files are listed either on the command line or in a stipulated
+    project file, the program will prompt the user for file name input.
+
+
+
+IV.  CAVEATS AND RESTRICTIONS
+
+ IV.1. PREPROCESSOR
+   C-ACROSS has a limited view of Preprocessor commands.
+
+   IV.1.a.  Conditionals (#if. . .#ifdef..)
+       a.1.1. C-ACROSS accepts only definitions without assignment of
+     value, as in:
+		     #define VARIABLE.
+     It also recognizes #undef.  If a value is defined, it will
+     be assigned a value of 1; if it is not defined or if it has been
+     #undef'd, it will be assigned a value of 0.  This is in keeping
+     with the Microsoft protocol in its .h files for simple inclusion
+     and exclusion of type and structure definitions, globals,
+     mutiply defined functions, etc.
+       a.1.2. C-ACROSS will process both #include and #define statements;
+     however, its processing of the #if, #ifdef group is subject to
+     restrictions.
+	a.1.2.a. It will read #if/#ifdef. . .#endif conditions only to
+     a maximum of three levels of nesting:
+
+	#if defined (LEVEL_1)
+	  #if defined (LEVEL_2)
+	    #if defined (LEVEL_2)
+	    #endif
+	  #endif
+	#endif
+
+	a.1.2.b. It will process only up to two conditions in any single
+     expression.
+	a.1.2.c. It will recognize binary conditionals using the new
+     "#if defined" and "#if !defined" commands; but in processing a
+     binary condition, it will recognize only the && and || operators.
+	a.1.2.d. Finally, C-ACROSS will not read nested sets of parentheses.
+
+	 EXAMPLES.
+	 Accepts:     #if defined (ABC) && !defined (XYZ)
+		      #if !defined (ABC) && !defined (XYZ)
+		      #if defined (ABC) || defined (XYZ)
+		      #ifndef ABC
+
+	 Rejects:     #if defined (ABC) || defined (XYZ) || defined (QRS)
+		      #if (_MSC_VER >= 600)
+		      #elif (defined(M_I86SM) || defined(M_I86MM))
+
+	These last examples are from Microsoft's STDLIB.H.
+
+C-ACROSS (version 1.02):  README.CA                Page 11
+
+
+  IV.1.b.  User defined types using #define.
+   C-ACROSS does not retain a fully "nested" memory of
+   preprocessor defines.  If a #define is defined in terms of a second
+   #define, C-ACROSS does not retain the memory of the first define
+   in its handling of the second.  For example:
+
+	#define UCHAR unsigned char
+	#define UCHAR_PTR   UCHAR *
+	#define UCHAR_PTR_PTR  UCHAR_PTR *
+	UCHAR un_char;
+	UCHAR_PTR  un_charptr ;
+	UCHAR_PTR_PTR  un_charptr_ptr;
+
+   This sequence yields the following analysis (see IV.1.c and II.6 for
+   use of 'typedef'):
+
+	 <description of variable>                       <module >
+	  typedef un_char                                 FUNC_CA
+		 [type:  UCHAR]
+	  typedef un_charptr                              FUNC_CA
+		 [type:  UCHAR_PTR]
+	  typedef un_charptr_ptr                          FUNC_CA
+		 [type:  UCHAR_PTR_PTR]
+
+     In other words, C-ACROSS does not show the underlying lexical
+     structure of these statements, i.e. that un_charptr_ptr is:
+	      unsigned char **un_charptr_ptr;
+     If the type UCHAR_PT_PTR were called XYZ, that is, had no symbolic
+     instancing of what this identifier means, we would have no
+     idea of the signified value behind the signifier XYZ.
+     C-ACROSS is content only to know that a particular identifier is
+     a 'type of' a preceding identifier which has itself been recognized
+     as a type specifier.  (For typedefs of function pointers see V.1.f).
+
+    IV.1.c. Using #define as compared to typedef.
+     As the preceding example indicates C-ACROSS treats
+     all user defined types under the label of 'typedef', i.e.
+     whether they have been defined using #define or using typedef.
+     This did not seem to be a particular liability, since in practice
+     they are essentially two ways of doing the same thing. User
+     defined Modifiers are given modifier treatment as opposed to
+     type treatment. (See II.6. for further explanation and examples.)
+
+ IV.2.  FORMATTING
+   There are a number of formatting limitations, none of which should
+   cause any special trouble.
+
+     2.a.  C-ACROSS assumes 80 column page width.  Lines of more than
+     80 characters used in function declarations may cause errors in
+     pagination of the C-ACROSS .rpt file and will mar the appearance
+     of the page layout.
+
+     2.b.  C-ACROSS does not recognize the back slash character as a
+     line continuator.
+
+C-ACROSS (version 1.02):  README.CA                Page 12
+
+
+     2.c.  In the declaration of variables, it will not recognize type
+     specifiers which do not appear on the same line as at least one
+     variable.  This will be understood:
+
+		    int variable1,
+			variable2,
+			variable3;
+     This will not:
+		    int
+		    variable1,
+		    variable2,
+		    variable3;
+
+     Nor will this:
+		   extern
+		   int i;
+
+     In the latter case i will simply be recorded as int, not as
+     extern int.  A case such as this latter may very well appear in
+     a preprocessor #if, #else situation.  For instance:
+
+		   #if defined (EXTERNAL)
+		   extern
+		   #endif
+		   int i;
+
+     2.d. In declaring variables extern, one should specify the type
+     which is extern: C-ACROSS assumes that unspecified externs are
+     of type int.
+
+ IV.3. REPORT FILE PATHS
+   3.a. C-ACROSS prompts for entry of filenames for its two main reporting
+   modes (CDECLARE and the standard C-ACROSS report).  If enter is pressed 
+   without entry of a new filespec, the report will be written to the path
+   of the filename displayed in brackets at the end of the prompt:
+
+       Report File [D:\TEMP\FG$CA.rpt]: _
+
+   If a new filename is entered, the path will be that of the new file;
+   if no path is specified, the path will be the current directory.
+
+   3.b.  The SCRNOUT.RPT (resulting from /REDIRECT) is always written to
+   the current directory.
+
+ IV.4.  COMMENTS
+   Ostensibly Microsoft QuickC does not accept nested comments.
+   However, it does accept nesting without an error message in
+   certain cases of extended comments. In addition, it does not
+   require a closed comment indicator [*/] in certain blocks of extended
+   comment, when a line within the block begins with an open comment
+   sign [/*]. Because C-ACROSS will give unreliable, even severely
+   truncated results in such cases, it provides an error message when
+   it comes across a possible commenting problem:  this will be printed
+   either to the screen or to the SCRNOUT.RPT.
+
+C-ACROSS (version 1.02):  README.CA                Page 13
+
+
+IV.5. FUNCTION DEFINITIONS:  MULTIPLE LINES
+  5.a.  C-ACROSS recognizes a function definition in part by the open
+  parenthesis.  In the present implementation it looks for that
+  open parenthesis on the first line of a multiple line definition.  It
+  will therefore recognize this:
+
+     struct globals_list *fill_globals_struct (char *token,
+	  struct func *funcptr, int mods[_MAX_MODS], int __type,
+	  int line_num, char storage, FILE * rptfp)
+
+   but not this:
+
+     struct globals_list *fill_globals_struct
+	  (char *token, struct func *funcptr, int mods[_MAX_MODS],
+	  int __type, int line_num, char storage, FILE * rptfp)
+
+  5.b.  There is a limitation on the size of a function definition in
+  terms of how much of it can be displayed in section I of the
+  report.  The length of the definition does not affect the ability
+  of C-ACROSS to recognize and use the function name. The following
+  define is used:
+	   #define BIGBUFSIZE  350 + 261.
+  The program will accept the first 349 bytes plus up to 261 bytes
+  of a final part line, to a maximum of 611 - 1 bytes.  Any bytes
+  exceeding these limits will be truncated.
+
+
+V.  READING C-ACROSS REPORTS
+
+ V.1. Reading the Main Report File.
+
+   V.1.a.  Functions and Globals by Module.
+   Following is the listing created from C-ACROSS source file TDEF_CA.C:
+
+		TDEF_CA.C
+		int get_typedef(char *test)
+		int tdeftest(char *test)
+		int check_types(char *token_ptr, int *typenum)
+		int intypeslist(char *token)
+		int get_defines(char *test)
+		int insert_type(char *token)
+
+		<Include File: stdio.h>
+		 < 103: [extern] [FILE] _iob[]
+			 < near  cdecl >
+		<Include File: ca.h>
+		 <  59: [char] __type_def[__TYPEDEFS][__TYPEDEFSIZE]
+		 <  60: [int] __typedef_count
+		 <  61: [int] __typenum
+		    41: [static] [int] tdef_open
+
+   First the source file name is stated.  Below the source file is
+   a list of function declarations found in the file: these are the
+   actual function declarations drawn from the source file.
+
+C-ACROSS (version 1.02):  README.CA                Page 14
+
+   Then follows the global variables found in the file.  This listing shows
+   that globals were found in two include files, the compiler's STDIO.H and
+   the user's CA.H.  The names of the include files are placed in
+   angle brackets and an open angle bracket ["<"] is placed at
+   the beginning of each line cited from include files.  This practice
+   helps to distinguish citations from include files from those of
+   the source file proper.  The line numbers refer to the files
+   cited.  Here a global stored as an extern is found on line 103
+   of stdio.h.  Three other globals are found in ca.h on lines 59-61.
+   A final global int named tdef_open, stored as static, is found on
+   line 41 of the source file proper.
+
+   V.1.b. Alphabetical listing of functions and their modules.
+   This listing is self-explanatory.  Following are a few lines
+   from C-ACROSS.RPT:
+
+ _modifier. . . . . . . . . . FUNC_CA    argv_cat. . . . . . . . . . .INTF_CA
+ binary_search. . . . . . . . .XRF_CA    check_for_sign. . . . . . . .GLOB_CA
+ check_pointers. . . . . . . .UTLG_CA    check_types. . . . . . . . . TDEF_CA
+
+   V.1.c. A listing of functions by module, in the order in which they
+   appear, and the user-defined functions which they call.
+
+	   162: get_modifiers             (UTLG_CA)
+		    180: check_pointers
+		    182: isolate_token
+		    185: check_types
+		    193: push_usertype
+		    202: _modifier
+
+	   225: push_usertype             (UTLG_CA)
+
+	   265: pop_usertype              (UTLG_CA)
+
+	   295: is_else_if                (UTLG_CA)
+		    314: test_token
+		    320: def_value
+
+   Again, this listing is self-explanatory.  Each function is recorded
+   as it appears in the source file, its line number is stated, and then
+   each function which it calls is listed by line number.  This listing
+   shows two functions which make no calls, push_usertype() at line 225
+   and pop_user_type() at 265.
+
+   V.1.d. Alphabetical listing of functions and the functions which
+   call them.  It lists each instance in which a caller calls.
+
+	data_type_
+	      data_type_
+	      data_type_
+	      data_type_
+	      main_loop
+	      record_variables
+	      vol_const
+	      get_defines
+
+C-ACROSS (version 1.02):  README.CA                Page 15
+
+
+	date_time
+	      make_rptfile
+		 .
+		 .
+		 .
+	unused_function
+	      UNUSED FUNCTION
+
+   This example shows three functions, one of them the hypothetical
+   unused_function(), which is marked as UNUSED.  The first function
+   reveals itself as a recursive function which calls itself three
+   times; this recursivity would also show up in the listings described
+   above in 1.c., which would also provide line numbers:
+
+	    63: data_type_                (FUNC_CA)
+		    102: is_include
+		    164: data_type_
+		    209: data_type_
+		    214: data_type_
+
+   V.1.e. Alphabetical listing of globals, showing type, storage class
+   and module.
+   It is this listing which will prove most useful in helping with
+   the kinds of problems touched on in I.2.a.
+
+      <storage>   <type>   <variable>                             <module>
+			   <modifiers /structs /typedefs>
+
+		  typedef *start_ifdef_stack                      IFDEF_CA
+			 [type:  IF_DEF_STACK]
+			  .
+			  .
+	extern    int     timezone                                 UTIL_CA
+		  < near  cdecl >
+
+		  char    token[81]                                PARSE_CA
+	static    struct  *top                                     GLOB_CA
+			  [struct:  globals_list]
+	static    struct  *top                                     FUNC_CA
+			  [struct:  func]
+	static    struct  *top                                     FUNC_CA
+			  [struct:  func]
+			  .
+			  .
+			  .
+	extern    char    *TYPES[]                                 UTLG_CA
+	extern    char    *TYPES[]                                 GLOB_CA
+	extern    char    *TYPES[]                                 PARSE_CA
+		  char    *TYPES[]                                 FUNC_CA
+	extern    char    tzname[2]                                UTIL_CA
+			  < * near  cdecl >
+
+		  int     user_hfile_only                          INTF_CA
+	extern    int     user_hfile_only                          GLOB_CA
+
+C-ACROSS (version 1.02):  README.CA                Page 16
+
+
+
+     1.e.1. As this listing shows, for ease of reading the alphabeticization
+   occurs in blocks, as here, where t's and u's are separated by a space.
+
+     1.e.2.  First Line of the C-ACROSS variable description.
+   The first line states the storage class, the type, the variable
+   name and, if it is an array, its dimensions.  These details are
+   followed by the module in which the variable appears. The simplest case
+   in the above listing is "token" which has the same form as it would
+   have in a declaration:  it is an 81 byte character array, and it is named
+   only once in the program in the file PARSE_CA.  Similarly,
+   "user_hfile_only" is equally simple, except that it is named in two
+   files, in one of which it is named as an extern.
+
+     1.e.3. Second Line of variable description.
+       1.e.3.a. If the variable is a structure, union,  or typedef the name
+   of the type, union, or structure is given on the second line in square
+   brackets. Thus "top" is used in a number of places as a pointer to a
+   structure. In the first case, it is a pointer to a structure defined by
+   "globals_list."  In the second instance, however, there may be a
+   potential conflict, since it is used twice in the same module to
+   point to structures of the same type; but on checking the file, it
+   is seen that the second instance occurs within a function and has
+   local scope, while the first has file scope.  What this example
+   emphasizes is a fact pointed out above (II.1):  C-ACROSS lists
+   all instances of static variables, whether they have local or
+   global scope.  (For more on the listing of types see IV.1.c and II.6)
+       1.e.3.b. Also on the second line, but in angle brackets, are listed
+   all of the modifiers and qualifiers which define the variable. In
+   addition, any pointer designators which do not appear immediately to
+   the right of the variable are also placed on this line.  Modifiers,
+   qualifiers, and pointer designators are listed in the order in which
+   they appear in the declaration.
+
+     1.e.4.  Normally the extern and static storage class modifiers
+   are the first names in the declaration.  C-ACROSS assumes that this
+   will be the case; if it is not, the storage class will appear on the
+   second line of the description together with other modifiers and
+   qualifiers.  Thus, the declaration:
+
+	     int extern _near ExternSecond;
+
+    yields the following C-ACROSS description:
+
+	   int     ExternSecond                             TEST
+		   < extern  near >
+
+    This is situation is illustrated 1.e.6. below as well in the case of
+    the variable "*hardware_location_0".
+
+      1.e.5. As Harbison and Steele point out, "It is a well-known deficiency
+    in C that defining and referencing occurrences of external variable
+    declarations are difficult to distinguish." (p. 92)  In the case
+    of "*TYPES[]", which is an array of character pointers that is
+
+C-ACROSS (version 1.02):  README.CA                Page 17
+
+    used in four modules, the usefulness of C-ACROSS in distinguishing
+    between defining and referencing externals is apparent.  It is clear
+    that *TYPES[] is defined in PARSE_CA and referenced through the use
+    of the "extern" modifier in the three other modules.
+	1.e.5.a. In Microsoft Quick C, variables with file scope, i.e.
+    declared outside of functions, are all treated as extern whether or not
+    they are given the "extern" modifier.  This could lead to a conflict if
+    the same global name is used unwittingly in two modules for different
+    purposes. C-ACROSS makes any such conflicts immediately apparent by
+    showing where the "extern" modifier has been applied.  The following
+    listing, for instance, could indicate a conflict, since in neither
+    file does "extern" modify "user_hfile_only":
+	      int     user_hfile_only                          INTF_CA
+	      int     user_hfile_only                          GLOB_CA
+
+
+     1.e.6. Reading variables with modifiers and qualifiers.
+    The following style of listing comes from section I of a report file
+    ("FUNCTION DECLARATIONS AND GLOBAL VARIABLES"):
+
+	   7: [int] near_far
+	       < near  * far >
+	   9: [int] test
+	       < far >
+	   101: [int] const_pointer_to_int
+		 < * const >
+	   102: [int] *pointer_to_constant
+		 < const  near >
+	   103: [static] [int] *static_pointer_to_const
+		 < const >
+	   104: [int] *hardware_location_0
+		 < volatile  static  far >
+
+    These variables were declared in the source file as follows:
+
+	int _near * _far near_far;
+	int far test;
+	int * const const_pointer_to_int;
+	const int _near * pointer_to_constant;
+	static const int *static_pointer_to_const;
+	volatile int static _far *hardware_location_0;
+
+      1.e.6.a  Unlike "extern" and "static", which must take their normal
+    positions in a declaration, if they are to appear in their normal place
+      in the C-ACROSS descriptor,  the qualifiers "const" and "volatile"
+      may appear at any legal point in the declaration and will always be
+      placed among the modifiers.  Often, the "const" or "volatile"
+      qualifier may take the first position in a declaration; when this occurs,
+      as noted in 1.e.4., the storage class will be entered on the second
+      line of the C-ACROSS descriptor.  Various cases are illustrated by
+      the examples in example lines 102-104.
+	 1.e.6.b. Some of the ways in which a C-ACROSS description may be
+      of some value in sorting out the meaning a declaration are illustrated
+      in these example lines.
+	    1. A modifier is understood to modify the item to its right.
+
+C-ACROSS (version 1.02):  README.CA                Page 18
+
+       (Microsoft QuickC Compiler: Language Reference, 4.33)  Generally,
+       they can be placed in any order which makes legal sense and in many
+       cases the order does not matter, as is the case with the variable
+       described at line 104. In the simplest cases, as in line 9, the
+       modifiers in the angle brackets represent modifiers which
+       appear to the right of the variable and modify it.
+	   2.  Line 7, however, offers a more complex situation. In the
+       declaration of variables, the pointer designator ("*") normally
+       applies to the item immediately to its right.  For example,
+       *hardware_location_0 is understood to be a pointer, pointing to an
+       int.  In line 7, the pointer symbol applies to the modifier
+       "far", i.e. "near_far" is a far pointer to a near object,
+       an integer.  The pointer symbol associates right and has precedence
+       over the preceding modifier "near"; otherwise we'd have a near
+       pointer to a far object which, of course, cannot exist.
+	  The schematic representation of the C-ACROSS descriptor should
+       help in the recognition of these facts by isolating the modifiers:
+       one can see at a glance that "near_far" is a far pointer,  given
+       that the pointer symbol attaches itself to the name to its
+       right: * far.
+	 3. An analogous kind of reading applies to declarations
+       of const and volatile variables.  (The examples are adapted from
+       Harbison and Steele's discussion of qualifiers.)  Again, the second
+       line of "const_pointer_to_int" shows us at a glance that we have here a
+       constant pointer: < * const >.   On the other hand,
+       "*pointer_to_constant" is a near pointer to a constant object.
+       Unless the pointer symbol is applied directly to the qualifier,
+       in which case we would get "<* const >", the qualifier must
+       qualify the object pointed to.
+
+       1.e.7. The following listing illustrates the handling of types defined
+     by two type specifiers, as in "unsigned long":
+
+       <storage>   <type>   <variable>                             <module>
+
+		  [l]double  LONGdouble                               TEST
+
+		     signed  SIGNEDbyitself                           TEST
+		     char    simple                                   TEST
+		  [s]int     signedint                                TEST
+
+		  [u]char    unsignedCHAR                             TEST
+		  [u]long    UNSIGNED_long                            TEST
+
+     The first character of the modifying type specifier is placed in square
+     brackets before the main specifier.   If "signed" or "unsigned" is
+     used by itself it is represented as in SIGNEDbyitself.
+
+       1.e.8.  Complex Declarations.
+     No attempt is made to break down complex declarations into descriptor
+     form, beyond the first line, where it is shown what storage class and
+     type are indicated in the variable declaration.  Moreover, if a pointer
+     designator appears to the right of the variable, it is removed.  Then,
+     the entire declaration is reprinted on the second line.  When modifiers
+     or qualifiers appear to the left of the first set of parentheses,
+
+C-ACROSS (version 1.02):  README.CA                Page 19
+
+     they are placed on the second line and the rest of the declaration then
+     appears on the third line.  Some examples follow:
+
+     extern    char    charVAR                                  TEST
+		       *(*(*charVAR)()) [10]
+
+	       char    getint                                   TEST
+		       < far >
+		       * (far *getint)(int far *)
+
+	       int     intVAR                                   TEST
+		       < const >
+		       (*intVAR)[5]
+
+       e.8.1    Using the principles laid down in section  V.1.e.6,
+     "intVAR" is clearly a pointer to a constant object or objects:
+     in fact, a pointer to an array of five constant ints.
+       e.8.2   "getint" is a far pointer to a function which returns
+     a pointer; the far modifier in brackets on the second line tells
+     us that the returned pointer is far and the type specifier tells us
+     that it is a far pointer to a char.
+       e.8.3  The first example is a pointer to a function which returns a
+     pointer to an array of 10 elements; each array element is a pointer
+     to a char.  This example and "getint" are found in "Microsoft
+     C Language Reference" (pp. 56, 61).
+
+     V.1.f  The Listing and Treatment of Function Pointers.
+       1.f.1. The following are some examples of declarations of
+       function pointers:
+
+	   double ( *(*vdptr)  (double (*) [3]) )[3];
+	   char *(*np)(char *);
+	   char  *( (*fp) )  (char *) = routine;
+	   typedef void sig_handler(int sig);
+	   sig_handler *(*SHANDLER) (int sig, sig_handler *func) = signal;
+
+     In listing "I. FUNCTION DECLARATIONS AND GLOBAL VARIABLES" (see above:
+     V.1.a) these declarations will be treated as follows:
+
+	6: [double] vdptr
+	   <Fn Ptr> ( *(*vdptr)  (double (*) [3]) )[3]
+	9: [char] np
+	   <Fn Ptr> *(*np)(char *)
+       16: [char] fp
+	   <Fn Ptr> *( (*fp) )  (char *) = routine
+       25: [typedef] SHANDLER
+	   type: sig_handler
+	   <Fn Ptr> *(*SHANDLER) (int sig, sig_handler *func) = signal
+
+    Notice that C-ACROSS recognizes the complex typedef of sig_handler.
+    In the global listings, we would have the following:
+
+
+extern    char    np                                       TEST2FP
+		  <Fn Ptr>
+
+C-ACROSS (version 1.02):  README.CA                Page 20
+
+		  *(*np)(char *)
+	  char    np                                       TEST1FP
+		  <Fn Ptr>
+		  *(*np)(char *)
+
+	  typedef SHANDLER                                 TEST1FP
+		 [type:  sig_handler]
+		  <Fn Ptr>
+		  *(*SHANDLER) (int sig, sig_handler *func) = signal
+
+	  double  vdptr                                    TEST1FP
+		  <Fn Ptr>
+		  ( *(*vdptr)  (double (*) [3]) )[3]
+
+     1.f.2.  C-ACROSS also producess two additional listings for
+    the pointers to functions.
+      f.2.a. The first of these conforms to the listing of functions
+    and calling functions (see II.4. and V.1.d.). It lists all GLOBAL
+    pointers and the functions from which they are called, noting where
+    necessary when the pointer is not used.
+
+	V.   FUNCTION POINTERS AND CALLING FUNCTIONS
+
+
+	<Global Pointers>
+	       <Functions Called From>
+		. . . .
+
+
+	SHANDLER                          [TEST1FP]
+	      UNUSED PTR TO FUNCTION
+
+
+	fp                                [TEST1FP]
+	      main                                (TEST1FP)
+
+	np                                [TEST1FP]
+	      vardub                              (TEST1FP)
+	      routine2                            (TEST2FP)
+
+	testGetinT                        [TEST1FP]
+	      UNUSED PTR TO FUNCTION
+
+	vdptr                             [TEST1FP]
+	      main                                (TEST1FP)
+
+      f.2.b. The second listing lists ALL function pointers, both
+      GLOBAL and LOCAL, in the order in which they appear.  This
+      allows for an overview of the changing values of Global pointers
+      to functions.
+
+	Pointer Name             Function Pointed To        [Calling Function]
+
+	fp                        routine                    [NOT CALLED]
+	SHANDLER                  signal                     [NOT CALLED]
+
+C-ACROSS (version 1.02):  README.CA                Page 21
+
+	test2ptr                  routine                    [NOT CALLED]
+	testfuncT                 FUNCT                      [main]
+	vdptr                     vardub                     [main]
+	np                        routine                    [main]
+	fp2                       to_newfn                   [routine]
+	fp2                       routine                    [vardub]
+	fp2                       routine2                   [to_newfn]
+	fp2                       routine                    [vardub]
+
+
+
+ V.2.  The SCRNOUT Report.
+    For instructions on how to create the SCRNOUT.RPT see III.3.b.4;
+    See also IV.3.b.  This report is created by redirecting screen
+    output to the file SCRNOUT.RPT.  The screen output was originally
+    intended as information while debugging C-ACROSS;  the author
+    thought that some or all of this information might be of use
+    to the user of C-ACROSS.  It now includes error messages as well.
+
+       1.  SCRNOUT.RPT first lists all the include files which are opened
+    and closed during processing:
+
+	   Opened Include File: stdlib.h (9)
+	   Closing Include: stdlib.h (9). Returning to Module: FUNC_CA (8)
+	   Opened Include File: stdio.h (9)
+	   Closing Include: stdio.h (9). Returning to Module: FUNC_CA (8)
+
+    The numbers in parentheses are the file handles.
+
+       2.  It then lists the User defined types found in the module
+    being processed.
+
+       3. During the second pass, when globals are being processed, it
+    reports on whether or not #defines are found, if verbose switch
+    is set.
+
+
+VI.    ERRORS
+       Any errors will be reported in the SCRNOUT.RPT.  Most errors
+       cause termination of the program, insofar as they will most
+       likely be caused by missing information needed for further
+       processing.
+
+
+VII.  FILES INCLUDED ON C-ACROSS DISKS
+
+     <File>                         <Purpose/contents>
+
+1.  FUNC_CA             ... Parses function definitions; First Pass
+2.  GLOB_CA             ... Parses and prints globals: Second Pass
+3.  IFDEF_CA            ... Handles preprocessor defines
+4.  INTF_CA             ... User interface module:  contains main()
+5.  LINKL_CA            ... Creates linked lists of functions and
+			  globals and prints lists of functions
+			  derived from linked lists
+
+C-ACROSS (version 1.02):  README.CA                Page 22
+
+6.  PARSE_CA            ... Third Pass function parser: tokenizes file
+7.  TDEF_CA             ... User type functions
+8.  TYPES_CA            ... Main functions used for parsing types,
+			    modifiers, and qualifiers
+9.  UTIL_CA             ... Utility functions for FUNC_CA and file
+			    handling
+10.  UTLG_CA            ... Utility functions used in parsing globals
+11.  XRF_CA             ... Main loop for Third Pass (xrf), in which
+			     cross references of functions are established
+			     to create calls from and calls to lists
+12. EXIT_CA             ... Exit on error routines
+13. README.CA           ... Instructions
+14. CDECL_CA.H          ... Declarations of all functions:  created
+			    using /CDECLARE switch
+15. CA.H                ... Structure and variable declarations, defines
+16. KEYWORDS.H          ... More declarations and defines relating to
+			    key words, modifiers, type specifiers
+17. CA.PRJ              ... The project file for creating a report
+			    file for C-ACROSS
+18. CA.RPT              ... A full report file on C-ACROSS, including
+			    Microsoft and user header file results
+19. CA.MAK              ... Microsoft make file for C-ACROSS
+			    C-ACROSS needs stack of 3000 bytes
+			    or greater.
+20. SCREENOUT.RPT       ... See V.1. above: second report file.
+21. CA.EXE              ... The C-ACROSS program file.
+
+VIII.  COPYRIGHT
+      C-ACROSS is copyright (C) by MYRON TURNER, who retains the
+      rights to this (version 1.02) and all subsequent versions.
+
+  The following permissions are granted:
+
+  1. Permission is granted to The C Users' Group to distribute
+  C-ACROSS, without royalty or other compensation, and to charge
+  their normal distribution fee for such distribution.
+
+  2. The C Users' Group may distribute C-ACROSS for non-commercial
+  personal use.
+
+  3. The phrase "non-commercial" in 2 above excludes use in the
+  development of software for sale as well as redistribution in
+  whole or part for purposes of sale.
+
+  4.  For commercial use of C-ACROSS (version 1.02) written permission
+  is required from the author of C-ACROSS or his representative(s).
+  A fee will not be required for the commercial use of C-ACROSS
+  (version 1.02); however, the letter of permision will set out the
+  terms which will govern its commerical use.
+
+
+
+C-ACROSS (version 1.02):  README.CA                Page 23
+
+  5.  Permission is granted to the non-commercial, personal user to
+  make changes in C-ACROSS but not to distribute it with those changes
+  without consulting the author or his representative(s).
+
+  6.  Points 5 and 6 above are aimed at helping the author to keep
+  track of C-ACROSS so that he may incorporate any changes and fixes
+  into future versions of the program.  He would be grateful for any
+  comments concerning the use and usefulness of C-ACROSS, as well
+  as fixes.  Please write to the address given at the head of this file.
+  It would be helpful to receive copies of the C source files which
+  result in any bugs.
+

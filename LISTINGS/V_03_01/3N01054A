@@ -1,0 +1,97 @@
+#include <stdio.h>
+#include <string.h>
+#include <dos.h>
+
+struct video {
+   int segment;
+   int type;
+   int iscolor;
+   int mode;
+   int page;
+   int rows;
+   int cols;
+};
+
+void initvideo(void);
+void getvconfig(struct video *);
+
+/*
+** descriptors for each display code starting with code 00
+*/
+char *types[] = {
+   "[00] No display",
+   "[01] Monochrome Display Adapter (MDA) w/mono display",
+   "[02] Color Graphics Adapter (CGA) w/color display",
+   "[03] <reserved>",
+   "[04] Enhanced Graphics Adapter (EGA) w/color display",
+   "[05] Enhanced Graphics Adapter (EGA) w/mono display",
+   "[06] Professional Graphics System (PGS) w/color display",
+   "[07] Video Graphics Array (VGA) w/analog mono display",
+   "[08] Video Graphics Array (VGA) w/analog color display",
+   "[09] <reserved>",
+   "[10] <reserved>",
+   "[11] Multi-Color Graphics Array (MCGA) w/analog mono display",
+   "[12] Multi-Color Graphics Array (MCGA) w/analog color display",
+   "Unknown display combination code",
+};
+
+struct video v;
+int color = 0x07;
+
+/*
+** writes a string at the specified location
+** by writing directly to video memory
+*/
+void vwrite(char *str,int row,int col,int color)
+{
+   char far *screen;
+
+   FP_SEG(screen) = v.segment;
+   FP_OFF(screen) = (((row - 1) * v.cols) + (col - 1)) * 2;
+
+   while(*str) {
+      *screen++ = *str++;
+      *screen++ = (char)color;
+   }
+} /* vwrite */
+
+void main(int argc, char *argv[])
+{
+   int blkwht = 0;
+   char buffer[81];
+
+   /* force black and white if /b option was given */
+   if(argc)
+      if(!stricmp(argv[1],"/B"))
+         blkwht = 1;
+
+   /* detect host display type */
+   initvideo();
+
+   /* fill our video data structure */
+   getvconfig(&v);
+
+   if(v.iscolor && !blkwht)
+      color = 0x1F;
+
+   /* print out values */
+   sprintf(buffer,"v.segment : %04X",v.segment);
+   vwrite(buffer,3,1,color);
+   sprintf(buffer,"v.type    : %s",
+      (v.type >= 0 && v.type <= 13) ? types[v.type] : types[13]);
+   vwrite(buffer,4,1,color);
+   sprintf(buffer,"v.iscolor : %d",v.iscolor);
+   vwrite(buffer,5,1,color);
+   sprintf(buffer,"v.mode    : %d",v.mode);
+   vwrite(buffer,6,1,color);
+   sprintf(buffer,"v.page    : %d",v.page);
+   vwrite(buffer,7,1,color);
+   sprintf(buffer,"v.rows    : %d",v.rows);
+   vwrite(buffer,8,1,color);
+   sprintf(buffer,"v.cols    : %d",v.cols);
+   vwrite(buffer,9,1,color);
+
+} /* main */
+
+
+

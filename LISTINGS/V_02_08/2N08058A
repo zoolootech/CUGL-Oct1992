@@ -1,0 +1,79 @@
+/*
+	An extension of the minimal standard that
+	increases the Length of the sequence from
+	(2^31 - 2) to about (2^62).
+*/
+
+static long seed1;
+static long seed2;
+
+#define PRIME1	2147483563L
+#define ROOT1	40014L
+#define QUOT1	53668L		/* PRIME1 / ROOT1 */
+#define REMN1	12211L		/* PRIME1 % ROOT1 */
+#define PRIME2	2147483399L
+#define ROOT2	40692L
+#define QUOT2	52774L		/* PRIME2 / ROOT2 */
+#define REMN2	3791L		/* PRIME2 % ROOT2 */
+
+/*
+ * Define type ldiv_t, function ldiv() to match
+ * Microsoft C 5.1 library:
+ */
+
+typedef struct {
+	long quot;
+	long rem;
+} ldiv_t;
+
+ldiv_t ldiv(long int numer, long int denom)
+{
+	ldiv_t temp;
+
+	temp.quot = numer / denom;
+	temp.rem = numer % denom;
+	return temp;
+}
+
+void extsrand(long lseed1, long lseed2)
+{
+extern long time();
+
+	seed1 = lseed1 & 0x7FFFFFFF;
+	seed2 = lseed2 & 0x7FFFFFFF;
+	while ( (seed1 == 0L) || (seed2 == 0L) ) {
+		seed1 = time((long*)0) % PRIME1;
+		seed2 = time((long*)0) % PRIME2;
+	}
+}
+
+long extrand()
+{
+ldiv_t temp;
+long test;
+
+	if ((seed1 == 0L) || (seed2 == 0L))
+		extsrand(0L, 0L);
+
+	temp = ldiv(seed1, QUOT1);
+	test = ROOT1 * temp.rem - REMN1 * temp.quot;
+
+	if (test > 0L) {
+		seed1 = test;
+	} else {
+		seed1 = test + PRIME1;
+	}
+
+	temp = ldiv(seed2, QUOT1);
+	test = ROOT2 * temp.rem - REMN2 * temp.quot;
+
+	if (test > 0L) {
+		seed2 = test;
+	} else {
+		seed2 = test + PRIME2;
+	}
+
+	/* mask seed1 with 0xFFFF0000 for full range */
+	return(((seed1 <  1) & 0x7FFF0000)
+		 | ((seed2 > 14) & 0x0000FFFF));
+}

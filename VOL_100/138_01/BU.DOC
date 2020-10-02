@@ -1,0 +1,302 @@
+
+
+Ian Ashdown
+byHeart Software
+2 - 2016 West First Avenue
+Vancouver, B.C. V6J 1G8
+Tel: (604) 738-5927
+
+
+
+
+
+	    Archiving Files With CP/M-80 and CP/M-86
+	    ----------------------------------------
+
+		  Copyright 1984 Ian E. Ashdown
+			byHeart Software
+
+
+
+
+
+*****************************************************************
+*								*
+* NOTE: This manuscript was published in the January 1985 issue *
+*	of Doctor Dobb's Journal. It may be reproduced for	*
+*	personal, non-commercial use only, provided that the	*
+*	above copyright notice is included in all copies.	*
+*	Copying for any other use without previously obtaining	*
+*	the written permission of the author is prohibited.	*
+*								*
+*****************************************************************
+
+
+
+	If you use CP/M-80 Versions 2.x or CP/M-86, you know the
+problem well - sitting there at two in the morning trying to
+remember which files you worked on so you can copy them to a
+backup disk. If you have a hard disk in your system, the problem
+can be an acute pain - which of several hundred files did you
+update or otherwise modify during your marathon programming
+session?
+
+	The ideal solution would be to have a utility program
+that somehow determines which files have been changed on a disk
+and automatically copy them to a backup disk. This procedure,
+known as "incremental backup", is superior by far to the usual
+methods of either relying on your memory (at two in the morning?)
+or copying the entire disk.
+
+	Although Digital Research's documentation for their
+CP/M-80 and CP/M-86 operating systems give no indication that a
+file is in any manner marked when it is written to or renamed, it
+is nevertheless possible to implement an incremental backup
+utility exactly as described above - the "ideal solution". BU is
+one example of such an implementation.
+
+
+THEORY AND PRACTICE
+-------------------
+
+	For a detailed explanation of the inner workings of BU,
+you should read the comments accompanying the source code. These
+have been written to give even the novice C programmer a clear
+understanding of what is going on each step of the way. What
+follows is a general description that covers only the salient
+features of BU from a user's viewpoint.
+
+	The CP/M-80 Version 2 Interface Guide's description for
+BDOS Service 30 (Set File Attributes) states that the file
+attribute bit t3-prime is "reserved for future system expansion".
+However, if you use a disk utility to set it true in the file's
+directory entry, you will find that the BDOS resets it to false
+(zero) whenever the directory entry is changed. Since this means
+that the file has been opened, written to and closed (or else
+renamed) by the BDOS, t3-prime is apparently an undocumented
+attribute bit that indicates when a file has been updated.
+
+	This behaviour is not an artifact of some other process
+that cannot be relied on - DRI added a very similiar feature to
+their multiuser MP/M 2 operating system called the "Archive"
+attribute. The version of PIP.COM supplied with MP/M 2 features
+an "A" option, which causes PIP to copy only those files that
+have their Archive bits set false. After copying each file, PIP
+sets the bit true. It seems logical then that in writing CP/M-80
+v2.x and CP/M-86, DRI intended to rewrite its version of PIP to
+include an "A" option, but for whatever reason never got around
+to doing so. This leaves the user to come up with a utility that
+takes advantage of this orphaned attribute.
+
+	There are a variety of such utilities available,
+including one in the public domain and at least two commercial
+products. What BU has to offer is that it is written in C, thus
+presenting you with the opportunity to easily customize it to
+your particular needs. The source code has been profusely
+commented for precisely this reason.
+
+	BU accepts command lines of the following form:
+
+		BU x[:afn] y [-AFHQSn]
+
+		where x = drive name of disk to be backed up
+		      y = drive name of backup disk
+
+		and the optional arguments are:
+
+		     -A   All files, regardless of status
+		     -F   Fast copy (without verification)
+		     -H   Hard disk (files may be split)
+		     -Q   Query each file before backup
+		     -S   System attribute copied to backup
+		     -n   Backup USER 'n' files only (0-31)
+		     afn  Any legal CP/M ambiguous fileref
+			  (can only be used with -n option)
+
+	If the above is a bit confusing, some examples may help
+in explaining the various options:
+
+    BU a b		  Copy updated files in all user areas
+			  from drive A: to drive B:
+    BU c a -f		  Copy updated files in all user areas
+			  from drive C: to drive A: without
+			  verification of copied files
+    BU a:file.typ m -5	  Copy file A:FILE.TYP (user area 5) to
+			  same user area on drive M:
+    BU a:file*.t? c -0q	  Copy any files in user area 0 matching
+			  ambiguous file reference A:FILE*.t? to
+			  the same user area on drive C:. The
+			  operator is queried before each file is
+			  copied - answering 'y' or 'Y' for "Yes"
+			  results in the file being archived;
+			  anything else results in the file being
+			  skipped.
+    BU b a -ah		  All files from all user areas are
+			  copied from drive B: to drive A:. If
+			  BU runs out of backup disk space while
+			  copying a file, the file will be split
+			  across two disks.
+    BU a b -a -s	  All files from all user areas are
+			  copied from drive A: to drive B:. Those
+			  files with the System attribute set are
+			  copied as System files to drive B:.
+			  (Note that the dash options can be
+			  separated.)
+
+	A fair amount of the code involved in BU has to do with
+defensive programming - always assume that the user will make a
+mistake. The command line is validated as thoroughly as possible.
+Any errors detected are displayed with an appropriate message,
+along with the above explanation of what command lines are valid.
+
+	Once in operation and assuming no options have been
+selected or ambiguous file reference specified, the program will
+scan the directory of the disk in drive "x", note which files
+have been changed since the last time BU was run on that disk,
+and then copy only those files to the disk in drive "y". Existing
+files with the same fileref and user number on the backup disk
+are automatically erased.
+
+	Since the new files are backup copies, each one is read
+after it is written and verified character by character with the
+original file.  All available memory is used to buffer the data
+for disk read and write operations so that BU can copy and verify
+as quickly as possible. Once the new file has been fully
+verified, its file attributes are set to "directory" (DIR) and
+"read-only" (R/O) to ensure that it can be displayed in a
+directory listing of the backup disk, and that it cannot be
+accidentally erased.
+
+	If the combined size of the files to be backed up exceeds
+the available space on the backup disk, BU will take one of two
+actions, depending on whether or not the -H option has been
+selected. In the default mode, BU will stop when it runs out of
+disk space and erase the current partially-written backup file.
+It will then ask the operator to insert a fresh disk in the
+backup drive. When this is done, BU will continue to copy files
+to the new disk.
+
+	The -H option is intended primarily for use with hard
+disks, where the size of the files may exceed the capacity of the
+backup disks. When BU runs out of disk space with this option
+active, it will close the current partially-written backup file
+and set its attributes to DIR and R/O, then ask the operator to
+insert a fresh disk in the backup drive. When done, BU will open
+a sequentially-numbered fileref (e.g. - "FILE.TYP" would become
+"FILE--01.TYP") and continue writing the current file to this new
+backup file from where it left off. The file will in effect be
+split across two or more backup disks, with no wasted disk space.
+
+	Reassembling these split files is quite simple. In
+principle, you need only open the first file for write access,
+use "lseek()" to find its end, open the second file for read
+access, and then append it to the first file. The C code required
+to do this is left to the reader as an exercise. Alternatively,
+you can always use the concatenation feature of DRI's PIP.COM
+utility. The command line would be:
+
+	     PIP rebuilt.fil=first.fil,second.fil
+
+The disadvantage of this approach is that all three files must be
+on-line at the same time, which in a two-drive system means
+shuffling one of them to the destination disk before you can
+concatenate and rebuild your original file.
+
+	What BU does not address is archival file maintenance
+procedures. If it is used with a dual floppy drive system and
+every working disk has its own backup copy, there is no problem.
+At the end of your programming session, simply insert the backup
+disk in the second drive, type "BU x y" and every changed files
+is automatically updated. The backup disk becomes a duplicate of
+the working disk (although you do have to manually erase files
+that were deleted from the working disk).
+
+	The problem arises when you want to maintain backup
+copies of hard disk files. Depending on whether or not the -H
+option is used, files will be on different disks and possibly
+split across disks after running BU. When the files are later
+changed again, it may happen that BU will archive them on
+different disks than the backup copies. BU automatically erases
+existing files with the same file reference and user number on
+the backup disk before copying a file, but it can't do that when
+the file is on another disk again. This leaves the responsibility
+of deleting (or otherwise archiving) obsolete versions of files
+to the user.
+
+	It is a very simple matter to extend BU so that a disk
+identifier file is added to each backup disk as it is entered.
+This would be especially useful for multiple floppies used to
+archive hard disk files, where the identifier files could be
+sequentially numbered. However, since disk naming and storage
+procedures are very much a matter of individual taste, this has
+been left to the reader to implement.
+
+
+ENTYMOLOGICAL NUISANCES
+-----------------------
+
+	BU will not properly handle random access files that have
+been created with unwritten records or unallocated blocks or
+extents. Since it uses the BDOS sequential read service to access
+the files, it will stop reading random access files at the first
+unallocated block or extent. Happily, there are very few programs
+around that behave in such an unfriendly manner. (This is perhaps
+because most file copy utilities will balk at such files as
+well.)
+
+	Speaking of file copy utilities, there are a few
+available that under certain circumstances will write a file
+without resetting its Archive attribute. One of these, oddly
+enough, is DRI's own PIP.COM. If there is a file on a disk that
+has its Archive and Read-Only attribute bits set true, you can
+copy another file with the same fileref and user number to the
+disk with PIP only by using the "W" option. However, the BDOS
+will not reset the Archive attribute bit afterwards, and so BU
+will be unable to recognize the file as changed. The only
+solution here is to be aware of the problem, and if necessary
+perform a manual file backup immediately after using the utility.
+
+	BU accepts ambiguous file references only when a user
+number is also specifed. In one sense, this is an aspect of the
+user interface design - a user should normally be allowed access
+to files in one user area only, especially when operations using
+ambiguous filenames are being performed. More truthfully, the
+BDOS Services 17 (Search for First File) and 18 (Search for Next
+File) will not accept file references for all user areas. They
+either search for all files in all user areas (including erased
+files), or they search a particular user area only. The only way
+BU could find an unambiguous or ambiguously-specified file in all
+user areas would be to search the disk directory 32 times!
+
+
+SUGGESTED ENHANCEMENTS
+----------------------
+
+	For those of you with the ambition and the time, BU can
+be extended to become a complete file archiving utility. Assuming
+that your system has a hard disk, BU could maintain a catalog
+file that records the fileref and version number (without erasing
+previous versions), any pertinent file statistics such as size in
+kilobytes and assigned file attributes, the backup disk
+identification number, the time and date the backup copy was
+made, and the operator who made the backup. Even if you don't own
+a hard disk, you could maintain a similar sort of file on each
+backup disk for record-keeping purposes. As a starting point for
+such a program, you might consider the "Archive" program that is
+developed in Kernighan & Plauger's book "Software Tools"
+(Addison-Wesley, ISBN 0-201-03669-X). The program is presented in
+source code form using RATFOR, which for all practical purposes
+is a variation on a theme of the C programming language.
+
+	So there you have it: a fully functional incremental
+backup utility for CP/M-80 and CP/M-86. Why DRI did not include
+an Archive option with PIP for these operating systems after
+going to the trouble of designing all the necessary features into
+them is a matter for future historians of computer software to
+ponder. In the meantime, I hope you enjoy using BU.
+
+
+		      - End of Manuscript -
+and assigned file attributes, the backup disk
+identification number, the time and date the backup copy was
+ma

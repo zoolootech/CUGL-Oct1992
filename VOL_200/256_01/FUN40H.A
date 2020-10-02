@@ -1,0 +1,54 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     FUN40H.A     Write Handle
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          unsigned FUN40H(handle, buf, num, &_carryf)
+;	-----           int handle;
+;	                char *buf;
+;	                unsigned num;  (number of bytes to write to file)
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC FUN40H_
+
+FUN40H_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the handle
+	mov	dx,[bp+6]	; address of the buffer
+	mov	cx,[bp+8]	; number of bytes to write to file
+	mov	ah,40h	; the Function No.
+	int	21h
+	jc	FUN40H_ERROR
+	jmp	FUN40H_QUIT
+FUN40H_ERROR:
+	mov	si,[bp+10]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+FUN40H_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

@@ -1,0 +1,45 @@
+#include <dos.h>
+#include <string.h>
+#include <stdlib.h>
+#include <malloc.h>
+/*
+******************************************************************
+Title:      TSR.C - DOS Component of TSR Interface
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /AS /Zi tsr.c
+******************************************************************
+*/
+void   (interrupt far *OldIntHandler)();
+
+void (interrupt _far IntHandler)(int es, int ds, int di, int si, int bp,
+                                 int sp, int bx, int dx, int cx, int ax,
+                                 int ip, int cs, int flags)
+{
+    static char _far *buffer = {"These are the contents of the TSR buffer!"};
+
+    if (ax != 0xBEEF)                       /* If Multiplex Handle doesn't */
+        _chain_intr(OldIntHandler);         /*  match ... forward the interrupt */
+
+    dx = FP_SEG(buffer);                    /* DX:AX = Buffer address */
+    ax = FP_OFF(buffer);
+    cx = _fstrlen(buffer);                  /* CX    = Max. buffer length */
+}
+
+int main(int argc, char *argv[])                /* Here's the TSR format: */
+{                                               /*         CODE        */
+    extern unsigned end;                        /*      STATIC DATA    */
+    unsigned _far *upperLimit;                  /*         STACK       */
+    unsigned paragraphs, actual, stackSize;     /*         HEAP        */
+
+    upperLimit = &end;                          /* top of static data */
+    stackSize  = ((stackavail() + 2048) / 2048) * 2048; /* compute stack size */
+    paragraphs = (FP_SEG(upperLimit) - _psp) + (FP_OFF(upperLimit) + stackSize) / 16 + 1;
+    OldIntHandler = _dos_getvect(0x2F);   /* get old INT 2Fh vector */
+    _dos_setvect(0x2F, IntHandler);       /* set INT 2Fh vector to our handler */
+	_dos_setblock(paragraphs, _psp, &actual);   /* relinquish unused heap */
+    _dos_keep(0, paragraphs);                   /* terminate & stay resident */
+    return(-1);                                 /* error must have occurred */
+}
+

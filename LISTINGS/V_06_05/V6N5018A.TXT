@@ -1,0 +1,303 @@
+/***************************  yref2.y  ****************************/
+/*  This version expands the grammar rules so that a more involved
+    C source file can be successfully parsed to find identifiers,
+    their line number locations, and where they are declared. Use
+    "yylex.c" as a test input file, then experiment by making changes 
+    in both the input file and the grammar rules. */ 
+
+      /* Beginning of declarations section */
+%{
+         int line_num = 1;
+         char identifier[32];
+%}
+
+      /* Union defined for sending multiple data types from
+         yylex() to yyparse() via the reserved internal yacc
+         variable yylval. */
+%union
+    {
+    int  char_value;       /* value of single characters */
+    char *str_value;       /* value of strings */
+    };
+
+%token   <str_value> SC_SPEC, TYPE_SPEC, QUAL_SPEC, STRUCT_UNION
+%token   <str_value> KEYWORD, IDENTIFIER, ENUM
+
+%token   <char_value> STRING CHAR_CONST PRE_PROC OPERATOR NUM_CONST
+
+%left ','
+%right '='
+%left  OPERATOR
+%left '*'
+%left '(' ')' '[' ']' '.'
+%start   source_file
+
+%%    /* End of declarations, beginning of grammar rules section. */
+
+
+/*  User-defined grammar rules and associated actions go here.  
+    The actual rules presented here are a partial specification 
+    of the C language grammar, based on the ANSI X3J11 draft 
+    (November 9, 1987, Appendix A) for the "external definitions"
+    and "declarations" rules, and on K&R (1978, pages 214 to 219)
+    for the "statements" and "expressions" rules. Note that the 
+    rules presented here have been freely adapted, and often differ
+    substantially from the original sources cited.  */ 
+
+/* external definitions */
+source_file: /* nothing */
+         | external_declaration
+                { printf("\n\t\t\t*** Back to top level ***\n"); }
+         | source_file external_declaration
+                { printf("\n\t\t\t*** Back to top level ***\n"); }
+         ;
+
+external_declaration:
+           function_definition
+         | declaration
+         ;
+
+function_definition:
+           declarator compound_statement
+                { printf("\n\t*** End of function definition -- Type 1 ***"); }
+         | declarator declaration_list compound_statement
+                { printf("\n\t*** End of function definition -- Type 2 ***"); }
+         | declaration_specifiers declarator compound_statement
+                { printf("\n\t*** End of function definition -- Type 3 ***"); }
+         | declaration_specifiers declarator declaration_list compound_statement
+                { printf("\n\t*** End of function definition -- Type 4 ***"); }
+         ;
+ 
+/* Declarations */
+declaration:
+           declaration_specifiers ';'
+         | declaration_specifiers init_declarator_list ';'
+         ;
+
+declaration_specifiers:
+           storage_class_specifier 
+         | storage_class_specifier declaration_specifiers
+         | type_specifier
+         | type_specifier declaration_specifiers
+         | type_qualifier
+         | type_qualifier declaration_specifiers
+         ;
+
+init_declarator_list:
+           init_declarator
+         | init_declarator_list ',' init_declarator
+         ;
+
+init_declarator:
+           declarator
+         | declarator '=' initializer
+         ;
+
+initializer:
+           expression
+         | '{' initializer_list '}'
+         | '{' initializer_list ',' '}'
+         ;
+
+initializer_list:
+           initializer
+         | initializer_list ',' initializer
+         ;
+
+storage_class_specifier:
+           SC_SPEC
+         ;
+
+type_specifier:
+           TYPE_SPEC
+         ;
+
+type_qualifier:
+           QUAL_SPEC
+         ;
+
+declarator:
+           direct_declarator
+         | pointer  direct_declarator
+                { printf(" (Pointer)"); }
+         ;
+
+direct_declarator:
+           IDENTIFIER
+                { printf("\n\tLine %3d: %s  Basic declarator", line_num, $1); }
+         | '(' declarator ')'
+                { printf(" -- Parenthesized declarator"); }
+         | direct_declarator '[' ']'  %prec '*'
+                { printf(" --  Array declarator 1"); }
+         | direct_declarator '[' constant ']' %prec '*' /* Variant */
+                { printf(" --  Array declarator 2"); }
+         | direct_declarator '(' parameter_type_list ')' %prec '*'
+                { printf(" --  Function declarator 1"); }
+         | direct_declarator '(' ')' %prec '*'
+                { printf(" --  Function declarator 2"); }
+         | direct_declarator '(' identifier_list ')' %prec '*'
+                { printf(" --  Function declarator 3"); }
+         ;
+
+pointer:
+           '*'
+         | '*' type_specifier_list
+         | '*' pointer
+         | '*' type_specifier_list pointer
+         ;
+
+type_specifier_list:
+           type_specifier
+         | type_specifier_list type_specifier
+         ;
+
+parameter_type_list:
+           parameter_list
+                { printf("\n\tLine %3d: ANSI Function Prototype", line_num); }
+         ;
+
+parameter_list:
+           parameter_declaration
+         | parameter_list ',' parameter_declaration
+         ;
+
+parameter_declaration:
+           declaration_specifiers declarator
+         | declaration_specifiers 
+         | declaration_specifiers abstract_declarator
+         ;
+
+abstract_declarator:
+           pointer
+         | direct_abstract_declarator
+         | pointer direct_abstract_declarator
+         ;
+
+direct_abstract_declarator:
+           '(' abstract_declarator ')'
+         | '[' ']'
+         | '[' constant ']' 
+         | direct_abstract_declarator '[' ']'
+         | direct_abstract_declarator '[' constant ']' 
+         | '(' ')'
+         | '(' parameter_type_list ')'
+         | direct_abstract_declarator '(' ')'
+         | direct_abstract_declarator '(' parameter_type_list ')'
+         ; 
+
+identifier_list:
+           IDENTIFIER
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $1); }
+         | identifier_list ',' IDENTIFIER
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $3); }
+         ;
+
+/* Statements */
+statement:
+           compound_statement
+         | expression ';'
+         | KEYWORD '(' expression ')' statement
+         | KEYWORD for_construct statement
+         | KEYWORD statement
+         | KEYWORD constant ':' statement
+         | KEYWORD ':' statement
+         | KEYWORD IDENTIFIER ';'
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $2); }
+         | IDENTIFIER ':' statement
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $1); }
+         | ';'
+         ;
+
+compound_statement:
+           '{' '}'
+         | '{' declaration_list '}'
+         | '{' statement_list '}'
+         | '{' declaration_list statement_list '}'
+         ;
+
+declaration_list:
+           declaration
+         | declaration_list declaration
+         ;
+
+statement_list:
+           statement
+         | statement_list statement
+         ;
+
+for_construct:
+           '(' ';' ';' ')'
+         | '(' expression ';' ';' ')'
+         | '(' ';' expression ';' ')'
+         | '(' ';' ';' expression ')'
+         | '(' expression ';' expression ';' ')'
+         | '(' ';' expression ';' expression ')'
+         | '(' expression ';' expression ';' expression ')'
+         ;
+
+/* Expressions */
+expression:
+           primary_expression
+         | '*' expression   %prec '*'
+         | OPERATOR expression
+         | expression OPERATOR
+         | expression OPERATOR expression
+         | expression '=' expression
+         | expression '=' '=' expression  %prec '*'
+         | expression '*' expression  %prec OPERATOR
+         | expression ',' expression
+         ;
+
+primary_expression:
+           IDENTIFIER
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $1); }
+         | constant
+         | STRING
+         | '(' expression ')'
+         | primary_expression '(' ')'
+                { printf("\n\t\t\t ** End of function call **"); }
+         | primary_expression '(' expression ')'
+                { printf("\n\t\t\t ** End of function call **"); }
+         | primary_expression '[' expression ']'
+                { printf("\n\t\t\t ** End of array reference **"); }
+         | primary_expression '.' IDENTIFIER 
+                { printf("\n\tLine %3d: Identifier: %14s", line_num, $3); 
+                  printf("\n\t\t\t ** End of structure reference **"); }
+         ;
+
+constant:
+           CHAR_CONST
+         | NUM_CONST
+         ;
+
+
+%%    /* End of grammar rules section, beginning of program section. */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <string.h>
+
+#include "yylex.c"
+
+/* Required by yacc */
+int yyerror( message)
+
+         char *message;
+{
+         printf("\n\tLine %d, %s", line_num, message);
+}
+
+/* Simplest version of main() -- yyparse continuously calls yylex to 
+   read input until yylex returns zero at end of file.  Main() will 
+   usually perform additional tasks, such as handling command line 
+   arguments, opening input streams, error handling, etc. */ 
+
+main()
+{
+      /* yyparse is a finite state machine generated by yacc
+         based on the user's grammar rule and action sequences. */
+
+         yyparse();
+}
+

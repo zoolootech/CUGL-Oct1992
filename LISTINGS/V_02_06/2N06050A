@@ -1,0 +1,901 @@
+/**********************************************************
+	PURPOSE: Links with a Standard C program to
+			 provide a Windows Application envirnment.
+
+
+    FUNCTIONS:
+
+		WinMain() - calls initialization function,
+			processes message loop
+		StdWinInit() - initializes window data and
+			registers window
+		StdWinWndProc() - processes messages
+        About() - processes messages for "About" dialog box
+        SelectFont() - select a font
+        GetSizes() - get size of current font
+        GetFonts() - get available fonts
+        SetMyDC() - initializes DC
+
+	COMMENTS:   This code started as the Showfont sample
+		software that is included in the Windows Software
+		Development Kit. Compile this file as a small or
+		medium model with the following options:
+			CL /A[S or M] /c /Gsw /Oas /Zp -Zi STDWIN.C
+
+		The Zi option is only if you are able to use
+		CodeView for Windows.
+
+		When you link, you must link with the C6.0 linker
+		(Version 5.1 or greater), or link4 to get the proper
+		exe. You must link with the libraries that come with
+		the Windows Software Development kit, not the C
+		compiler libraries. These libraries are:
+			LIBW.LIB and SLIBCEW.LIB or MLIBCEW.LIB
+
+		After linking you must resource compile the
+		executable with the resource script. First:
+			rc -r stdwin.rc
+
+		After linking combine the binary resource file
+		with the exe by:
+			rc stdwin.res
+***********************************************************/
+
+#include "windows.h"
+#include "StdWin.h"
+#include <string.h>
+#include <stdio.h>
+
+
+
+/* set this to your own title */
+char WindowTitle[] = "Grep";
+WORD LineExtents[MAXROWS+2];
+HANDLE hInst,hStdWinWnd;
+HDC SetMyDC(HDC) ;
+HFONT hFont1;
+HFONT hUnderlineFont = 0,hBoldFont = 0,hItalicFont;
+char FontNameList[32][128];     /* list of added fonts  */
+int nFontIndex = 0;             /* position in FontList */
+int  BreakSet;                  /* break key flag */
+BYTE KeyBuffer[64],KeyHead = 0,KeyTail = 0,KeyMask = 0x3f;
+ /* storage for screen text */
+SCREEN ScreenBuffer[MAXROWS+2][MAXCOLUMNS];
+int VisibleRows,VisibleCols,TopRow,LeftCol,VertScrollInc,
+	HorizScrollInc;
+TEXTMETRIC TextMetric;
+int AveCharacterWidth;
+LOGFONT LogFont;
+short nBkMode = OPAQUE;
+DWORD rgbBkColor = RGB(255, 255, 255);
+DWORD rgbTextColor = RGB(0, 0, 0);
+DWORD rgbColor;
+short nAlignLCR = TA_LEFT;
+short nAlignTBB = TA_TOP; 
+char FontList[MAXFONT][32];
+BYTE CharSet[MAXFONT];
+BYTE PitchAndFamily[MAXFONT];
+int FontIndex = 0;
+int SizeList[MAXSIZE];
+int SizeIndex = 0;
+int CurrentFont = 0;
+int CurrentSize = 0;
+int xCurrentPos=0,yCurrentPos =0;
+FARPROC lpColors;
+FARPROC lpSelectFont;
+FARPROC lpEnumFunc;
+CATCHBUF   CatchBuf;
+short DisplayCol = 0,DisplayLine = 0;
+RECT Rect;  /* dimension of the client window  */
+BYTE *ptr,*ptr2;
+
+/*********************************************************
+
+    FUNCTION: WinMain(HANDLE, HANDLE, LPSTR, int)
+
+	PURPOSE: calls initialization function,
+		processes message loop
+
+***********************************************************/
+
+int PASCAL WinMain(hInstance, hPrevInstance,
+	lpCmdLine, nCmdShow)
+HANDLE hInstance;
+HANDLE hPrevInstance;
+LPSTR lpCmdLine;
+int nCmdShow;
+{
+    HWND hWnd;
+    MSG msg;
+
+	if (!hPrevInstance)
+		if (!StdWinInit(hInstance))
+            return (FALSE);
+
+    hInst = hInstance;
+
+	hWnd = CreateWindow("StdWin",
+        WindowTitle,
+		WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_HSCROLL,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+		CW_USEDEFAULT,
+		CW_USEDEFAULT,
+        NULL,
+        NULL,
+        hInstance,
+        NULL);
+
+    if (!hWnd)
+        return (FALSE);
+	hStdWinWnd = hWnd;
+    ShowWindow(hWnd, nCmdShow);
+    UpdateWindow(hWnd);
+
+	while(PeekMessage(&msg,NULL,0,0xFFFF,PM_REMOVE)){
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+	}
+	/* store process state for ctrl-c break */
+	if(!Catch(CatchBuf))
+		main();
+	MessageBox(hWnd,"Program Terminated Normally",
+		WindowTitle,MB_OK);
+	if(hOutFile)
+		_lclose(hOutFile);
+	hOutFile = Redirected = 0;
+
+	while (GetMessage(&msg, NULL, NULL, NULL)) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);}
+
+	return (msg.wParam);
+}
+
+/*********************************************************
+
+	FUNCTION: StdWinInit(HANDLE)
+
+	PURPOSE: Initializes window data and registers class
+
+***********************************************************/
+
+int StdWinInit(hInstance)
+HANDLE hInstance;
+{
+    HANDLE hMemory;
+    PWNDCLASS pWndClass;
+    BOOL bSuccess;
+
+    hMemory = LocalAlloc(LPTR, sizeof(WNDCLASS));
+    pWndClass = (PWNDCLASS) LocalLock(hMemory);
+    pWndClass->hCursor = LoadCursor(NULL, IDC_ARROW);
+    pWndClass->hIcon = LoadIcon(NULL, IDI_APPLICATION);
+	pWndClass->lpszMenuName = (LPSTR) "StdWin";
+	pWndClass->lpszClassName = (LPSTR) "StdWin";
+    pWndClass->hbrBackground = GetStockObject(WHITE_BRUSH);
+    pWndClass->hInstance = hInstance;
+	pWndClass->style = NULL;
+	pWndClass->lpfnWndProc = StdWinWndProc;
+
+    bSuccess = RegisterClass((LPWNDCLASS) pWndClass);
+
+    LocalUnlock(hMemory);
+    LocalFree(hMemory);
+    return (bSuccess);
+}
+
+/**********************************************************
+
+    FUNCTION: SetMyDC(HDC)
+
+    PURPOSE: Initializes the DC
+
+***********************************************************/
+
+HDC SetMyDC(hDC) 
+HDC hDC;
+{
+    SetBkMode(hDC, nBkMode);
+    SetBkColor(hDC, rgbBkColor);
+    SetTextColor(hDC, rgbTextColor);
+	SetTextAlign(hDC, nAlignLCR | nAlignTBB);
+	SelectObject(hDC,hFont1);
+	GetTextMetrics(hDC,&TextMetric);
+}
+
+
+
+/**********************************************************
+
+    FUNCTION: Colors(HWND, unsigned, WORD LONG)
+
+	PURPOSE: Dialog box for changing text background color
+
+***********************************************************/
+
+BOOL FAR PASCAL Colors(hDlg, message, wParam, lParam)
+HWND hDlg;
+unsigned message;
+WORD wParam;
+LONG lParam;
+{
+    int Red, Green, Blue;
+
+    switch (message) {
+        case WM_INITDIALOG:
+			SetDlgItemInt(hDlg, ID_RED,
+				GetRValue(rgbColor), FALSE);
+			SetDlgItemInt(hDlg, ID_GREEN,
+				GetGValue(rgbColor), FALSE);
+			SetDlgItemInt(hDlg, ID_BLUE,
+				GetBValue(rgbColor), FALSE);
+            return (TRUE);
+            break;
+
+        case WM_COMMAND:
+            switch (wParam) {
+                case IDOK:
+					Red = GetDlgItemInt(hDlg, ID_RED,
+						NULL, FALSE);
+					Green = GetDlgItemInt(hDlg, ID_GREEN,
+						NULL, FALSE);
+					Blue = GetDlgItemInt(hDlg, ID_BLUE,
+						NULL, FALSE);
+                    rgbColor = RGB(Red, Green, Blue);
+                    EndDialog(hDlg, 1);
+                    break;
+
+                case IDCANCEL:
+                    EndDialog(hDlg, 0);
+                    break;
+            }
+            break;
+    }
+    return (FALSE);
+}
+
+/********************************************************
+
+	FUNCTION: EnumFunc(LPLOGFONT,LPTEXTMETRIC,short,LPSTR)
+
+**********************************************************/
+
+int FAR PASCAL EnumFunc(lpLogFont, lpTextMetric,
+	FontType, lpData)
+LPLOGFONT lpLogFont;
+LPTEXTMETRIC lpTextMetric;
+short FontType;
+LPSTR lpData;
+{
+    switch (LOWORD(lpData)) {
+        case 0:
+            if (FontIndex >= MAXFONT)
+                return (0);
+			_fstrcpy((LPSTR) FontList[FontIndex],
+                (LPSTR) (lpLogFont->lfFaceName));
+            CharSet[FontIndex] = lpLogFont->lfCharSet;
+			PitchAndFamily[FontIndex] =
+				lpLogFont->lfPitchAndFamily;
+            return (++FontIndex);
+
+        case 1:
+            if (SizeIndex >= MAXSIZE)
+                return (0);
+            SizeList[SizeIndex] = lpLogFont->lfHeight;
+            return (++SizeIndex);
+    }
+}
+
+/*******************************************************
+
+    FUNCTION: GetFonts(HWND)
+
+    PURPOSE: Get available fonts
+
+*********************************************************/
+
+void GetFonts(hWnd)
+HWND hWnd;
+{
+
+    HDC hDC;
+
+    FontIndex = 0;
+    SizeIndex = 0;
+    hDC = GetDC(hWnd);
+    lpEnumFunc = MakeProcInstance(EnumFunc, hInst);
+    EnumFonts(hDC, (LPSTR) NULL, lpEnumFunc, (LPSTR) NULL);
+    FreeProcInstance(lpEnumFunc);
+    ReleaseDC(hWnd, hDC);
+}
+
+/*********************************************************
+
+    FUNCTION: GetSizes(hWnd, CurrentFont)
+
+    PURPOSE: Get size of current font
+
+**********************************************************/
+
+void GetSizes(hWnd, CurrentFont)
+HWND hWnd;
+int CurrentFont;
+{
+    HDC hDC;
+
+    SizeIndex = 0;
+    hDC = GetDC(hWnd);
+	lpEnumFunc = MakeProcInstance(EnumFunc, hInst);
+	EnumFonts(hDC, FontList[CurrentFont], lpEnumFunc,
+		(LPSTR) 1L);
+    FreeProcInstance(lpEnumFunc);
+    ReleaseDC(hWnd, hDC);
+}
+
+
+/********************************************************
+
+    FUNCTION: SelectFont(HWND, unsigned, WORD, LONG)
+
+**********************************************************/
+
+BOOL FAR PASCAL SelectFont(hDlg, message, wParam, lParam)
+HWND hDlg;
+unsigned message;
+WORD wParam;
+LONG lParam;
+{
+
+    int i;
+    int index;
+    char buf[LF_FACESIZE];
+
+    switch (message) {
+        case WM_INITDIALOG:
+			/* displays available fonts */
+			for (i=0; i<FontIndex; i++) {
+				SendDlgItemMessage(hDlg, ID_TYPEFACE,
+					LB_ADDSTRING,NULL,
+					(LONG) (LPSTR) FontList[i]);
+				SendDlgItemMessage(hDlg, ID_TYPEFACE,
+					LB_SETCURSEL,
+                    0, 0L);
+            }
+            GetSizes(hDlg, 0);
+			/* displays font sizes      */
+			for (i=0; i<SizeIndex; i++) {
+                sprintf(buf, "%d", SizeList[i]);
+				SendDlgItemMessage(hDlg, ID_SIZE,
+					LB_ADDSTRING,
+                    0, (LONG) (LPSTR) buf);
+				SendDlgItemMessage(hDlg, ID_SIZE,
+					LB_SETCURSEL,
+                    0, 0L);
+            }
+            return (TRUE);
+            break;
+
+        case WM_COMMAND:
+            switch (wParam) {
+                case IDOK:
+okay:
+					index=SendDlgItemMessage(hDlg,
+						ID_TYPEFACE,LB_GETCURSEL, 0, 0L);
+                    if (index == LB_ERR) {
+                        MessageBox(hDlg, "No font selected",
+							"Select Font",
+							MB_OK | MB_ICONEXCLAMATION);
+                    break;
+            }
+            CurrentFont = index;
+            index = SendDlgItemMessage(hDlg, ID_SIZE,
+                LB_GETCURSEL, 0, 0L);
+            if (index == LB_ERR) {
+                MessageBox(hDlg, "No size selected",
+					"Select Font",
+					MB_OK | MB_ICONEXCLAMATION);
+                break;
+            }
+            CurrentSize = index;
+            EndDialog(hDlg, 1);
+            break;
+
+        case IDCANCEL:
+            EndDialog(hDlg, 0);
+            break;
+
+        case ID_TYPEFACE:
+            switch (HIWORD(lParam)) {
+                case LBN_SELCHANGE:
+					index = SendDlgItemMessage(hDlg,
+						ID_TYPEFACE,
+                        LB_GETCURSEL, 0, 0L);
+                    if (index == LB_ERR)
+                        break;
+					SendDlgItemMessage(hDlg, ID_SIZE,
+						LB_RESETCONTENT, 0, 0L);
+                    GetSizes(hDlg, index);
+                    for (i = 0; i < SizeIndex; i++) {
+                        sprintf(buf, "%d", SizeList[i]);
+                        SendDlgItemMessage(hDlg, ID_SIZE,
+							LB_ADDSTRING, 0,
+							(LONG) (LPSTR) buf);
+						SendDlgItemMessage(hDlg,
+							ID_SIZE, LB_SETCURSEL, 0, 0L);
+            }
+            break;
+
+                case LBN_DBLCLK:
+                goto okay;
+                break;
+            }
+            break;
+
+        case ID_SIZE:
+            if(HIWORD(lParam) == LBN_DBLCLK)
+                goto okay;
+            break;
+        }
+        break;
+    }
+    return (FALSE);
+}
+
+/*********************************************************
+ create special fonts
+ *********************************************************/
+void GetUnderlineFont(void)
+{
+ if(hUnderlineFont)
+	DeleteObject(hUnderlineFont);
+ GetObject(hFont1, sizeof(LOGFONT), (LPSTR) &LogFont);
+ LogFont.lfUnderline = TRUE;
+ hUnderlineFont = CreateFontIndirect(&LogFont);
+}
+
+void GetBoldFont(void)
+{
+ if(hBoldFont)
+	DeleteObject(hBoldFont);
+ GetObject(hFont1, sizeof(LOGFONT), (LPSTR) &LogFont);
+ LogFont.lfWeight = 700;
+ hBoldFont = CreateFontIndirect(&LogFont);
+}
+
+void GetItalicFont(void)
+{
+ if(hItalicFont)
+	DeleteObject(hItalicFont);
+ GetObject(hFont1, sizeof(LOGFONT), (LPSTR) &LogFont);
+ LogFont.lfItalic = TRUE;
+ hItalicFont = CreateFontIndirect(&LogFont);
+}
+
+/********************************************************
+
+	FUNCTION: StdWinWndProc(HWND, unsigned, WORD, LONG)
+
+    PURPOSE: Processes messages
+
+*********************************************************/
+
+long FAR PASCAL StdWinWndProc(hWnd, message, wParam, lParam)
+HWND hWnd;
+unsigned message;
+WORD wParam;
+LONG lParam;
+{
+	FARPROC lpProcAbout;
+    HDC hDC;
+    PAINTSTRUCT ps;
+	HFONT hOldFont;
+    int i;
+	short Y;
+
+    switch(message) {
+        case WM_CREATE:
+			GetFonts(hWnd);
+			hFont1 = CreateFont(
+				12,          /* height           */
+				0,           /* width            */
+				0,           /* escapement       */
+				0,           /* orientation      */
+				400,         /* weight           */
+				FALSE,       /* italic           */
+				FALSE,       /* underline        */
+				FALSE,       /* strikeout        */
+				0,           /* charset          */
+				0,           /* out precision    */
+				0,           /* clip precision   */
+				0,           /* quality          */
+				0x31,        /* pitch and family */
+				"courier");  /* typeface         */
+			GetUnderlineFont();
+			GetBoldFont();
+			GetItalicFont();
+			hDC = GetDC(hWnd);
+			SetMyDC(hDC);
+			/* initialize the screenbuffer array */
+			for(TopRow = 0;TopRow < MAXROWS;TopRow++)
+				{
+				for(LeftCol = 0;LeftCol < MAXCOLUMNS;
+					LeftCol++)
+					{
+					ScreenBuffer[TopRow][LeftCol].hFont =
+						hFont1;
+					ScreenBuffer[TopRow][LeftCol].Char = 0;
+					ScreenBuffer[TopRow][LeftCol].xExtent =
+							TextMetric.tmAveCharWidth;
+					ScreenBuffer[TopRow][LeftCol].Color=0L;
+					}
+				LineExtents[TopRow] = TextMetric.tmHeight +
+					TextMetric.tmExternalLeading +
+					TextMetric.tmInternalLeading;
+				}
+			TopRow = LeftCol = 0;
+			GetClientRect(hWnd,&Rect);
+			VisibleRows = min(Rect.bottom / LineExtents[0],
+				MAXROWS);
+			VisibleCols = min(Rect.right /
+				TextMetric.tmAveCharWidth,
+				MAXCOLUMNS);
+			SetScrollRange(hWnd,SB_VERT,0,
+				MAXROWS-VisibleRows,FALSE);
+			SetScrollRange(hWnd,SB_HORZ,0,
+				MAXCOLUMNS-VisibleCols,FALSE);
+			SetScrollPos(hWnd,SB_VERT,0,TRUE);
+			SetScrollPos(hWnd,SB_HORZ,0,TRUE);
+			ReleaseDC(hWnd,hDC);
+			break;
+
+        case WM_PAINT:
+			{
+			int column,row;
+			int y=0,x=0;
+			HFONT hCurFont =
+				ScreenBuffer[LeftCol][TopRow].hFont;
+			COLORREF CurColor =
+				ScreenBuffer[LeftCol][TopRow].Color;
+			BYTE Buffer[MAXCOLUMNS + 10];
+
+			hDC = BeginPaint(hWnd, &ps);
+			ptr = Buffer;
+			/* anything to print */
+			if(DisplayLine || DisplayCol)
+			{
+			hOldFont = SelectObject(hDC, hCurFont);
+			HideCaret(hWnd);
+			row = 0;
+			for(row = TopRow;row <= DisplayLine; row++)
+				{
+				Buffer[0] = 0;
+				ptr = Buffer;
+				for(column = LeftCol;
+					column < MAXCOLUMNS;
+					column++)
+					{ /* if the font or color changes
+						 mid line, print */
+					if(((hCurFont !=
+						ScreenBuffer[row][column].hFont) ||
+						(CurColor !=
+						ScreenBuffer[row][column].Color)) &&
+							Buffer[0])
+						{
+						SelectObject(hDC, hCurFont);
+						SetTextColor(hDC, CurColor);
+						TextOut(hDC,x,y,Buffer,ptr-Buffer);
+						Buffer[ptr-Buffer] = 0;
+						x += LOWORD(GetTextExtent(hDC,Buffer,
+							ptr-Buffer));
+						ptr = Buffer;
+						Buffer[0] = 0;
+						hCurFont =
+							ScreenBuffer[row][column].hFont;
+						CurColor =
+							ScreenBuffer[row][column].Color;
+						}
+					if(ScreenBuffer[row][column].Char)
+					/* build string of equal color font */
+						{
+						*ptr++ =
+							ScreenBuffer[row][column].Char;
+						hCurFont =
+							ScreenBuffer[row][column].hFont;
+						CurColor =
+							ScreenBuffer[row][column].Color;
+						}
+					else column = MAXCOLUMNS;
+					}   /* for column */
+				/* if we haven't printed this line */
+				if(Buffer[0])
+					{
+					SelectObject(hDC, hCurFont);
+					SetTextColor(hDC, CurColor);
+					TextOut(hDC,x,y,Buffer,ptr-Buffer);
+					}
+				y += LineExtents[row];
+				x=0;
+				}
+
+			ShowCaret(hWnd);
+			SelectObject(hDC, hOldFont);
+			}
+			EndPaint(hWnd, &ps);
+			}
+            break;
+
+		case WM_VSCROLL:
+			switch(wParam){
+				case SB_LINEUP:
+					VertScrollInc = -1;
+					break;
+				case SB_LINEDOWN:
+					VertScrollInc = 1;
+					break;
+				case SB_PAGEUP:
+					break;
+				case SB_PAGEDOWN:
+					break;
+				case SB_THUMBTRACK:
+					VertScrollInc = LOWORD(lParam)-TopRow;
+					break;
+				case SB_TOP:
+					VertScrollInc =  -TopRow;
+					break;
+				case SB_BOTTOM:
+					VertScrollInc =
+						(MAXROWS- VisibleRows) - TopRow;
+					break;
+				default:
+					break;
+			}
+			if(VertScrollInc = max(-TopRow,
+				min(VertScrollInc,
+					MAXROWS-VisibleRows - TopRow)))
+				{
+				ScrollWindow(hWnd,0,(LineExtents[0] *
+					-VertScrollInc),NULL,NULL);
+				TopRow += VertScrollInc;
+				UpdateWindow(hWnd);
+				SetScrollPos(hWnd,SB_VERT,TopRow,TRUE);
+				}
+			return(0);
+
+		case WM_HSCROLL:
+			switch(wParam){
+				case SB_LINEUP:
+					HorizScrollInc = -1;
+					break;
+				case SB_LINEDOWN:
+					HorizScrollInc = 1;
+					break;
+				case SB_PAGEUP:
+					break;
+				case SB_PAGEDOWN:
+					break;
+				case SB_THUMBTRACK:
+					HorizScrollInc = LOWORD(lParam)-LeftCol;
+					break;
+				default:
+					break;
+			}
+			HorizScrollInc =
+					max(-LeftCol,min(HorizScrollInc,
+					MAXCOLUMNS-VisibleCols - LeftCol));
+			if(HorizScrollInc)
+				{
+				ScrollWindow(hWnd,(TextMetric.tmAveCharWidth
+					* -HorizScrollInc),0,NULL,NULL);
+				LeftCol += HorizScrollInc;
+				UpdateWindow(hWnd);
+				SetScrollPos(hWnd,SB_HORZ,LeftCol,TRUE);
+				}
+			return(0);
+		case WM_COMMAND:
+            switch (wParam) {
+
+				/* Run menu */
+				case IDM_RESTART:
+					/* Throw the processor state
+						back to re-execute main() */
+					Throw(CatchBuf,0);
+					break;
+				case IDM_EXIT:
+					/* restore our message loop and
+						take control from main */
+					DestroyWindow(hWnd);
+					Throw(CatchBuf,1);
+					break;
+
+                case IDM_ABOUT:
+					lpProcAbout =
+						MakeProcInstance((FARPROC) About,
+							hInst);
+					DialogBox(hInst, "AboutBox", hWnd,
+							lpProcAbout);
+                    FreeProcInstance(lpProcAbout);
+                    break;
+
+
+
+                case IDM_SELECTFONT:
+					lpSelectFont =
+						MakeProcInstance(SelectFont, hInst);
+					if (DialogBox(hInst, "SelectFont",
+						hWnd, lpSelectFont)) {
+						hFont1 = CreateFont(
+                            SizeList[CurrentSize],
+                            0,
+                            0,
+                            0,
+                            FW_NORMAL,
+                            FALSE,
+                            FALSE,
+                            FALSE,
+                            CharSet[CurrentFont],
+                            OUT_DEFAULT_PRECIS,
+                            CLIP_DEFAULT_PRECIS,
+                            DEFAULT_QUALITY,
+                            PitchAndFamily[CurrentFont],
+                            FontList[CurrentFont]);
+						GetUnderlineFont();
+						GetBoldFont();
+						GetItalicFont();
+						hDC = GetDC(hWnd);
+						HideCaret(hWnd);
+						DestroyCaret();
+						SelectObject(hDC,hFont1);
+						GetTextMetrics(hDC,&TextMetric);
+						CreateCaret(hWnd,NULL,1,
+							TextMetric.tmHeight);
+						SetCaretPos(xCurrentPos,
+							yCurrentPos);
+						ShowCaret(hWnd);
+						ReleaseDC(hWnd,hDC);
+						}
+                    FreeProcInstance(lpSelectFont);
+                    break;
+
+
+                /* Options menu */
+
+                case IDM_TEXTCOLOR:
+					lpColors =
+						MakeProcInstance(Colors, hInst);
+                    rgbColor = rgbTextColor;
+					if (DialogBox(hInst, "Colors", hWnd,
+						lpColors))
+						rgbTextColor = rgbColor;
+                    FreeProcInstance(lpColors);
+                    break;
+
+                case IDM_BACKGROUNDCOLOR:
+					lpColors =
+						MakeProcInstance(Colors, hInst);
+                    rgbColor = rgbBkColor;
+					if (DialogBox(hInst, "Colors",
+						hWnd, lpColors))
+						rgbBkColor = rgbColor;
+                    FreeProcInstance(lpColors);
+                    break;
+
+                case IDM_OPAQUE:
+                    nBkMode = OPAQUE;
+					CheckMenuItem(GetMenu(hWnd),
+						IDM_TRANSPARENT, MF_UNCHECKED);
+					CheckMenuItem(GetMenu(hWnd),
+						IDM_OPAQUE, MF_CHECKED);
+                    break;
+
+                case IDM_TRANSPARENT:
+                    nBkMode = TRANSPARENT;
+					CheckMenuItem(GetMenu(hWnd),
+						IDM_OPAQUE,  MF_UNCHECKED);
+					CheckMenuItem(GetMenu(hWnd),
+						IDM_TRANSPARENT,  MF_CHECKED);
+                    break;
+
+            }
+            break;
+
+		case WM_KEYDOWN:
+			if(wParam == VK_PAUSE)      /* break key */
+				BreakSet = 1;
+			if(wParam == VK_CANCEL)     /* ctrl break */
+				/* restore our message loop and
+					take control from main */
+				Throw(CatchBuf,1);
+			break;
+
+
+		case WM_CHAR:
+			KeyBuffer[KeyHead] = wParam;
+			KeyHead = ++KeyHead & KeyMask;
+			BreakSet = 0;   /* break key */
+			return(1);
+
+
+        case WM_FONTCHANGE:
+            GetFonts(hWnd);
+            break;
+
+        case WM_DESTROY:
+
+			/* function pointer set with atexit */
+			if(ExitCallInit)
+				ExitCallFunc();
+
+            PostQuitMessage(0);
+			break;
+
+		case WM_SETFOCUS:
+			CreateCaret(hWnd,NULL,1,TextMetric.tmHeight);
+			SetCaretPos(xCurrentPos,yCurrentPos);
+			ShowCaret(hWnd);
+			break;
+
+		case WM_KILLFOCUS:
+			HideCaret(hWnd);
+			DestroyCaret();
+			break;
+
+		case WM_SIZE:
+			Rect.right = LOWORD(lParam);
+			Rect.bottom = HIWORD(lParam);
+			/* calculate new visible rows */
+			Y = VisibleRows = 0;
+			while(VisibleRows < MAXROWS){
+				Y += LineExtents[VisibleRows];
+				if(Y >= Rect.bottom) break;
+				VisibleRows++;
+				}
+			VisibleCols = min( Rect.right /
+					TextMetric.tmAveCharWidth,MAXCOLUMNS);
+			SetScrollRange(hWnd,SB_VERT,0,
+					MAXROWS-VisibleRows,FALSE);
+			SetScrollRange(hWnd,SB_HORZ,0,
+					MAXCOLUMNS-VisibleCols,FALSE);
+
+        default:
+			return (DefWindowProc(hWnd, message,
+					wParam, lParam));
+    }
+    return (0L);
+}
+
+
+
+/**********************************************************
+
+    FUNCTION: About(HWND, unsigned, WORD, LONG)
+
+    PURPOSE:  Processes messages for "About" dialog box
+
+    MESSAGES:
+
+        WM_INITDIALOG - initialize dialog box
+        WM_COMMAND    - Input received
+
+**********************************************************/
+
+BOOL FAR PASCAL About(hDlg, message, wParam, lParam)
+HWND hDlg;
+unsigned message;
+WORD wParam;
+LONG lParam;
+{
+    switch (message) {
+        case WM_INITDIALOG:
+            return (TRUE);
+
+        case WM_COMMAND:
+            if (wParam == IDOK) {
+                EndDialog(hDlg, TRUE);
+                return (TRUE);
+            }
+            return (TRUE);
+    }
+    return (FALSE);
+}
+

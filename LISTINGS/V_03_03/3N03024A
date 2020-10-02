@@ -1,0 +1,48 @@
+#include <dos.h>
+#include <stdio.h>
+#include <malloc.h>
+
+#pragma pack(1)
+
+typedef struct {     // format of device list entries
+                unsigned char unit;
+                unsigned short dev_header_offset;
+                unsigned short dev_header_segment;
+               }  dev_list;
+
+main()
+{
+union REGS r;
+struct SREGS sr;
+dev_list *dl;
+
+      // ask MSCDEX for # of CD drives
+r.x.ax = 0x1500;
+r.x.bx = 0;
+int86(0x2f, &r, &r);
+if (!r.x.bx)
+   {
+   printf("MSCDEX not installed or no CD drives\n");
+   exit(1);
+   }
+
+      // allocate memory for device list
+if (dl = (dev_list *) malloc(r.x.bx * sizeof (dev_list)))
+   {     // fill allocated memory with device list
+   segread(&sr);
+   sr.es = sr.ds;
+   r.x.bx = (unsigned int) dl; // list addr to es:bx
+   r.x.ax = 0x1501;
+   int86x(0x2f, &r, &r, &sr);  // ask MSCDEX for driver lst
+   if (!r.x.cflag)
+      printf("Address of 1st CD-ROM header:%04X:%04X\n",
+        dl->dev_header_segment, dl->dev_header_offset);
+   else
+      printf("Error from MSCDEX!\n");
+   }
+else
+   printf("Unable to allocate memory!\n");
+}
+
+/* End of File */ 
+

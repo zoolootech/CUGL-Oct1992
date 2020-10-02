@@ -1,0 +1,94 @@
+
+Figure 1:
+
+
+#define HEADER_LENGTH 256      /* Length of header record */
+#define DELETE_FLAG 0xFF       /* Record delete flag */
+#define RECORD_SIZE 11         /* Size of record */
+#define READ_ONLY_BINARY "rb"  /* Compiler dependent read binary mode */
+
+/* The record has two fields:
+    Number (5 characters)
+    Name   (6 characters)
+*/
+
+#include "STDIO.H"
+
+int main(argc, argv)
+/* Reads fixed length database file */
+/* The file is specified on the command line */
+/* e.g. readdata filename */
+int argc;
+char *argv[];
+    {
+    FILE *file;             /* Input file */
+    int ret;                /* Return from functions */
+    char buffer[100];       /* Input buffer */
+    int number;             /* Data item in record */
+    static char name[7];    /* Data item in record */ 
+    int record_number;      /* Current record number */
+
+    record_number = 0;
+
+    if (argc > 1)
+        {
+        file = fopen(argv[1], READ_ONLY_BINARY);
+        if (file != NULL)
+            {
+            ret = fseek(file, (long) HEADER_LENGTH, 0);
+            if (ret == 0)
+                {
+                /* Begin reading records. Break when read returns 
+                    less than record size */
+                while (1)
+                    {
+                    ret = fread(buffer, 1, RECORD_SIZE, file);
+                    if (ret < RECORD_SIZE)
+                        {
+                        printf("\n End of file");
+                        break;
+                        }
+                    else 
+                        {
+                        record_number++;
+                        /* Check the delete flag */
+                        if (buffer[0] == DELETE_FLAG)
+                            {
+                            printf("\n Deleted record %d", record_number);
+                            }
+                        else 
+                            {
+                            /* Decode the record */
+                            ret = sscanf(buffer, "%5d%6s", &number, name);
+                            if (ret != 2)
+                                {
+                                printf("\n Error in record decoding %d ret %d",
+                                    record_number, ret);
+                                }
+                            else 
+                                {
+                                /* Print decoded record */
+                                printf("\n Record %d is %d %6s",
+                                    record_number, number, name);
+                                }
+                            }
+                        }
+                    }
+                }        /* End of successful header read */
+            else 
+                {
+                printf("\n Unable to read header record");
+                }
+            }            /* End of successful open */
+        else 
+            {
+            printf("\n Unable to open file %s", argv[1]);
+            }
+        }                /* End of successful argument count */
+    else 
+        {
+        printf("\n Usage is readdata filename");
+        }
+    exit(0);
+    }
+    

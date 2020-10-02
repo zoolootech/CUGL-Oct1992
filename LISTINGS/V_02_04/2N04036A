@@ -1,0 +1,28 @@
+
+int single_drive_flag;       /* global flag used by SetFloppy() */
+
+/*
+ * return 1 if single floppy system, else return 0
+ */
+
+int SingleDrive(void){
+   char FloppyPresent, FloppyNumber;
+   FloppyPresent = peekb(0x40,0x10) & 1;
+   FloppyNumber = ((peekb(0x40,0x10) & 0xC0) >> 6) + 1;
+   single_drive_flag = (FloppyPresent &&
+            (FloppyNumber == 1)) ? 1 : 0;
+   }
+
+void SetFloppy(char *filename){
+   char disk_name;
+   if(single_drive_flag){
+      if(filename[1]==':')        /*  If a drive was specified, */
+         disk_name=toupper(filename[0]);   /*  get the letter.  */
+      else                           /* Else get default drive  */
+         disk_name=getdisk()+0x41;   /*        ...just in case. */
+      if(disk_name=='A')             /* Adjust byte at          */
+         pokeb(0x50,4,0);            /* 0050:0004h as needed.   */
+      else if(disk_name=='B')
+         pokeb(0x50,4,1);
+      }
+   }

@@ -1,0 +1,459 @@
+/*  VERSION 0033  (DATE: 02/11/86)  (TIME: 15:28)  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qe6
+
+	FUNCTIONS: blockpos,blockops,listfile,reform
+
+	PURPOSE: performs block commands
+
+*/
+
+#include "qe.h"
+char *firstwhite();		/*returns address of first nonword char*/
+
+blockpos(oldpos)
+int oldpos;
+{
+	char c;
+	int to;
+
+	if (oldpos) puts("| or |P|rev.");
+	do {
+		resetcursor();
+		switch ((c=getkey())) {
+		case DOWNKEY	: 
+			moveline(1); 
+			break;
+		case UPKEY	: 
+			moveline(-1); 
+			break;
+		case LEFTKEY	: 
+			movechar(-1); 
+			break;
+		case RIGHTKEY	: 
+			movechar(1); 
+			break;
+		case LEFTWKEY	: 
+			moveword(-1); 
+			break;
+		case RIGHTWKEY	: 
+			moveword(1);  
+			break;
+		case BOLKEY	: 
+			sync(0);
+			break;
+		case EOLKEY	: 
+			sync(strlen(text)); 
+			break;
+		case UPPAGE	: 
+			movepage(-1); 
+			break;
+		case DOWNPAGE	: 
+			movepage(0); 
+			break;
+		case HOMEKEY	: 
+			if (jumpline(lastl-cline)) sync(strlen(text));
+			break;
+		case BOFKEY	: 
+			if (jumpline(1-cline)) sync(0);
+			break;
+		case JUMPKEY	:
+			if (expert) xprtmess("J ? ");
+			else putmess("Jump to? ");
+			scans(ans,6);
+			if ((to=atoi(ans)))
+				jumpline(to-cline);
+			break;
+		case QWIKKEY	:
+			info();
+			break;
+		case REPKEY	: 
+			repeat=YES; 
+			dofindrep(1); 
+			repeat=NO;
+			break;
+		case 'p'	:
+		case 'P'	: 
+			if (oldpos) return PREV;
+			break;
+		case ESCKEY	:
+			return FAIL;
+		default		: 
+			;
+			}
+		} 
+	while (c != CR);
+	return cline;
+}
+
+blockops()
+{
+	int oldcline, oldcharn, oldto, oldfrom, op;
+	int l, ll, line, *t, shifts, shiftx, cp;
+	char  *txt, c, shift[LLIM];
+
+	puttext();
+	oldcline=cline; 
+	oldcharn=charn; 
+	oldfrom=from;
+	oldto=to;
+	if (expert) xprtmess("|Q|/|X|/|R|/|B|/|J-rep| ? ");
+	else
+	  putmess("Q|uit, |X|it w/ save, |R|ead file, |B|lock moves, |J|ump repeat ? ");
+	while ((op = getlow()) != 'q' && op != 'x' && op != 'r' && op != 'b' &&
+ 		op != 'j' && op != ESCKEY);
+	if (op == ESCKEY) goto clrblk;
+	putch(op);
+	switch (op)  {
+	case 'q':
+		if (finish('q')) return (YES);
+		return (NO);
+		break;
+	case 'x':
+		if (finish('x')) return (YES);
+		return (NO);
+		break;
+	case 'r':
+		return ('r');
+		break;
+	case 'j':
+		if (jmpto > 1) jumpline(jmpto-cline);
+		else calcjmp();
+		return (NO);
+		break;
+	default:
+#if WWRAP
+	if (expert) xprtmess("|W|rt/|P|rint/|S|hft/|R|efrm/|M|v/|C|opy/|D|el ? ");
+	else
+	 putmess("W|rite to file, |P|rint, |S|hift, |R|eformat, |M|ove, |C|opy, or |D|elete block ? ");
+	while ((op=getlow()) != 'w' && op != 'p' && op != 's' && op != 'r' 
+			&& op != 'm' && op != 'c' && op != 'd' && op != ESCKEY);
+#else   /*no word wrap*/
+	if (expert) xprtmess("|W|rt/|P|rint/|S|hft/|M|v/|C|opy/|D|el ? ");
+	else
+	 putmess("W|rite to file, |P|rint, |S|hift, |M|ove, |C|opy, or |D|elete block ? ");
+	while ((op=getlow()) != 'w' && op != 'p' && op != 's'
+			&& op != 'm' && op != 'c' && op != 'd' && op != ESCKEY);
+#endif /*wrap*/
+	if (op == ESCKEY) return;
+	switch (op) {
+	case 'w':
+		if (expert) xprtmess("W");
+		else puts("Write");
+		break;
+	case 'p':
+		if (expert) xprtmess("P");
+		else puts("Print");
+		break;
+	case 's':
+		if (expert) xprtmess("S");
+		else puts("Shift");
+		break;
+#if WWRAP
+	case 'r':
+		if (expert) xprtmess("R");
+		else puts("Reformat");
+		break;
+#endif
+	case 'm':
+		if (expert) xprtmess("M");
+		else puts("Move");
+		break;
+	case 'c':
+		if (expert) xprtmess("C");
+		else puts("Copy");
+		break;
+	case 'd':
+		if (expert) xprtmess("D");
+		else puts("Delete");
+		break;
+		}
+	from=cline;
+	to=0;
+	blocking=YES;
+	if (expert) xprtmess("Cursor on end line + <CR>");
+	else putmess("|Put cursor on line |end|ing block and press [return]");
+	if ( (to=blockpos(oldto)) == FAIL) {
+		to=cline;
+		goto abort;
+		}
+	if (to == PREV) {
+		moveline(oldfrom-cline);
+		from=cline;
+		moveline(oldto-cline);
+		to=cline;
+		}
+	if (to < from) {
+		l=to; 
+		to=from; 
+		from=l;
+		}
+	switch (op) {
+	case 'w':
+		if (expert) xprtmess("File? ");
+		else putmess("File to write to? ");
+		if (scans(name,15) != ESCKEY)
+			if (exists(name)) writefile(from,to,name,name,NO);
+		break;
+	case 'p':
+		listfile(from,to);
+		break;
+	case 's':
+		if (expert) xprtmess("Changes: ");
+		else
+		 putmess("Delete/insert spaces/tabs| to shift line, and press [return]");
+		moveline(from-cline);
+		sync(0);
+		resetcursor();
+		shifts=0;
+		while ( (c=getkey()) != CR) {
+			switch (c) {
+			case DELRIGHT: 	
+				if (text[0] == ' ' || text[0] == '\t')
+					deletechar(0);
+				break;
+			case ' ':
+				insertchar(' ');
+				break;
+			case TAB:
+				insertchar('\t');
+				break;
+			case ESCKEY:
+				goto abort;
+				}
+			shift[shifts++]=c;
+			sync(0);
+			resetcursor();
+			}
+		puttext();
+		for (l=from+1; l <= to; l++) {
+			gettext(l);
+			for (shiftx=0; shiftx < shifts; shiftx++) {
+				switch((c=shift[shiftx])) {
+				case DELRIGHT: 	
+					if (*(txt=&text[0]) == ' ' || *txt == '\t')
+						while ( (*txt=*(txt+1))) txt++;
+					break;
+				case ' ':
+				case TAB:
+					if ((cp=strlen(text)) < (LLIM-1)) {
+						for (; cp >= 0; cp--)
+							text[cp+1]=text[cp];
+						text[0]= (c == ' ' ? ' ':'\t');
+						}
+					break;
+					}
+				}
+			altered=YES;
+			puttext();
+			}
+		break;
+#if WWRAP
+	case 'r':
+		reform(from,to);
+		changed=YES;
+		/*charn=adjustc(oldcharn);*/
+		from=to=0;
+		break;
+#endif
+	case 'd':
+		deltp(from,to-from+1);
+		gettext(loc(from,-1));
+		charn=adjustc(oldcharn);
+		from=to=0;
+		changed=YES;
+		break;
+	case 'm':
+	case 'c':
+		if (expert) xprtmess("Cursor on line above block + <CR>");
+		else
+		 putmess("|Put cursor on |line under which  block is to go |and press [return]");
+		if ( (cline=line=blockpos(0)) == FAIL) {
+			cline=oldcline; 
+			break;
+			}
+		for (l=from; l <= to; l++) {
+			if ((line=inject(line,getline(l))) == FAIL) break;
+			if (op == 'm') {
+				deltp( (l<line?l:l+1),1);
+				if (to < line) {
+					to--; 
+					l--; 
+					line--; 
+					cline--;
+					}
+				}
+			else {
+				if (to >= line) to++;
+				if (l >= line) l++;
+				if (l == cline) l=line;
+				}
+			}
+		from=cline+1; 
+		to=line; 
+		break;
+		}
+abort:
+	blocking=NO;
+	switch (op) {
+	case 'w':
+	case 'p':
+	case 's':
+		gettext(oldcline);
+		charn=oldcharn;
+		putpart(from,to);
+		break;
+	case 'd':
+		putpart(cline,cline+SHEIGHT);
+		break;
+#if WWRAP
+	case 'r':
+#endif
+	case 'm':
+	case 'c':
+		putpage();
+		break;
+		}
+clrblk:
+	if (expert) xmessoff();
+	return NO;
+	}   /* outer case */
+}  	/* func blockops */
+
+putpart(start,fin)
+int start,fin;
+{
+	int l, y;
+
+	if (start < pfirst) putpage();
+	else
+	for (l=start, y=topline+(start-pfirst); l <= fin && y <= SHEIGHT;
+			l++, y++) {
+		    if (l == cline) cursory=y;
+		putline(l,y);
+		}
+}
+
+listfile(from,to)
+int from,to;
+{	/*10*/
+	int l,cp,i;
+	char *t;
+
+	puttext();
+	for (l=from; l<=to; l++) {	/*20*/
+		if (l%10 == 0) putlineno(l);
+		for (cp=0, t=getline(l); *t; t++)
+			if (*t == '\t') for (i=tabwidth-cp%tabwidth; i>0 ; cp++, i--)
+				bdos(LSTOUT,' ');
+			else {	/*30*/
+				/*if (*t > CTRL) bdos(LSTOUT,*t);*/
+#if PRINTALL
+				bdos(LSTOUT,*t);
+#else
+				if (*t > 0x19) bdos(LSTOUT,*t);		/* send some ctrl char*/
+				else {	/*40*/						/* for OKI & CITOH */
+					switch (*t) {	/*50*/
+					case (0x08):
+					case (0x0a):
+					case (0x0c):
+					case (0x0d):
+					case (0x18):
+						bdos(LSTOUT,*t);
+						break;
+					default:  {		/*60*/
+						bdos(LSTOUT,'^');
+						bdos(LSTOUT,*t+64);
+						}	/*60*/
+					}	/*50*/
+					}	/*40*/
+#endif
+				cp++;
+				}	/*30*/
+		bdos(LSTOUT,'\r'); 
+		bdos(LSTOUT,'\n');
+		if (testkey() == ESCKEY) {	/*70*/
+			error("Listing aborted");
+			return;
+			}	/*70*/
+		}	/*20*/
+}	/*10*/
+
+#if WWRAP
+reform(from,to)			/*reformat lines to right margin*/
+int from;
+int to;
+{
+	int curline;			/*current line to reform*/
+	int inline;				/*current line to inject new line after*/
+	int cpos;				/*"current" screen posititon*/
+	char rbuf[LLIM],*rbufp;	/*buffer to hold reformed line*/
+	char *txtp;				/*pointer to global text*/
+	char *posp;				/*position in reformed line*/
+	char *diffn;			/*difference of 2 pointers*/
+	char achar;
+	char toobig,empty;		/*rtmarg exceeded, blnk line tobe reformed*/
+	int addblnk;			/*correction if blanks added to line end*/
+	
+	inline=to-1;
+	rbuf[0]='\0';
+	rbufp=rbuf;
+	txtp=text;
+	toobig=empty=0;
+	cpos=1;
+	for (curline=from;((curline<to) && (curline<=lastl));curline++)  {
+		gettext(curline);
+		txtp=text;
+		addblnk=0;
+		do {
+			if (achar=*txtp++) {
+				*rbufp++=achar;
+				if (achar=='\t') cpos=cpos+tabwidth-1-(cpos%tabwidth);
+				else cpos++;
+				  /* add blnk to line end if none there */
+				addblnk=0;
+				if ( ((achar!=' ') && (achar!='\t')) && !(*(txtp)) ) {
+						*rbufp++ = ' ';
+					 	cpos++;
+						addblnk=1;
+				 }
+			}
+				if ((toobig=((cpos > (rtmarg)) &&
+					        ( ((*(rbufp-1)!=' ') && (*(rbufp-1)!='\t')))
+					          || (!(*(txtp))) )  )
+				  || ((empty=(text[0]=='\0')))
+				  || ((curline==(to-1)) && ((!*txtp))) ) {
+				if(toobig) {
+					if ((posp=firstwhite(rbuf,cpos,(rbufp))) == rbuf) posp=rbufp;
+					diffn=rbufp-posp;
+					rbufp-=(diffn);
+					txtp-=(diffn-addblnk);
+					empty=NO;
+				}
+				cpos=1;
+				*rbufp = '\0';
+				inject(inline++,rbuf);		/*add new reformatted lines*/
+				if (empty && *rbuf) inject(inline++,text);  /*add empty line*/
+				rbuf[0]='\0';
+				rbufp=rbuf;
+			}
+		} while (*(txtp) && !empty);
+	}
+		/*delete old unformatted lines*/
+	deltp(from,((to-from)));
+	blocking=NO;
+	gettext(loc(from,(inline-to+1)));
+	sync(0);
+	resetcursor();
+}
+#endif  /*word wrap*/
+
+OUT,'\n');
+		if (testkey()

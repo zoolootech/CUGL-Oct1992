@@ -1,0 +1,658 @@
+# Makefile for the Connect Four Game c4 - Charlie Havener
+HEADERS=vt100.h c4.h 
+
+c4.obj: c4.c $(HEADERS)
+	cl /Zi /Dbugprint /c c4.c
+
+c4ab.obj: c4ab.c $(HEADERS)
+	cl /Zi /Dbugprint /c  c4ab.c
+
+c4move.obj: c4move.c $(HEADERS)
+	cl /Zi /Dbugprint /c c4move.c
+
+c4subs.obj: c4subs.c $(HEADERS)
+	cl /Zi /Dbugprint /c c4subs.c
+
+c4.exe: c4.obj c4move.obj c4subs.obj c4ab.obj
+	cl /Zi /Dbugprint c4.obj c4move.obj c4subs.obj c4ab.obj
+
+/* c4.h header file for Connect Four Game program */
+#define XSIZE   	7
+#define YSIZE   	6
+#define NEWDISPLAY 	1
+#define RED     	1
+#define BLACK   	2
+#define PLAYABLE	3
+#define EMPTY   	0
+#define YOUWIN 		1
+#define IWIN    	2
+#define TIE     	3
+#define YOURMOVE    4
+#define VT100   	100
+#define TTY     	50
+#define FALSE 		0
+#define TRUE 		1
+#define NIL 		0
+#define ILLEGAL		-1
+
+/* This is a rather clever debug print macro */
+#ifdef bugprint
+#define Debug(a,b) if ( debuglevel >= (a) ) printf b;
+#else
+#define Debug(a,b)
+#endif
+
+/*  some ANSI  escape sequence codes */
+#define CURHOM	"\033[H"  /* home the cursor */
+#define CURSAV	"\033[s"  /* save the present location of the cursor */
+#define CURRES	"\033[u"  /* restore cursor to the saved location */
+#define EAOP	"\033[2J" /* erase all of page */
+
+void init();
+int move();
+void display();
+int askmove();
+int c4move();
+int c4tie();
+
+/* c4.c - main program for the Connect Four Game, The object 
+is to get 4 checkers in a row horizontally, vertically or diagonally
+on a 6 vertical by 7 horizontal checker board. Checkers enter at the
+top of the 7 columns only. The alpha-beta pruning algorithm is used.
+Charles D. Havener Dec 1988 */
+
+#include <stdio.h>
+#include "c4.h"
+
+/* All the global variables are defined here */
+int bd[XSIZE][YSIZE]={0};   /* the board representation */
+int search_depth=2;         /* the maximum depth of search allowed */
+int debuglevel = 0;         /* controls amount of debug printout */
+int cpu_move = ILLEGAL;	    /* the last move chosen by the computer */
+int terminal_type=TTY ;     /* only TTY used now, future expansion */
+
+/*-----------------------------------------------------------*/
+main(argc,argv)
+    int argc;
+    char *argv[];
+    {
+    int status = YOURMOVE;
+    int player[22];    /* at most each player can make 21 moves */
+    int computer[22];  /* this is the history of the moves */
+    int turn = 0;
+    int mv = 0;
+    int replay = FALSE; /* set TRUE if instant replay in progress */
+    char buf[40];
+
+    if ( argc == 2 )
+	search_depth = atoi(argv[1]);
+begin:
+    if ( search_depth < 1 || search_depth > 8 )
+	fatal("\n search_depths must be between 1 and 8 \n");
+    init();
+    turn = 0;
+    status = YOURMOVE;
+    printf("%s%s",EAOP,"Welcome to CONNECT FOUR Version 1.1\n");
+    display(bd,NEWDISPLAY,terminal_type);
+    do      /* henceforth the player is RED & goes 1st, cpu is BLACK */
+	{
+	if ( replay )
+	    {
+	    mv = player[turn];
+	    move(mv,RED,bd);
+	    }
+	else
+	    mv = askmove(RED);
+	if ( mv != ILLEGAL )
+	    {
+	    status = c4move(BLACK); /* cpu moves & returns status */
+	    display(bd,NEWDISPLAY,terminal_type);
+	    if ( replay )
+		{
+		if ( cpu_move != computer[turn] )
+		    {
+		    replay = FALSE;
+		    printf("\n Different computer move! \n");
+		    }
+		}
+	    player[turn] = mv;
+	    computer[turn++] = cpu_move;
+	    switch ( status )
+		{
+		case YOUWIN:    printf("You Win Lucky\n");
+				break;
+		case IWIN:      printf("I win. I'm so smart!\n") ;
+				break;
+		case TIE:       printf("Amazing - a tie!\n");
+				break;
+		case YOURMOVE:
+		default:
+			break;
+		}
+	    }
+	} while ( status == YOURMOVE ) ;
+
+    printf("\nPlayer   ");
+    for ( mv=0; mv < turn ; mv++ )
+	printf(" %d",player[mv]);
+    printf("\nComputer ");
+    for ( mv=0; mv < turn ; mv++ )
+	printf(" %d",computer[mv]);
+    printf("\nThank you for the game at depth %d\n",search_depth); 
+    printf("For instant replay at new search depth,\n");
+    printf("Enter depth 1 to 8 (0 to quit): ");
+    gets(buf);
+    search_depth = atoi(buf);
+    if ( search_depth != 0 )
+	{
+	replay = TRUE;
+	goto begin;
+	}
+    return 0;
+    }
+/* c4ab.c - This is the alpha-beta algorithm for the Connect Four
+game. f2() and g2() stop generate() of new boards if a win or loss
+has occured on the brd. Static evaluator tests for loss first and
+the initial value of bestmove was made illegal if the c4pick()
+function didn't choose a move.
+*/
+#include "c4.h"
+static int bestmove = ILLEGAL;  /* will be picked by computer */
+static int nstats = 0;		/* number of static evaluations */
+extern int bd[XSIZE][YSIZE];
+extern int terminal_type;
+extern int debuglevel;
+extern int search_depth;
+int suckertrap();
+int earlywarning();
+int evalbd();
+int *c4cpy();
+void generate();
+
+/*-------------------------------------------------------------------*/
+/* f2 - the alpha beta maximizer algorithm from Knuth's paper AI 1975*/
+int f2(brd,alpha,beta,depth,maxdepth)
+    int brd[XSIZE][YSIZE];  /* apologies to lint for passing in int* */
+    int alpha;
+    int beta;
+    int depth;
+    int maxdepth;
+    {
+    int m,t,x,i;
+    int *q;
+    int *boards[XSIZE+1];  /* filled in by generate() */
+    int play[XSIZE];       /* filled in by generate() */
+
+    q = NIL;
+    Debug(1,("\n in f2() a=%d b=%d",alpha,beta))
+    if ( depth < maxdepth & !( c4won(BLACK,brd) || c4won(RED,brd) ) )
+	{
+	generate(boards,play,brd,depth+1); /* generate new boards */    
+			/* no imbedded NILs. Last one NIL for sure */
+	i = 0;
+	q = boards[ i++ ];      /* i.e. q = first(p) Knuths notation */
+	}
+    if ( q == NIL )
+	{
+	m =  stateval(brd); /* no legal moves or at maxdepth */
+	Debug(1,("\nLeaving f2 stateval = m =%d",m))
+	return m;
+	}
+    m = alpha;
+    while ( q != NIL && m < beta )
+	{
+	t = g2(q,m,beta,depth+1,maxdepth);
+	if ( t > m )
+	    {
+	    m = t;
+	    if ( depth == 0 ) /* save the best move! */
+		bestmove = play[i-1];  /* c4pick uses bestmove */
+	    }
+	q = boards[ i++ ]; /* q = next(q) Knuth */
+	}
+    for ( x=0 ; boards[x] ; x++ )  /* test for non NIL before freeing */
+	free( boards[x] );      /* recover memory space */
+    Debug(1,("\nLeaving f2 m=%d",m))
+    return m;
+    }
+/*-------------------------------------------------------------------*/
+/* g2 - the alpha beta minimizer algorithm from Knuth's paper AI 1975*/
+g2(brd,alpha,beta,depth,maxdepth)
+    int brd[XSIZE][YSIZE];
+    int alpha;
+    int beta;
+    int depth;
+    int maxdepth;
+    {
+    int m,t,x,i;
+    int *q;
+    int *boards[XSIZE+1]; /* filled in by generate, last slot NIL */
+    int play[XSIZE];
+
+    q = NIL;
+    Debug(1,("\n in g2() a=%d b=%d",alpha,beta))
+    if ( depth < maxdepth & !( c4won(BLACK,brd) || c4won(RED,brd) ) )
+	{
+	generate(boards,play,brd,depth+1);
+			/* fills boards array with ptrs to boards */
+			/* no imbedded NILs. Last one NIL for sure */
+	i = 0;
+	q = boards[ i++ ];      /* i.e. q = first(p) Knuths notation */
+	}
+    if ( q == NIL )
+	{
+	m =  stateval(brd); /* no legal moves or at maxdepth */
+	Debug(1,("\nLeaving g2 stateval = m =%d",m))
+	return m;
+	}
+    m = beta;
+    while ( q != NIL && m > alpha )
+	{
+	t = f2(q,alpha,m,depth+1,maxdepth);
+	if ( t < m )
+	    m = t;
+	q = boards[ i++ ]; /* q = next(q) Knuth */
+	}
+    for ( x=0 ; boards[x] ; x++ )  /* test for non NIL before freeing */
+	free( boards[x] );      /* recover memory space */
+    Debug(1,("\nLeaving g2 m=%d",m))
+    return m;
+    }
+/*---------------------------------------------------------------------*/
+/* generate - given a brd, fill in array of ptrs with next legal moves */
+void generate(positions,play,brd,depth)
+    int play[XSIZE];
+    int *positions[XSIZE+1];
+    int brd[XSIZE][YSIZE];
+    int depth;
+    {
+    int x;
+    int i;
+    int *p;
+    static int plausible_moves[XSIZE] = {3,4,2,1,5,0,6};
+
+    Debug(2,("\n gen depth=%d ",depth))
+    for ( x=0 ; x<= XSIZE ; x++ )
+	positions[x] = NIL;
+    for ( x=0, i=0 ; x<XSIZE ; x++ )
+	{
+	p = c4cpy(brd); /* allocates space and copys brd into it */
+	if ( move(plausible_moves[x],(depth & 01 ? BLACK : RED ),p) )
+	    {
+	    play[i] = plausible_moves[x];
+	    positions[i++] = p;     /* legal move made */
+	    }
+	else
+	    free(p);        /* recover space */
+	}
+    }
+/*-------------------------------------------------------------------*/
+/* stateval - static evaluation of brd position, high good for BLACK */
+stateval(brd)
+    int brd[XSIZE][YSIZE];
+    {
+    int x,y;
+    int score=100;        /* nominal score */
+
+    ++nstats;       /* increment total number of static evals */
+    if ( debuglevel && terminal_type == VT100 )
+	display(brd,NEWDISPLAY,terminal_type);
+    for ( x=0 ; x<XSIZE ; x++ )
+	move(x,PLAYABLE,brd);   /* mark playable spots */
+    if ( c4won(RED,brd) )
+	score = 0;
+    else if ( c4won(BLACK,brd) )
+	score = 1000.;
+    else if (suckertrap(brd) )
+	score = 2;              /* very bad for BLACK */
+    else if ( earlywarning(brd) )
+	score = 4;              /* also bad for BLACK */
+    else
+	{
+	for ( x=2 ; x<5 ; x++ )
+	    for ( y=0 ; y<YSIZE ; y++ )
+		{
+		if ( brd[x][y] == BLACK )
+		    {
+		    score += 3;
+		    if ( x == 3 )
+			score += 3;
+		    }
+		else if ( brd[x][y] == RED )
+		    {
+		    score--;
+		    if ( x == 3 )
+			score--;
+		    }
+		else
+		    break;  /* rest of column EMPTY */
+		}
+	x = 3;  /* most wins will start and pass thru the center col */
+	for ( y=0; y<YSIZE ; y++ )
+	    {
+	    score += 5*evalbd(x,y,BLACK,brd,3);
+	    score -= 3*evalbd(x,y,RED,brd,3);
+	    }
+	}
+    return score;
+    }
+/*---------------------------------------------------------*/
+/* suckertrap - tests for 3 in row with both ends PLAYABLE */
+int suckertrap(brd)
+    int brd[XSIZE][YSIZE];
+    {
+    int x,y=0;
+
+    for ( y=0 ; y<YSIZE ; y++ )
+	{
+	for ( x=0 ; x<XSIZE-4 ; x++ )
+	    {
+	    if ( brd[x][y] == PLAYABLE && brd[x+1][y] == RED
+		&& brd[x+2][y] == RED && brd[x+3][y] == RED
+		&& brd[x+4][y] == PLAYABLE )
+		    return TRUE;
+	    }
+	}
+    return FALSE;
+}
+/*----------------------------------------------------------------*/
+/* earlywarning - early warning of suckertrap, 2 PLAYABLE on ends */
+int earlywarning(brd)
+    int brd[XSIZE][YSIZE];
+    {
+    int x,y;
+
+    for ( y=0 ; y<YSIZE ; y++ )
+	{
+	for ( x=0 ; x<XSIZE-5 ; x++ )
+	    {
+	    if ( brd[x][y] == PLAYABLE && brd[x+1][y] == PLAYABLE
+		&& brd[x+2][y] == RED && brd[x+3][y] == RED
+		&& brd[x+4][y] == PLAYABLE && brd[x+5][y] == PLAYABLE)
+		    return TRUE;
+	    }
+	}
+    return FALSE;
+    }
+/*------------------------------------------------------------------*/
+/* c4cpy - allocates space for new brd, copies into it, returns ptr */
+int *c4cpy(brd)
+    int brd[XSIZE][YSIZE];
+    {
+    int *p;
+
+    p = (int *)malloc(XSIZE*YSIZE*2);
+    if ( p == 0 )
+	fatal("Could not allocate more board space");
+    memmove(p,brd,sizeof(bd) );
+    return p;
+    }
+/*----------------------------------------------------------------*/
+/* c4pick - picks the computers move by calling alpha-beta search */
+int c4pick(color)
+    int color;
+    {
+    int score;
+    long max = 7;
+    int k = search_depth;;
+
+    nstats = 0;     /* zero total number of static evals counter */
+    while ( --k )
+	max *= 7;  /* 7 to the search_depth is max no. boards */
+    bestmove = ILLEGAL;  /* insures illegal if f2 fails to pick one */
+    score = f2(bd,-30000,30000,0,search_depth); /* call a-b algorithm */
+    printf("\n Score = %d #static evals=%d out of %ld\n",score,nstats,max); 
+    return bestmove;
+    }
+/*--------------------------------------------------------------*/
+/* evalbd - evaluates if N in a row is present in any direction */
+int evalbd(x,y,color,brd,in_a_row)
+    int in_a_row;
+    int x,y;
+    int color;
+    int brd[XSIZE][YSIZE];
+    {
+    int d[8];     /* number of squares in each of 8 directions */
+    int deltax,deltay = -1;
+    int k,xx,yy,attack_lines,i = 0;
+
+    for ( deltax = -1 ; deltax<2 ; ++deltax )
+       {
+       for ( deltay = -1 ; deltay<2 ; ++deltay )
+	    {
+	    if ( deltax == 0  && deltay == 0 )
+		    ++deltay;       /* or you may loop 'till doomsday */
+	    for (k=0,xx=x,yy=y ; (0 <= xx) && (xx < XSIZE)
+		 && (0<=yy) && (yy<YSIZE) ; xx += deltax,yy += deltay)
+		{
+		if ( brd[xx][yy] == color )
+		    {
+		    if ( ++k == in_a_row )
+			break;
+		    }
+		else
+		    break;          /* escape the for loop */
+		}
+	    if ( k > 0 )
+		d[i++] = --k;   /* save no. of squares in this direc */
+			    /* Dont count start square twice */
+	    else
+		d[i++] = 0;
+	    }
+       }
+    attack_lines = (1+ d[0] + d[7])  / in_a_row  /* right diagonal */
+    		   + (1+ d[1] + d[6]) / in_a_row /* horizontal */
+		   + (1+ d[2] + d[5])/in_a_row   /* left diagonal */
+		   + (1 + d[3] + d[4])/in_a_row ; /* vertical */
+    return attack_lines;  /* how many lines of N in a row attacks */
+    }
+/*       score table
+        dx      dy      i       direction
+        -1      -1      0       /  left down
+        -1      0       1       <-----
+        -1      1       2       \  left up
+        0       -1      3       |  down
+        0       0       skipped
+        0       1       4       |  up
+        0       -1      5       \  right down
+        1       0       6       --->
+        1       1       7       /  right up
+used in computing score
+*/
+/* c4move.c - makes and checks moves on the board for legality etc */
+#include <stdio.h>
+#include "c4.h"
+extern int bd[XSIZE][YSIZE];
+extern int cpu_move;
+
+/*-----------------------------------------------------------*/
+/* c4move - this routine picks the cpu's move - calls c4pick */
+int c4move(mycolor)
+    int mycolor;
+    {
+    int hiscolor,x;
+
+    if ( mycolor == BLACK )
+	hiscolor = RED;
+    else
+	hiscolor = BLACK;
+    if ( c4won(hiscolor,bd) )       /* check if he just won! */
+	return YOUWIN;
+    if ( c4tie() )                  /* any moves left for computer? */
+	return TIE;
+    x = c4pick(mycolor);    /* invokes alpha-beta search algorithm */
+    cpu_move = x;
+    if ( !move(x,mycolor,bd) )
+	{
+	printf("Illegal computer move [%d] attempted\n",x);
+	return YOUWIN;          /* computer move was illegal!? */
+	}
+    if ( c4won(mycolor,bd) )
+	return IWIN;
+    else if ( c4tie() )
+	return TIE;
+    else
+	return YOURMOVE;
+    }
+/*--------------------------------------------------*/
+/* c4won - returns TRUE if specified color just won */
+int c4won(color,brd)
+    int color;
+    int brd[XSIZE][YSIZE];
+    {
+    int k,x,y,xx,yy;
+    for ( x=0 ; x < XSIZE ; x++ )
+	{
+	for ( y=0 ; y < YSIZE ; y++ )
+	    {
+	    if ( brd[x][y] == color )
+		{
+		for ( k=0, xx=x ; xx < XSIZE ; xx++ ) /* horizontal */
+		    {
+		    if ( brd[xx][y] != color )
+			    break;
+		    if ( ++k == 4 )
+			    return TRUE;
+		    }
+		for ( k=0, yy=y ; yy<YSIZE ; yy++ ) /* vertical */
+		    {
+		    if ( brd[x][yy] != color )
+			    break;
+		    if ( ++k == 4 )
+			    return TRUE;
+		    }
+		for ( k=0,xx=x,yy=y ; xx<XSIZE && yy<YSIZE ; ++xx,++yy )
+		    {
+		    if ( brd[xx][yy] != color )
+			    break;
+		    if ( ++k == 4 )
+			    return TRUE;
+		    }
+		for ( k=0,xx=x,yy=y ; xx>=0 && yy<YSIZE ; --xx,++yy)
+		    {
+		    if ( brd[xx][yy] != color )
+			    break;
+		    if ( ++k == 4 )
+			    return TRUE;
+		    }
+		}
+	    }
+	}
+    return FALSE;           /* specified color has not won */
+    }
+/*------------------------------------------------------------*/
+/* c4tie - returns TRUE if there are no moves left to be made */
+int c4tie()
+    {
+    int x;
+    for ( x=0 ; x<XSIZE ; ++x )
+	if (bd[x][YSIZE-1] == EMPTY )
+	    return FALSE;
+    return TRUE;
+    }
+/* c4subs.c - misc routines needed by the Connect Four Game */
+#include "c4.h"
+#include <stdio.h>
+extern int bd[XSIZE][YSIZE];
+extern int terminal_type;
+/*------------------------------------------------------*/
+/* init - initializes the board to empty */
+void init()
+    {
+    int x,y = 0;
+    for ( x = 0 ; x < XSIZE ; x++ )
+        for ( y=0 ; y < YSIZE ; y++)
+            bd[x][y] = EMPTY;
+    }
+/*------------------------------------------------------*/
+/* move - makes the specified move on the board passed to it */
+int move(x,color,brd)
+    int x;
+    int color;
+    int brd[XSIZE][YSIZE];
+    {
+    int y = 0;
+
+    if ( x >= 0  &&  x < XSIZE )
+        {
+        for ( y=0 ; y < YSIZE ; y++ )
+            {
+            if ( brd[x][y]  == EMPTY )
+                {
+                brd[x][y] = color;
+                return TRUE;
+                }
+            }
+        }
+    return FALSE;   /* Illegal move! */
+    }
+/*------------------------------------------------------*/
+/* fatal - prints out error message on stderr and exits */
+void fatal(message)
+    char *message;
+    {
+    fprintf(stderr,"\n%s\n",message);
+    exit(1);
+    }
+/*------------------------------------------------------*/
+/* display - updates the terminal display from the given array */
+void display(brd,option,term_type)
+    int brd[XSIZE][YSIZE];
+    int option,term_type;
+    {
+    int i,x,y;
+    if ( option == NEWDISPLAY && term_type == VT100 )
+        {
+        printf("%s%s",CURSAV,CURHOM);
+        }
+    printf("\n\t 0   1   2   3   4   5   6\n");
+    for ( y = YSIZE-1 ; y >= 0 ; y-- )
+        {
+        printf("\n\t");
+        for ( x = 0 ; x < XSIZE ; x++ )
+            {
+            i = brd[x][y];
+            if ( i == EMPTY )
+                printf("__  ");
+            else if ( i == RED )
+                printf("00  ");
+            else
+                printf("XX  ");
+            }
+        }
+    if ( term_type == VT100 )
+        printf("%s",CURRES);
+    }
+/*------------------------------------------------------*/
+/* askmove - obtains players move and checks if valid */
+int askmove(color)
+    int color;
+    {
+    int x;
+    char string [80];
+    char *p;
+    extern int cpu_move;
+
+    printf("\n\n");
+    if ( cpu_move >= 0 )
+        printf("                 My move = %d\n",cpu_move);
+    printf("Enter the column (0-6) for your move: ");
+    p = gets(string);
+    if ( p == 0 )
+        fatal("Game terminated by EOF");
+    if ( string[0] == '\014' )  /* Cntrl L */
+        {
+        printf("%s",EAOP);
+        display(bd,NEWDISPLAY,terminal_type);
+        return ILLEGAL;
+        }
+    x = string[0] - '0';
+    if ( move(x,color,bd) )
+        return x;
+    else
+        {
+        printf("\n Come on now that's an illegal move");
+        return ILLEGAL;
+        }
+    }
+

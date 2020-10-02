@@ -1,0 +1,541 @@
+; filelib.mac
+;
+;		Small-C	 File  Library  Version 2.0
+;
+;				by
+;
+;			Fred A. Scacchitti
+;			25 Glenview Lane
+;			Roch., NY 14609
+;
+;			  3 - 22 - 86
+;
+;	This module is a derivative of RUNTIME.MAC by Glen Fisher
+;	and Bill Randle. It contains the constructs necessary for
+;	handling file i/o for C programs compiled by Version 2.70
+;	(and later) of the Small-C compiler.
+;
+;	This module contains the following routines:
+;
+;	fopen(name,mode)
+;
+;	fclose(name)
+;
+;	fcb()
+;
+;	fcbpad()
+;
+;	fcbsize()
+;
+;
+; Now then here's the file i/o code
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-char. pointer in I/O struct.
+UNUSED	EQU	2	;offset	to unused-pos.-count in I/O struct.
+BUFFER	EQU	6	;offset	to disk	sector buf. in I/O struct.
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available
+EOF	EQU	0FFH
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;
+;	File i/o storage varibles found in ZZFIO.MAC
+;
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+EXTRN	ZZSVCH
+;
+;
+;
+;	Characteristics variable storage found in ulink()	
+;
+;
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+EXTRN	ZZTEMP
+;
+;	Start of file buffers found at end of program
+;
+EXTRN	GRABIO
+EXTRN	FREEIO
+EXTRN	CPMIO
+EXTRN	CPMDISK
+;
+;	Required to set buffer in append mode
+;
+EXTRN	PUTC
+;
+;	Default disk I/O buffer
+;
+EXTRN	ZZBUF
+;
+; Storage variables used by append mode
+;
+CURREC:	DB	0
+CUREXT:	DB	0
+OLDREC:	DB	0
+OLDEXT:	DB	0
+;
+;	fopen(name,mode)
+;
+FOPEN::
+;
+	POP	B			;get args
+	POP	H			;mode
+	SHLD	ZZMODE
+	POP	D
+	XCHG
+	SHLD	ZZFILE
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	CALL	GRABIO			; unit = grabio();
+	SHLD	ZZUNIT
+	MOV	A,H			; if(unit==NULL)
+	ORA	L			;	return(NULL);
+	RZ
+	LXI	D,FCBSIZE		; ZZIP = unit+FCBSIZE;
+	DAD	D
+	SHLD	ZZIP
+;
+	LXI	D,UNGOT			;# OFFSET TO UNGOTTEN CHAR
+	DAD	D
+	MVI	M,0FFH			;# EOF TO AVOID EXTRA CHAR
+;
+	DCX	H			;# POINT TO ERROR BYTE
+	MVI	M,0			;# CLEAR IT
+;
+	LHLD	ZZIP			;ZZIP[NEXTP]=&ZZIP[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	XCHG
+	LHLD	ZZIP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	ZZUNIT			; fcb(unit,name);
+	PUSH	H
+	LHLD	ZZFILE
+	PUSH	H
+	CALL	FCB
+	POP	H
+	POP	H
+	LHLD	ZZUNIT			; cpmdisk(*unit);
+	MOV	L,M
+	MVI	H,0
+	PUSH	H
+	CALL	CPMDISK
+	POP	H
+	LHLD	ZZMODE			;if(*mode=='R'||*mode=='A'){
+	MOV	A,M
+;
+	ANI	5FH			;# CONVERT TO UPPERCASE
+	CPI	'R'			;# MODE = R ?
+	JNZ	FOPIF1
+;
+FOPIF0:
+	MVI	C,OPEN			;	if(cpm(OPEN,unit)<0){
+	LHLD	ZZUNIT
+	XCHG
+	CALL	CBDOS		; (mod to€cbdos (fas))
+	ORA	A
+	JP	FOPIF2
+	LHLD	ZZUNIT		;		freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;		return(NULL);
+	RET
+				;		}
+FOPIF2:
+	LHLD	ZZIP		;	ZZIP[UNUSED] = 0;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,0
+	MOV	M,E
+	INX	H
+	MOV	M,D
+				;	}
+	JMP	FOPIFX
+FOPIF1:				; else if(*mode=='W'){
+	LHLD	ZZMODE	
+	MOV	A,M
+	ANI	5FH
+	CPI	'W'		;# WRITE MODE ?
+	JZ	FOPIFA		;# YES - GO DO IT
+	CPI	'A'		;# APPEND MODE ?
+	JNZ	FOPIF5		;# NO  - BACK TO CALLER OF FOPEN
+;				;#     NO MODES LEFT TO TRY
+;
+	MVI	C,OPEN		;# FIRST LET'S SEE IF IT'S THERE
+	LHLD	ZZUNIT
+	XCHG
+	CALL	CBDOS
+	ORA	A
+	JP	FOPIF3		;# YES  - SET IT UP FOR USE
+;
+				;# NO   - LET'S MAKE ONE
+	LHLD	ZZMODE		;# SET MODE TO 'W' ON NEW FILE
+	MVI	M,'W'		;# TO AVOID WASTING TIME AND CODE
+				;# SEARCHING AN EMPTY FILE
+;
+FOPIFA:
+	MVI	C,DELETE	;	cpm(DELETE,unit);
+	LHLD	ZZUNIT
+	XCHG
+	CALL	CBDOS		; (mod to cbdos(fas))
+	MVI	C,CREATE	;	if(cpm(CREATE,unit)<0){
+	LHLD	ZZUNIT
+	XCHG
+	CALL	CBDOS		; (mod to cbdos(fas))
+	ORA	A
+	JP	FOPIF3
+	LHLD	ZZUNIT		;		freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;		return(NULL);
+	RET
+				;		}
+FOPIF3:
+	LHLD	ZZIP		;	ZZIP[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	ZZUNIT		;	unit[FLAG] = WRITE_FL;
+	LXI	D,FLAG
+	DAD	D
+	MVI	A,WRTFLG
+	ORA	M
+	MOV	M,A
+	JMP	FOPIF4
+				;	}
+FOPIF5:
+	LHLD	ZZUNIT		; else{	freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;	return(NULL);
+	RET
+;
+				;	}
+FOPIF4:
+;
+	LHLD	ZZMODE		;#
+	MOV	A,M		;# GET MODE
+	ANI	5FH
+	CPI	'A'		;# APPEND MODE ?
+	JNZ	FOPIFX		;# NO  -  RETURN NORMALLY
+;
+AMSCRD:
+;
+	LDA	CUREXT		;# SAVE EXTENT AND RECORD NUMBERS
+	STA	OLDEXT		;#    TWO DEEP
+	LDA	CURREC
+	STA	OLDREC
+	LHLD	ZZUNIT
+	LXI	D,12
+	DAD	D
+	MOV	A,M		;# GET CURRENT EXTENT #
+	STA	CUREXT
+	LXI	D,20
+	DAD	D
+	MOV	A,M		;# GET CURRENT RECORD #
+	STA	CURREC
+;
+	LHLD	ZZUNIT		;# YES -  LET'S READ TO THE END
+	XCHG			;# DE --> FCB
+	MVI	C,READ
+	CALL	CBDOS		;# READ A SECTOR
+	ORA	A
+	JZ	AMSCRD		;# READ TO PHYSICAL END OF FILE
+;
+	LHLD	ZZUNIT
+	LXI	D,12
+	DAD	D
+	LDA	OLDEXT
+	MOV	M,A		;# RESTORE LAST EXTENT #
+	LXI	D,20
+	DAD	D
+	LDA	OLDREC
+	MOV	M,A		;# RESTORE LAST RECORD #
+;
+	LXI	H,ZZBUF
+	SHLD	ZZTEMP		;# SAVE THE BUFF. WE'RE READING FROM
+;
+	XRA	A
+	STA	OLDREC		;# use oldrec for a counter
+AMCHRD:
+	LHLD	ZZTEMP		;# HL --> TEMPORARY BUFFER
+	MOV	A,M
+;
+	CPI	0AH		;# LINE FEED CHECK
+	JNZ	NOTLF
+	INX	H		;# INCREMENT POINTER 
+	SHLD	ZZTEMP		;#  AND GO ON TO NEXT CHARACTER
+	JMP	AMCHRD
+;
+NOTLF:	CPI	1AH		;# END OF FILE MARKER ?
+	JZ	FOPIFX		;# YES - EXIT GRACEFULLY
+	MOV	C,A
+	MVI	B,0		;# BC CONTAINS THE CHARACTER
+	INX	H
+	SHLD	ZZTEMP		;# SAVE UPDATED POINTER
+	LHLD	ZZUNIT
+	PUSH	B
+	PUSH	H
+	CALL	PUTC		;# PUTC(CHAR,ZZUNIT)
+	POP	B
+	POP	B
+;
+	LDA	OLDREC		;# get the counter
+	INR	A		;# add a count
+	STA	OLDREC		;# store it
+;
+	JNZ	AMCHRD		;# keep going (max 128 bytes)
+;
+FOPIFX:
+	LHLD	ZZUNIT		; return(unit);
+	RET
+;
+FCLOSE::
+	POP	B
+	POP	H
+	SHLD	ZZUNIT
+	PUSH	H
+	PUSH	B
+	MOV	A,H		; if (unit<256)
+	ORA	A		; /* assume stdin, stdout, etc. */
+	MVI	L,0	
+	RZ			; 	return NULL;
+	LXI	H,1		; t = 1;
+	SHLD	ZZT
+	LHLD	ZZUNIT		; if(unit[FLAG]	& WRITE_FL){
+	LXI	D,FLAG
+	DAD	D
+	MOV	A,M
+	ANI	WRTFLG
+	JZ	FCLIF1
+	LXI	H,CTRLZ		;	putc(CTRL_Z,unit);	
+	PUSH	H
+	LHLD	ZZUNIT
+	PUSH	H
+	CALL	PUTC
+	POP	H
+	POP	H
+	LHLD	ZZUNIT		;	ZZIP = unit + FCBSIZE;
+	LXI	D,FCBSIZE
+	DAD	D
+	SHLD	ZZIP
+	LHLD	ZZIP		;		cp = ZZIP[NEXTP];
+	LXI	D,NEXTP
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	ZZCHP
+	LHLD	ZZIP		;	ZZDP = &ZZIP[BUFFER]+BUFSIZ;
+	LXI	D,BUFFER+BUFSIZ
+	DAD	D
+	SHLD	ZZDP
+FCLWH1:				;		while(cp<ZZDP)
+	LHLD	ZZCHP
+	XCHG
+	LHLD	ZZDP
+	MOV	A,D
+	CMP	H
+	JC	FCLWH2
+	JNZ	FCLWH3
+	MOV	A,E
+	CMP	L
+	JNC	FCLWH3
+FCLWH2:				;		*cp++ =	CTRL_Z;
+	LHLD	ZZCHP
+	MVI	M,CTRLZ
+	INX	H
+	SHLD	ZZCHP
+	JMP	FCLWH1
+FCLWH3:
+	LXI	H,WRITE		;	if(cpmio(WRITE,unit)<0)
+	PUSH	H
+	LHLD	ZZUNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	A
+	JP	FCLIF4
+	LXI	H,0		;			t = 0;
+	SHLD	ZZT
+FCLIF4:
+				;		}
+FCLIF3:
+				;	}
+FCLIF1:
+	MVI	C,CLOSE		; if(cpm(CLOSE,unit)<0)
+	LHLD	ZZUNIT
+	XCHG
+	CALL	CBDOS		; (mod tocbdos(fas))
+	ORA	A
+	JP	FCLIF5
+	LXI	H,0		;	t = 0;
+	SHLD	ZZT
+FCLIF5:
+	LHLD	ZZUNIT		; freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LHLD	ZZT		; return(NULL+t);
+	RET
+;
+;	fcb(fp,name)
+;
+FCB::
+	POP	H		;get args
+	POP	D		;name
+	POP	B		;fp
+	PUSH	B
+	PUSH	D
+	PUSH	H
+	INX	D		; if(name[1]==':'){
+	LDAX	D
+	DCX	D
+	CPI	':'
+	JNZ	FCBIF1
+	LDAX	D		;	A = *name - '@';
+	SUI	40H		; '@' 9	Jun 80 rj
+		
+	INX	D		;	name +=	2;
+	INX	D
+	
+	CPI	61H-41H		;   if(A>'a'-'A') /* lower case? */
+	JC	FCBIF2
+	SUI	61H-41H		;	   A -= 'a'-'A'
+	JMP	FCBIF2		;	}
+FCBIF1:
+	LDA	ZZDFLT		; else	A = default_drive;
+FCBIF2:
+	STAX	B		; *fp++	= A;
+	INX	B
+	MVI	H,' '		; fp = fcbfill(fp,name,' ',8);
+	MVI	L,8
+	CALL	FCBFILL
+	MVI	L,3		; fp = fcbfill(fp,name,' ',3);
+	CALL	FCBFILL
+	MVI	H,0		; fp = fcbpad(fp,0,4);
+	MVI	L,4
+	CALL	FCBPAD
+	LXI	H,16		; fp[16] = 0;
+	DAD	B
+	MVI	M,0
+	RET			; return;
+;
+;	fcbfill(dest,name,pad,size)
+;		B    D	  H   L
+;
+FCBFILL::
+	MOV	A,L		; while(L>0 && (A= *D)~='.' && A~=0){
+	ORA	A
+	JZ	FILL2
+	LDAX	D
+	CPI	'.'
+	JZ	FILL2
+	CPI	0
+	JZ	FILL2
+	CPI	61H		;	if(A>='a' && A<='z')
+	JC	FILL1
+	CPI	7AH+1		; 'z' 9	Jun 80 rj
+	JNC	FILL1
+	SUI	61H-41H		;		A = A -	'a' + 'A';
+FILL1:
+	STAX	B		;	*B++ = A;
+	INX	B
+	INX	D		;	D++;
+	DCR	L		;	L--;
+	JMP	FCBFILL		;	}
+FILL2:
+	LDAX	D		; while(*D~='.'	&& *D~=0)	
+	CPI	'.'
+	JZ	FILL3
+	CPI	0
+	JZ	FILL3
+	INX	D		;	D++;
+	JMP	FILL2
+FILL3:
+	CPI	'.'		; if(*D=='.')
+	JNZ	FILL4
+	INX	D		;	D++;
+FILL4:
+;	fall into...
+;
+;	fcbpad(dest,pad,size)
+;		B   H	L
+;
+FCBPAD::
+	MOV	A,L		; while(L>0){
+	ORA	A
+	JZ	PAD2
+	MOV	A,H		;	*B++ = H;
+	STAX	B
+	INX	B
+	DCR	L		;	L--;
+	JMP	FCBPAD		;	}
+PAD2:
+	RET			; return;
+;
+;
+	END
+
+

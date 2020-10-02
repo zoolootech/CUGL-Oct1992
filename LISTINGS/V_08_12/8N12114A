@@ -1,0 +1,94 @@
+/*
+ * client.c
+ *
+ *    Basic client process for time accounting system, non-network version.
+ *    This process (and those that are linked to it) are run as commands 
+ *    and send events to the server process.
+*/
+
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+#include <stdio.h>
+#include "time_entry.h"
+
+main(argc, argv)
+    int argc;
+    char *argv[];
+{
+
+    int skt_id,    /* Socket descriptor */
+        msg_sock,  /* Socket that will accept messages */
+        i,j;
+
+    EVENT_TYPE event;
+
+    struct sockaddr sa;  /* Socket address structure   */
+    char buff[80];
+
+        /*
+         *  Specify the socket domain and type we want...
+        */
+        skt_id = socket(AF_UNIX, SOCK_STREAM, 0);
+        if(skt_id == -1){
+            perror("Can't create socket");
+            exit(1);
+        }
+
+        /*
+         *  Now set up the address structure and connect to the socket.
+        */
+        sa.sa_family = AF_UNIX;
+        strcpy(sa.sa_data, SOCKET_NAME);
+
+        if(connect(skt_id, &sa, sizeof(sa)) == -1){
+            perror("Can't connect to socket");
+            exit(1);
+        }
+
+        build_event(argv[0], &event);
+
+        /* 
+         * Now, send the event
+        */
+
+        if(write(skt_id, &event, sizeof(event)) != sizeof(event)){
+            perror("Write");
+            exit(1);
+        }
+
+        /* Cleanup */
+        close(skt_id);
+        exit(0);
+}
+
+build_event(a, e)
+    char *a;        /* Name process was invoked with */
+    EVENT_TYPE *e;  /* A time entry event   */
+{
+
+        if(!strcmp(a, "pi"))             /* A PHONE_IN event */
+            e->event_cd = PHONE_IN;
+        else if(!strcmp(a, "po"))        /* PHONE_OUT */
+            e->event_cd = PHONE_OUT;
+        /*
+         *  Check any other types...
+        */
+        else
+            e->event_cd = SHUT_DOWN;   /* Default is shut down */
+
+        e->bill_flag = 'Y';            /* Billable is the default */
+
+        /*
+         *  Code here to get the system time (e->event_st), and the
+         *  login name of the user (e->logname).  For now, let's just
+         *  hard code something...
+        */
+        e->event_st = 0;
+        strcpy(e->logname, "bryang");
+}
+
+
+
+

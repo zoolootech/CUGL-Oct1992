@@ -1,0 +1,168 @@
+
+Table 3 -- Command and Result Sequences for floppy commands
+-----------------------------------------------------------
+Byte      r/w       Read ID   Format    Recal     Seek
+C-0       cmd+MT    cmd+MFM   cmd+MFM   cmd       cmd
+           +MFM+SK
+C-1       HDS+DS    HDS+DS    HDS+DS    DS        HDS+DS
+C-2       C                   N                   NCN
+C-3       H                   SC
+C-4       R                   GPL
+C-5       N                   D
+C-6       EOT
+C-7       GPL
+C-8       DTL
+R-0       ST0       ST0       ST0
+R-1       ST1       ST1       ST1
+R-2       ST2       ST2       ST2
+R-3       C         C         C **
+R-4       H         H         H **
+R-5       R         R         R **
+R-6       N         N         N **
+
+** For format, these have no meaning.
+
+
+Table 4 -- Command and Result Sequences for FDC commands
+--------------------------------------------------------
+Byte      Specify   	Sense Intr Status   Sense Drive Status
+
+C-0       cmd       	cmd                 cmd
+C-1       SRT+HUT	      		      HDS+DS
+C-2       HLT+ND
+R-0       		  ST0
+R-1                 	PCN                 ST3
+
+
+Table 5 -- What the symbols mean
+--------------------------------
+cmd - bit 0-4, command code: see table 6.  Bit 4 only set for "scan"
+     commands, which are not discussed here.
+SK - bit 5, Skip deleted address mark.  This article does not cover
+     deleted data.
+MFM - bit 6, Double Density (Modified Frequency Modulated).
+MT - bit 7, Multi-track.  Really should be 'multi-head'.  Allows a  read
+     data or read deleted data to continue at the end of track onto the
+     other side of floppy.  Do not use for writing.
+DS - bits 0 & 1, Drive select
+HDS - bit 2, Head select.
+C - Cylinder. A part of the sector ID, corresponding to (but not
+     necessarily equal to) the position of the track.
+H - Head. A part of the sector ID, corresponding to the (but not
+     necessarily equal to) the side of the disk.
+R - Record. A part of the sector ID, generally called the sector number. 
+     Definitely NOT the same as a CPM record.  May or may not be ordered
+     sequentially.
+N - Number of bytes code.  Defines sector size: see table 7 for value.
+EOT - End of Track.  The last possible sector number on the track.  Can
+     be larger than the number of physical sectors.
+GPL - Gap Length.  Used by FDC when reading or writing.
+FGPL - Format Gap Length.  Used by FDC in formatting.  It is a different
+value than the GPL used in read/write.  See Table 7 for value.
+DTL - Data Length.  Number of bytes in sector if N == 0.  
+SC - Sectors per cluster.  Format uses to know how much to write
+D - Data Fill byte for format command.  Initial data written to sectors.
+NCN - New Cylinder Number.  This is the position to "SEEK" to.
+HUT - bits 0-3, Head Unload time.  IBM XT specs 0xF (240 msec).
+SRT - bits 4-7, Step Rate time.  (16-SRT) = # millisecond.  IBM XT specs
+     0xC, which XT Tech Ref says is 6 ms track-to-track (I figure it to
+     be 4 ms).  
+ND - bit 0, Non-DMA mode. I don't recommend this: should remain clear.
+HLT - bits 1-7, Head Load Time.  2 ms increments.  XT Tech Ref specs
+     0x1.
+ST0-ST3 - Status registers ST0, ST1, ST2, and ST3.  See table 8 for
+     detail.
+PCN - Present Cylinder Number.  Where the FDC thinks the head is after a
+     seek or recalibrate.
+
+Table 6 -- floppy disk command codes (except scan commands)
+-----------------------------------------------------------
+0x00      Invalid
+0x01      Invalid
+0x02      Read Track (all sectors)
+0x03      Specify drive parameters 
+0x04      Sense drive status (get Status Reg 3)
+0x05      Write Data (1 or more sectors)
+0x06      Read Data (1 or more sectors)
+0x07      Recalibrate drive (move head to cylinder 0)
+0x08      Sense interrupt status (MUST be issued immediately after Seek 
+               or Recalibrate)
+0x09      Write deleted data - not recommended
+0x0A      Read ID fields (read ID fields off disk, wherever the head 
+               currently is).
+0x0B      Invalid
+0x0C      Read deleted data - not recommended
+0x0D      Format a track (the lowest level format)
+0x0E      Invalid
+0X0F      Seek (move head to desired cylinder)
+
+
+Table 7 -- Values for N, GPL, and EOT for 5 1/4" floppies
+---------------------------------------------------------
+Density   size      N         SC        GPL       FGPL
+
+single    128       0x00      0x12      0x07      0x09
+single    128       0x00      0x10      0x10      0x19
+single    256       0x01      0x08      0x18      0x30
+single    512       0x02      0x04      0x46      0x87
+single    1024      0x03      0x02      0xC8      0xFF
+single    2048      0x04      0x01      0xC8      0xFF
+                                                  
+double    256       0x01      0x12      0x0A      0x0C
+double    256       0x01      0x10      0x20      0x32
+double    512       0x02      0x08      0x2A      0x50
+double    1024      0x03      0x04      0x80      0xF0
+double    2048      0x04      0x02      0xC8      0xFF
+double    4096      0x05      0x01      0xC8      0xFF
+                                                  
+Note:  In the IBM PC, the format is double, 512 bytes.  Despite the
+information in this table, nine sectors are put on the disk
+successfully.
+
+Table 8 -- Status Register bit definitions
+------------------------------------------
+Reg  bit  sym  Description
+
+ST0  6&7  IC   Interrupt Code: 00= normal, 01= Abnormal termination,
+               10= Invalid command, 11= Aborted: ready signal changed.
+     5    SE   Seek End.
+     4    EC   Equiptment check. Fault signal or could not recalibrate
+     3    NR   Not Ready.  Normally because door not closed.
+     2    HD   Head Address. 0 or 1.
+     0&1  US   Unit (drive) select.  Only needed when doing overlapping
+               seeks.
+
+ST1  7    EN   End of cylinder.  An attempt to read past the last sector
+               on a track.
+     6    n/a  (always zero)
+     5    DE   Data Error.  Bad data read from floppy.
+     4    OR   Over run.  The processor did not get data fast enough.
+     3    n/a  (always zero)
+     2    ND   No Data.  Could not read ID field requested.
+     1    NW   Not Writable.  Write protected floppy.
+     0    MA   Missing Address Mark.  Could not find ID field requested.
+               (This often occurs with DE with a unformatted or
+               corrupted disk.
+
+ST2  7    n/a  (always zero)
+     6    CM   Control Mark.  A deleted sector was detected.
+     5    DD   Data error in Data field.  Bad data on floppy.
+     4    WC   Wrong Cylinder.  "C" field in command doesn't match the 
+               corresponding field in the ID field on disk.
+     3    SH   Scan Equal Hit.
+     2    SN   Scan not Satisfied.
+     1    BC   Bad Cylinder.  same as WC, but "C" == 0xFF.
+     0    MD   Missing Data address mark.  Could not find Data address
+               mark field.
+
+ST3  7    FT   Fault.  Signal from floppy disk drive (FDD).
+     6    WP   Write Protected. Signal from FDD.
+     5    RDY  Ready. Signal from FDD.
+     4    T0   Track 0. Signal from FDD.
+     3    TS   Two Side. Signal from FDD.
+     2    HD   Head address.  Signal from FDD.
+     0&1  US   Unit select. Signals from FDD.
+
+Note: The "sym" column is the mnemonic assigned in the Intel
+documentation.
+

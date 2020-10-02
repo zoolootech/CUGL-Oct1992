@@ -1,0 +1,147 @@
+/*  VERSION 0011  (DATE: 03/03/87)  (TIME: 09:58)  */
+/*
+	e (qed) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	Modified: Aug-Dec	1984:	BDS-C 'e'(vers 4.6a) to 'qe' (J.W. Haefner)
+			  March		1985:	BDS-C 'qe' to DeSmet-C 'qed' (J.W. Haefner)
+
+	FILE: qed9
+
+	FUNCTIONS: initvm,freememslot,swapout,writepage,swappin,readpage,
+			fatalerror
+
+	PURPOSE: manages virtual memory
+
+*/
+
+#include "qed.h"
+
+long lseek();
+unsigned writepage();
+
+initvm()	/*initialise virtual memory system*/
+{
+	int slot;
+	unsigned base;
+	char *pagemem, *stkaddr;
+
+	stkaddr=_showsp();
+	pagemem=_memory();
+	slotsinmem=(stkaddr-STKSPACE-pagemem)/PAGESIZE;
+	if (slotsinmem < 3) {
+		putstr("More memory needed to run 'e'"); 
+		exit();
+		}
+	if (slotsinmem > MAXMEMSLOTS) slotsinmem=MAXMEMSLOTS;
+	for (slot=0, base=pagemem; slot < slotsinmem; slot++, base+=PAGESIZE) {
+		usage[slot]=FREE;
+		slotaddr[slot]=base;
+		}
+	clock=0;
+
+	/*reserve slot 0 for tp*/
+	tp=pagemem; 
+	tppages=1;
+	usage[0]=NOTAVAIL;
+
+	/*force balloc to find a new page to start*/
+	pageloc[(newpage=0)]=FREE; 
+	allocp=PAGESIZE+1;
+
+	/*paging file not yet created*/
+	pagefd=NOFILE;
+	strcpy(pagingfile," :qe$$$.$$$");
+	pagingfile[0]=((pagingdisk) ? pagingdisk : (curdsk+'A'));
+	/*put pagingfile on pagingdisk*/
+	if(pagingdisk) pagingfile[0]=pagingdisk;
+}
+
+freememslot()	/*returns the number of a free memory slot, possibly by swapping
+		  out the least recently used page currently in memory*/
+{
+	int use, u;
+	int i, slot;
+
+	for (use=MAXINT, i=0; (use) && (i < slotsinmem); i++)
+		if ( ((u=usage[i]) != NOTAVAIL) && (u <= use)) {
+			use=u; 
+			slot=i;
+			}
+	if (use) /*no free slots*/ swapout(slot);
+	return slot;
+}
+
+swapout(slot)	/*swaps page currently in memory at 'slot' to disk,
+		  updating pageloc to show new location*/
+int slot;
+{
+	int *pl;
+	/*long *pl;*/
+
+	/*find page number of page at 'slot'*/
+	for (pl=&pageloc[0]; *pl != slot; pl++);
+ 		/*update pageloc with disk slot written to */
+	*pl=-(writepage(slot));
+}
+
+unsigned writepage(slot)	/*writes page currently in memory at 'slot' to disk;
+		  					  returns disk slot where written*/
+int slot;
+{
+	unsigned loc;
+	long sekbytes;
+
+	if (pagefd == NOFILE) { /*haven't opened paging file yet*/
+	/*if (dskcheck(setjmp(dskerr)) || (pagefd=creat(pagingfile)) == FAIL)*/
+	if ((pagefd=creat(pagingfile)) == FAIL)
+		fatalerror("Can't create a buffer file");
+		for (loc=0; loc < MAXSLOTS; loc++) dskslots[loc]=FREE;
+		}
+for (loc=0; dskslots[loc] != FREE; loc++); /*find a free slot*/
+sekbytes=(long)(loc)*(long)PAGESIZE;
+if (lseek(pagefd,sekbytes,ABSOLUTE) == (long)FAIL)
+		fatalerror("Bad seek in writing buffer");
+	if (write(pagefd,slotaddr[slot],PAGESIZE) == FAIL)
+		fatalerror("Can't write to buffer - disk full");
+	dskslots[loc]=INUSE;
+	usage[slot]=FREE;
+	return loc;
+}
+
+swappin(page)	/*get 'page', currently on disk, into memory and return slot
+		  where placed*/
+int page;
+{
+	int slot;
+
+	readpage( (slot=freememslot()), -pageloc[page]);
+	usage[slot]=INUSE;
+	return pageloc[page]=slot;
+}
+
+readpage(memslot,dskslot)	/*read a page from disk into memory at 'memslot'*/
+int memslot;
+int dskslot;
+{
+	long sekbytes;
+	sekbytes=(long)(dskslot) * (long)PAGESIZE;
+	if (lseek(pagefd,sekbytes,ABSOLUTE) == (long)FAIL)
+		fatalerror("Bad seek in reading buffer");
+	if (read(pagefd,slotaddr[memslot],PAGESIZE) != PAGESIZE)
+		fatalerror("Can't read buffer");
+	dskslots[dskslot]=FREE;
+}
+
+fatalerror(message)	/*displays message, returns to a known good screen*/
+char *message;
+{
+	error(message);
+	moveline(goodline-cline);
+	longjmp(0,1);
+	/*exit();*/
+}
+

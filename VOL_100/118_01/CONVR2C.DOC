@@ -1,0 +1,235 @@
+.cm How to convert from RATFOR to C
+.cm
+.cm source:  convr2c.doc
+.cm version: May 22, October 14, 1981.
+.bp 1
+.pl 66
+.rm 60
+.he 'convr2c'RATFOR to C conversions'%'
+.fo ''-#-''
+
+.ul
+introduction
+
+.ti +3
+This file tells what I had to do to convert a large
+program (ROFF) from RATFOR to C.
+Most of this file was written just after I finished the
+project, so it is quite complete.
+
+.ul
+general changes
+
+.ti +3
+Comments must be changed from RATFOR style to C style.
+RAT4 comments start with # (outside strings) and
+continue to the end of the line.
+C comments start with /* and continue to */.
+The program rat2c converts from RAT4 comments to C comments.
+
+.ti +3
+Multiple spaces may be replaced with tabs.
+The routines entab() and detab() are only marginally useful
+for this.
+
+.ti +3
+RATFOR define statment must be replaced by the C #define.
+The RATFOR define looks like:
+
+	define (a,b)
+
+The C define looks like:
+
+#define a b
+
+Note that the C define must start in column 1.
+No arithmetic is allowed in the C define.
+
+.ti +3
+RAT4 had the ifdef and ifnotdef pseudo ops.
+These may have to be changed in some versions of C.
+They can be replaced by just commenting out code
+or by creating runtime global variables corresponding
+to compile time variables tested by the ifdef.
+
+.ti +3
+RAT4 uses includes inside each program for including
+declarations of variables.
+In C, these  #includes appear once at the start of each file.
+The includes inside each RAT4 program must be commented out
+and replaced by a single set at the start of the C file.
+
+.ti +3
+Printable character constants can be eliminated from
+C programs.
+I think that RAT4 uses them to get around problems with
+character sets.
+At the present time I can see no reason to have constants
+for printable characters.
+I may be wrong though.
+
+.ti +3
+RAT4 common blocks must be replaced by global variables
+declared in a header file.
+Array dimensions must appear in the variable declarations
+in C rather than in the common block declaration.
+
+.ul
+changes to declarations
+
+.ti +3
+The RAT4 keywords function and subroutine
+must be eliminated where they appear.
+
+.ti +3
+RAT4 groups parameter declarations with declarations of
+local variables.
+In C, these two declarations are separated by a {.
+
+.ti +3
+The RAT4 keyword integer and character must be changed to
+int and char.
+
+.ti +3
+The RAT4 keyword pointer indicates (probably) that the
+variable is an int whose address will be passed (via &)
+as an actual parameter.
+It is not clear whether the RAT4 usage of pointer is
+consistent with good C coding practice.
+
+.ti +3
+As mentioned before, include statements inside RAT4
+subroutines must be eliminated.
+
+.ti +3
+The RAT4 data statement can not be simulated directly
+without C initializers.
+An alternative is to create global variables which are
+initialized at run time.
+
+.ti +3
+The names of functions which are used by a RAT4 subroutine
+appear in the declarations of that routine.
+These declarations must be eliminated from C programs.
+(The C compiler thinks local variables are being declared.)
+
+.ti +3
+RAT4 uses parens to declare arrays.
+C uses square brackets.
+
+.ul
+changes to executable statements
+
+.ti +3
+The biggest problem is probably subscripts.
+(See below for a more semantic problem with subscripts).
+RAT4 uses parens for both actual parameter lists and
+array subscripts.
+C uses parens for parameter lists, but square brackets
+for subscripts.
+Clearly, whether to convert to square brackets depends on
+knowing whether an id is an function or not.
+
+.ti +3
+In C, all statements must end in semicolons.
+Once again, a full RAT4 parser is needed in order to
+know where to put the semicolons.
+
+.ti +3
+RAT4 assignment statements like:
+
+.in +5
+i = i + 1
+.br
+.in -5
+
+can be changed to:
+
+.in +5
+i++;
+.br
+.in -5
+
+.ti +3
+In RAT4 functions, the name of the function is used
+as a variable which denotes the value returned by the function.
+In C, the name of a function denotes recursive execution.
+In C, a new local variable must be declared inside the
+function and the function must return a value with a 
+return(value) statement.
+
+.ti +3
+My version of C does not have a repeat statement.
+The RAT4 statement:
+
+.in +5
+repeat { ...  } until ( )
+.br
+.in -5
+
+must be replaced by the C statement:
+
+.in +5
+while (1) { ...  if ( ) break; }
+.br
+.in -5
+
+.ti +3
+The RAT4 statement next must be replaced by
+the C statement continue.
+
+.ti +3
+RAT4 uses call statement. C does not.
+RAT4 calls with no arguments do not need actual parameter
+lists.
+In C, a function with no arguments still needs ().
+
+.ti +3
+In RAT4 all arrays start at 1.
+In C all arrays start at 0.
+This means that array declarations will have to be changed,
+as well as all code that refers to the limits of arrays.
+In practice, a semantic analysis of how
+.ul
+all
+variables of a program are used is required.
+Almost every part of a program might need to be changed:
+initialization of variables, for loop indices, actual
+parameters, etc.
+
+.ti +3
+RAT4 uses call by reference.
+C uses call by value.
+This means that if a RAT4 subroutine changes any of it's
+arguments, the C routine will have to pass a pointer
+to a variable, rather than the variable itself.
+The C routine will have to change the variable via
+indirection.
+This also means that C programs do not have to protect
+there arguments from change like RAT4 programs do.
+
+.ti +3
+RAT4 uses & and | to indicate AND and OR.
+C uses && and || to indicate boolean AND and OR.
+C can use & and | only if each relational clause
+joined by & and | is fully parenthesized.
+
+.ti +3
+For best portability RAT4 uses the construction:
+
+.in +5
+junk = func()
+.br
+.in -5
+
+even when junk is not going to be used.
+This is not needed in C.
+ variable via
+indirection.
+This also means that C programs do not have to protect
+there arguments from change like RAT4 programs do.
+
+.ti +3
+RAT4 uses & and | to indicate AND and OR.
+C uses && and || to indicate boolean AND and OR.
+C can use & an

@@ -1,0 +1,58 @@
+MODEL= s
+#	-v	source level debugging
+#	-y	produce line number info
+#	-N-	(in production) turn off check for stack overflow
+#	-k-   (in production) turn off Standard stack frame
+#	-a  	generate word alignment -- real win on 8086 and up
+#		...would take some work to get going, though.
+#	-H	use precompiled headers
+#	-Qxxx   Memory usage control
+#	-p      Pascal calls
+#	-G    Generate for speed
+#	-Ox	Optimizations
+#	-O	jump optimization
+#	-O1	smallest code, = -O -Ob -Oe -k- -Z -Os 
+#	-O2	fastest code,  = -O -Ob -Oe -k- -Z -Og 
+#	-Oa	no pointer aliasing
+#	-Ob	remove dead code
+#	-Oc	common subexpressions in basic blocks only
+#	-Oe	global register allocation
+#	-Og	like c, whole functions (implies not c)
+#	-Oi	inline intrinsic functions (c++ only?)
+#	-Ol	loops into rep movsX's
+#	-Om	invariants
+#	-Op	copies of constants
+#	-Os	choose size
+#	-Ot	choose speed
+#	-Ov	loop induction and strength reduction
+OPTIMIZATION= -Ov -Ot -Op -Om -Ol -Og -Oe -Ob
+FLAGSBOTH=	-m${MODEL} -w -a -d -G -O -Z -M -p -K -H=sym.dat -Qx
+#CFLAGS=	${OPTIMIZATION} ${FLAGSBOTH} -N
+#CFLAGS=	${OPTIMIZATION} ${FLAGSBOTH} -N -v -y
+CFLAGS=			    ${FLAGSBOTH} -N -v -y
+
+OBJS=		to_max.obj
+CSRC= 	to_max.c
+
+now: 2max
+
+2max: ${OBJS}
+	>foo $(SETARGV) ${OBJS},2max,2max,${LIBS},
+	tlink /m /l /d /c /v @foo
+	del foo
+
+# just the source in the directory (the define 'CSRC')
+depend: ${CSRC}
+	del makedep
+	! (cpp ${CFLAGS} $?; makedep $? qsort; del *.i)
+	makedep -e
+	del makedep
+
+# A universally useful target.
+clean:
+        rm *.bak *.map *.obj make makedep autofile.lan *.i
+	  ds n
+
+# anything after this line will disappear.
+# DO NOT DELETE THIS LINE -- make depend uses it
+###

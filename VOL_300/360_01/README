@@ -1,0 +1,103 @@
+       Uspell files 
+
+
+       wpdict.nl (divided into wpdict.nl1 and wpdict.nl2)
+
+       ASCII dictionary, sorted and delimited by newline.  The original
+       dictionary was inconsistent with respect to delimiters and
+       carried a CR that was not needed.  It was out of ASCII sequence
+       because apostrophe was sorted high.  This file was prepared using
+       rmcr and sort.  
+
+
+       dctcvt.c 
+
+       This program reads the ASCII dictionary and writes a compressed
+       binary dictionary and index.  When constructing the index, the
+       shortest spelling in a dictionary granule is selected for
+       inclusion.  
+
+
+       wpdict.dat 
+
+       This is the compressed dictionary.  It uses 5 bit characters vs.
+       8 bit.  Apostrophe is binary 1.  Letters of the alphabet are 2
+       through 27.  A flag byte providing 8 bit fields corresponding to
+       the most common suffixes is set aside for each root word.  Where
+       the root of a suffixed form exists in the dictionary, we flip the
+       flag bit on the root word rather than including the suffixed form
+       in the dictionary.  Spellings are null terminated.  Logical
+       entries are not delimited.  
+
+
+       wpdict.idx 
+
+       This is the compressed index.  Each entry consists of a null
+       terminated string of 5 bit characters and a 24 bit binary
+       address.  The entries themselves are not delimited.  
+
+
+       uspell.c 
+
+       Spell checker optimized for UNIX.  The best improvement was
+       gained from reading the index with a single read vs. scanf per
+       line.  This in turn eliminated the need to malloc storage for
+       each key, since the whole index is now resident.  Other items
+       which may be of interest follow.  
+
+       Words are converted to 5 bit format before spell checking.  This
+       effectively puts them in folded case.  
+
+       The dictionary is read in increments of file system blocks and
+       cached locally.  A bitmap of blocks already read is maintained. 
+
+       The text file is read with a single read vs. separate reads per
+       line.  Stdio functions are eliminated, shedding some baggage.  
+
+
+       Comments 
+
+       The thing with the suffix flags helped to achieve some
+       significant file compression.  Perhaps more important is the fact
+       that many suffixed forms are not currently present in the
+       dictionary.  Using these flags will ultimately allow the
+       dictionary to be more complete with a minimal impact on size.  
+
+       The dictionary is weak on possessives.  I put a dirty trick in
+       the spell checker to make "'s" a legal suffix for any
+       properly-spelled root word.  "s'" will generally not check. 
+       Ultimately, I think legal possessives should be added to the
+       dictionary.  At this point, "'s" and "s'" would be added to the
+       list of common suffixes.  "es" and "ers" would be removed, since
+       they are the least commonly used of the suffixes currently on the
+       list.  
+
+       The common suffixes were determined with a dictionary analysis
+       program that checked for common suffixes and then checked to see
+       if the de-suffixed root would be included in the compressed
+       dictionary.  The number of occurrences of various compressable
+       suffixes was as follows: 
+
+               s       5521 
+               ed      1693 
+               ing     1501 
+               d       1242 
+               ly      1116 
+               er       518 
+               es       394 
+               ers      300 
+
+       Further checking showed that another flag byte providing for
+       another 8 common suffixes would have made the dictionary larger. 
+
+       We could have done away with the index altogether.  In order to
+       do this the dictionary itself would have to be searched using
+       intuitive techniques and some "learn by doing" type logic.  
+
+       Another trick that could be employed would be to put the
+       dictionary, bitmap and index in shared memory vs. locally
+       malloced space.  In this way, they would only have to be read
+       once per system boot.  
+
+
+

@@ -1,0 +1,73 @@
+/* An efficient linked list sort function */
+/* Philip J. Erdelsky - September 6, 1988 */
+
+#include <stdio.h>
+
+struct link {
+  struct link *next;
+  /* other members not directly accessed by llsort() */
+  };
+
+struct link *llsort(p, compare) struct link *p; int (*compare)(); {
+int base;
+unsigned int block;
+
+struct tape {
+  struct link first, *last;
+  unsigned int count;
+  } tape[4];
+
+tape[0].count = 0; tape[0].last = &tape[0].first;
+tape[1].count = 0; tape[1].last = &tape[1].first;
+
+for (base=0; p!=NULL; p=p->next, base^=1) {
+  tape[base].last = tape[base].last->next = p;
+  tape[base].count++;
+  }
+
+for (base=0, block=1; tape[base+1].count!=0; base^=2, block<<=1) {
+  int dest;
+  struct tape *tape0, *tape1;
+  tape0 = tape + base;
+  tape1 = tape + base + 1;
+  dest = base^2;
+  tape[dest].count = 0; tape[dest].last = &tape[dest].first;
+  tape[dest+1].count = 0; tape[dest+1].last = &tape[dest+1].first;
+  for (; tape0->count!=0; dest^=1) {
+    unsigned int n0, n1;
+    struct tape *output_tape;
+    output_tape = tape + dest;
+    n0 = n1 = block;
+    while (1) {
+      struct link *chosen_item;
+      struct tape *chosen_tape;
+      if (n0==0 || tape0->count==0) {
+        if (n1==0 || tape1->count==0) break;
+        chosen_tape = tape1;
+        n1--;
+        }
+      else if (n1==0 || tape1->count==0) {
+        chosen_tape = tape0;
+        n0--;
+        }
+      else if ((*compare)(tape0->first.next,tape1->first.next)>0) {
+        chosen_tape = tape1;
+        n1--;
+        }
+      else {
+        chosen_tape = tape0;
+        n0--;
+        }
+      chosen_tape->count--;
+      chosen_item = chosen_tape->first.next;
+      chosen_tape->first.next = chosen_item->next;
+      output_tape->last = output_tape->last->next = chosen_item;
+      output_tape->count++;
+      }
+    }
+  }
+
+tape[base].last->next = NULL;
+return tape[base].first.next;
+}
+

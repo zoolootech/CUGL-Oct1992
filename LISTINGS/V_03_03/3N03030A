@@ -1,0 +1,1054 @@
+        TITLE   CDCNTL  TSR TO CONTROL CD AUDIO PLAY   DSB
+
+PSP_ENV      EQU     44                ;PSP OFFSET - ENVRN
+BELL         EQU     07H               ;BELL CHARACTER
+ESCKEY       EQU     27                ;ESCAPE KEY
+
+;*    EQUATES FOR DEVICE DRIVER COMMAND CODES             *
+
+PLAY_CMD        EQU  132                ;PLAY AUDIO COMMAND
+READ_IOCTL_CMD  EQU  3                  ;READ IOCTL COMMAND
+STOP_CMD        EQU  133                ;STOP AUDIO COMMAND
+IOC_ADI_CMD     EQU  10                 ;AUDIO INFO IOCTL
+IOC_TIF_CMD     EQU  11                 ;TRACK INFO IOCTL
+IOC_ADS_CMD     EQU  6                  ;AUDIO STATUS IOCTL
+IOC_MDC_CMD     EQU  9                  ;MEDIA CHANGED IOCTL
+IOC_QIQ_CMD     EQU  12                 ;Q CHANNEL INQ IOCTL
+
+;*    LAYOUT OF DEVICE DRIVER HEADER.  THIS INFO SITS AT 0 *
+;*     WITHIN THE DEVICE DRIVER.                           *
+
+DEV_HDR      STRUC                 ;DEVICE DRIVER HEADER
+SDEV_NEXT    DD    ?                ;NEXT DEVICE DRIVER
+SDEV_ATT     DW    ?                ;DEVICE ATTRIBUTES
+SDEVSTRAT    DW    ?                ;OFFSET- STRATEGY ENTRY
+SDEVINT      DW    ?                ;OFFSET- INTERRUPT ENTRY
+SDEV_NAME    DB    8 DUP (?)        ;DEVICE NAME
+SDEV_RESV    DW    ?                ;RESERVED
+SDEV_LETR    DB    ?                ;1ST DRIVE LETTER
+SDEV_NUNT    DB    ?                ;NUMBER OF SUB UNITS
+DEV_HDR      ENDS
+
+;*    LAYOUT OF DEVICE DRIVE REQUEST PACKETS.  THE REQ HDR *
+;*     IS ALWAYS PRESENT.  THIS IS IMMEDIATELY FOLLOWED BY *
+;*     FUNCTION SPECIFIC INFORMATION.                      *
+
+RQH          STRUC              ;DEVICE DRIVER REQ HDR
+RQH_LEN      DB    ?             ;LENGTH
+RQH_UNIT     DB    ?             ;UNIT ID
+RQH_CMD      DB    ?             ;COMMAND
+RQH_STATUS   DW    ?             ;STATUS
+
+RQH_RSVD     DB    8 DUP (0)     ;RESERVED
+RQH          ENDS
+
+RQP          STRUC              ;DATA FOLLOWING REQ HDR-PLAY
+RQP_ADDRMD   DB    0             ;ADDRESS MODE-HIGH SIERRA=0
+                                 ;             RED BOOK=1
+RQP_START    DD    ?             ;START ADDR FOR PLAY
+RQP_NUM      DD    ?             ;NUMBER TO PLAY
+RQP          ENDS
+
+RQI          STRUC              ;DATA FOLLOWING REQ HDR-IOCTL
+RQI_MEDIA    DB    0             ;MEDIA - NOT USED
+RQI_XFER     DD    ?             ;POINTER TO CONTROL BLOCK
+RQI_NBYTES   DW    ?             ;LENGTH OF CONTROL BLOCK
+RQI_SECTOR   DW    0             ;SECTOR - NOT USED
+RQI_VOLID    DD    0             ;VOLID - NOT USED
+RQI          ENDS
+
+;*    CONTROL BLOCK LAYOUTS FOR VARIOUS IOCTL CALLS        *
+
+IOS          STRUC                 ;CTRL BLK-IOCTL DVC STAT
+IOS_CMD      DB    6                ;COMMAND CODE
+IOS_STAT     DD    ?                ;DEVICE STATUS BITS
+IOS          ENDS
+
+IOS_DOOR_OPEN   EQU  0001H          ;DOOR IS OPEN
+IOS_AUDIO_PLAY  EQU  0010H          ;AUDIO PLAY SUPPORTED
+IOS_RED_BOOK    EQU  0200H          ;HIGH SIERRA & RED BOOK
+
+IOM          STRUC                 ;CTRL BLK-IOCTL MEDIA CHGD
+IOM_CMD      DB    9                ;COMMAND CODE
+IOM_MCHG     DB    ?                ;MEDIA CHANGED- 1 = NO
+                                    ;               0 = ??
+                                    ;              -1 = CHNGD
+IOM          ENDS
+
+IOD          STRUC                 ;CTRL BLK-IOCTL AUDIO INFO
+IOD_CMD      DB    10               ;COMMAND CODE
+IOD_LOTNO    DB    ?                ;LOW TRACK NUMBER
+IOD_HITNO    DB    ?                ;HIGH TRACK NUMBER
+IOD_LEADOUT  DD    ?                ;ADDR LEADOUT (END AUDIO)
+IOD          ENDS
+
+
+
+IOT          STRUC                 ;CTRL BLK-IOCTL TRACK 
+INFO
+IOT_CMD      DB    11               ;COMMAND CODE
+IOT_TNO      DB    ?                ;TRACK NUMBER
+IOT_START    DD    ?                ;TRACK START
+IOT_CTRL     DB    ?                ;CONTROL INFO
+IOT          ENDS
+
+IOQ          STRUC                 ;CTRL BLK-IOCTL Q CHANNEL
+IOQ_CMD      DB    12               ;COMMAND CODE
+IOQ_CTRL     DB    ?                ;CONTROL INFO
+IOQ_TNO      DB    ?                ;TRACK NUMBER
+IOQ_INDX     DB    ?                ;INDEX OR POINT
+IOQ_MIN      DB    ?                ;MINUTES
+IOQ_SEC      DB    ?                ;SECONDS
+IOQ_FRAME    DB    ?                ;FRAMES
+IOQ_ZERO     DB    ?                ;ZERO
+IOQ_PMIN     DB    ?                ;P MINUTES
+IOQ_PSEC     DB    ?                ;P SECONDS
+IOQ_PFRAME   DB    ?                ;P FRAMES
+IOQ          ENDS
+
+;*    LAYOUT OF TRACK INFO ARRAY ENTRIES IN 'TOCINFO'      *
+
+TOCI         STRUC                 ;TOC TRACK INFO ENTRIES
+TOC_TNO      DB    ?                ;TRACK NUMBER
+TOC_START    DD    ?                ;START ADDR
+TOCI         ENDS
+
+DATA    SEGMENT PARA PUBLIC
+
+STACKINT9 DW    256 DUP (?)     ;STACK USED FOR POPUP
+SVSPINT9 DW     ?               ;SAVE FOR STACK POINTER
+SVSSINT9 DW     ?               ;SAVE FOR STACK SEGMENT
+REGENADR DW     ?               ;VIDEO MEMORY SEG FOR I/O
+
+                                ;CURRENT CD INFO
+TNO     DB      0                 ;TRACK NUMBER
+TIMEM   DB      0                 ;MINUTE
+TIMES   DB      0                 ;SECONDS
+CLOSED  DB      0                 ;DOOR CURRENTLY CLOSED
+                                  ; 0 = NO, 1 = YES
+
+
+
+TOCINFO TOCI    99 DUP (<>)     ;SPACE FOR 99 AUDIO TRACKS
+LOWTNO  DB      ?               ;LOW TRACK ON DISC
+HIGHTNO DB      ?               ;HIGH TRACK ON DISC
+ENDADDR DD      ?               ;ENDING ADDR
+
+DEV_STRAT DD    ?               ;STRATEGY ENTRY POINT
+DEV_INT   DD    ?               ;INTERRUPT ENTRY POINT
+DEV_UNIT  DB    0               ;SUB UNIT ID
+
+                                ;DEVICE DRIVER REQ PACKET
+REQHDR  RQH     <>              ;REQUEST HEADER AREA
+REQFLW  RQI     <>              ;DATA FOLLOWING THE REQ HDR
+                                ; (FUNCTION DEPENDENT)
+
+IOCTLB  IOQ     <>              ;AREA FOR IOCTL CONTROL BLK
+
+CVTWK   DW      ?               ;WORK AREA
+
+POP_COLS      EQU    40
+POP_ROWS      EQU    12
+POP_START_ROW EQU    7
+POP_START_COL EQU    21
+POP_BG        EQU    30H
+            ;SAVE AREA FOR VIDEO MEMORY
+POP_SAVE    DW   POP_COLS*POP_ROWS DUP (?)
+
+REGEN       LABEL DWORD
+REGENO      DW   4EH
+REGENS      DW   40H            ;ADDR OF VIDEO REGEN AREA
+
+VMODE       LABEL DWORD
+VMODEO      DW   49H
+VMODES      DW   40H            ;ADDR OF VIDEO MODE
+
+POP_IMG DB      ''
+        DB      '          CD-ROM AUDIO CONTROL        '
+        DB      '        CURRENT TRACK '
+P_TNO   DB      ' 0'
+        DB      '  '
+P_TIME  DB      5 DUP (' ')
+        DB      '       '
+        DB      '         SELECT A FUNCTION:           '
+        DB      '            P - Play                  '
+        DB      '            S - Stop                  '
+        DB      '            R - Resume                '
+        DB      '            N - Next                  '
+        DB      '            L - Prev                  '
+        DB      '           ESC- CLOSE WINDOW          '
+        DB      '                                      '
+        DB      ''
+
+
+DATA    ENDS
+
+CODE    SEGMENT PARA PUBLIC
+        ASSUME  CS:CODE,DS:DATA
+
+;*              INT09H INTERRUPT HANDLER                   *
+;*             DO POPUP ON SHIFT,SHIFT,CTRL                *
+
+OLD_INT9 DD     ?               ;SAVED INT 09
+IN_POPUP DB     0               ;NON-ZERO IF POPUP ACTIVE
+SIG     DB      'CDCNTL'        ;SIGNITURE -
+SIGL    EQU     $-SIG            RIGHT BEFORE INT9 ENTRY
+
+TRAP_KB PROC    FAR             ;PROCESS INT09 KEYBOARD HIT
+        CMP     IN_POPUP,0      ;CHK ALREADY IN POPUP
+        JE      NOTINPOP
+        JMP     OLD_INT9        ;CONT TO NEXT HANDLER-ACTIVE
+NOTINPOP:
+        MOV     IN_POPUP,1
+        PUSH    DS
+        PUSH    BX
+        MOV     BX,DATA
+        MOV     DS,BX           ;SET UP DS
+        MOV     SVSPINT9,SP     ;SAVE INCOMING SS:SP
+        MOV     BX,SS
+        MOV     SVSSINT9,BX
+        MOV     BX,DS
+        MOV     SS,BX           ;SWITCH TO LOCAL STACK
+        MOV     SP,OFFSET STACKINT9+SIZE STACKINT9-2
+        PUSH    AX
+        PUSH    CX
+        PUSH    DX
+        PUSH    DI
+        PUSH    SI
+        PUSH    ES
+        PUSH    BP
+        PUSHF
+        CALL    OLD_INT9         ;CALL OLD KEYBOARD ROUT
+        MOV     AH,2
+        INT     16H              ;GET SHIFT STATUS
+        AND     AL,07H
+        CMP     AL,07H           ;CHK FOR CTRL, SHIFT,SHIFT
+        JNE     KBRTN
+
+        JMP     DOPOPUP
+KBRTN:
+        POP     BP
+        POP     ES
+        POP     SI
+        POP     DI
+        POP     DX
+        POP     CX
+        POP     AX
+        MOV     BX,SVSSINT9
+        CLI
+        MOV     SS,BX
+        MOV     SP,SVSPINT9     ;SWITCH BACK TO SAVED STACK
+        POP     BX
+        POP     DS
+        MOV     IN_POPUP,0
+        IRET
+DOPOPUP:
+        MOV     DX,0B800H
+        LES     BX,VMODE
+        MOV     AL,ES:[BX]      ;GET CURRENT VIDEO MODE
+        CMP     AL,2
+        JE      OKVIDEOM
+        CMP     AL,3
+        JE      OKVIDEOM
+        MOV     DX,0B000H
+        CMP     AL,7
+        JE      OKVIDEOM
+        JMP     KBRTN           ;IGNORE-NOT IN MODE 2,3,7
+OKVIDEOM:
+        CLD
+        LES     BX,REGEN
+        MOV     AX,ES:[BX]      ;GET START VIDEO REGEN AREA
+        MOV     CL,4
+        SHR     AX,CL           ;CALC PARAGRAPH
+        ADD     AX,DX           ;ADD BASE VIDEO SEGMENT
+        MOV     REGENADR,AX     ;SAVE SEGMENT FOR VIDEO I/O
+        MOV     ES,AX
+        MOV     AX,POP_START_ROW
+        DEC     AX
+        MOV     CX,160          ;BYTES/ROW OF VIDEO MEMORY
+        MUL     CL
+        MOV     SI,AX
+        MOV     AX,POP_START_COL
+        DEC     AX
+        SHL     AX,1            ;2 BTYES/COL
+        ADD     SI,AX           ;1ST MEMORY AREA TO SAVE
+        MOV     DI,OFFSET POP_SAVE
+        PUSH    DS
+        PUSH    ES
+        POP     DS
+        POP     ES
+        MOV     CX,POP_ROWS     ;NUMBER OF ROWS TO SAVE
+SAVVID:
+        PUSH    CX
+        PUSH    SI
+
+        MOV     CX,POP_COLS     ;NUMBER OF COLS TO SAVE
+        REP     MOVSW           ;SAVE ROW OF VIDEO
+        POP     SI
+        POP     CX
+        ADD     SI,160          ;GO NEXT ROW
+        LOOP    SAVVID
+        MOV     AX,DATA
+        MOV     DS,AX           ;RESTORE DS
+        CALL    FILL_CHECKING   ;SHOW CHECKING STATUS
+CALLPOP:                        ;  ***MAIN INPUT LOOP***
+        CALL    PUT_POP
+        MOV     AH,1
+        INT     16H             ;CHK KEYSTROKE WAITING
+        JNZ     KEYIN
+        CALL    CHKCHG          ;GET CURRENT AUDIO STATUS
+        MOV     AL,TNO
+        MOV     SI,OFFSET P_TNO
+        CALL    CVHEX           ;CONVERT TRACK NUMBER
+        PUSH    DS
+        POP     ES
+        MOV     DI,OFFSET P_TIME
+        MOV     AL,' '
+        MOV     CX,SIZE P_TIME
+        REP     STOSB           ;CLEAR TIME AREA
+        CMP     TNO,0
+        JE      DUNTIMEZ
+        MOV     AL,TIMEM
+        MOV     SI,OFFSET P_TIME
+        CALL    CVHEX           ;CONVERT MINUTES
+        MOV     AL,TIMES
+        MOV     SI,OFFSET P_TIME+3
+        CALL    CVHEX
+        CMP     P_TIME+3,' '
+        JNE     DUNTIME
+        MOV     P_TIME+3,'0'    ;ZERO FILL SECONDS
+DUNTIME:
+        MOV     P_TIME+2,':'
+DUNTIMEZ:
+        JMP     CALLPOP         ;CONTINUE TO UPDATE POPUP INFO
+KEYIN:                          ;PROCESS KEYSTROKE
+        MOV     AH,0
+        INT     16H             ;GET QUEUED KEYSTROKE
+        CMP     AL,ESCKEY
+        JNE     FCT_IN
+GORESTV:
+        JMP     REST_VIDEO
+FCT_IN:
+        OR      AL,20H          ;MAKE LOWER CASE
+        CMP     AL,'p'          ;CHK FOR SUPPORTED FCTS
+        JE      CHK_FCTIN
+        CMP     AL,'s'
+        JE      CHK_FCTIN
+        CMP     AL,'r'
+        JE      CHK_FCTIN
+        CMP     AL,'n'
+
+        JE      CHK_FCTIN
+        CMP     AL,'l'
+        JE      CHK_FCTIN
+BELL_AGAIN:
+        MOV     AL,BELL
+        MOV     AH,0EH
+        INT     10H
+        JMP     CALLPOP
+CHK_FCTIN:
+        CMP     CLOSED,0        ;CHK DOOR OPEN
+        JNE     DOOR_CLOSED
+        JMP     BELL_AGAIN
+DOOR_CLOSED:
+        CMP     AL,'p'          ;CHK PLAY
+        JNE     NOT_PLAY
+        MOV     AL,LOWTNO       ;START WITH LOW TRACK#
+CALL_PLAY:
+        CALL    PLAY            ;PLAY AUDIO
+        OR      AX,AX
+        JNZ     BELL_AGAIN
+        JMP     CALLPOP
+NOT_PLAY:
+        CMP     AL,'r'          ;CHK RESUME
+        JNE     NOT_RESUME
+        CALL    RESUME          ;RESUME PLAY
+        OR      AX,AX
+        JNZ     BELL_AGAIN
+        JMP     CALLPOP
+NOT_RESUME:
+        CMP     AL,'s'          ;CHK STOP
+        JNE     NOT_STOP
+        CALL    STOP            ;STOP PLAYING
+        JMP     CALLPOP
+NOT_STOP:
+        CMP     AL,'n'          ;CHK NEXT TRACK
+        JNE     NOT_NEXT
+        CMP     LOWTNO,0
+        JE      BELL_AGAIN
+        MOV     AL,TNO
+        OR      AL,AL
+        JZ      BELL_AGAIN
+        INC     AL
+        CMP     AL,HIGHTNO      ;CHK THERE IS A NEXT TRACK
+        JG      BELL_AGAIN
+        JMP     CALL_PLAY
+NOT_NEXT:                       ;PREV TRACK REQUEST
+        CMP     LOWTNO,0
+        JE      BELL_AGAIN
+        MOV     AL,TNO
+        OR      AL,AL
+
+        JZ      BELL_AGAIN
+        DEC     AL
+        CMP     AL,LOWTNO       ;CHK THERE IS A PREV TRACK
+        JL      BELL_AGAIN
+        JMP     CALL_PLAY
+REST_VIDEO:                     ;RESTORE SAVE VIDEO IMAGE
+        MOV     AX,REGENADR
+        MOV     ES,AX
+        MOV     AX,POP_START_ROW
+        DEC     AX
+        MOV     CX,160          ;BYTES/ROW OF VIDEO MEMORY
+        MUL     CL
+        MOV     DI,AX
+        MOV     AX,POP_START_COL
+        DEC     AX
+        SHL     AX,1            ;2 BTYES/COL
+        ADD     DI,AX           ;1ST MEMORY AREA TO RESTORE
+        MOV     SI,OFFSET POP_SAVE
+        MOV     CX,POP_ROWS     ;NUMBER OF ROWS SAVED
+RESTVID:
+        PUSH    CX
+        PUSH    DI
+        MOV     CX,POP_COLS     ;NUMBER OF COLS TO REST
+        REP     MOVSW           ;REST ROW OF VIDEO
+        POP     DI
+        POP     CX
+        ADD     DI,160          ;GO NEXT ROW
+        LOOP    RESTVID
+        JMP     KBRTN
+TRAP_KB ENDP
+
+;*              ROUTINE TO CONVERT NUMBER IN AL TO DS:SI   *
+;*                INPUT IS IN BINARY                       *
+;*                CONVERTED TO ASCII CHARACTERS            *
+
+CVHEX   PROC
+        PUSH    AX
+        OR      AL,AL           ;CHK ZERO
+        JNZ     CVHEXA
+        MOV     AX,'0 '
+        JMP     CVHEXZ
+CVHEXA:
+        MOV     AH,0
+        PUSH    CX
+        MOV     CL,10
+        DIV     CL
+        ADD     AX,'00'         ;DISPLAY IN ASCII
+        POP     CX
+        CMP     AL,'0'
+
+        JNE     CVHEXZ
+        MOV     AL,' '          ;BLANK 1ST DIGIT IF ZERO
+CVHEXZ:
+        MOV     [SI],AX         ;MOVE TO OUTPUT POSITION
+        POP     AX
+        RET
+CVHEX   ENDP
+
+;* ROUTINE TO FILL POPUP TO SHOW CHECKING DISC STATUS      *
+
+FILL_CHECKING   PROC
+        MOV     WORD PTR P_TNO,'0 '     ;TRACK ZERO
+        MOV     WORD PTR P_TIME,'AW'    ;FILL 'WAIT'
+        MOV     WORD PTR P_TIME+2,'TI'
+        MOV     P_TIME+4,' '
+        RET
+FILL_CHECKING   ENDP
+
+;* ROUTINE TO PAINT THE POPUP TO THE SCREEN                *
+
+PUT_POP PROC
+        MOV     AX,REGENADR
+        MOV     ES,AX
+        MOV     AX,POP_START_ROW
+        DEC     AX
+        MOV     CX,160          ;BYTES/ROW OF VIDEO MEMORY
+        MUL     CL
+        MOV     DI,AX
+        MOV     AX,POP_START_COL
+        DEC     AX
+        SHL     AX,1            ;2 BTYES/COL
+        ADD     DI,AX           ;1ST MEMORY AREA TO PAINT
+        MOV     SI,OFFSET POP_IMG
+        MOV     CX,POP_ROWS     ;NUMBER OF ROWS TO PAINT
+PUTVIDA:
+        PUSH    CX
+        PUSH    DI
+        MOV     CX,POP_COLS     ;NUMBER OF COLS TO PAINT
+PUTVIDB:
+        LODSB
+        MOV     AH,POP_BG       ;ATTRIBUTE
+        STOSW
+        LOOP    PUTVIDB
+        POP     DI
+        POP     CX
+        ADD     DI,160          ;GO NEXT ROW
+
+        LOOP    PUTVIDA
+        RET
+PUT_POP ENDP
+
+        PAGE
+
+;* ROUTINE TO DO AN IOCTL CALL                             *
+;* MUST FILL IOCTL CONTROL BLOCK AND LTH TO RQI_NBTYES     *
+;* AX RETURN NON-ZERO WITH STATUS IF ERROR OCCURS          *
+
+IOCTL   PROC
+        PUSH    ES
+        PUSH    BX
+        MOV     REQHDR.RQH_LEN,TYPE RQH + TYPE RQI ;LTH REQ
+        MOV     AL,DEV_UNIT
+        MOV     REQHDR.RQH_UNIT,AL      ;SUB UNIT ID
+        MOV     REQHDR.RQH_CMD,READ_IOCTL_CMD ;READ IOCTL
+        MOV     REQHDR.RQH_STATUS,0
+        MOV     REQFLW.RQI_MEDIA,0      ;MEDIA - NOT USED
+        MOV     REQFLW.RQI_SECTOR,0     ;SECTOR - NOT USED
+        MOV     WORD PTR REQFLW.RQI_VOLID,0 ;VOLID - UNUSED
+        MOV     WORD PTR REQFLW.RQI_VOLID+2,0
+        PUSH    DS
+        POP     WORD PTR REQFLW.RQI_XFER+2 ;ADDR OF CTL BLK
+        MOV     WORD PTR REQFLW.RQI_XFER,OFFSET IOCTLB
+        PUSH    DS
+        POP     ES
+        MOV     BX,OFFSET REQHDR  ;POINT ES:BX TO REQ HDR
+        CALL    CALL_DVC          ;CALL DEVICE DRIVER
+        POP     BX                ; ERROR CODE IN AX
+        POP     ES
+        RET
+IOCTL   ENDP
+
+;*  CALL DEVICE DRIVER.  ES:BX POINTS TO REQUEST PACKET.   *
+;*              AX RETURNS 0 IF OK, ELSE ERROR CODE.       *
+
+CALL_DVC PROC
+        CALL    DEV_STRAT       ;CALL STATEGY ENTRY
+        CALL    DEV_INT         ;CALL INTERRUPT ENTRY
+        MOV     AX,0            ;SHOW NO ERROR
+        TEST    REQHDR.RQH_STATUS,8000H  ;CHK ERROR
+        JZ      CALL_DVCZ
+        MOV     AX,REQHDR.RQH_STATUS
+CALL_DVCZ:
+        RET
+CALL_DVC ENDP
+
+
+
+
+;*      ROUTINE TO FILL THE TOC INFO TO TOCINFO            *
+;*              RETURN AX NON-ZERO IF ERROR                *
+
+TOC     PROC
+        PUSH    CX
+        PUSH    SI
+        MOV     LOWTNO,0        ;INDICATES NO DISC
+        MOV     IOCTLB.IOD_CMD,IOC_ADI_CMD ;FILL CTRL BLK-
+        MOV     REQFLW.RQI_NBYTES,TYPE IOD ; AUDIO DISK INFO
+        CALL    IOCTL                      ;GET AUDIO INFO
+        OR      AX,AX
+        JNZ     TOCZ
+        MOV     AL,IOCTLB.IOD_LOTNO     ;GET LOW, HIGH TNOS
+        MOV     LOWTNO,AL
+        MOV     AL,IOCTLB.IOD_HITNO
+        MOV     HIGHTNO,AL
+        MOV     AX,WORD PTR IOCTLB.IOD_LEADOUT  ;GET END
+        MOV     WORD PTR ENDADDR,AX             ; ADDRESS
+        MOV     AX,WORD PTR IOCTLB.IOD_LEADOUT+2
+        MOV     WORD PTR ENDADDR+2,AX
+        MOV     SI,OFFSET TOCINFO       ;FILL TRACK INFO
+        MOV     CL,LOWTNO
+        MOV     IOCTLB.IOT_CMD,IOC_TIF_CMD
+        MOV     REQFLW.RQI_NBYTES,TYPE IOT
+TOCA:
+        CMP     CL,HIGHTNO              ;CHK FINISHED
+        JNG     TOCB
+        MOV     AX,0
+        JMP     TOCZ
+TOCB:
+        MOV     IOCTLB.IOT_TNO,CL
+        CALL    IOCTL                   ;DO IOCTL-TRACK INFO
+        OR      AX,AX
+        JZ      TOCC
+        MOV     LOWTNO,0                ;MARK NO DISC IF ERR
+        JMP     TOCZ
+TOCC:
+        MOV     [SI].TOC_TNO,CL         ;FILL TRACK NUMBER
+        MOV     AX,WORD PTR IOCTLB.IOT_START
+        MOV     WORD PTR [SI].TOC_START,AX      ;START ADDR
+        MOV     AX,WORD PTR IOCTLB.IOT_START+2
+        MOV     WORD PTR [SI].TOC_START+2,AX
+        ADD     SI,TYPE TOCI             ;GO NEXT TRACK
+        INC     CL
+        JMP     TOCA
+TOCZ:
+        POP     SI
+        POP     CX
+        RET
+TOC     ENDP
+
+
+
+
+;*        ROUTINE TO GET CURRENT STATUS OF DISC            *
+;*        REREAD TOC IF NEEDED.  AX RETURN NON-ZERO IF ERR *
+
+CHKCHG  PROC
+        PUSH    BX
+        PUSH    DX
+        MOV     TNO,0           ;INDICATES NO DISC OR ERROR
+        MOV     TIMEM,0
+        MOV     TIMES,0
+        MOV     CLOSED,0
+        MOV     IOCTLB.IOS_CMD,IOC_ADS_CMD ;SET FOR DEVICE
+        MOV     REQFLW.RQI_NBYTES,TYPE IOS ; STATUS IOCTL
+        CALL    IOCTL                      ;DO IOCTL
+        OR      AX,AX
+        JZ      CHKCHGA
+        JMP     CHKCHGZ
+CHKCHGA:
+        TEST    WORD PTR IOCTLB.IOS_STAT,IOS_DOOR_OPEN
+        JZ      CHKCHGB
+        JMP     CHKCHGZ         ;RETURN - DOOR OPEN
+CHKCHGB:
+        MOV     CLOSED,1        ;DOOR IS CLOSED
+        CALL    Q_INQ           ;DO A Q CHANNEL INQ
+        OR      AX,AX
+        JZ      CHKCHGC
+        JMP     CHKCHGZ         ;LEAVE IF ERROR
+CHKCHGC:
+        MOV     TNO,DH          ;FILL TRACK,
+        MOV     TIMEM,DL        ; MINUTES AND SECONDS
+        MOV     TIMES,BH
+        CMP     TNO,0           ;CHK PLAYING
+        JE      CHKCHGF
+        JMP     CHKCHGZ         ; YES - RETURN
+CHKCHGF:
+        MOV     IOCTLB.IOM_CMD,IOC_MDC_CMD ;SET FOR
+        MOV     REQFLW.RQI_NBYTES,TYPE IOM ; IOCTL MEDIA CHNG
+        CALL    IOCTL
+        OR      AX,AX
+        JZ      CHKCHGG
+        JMP     CHKCHGZ
+CHKCHGG:
+        CMP     IOCTLB.IOM_MCHG,1       ;CHK MEDIA NOT CHNGD
+        JNE     CHKCHGH
+        JMP     CHKCHGZ                 ; NO - RETURN
+CHKCHGH:
+        CALL    FILL_CHECKING           ; YES - GET READY
+        CALL    PUT_POP                 ;  TO RE-READ TOC
+        CALL    TOC                     ;RE READ TOC
+        MOV     TNO,0
+
+        MOV     TIMEM,0
+        MOV     TIMES,0
+        CALL    Q_INQ                   ;DO Q CHAN INQ
+        OR      AX,AX                   ; AFTER TOC
+        JZ      CHKCHGI
+        JMP     CHKCHGZ
+CHKCHGI:
+        MOV     TNO,DH
+        MOV     TIMEM,DL
+        MOV     TIMES,BH
+        MOV     AX,0
+CHKCHGZ:
+        POP     DX
+        POP     BX
+        RET
+CHKCHG  ENDP
+
+;*      DO Q CHANNEL INQ.                                  *
+;*   AX RETURNS ZERO IF SUCCESSFUL                         *
+;*   IF SUCCESSFUL - DH = TNO, DL = MINUTES, BH = SECONDS, *
+;*                              BL = FRAME                 *
+
+Q_INQ   PROC
+        MOV     IOCTLB.IOQ_CMD,IOC_QIQ_CMD ;SET FOR
+        MOV     REQFLW.RQI_NBYTES,TYPE IOQ ; Q CHANNEL INQ
+        CALL    IOCTL
+        OR      AX,AX
+        JZ      Q_INQA
+        RET                     ;RETURN ERROR
+Q_INQA:
+        MOV     AL,IOCTLB.IOQ_TNO
+        CALL    CVTTNO          ;CONVERT TNO TO BINARY
+        MOV     DH,AL           ;FILL TRACK, MIN, SEC
+        MOV     DL,IOCTLB.IOQ_MIN
+        MOV     BH,IOCTLB.IOQ_SEC
+        MOV     BL,IOCTLB.IOQ_FRAME
+        XOR     AX,AX
+        RET
+Q_INQ   ENDP
+
+;*    CONVERT BCD IN AL TO BINARY IN AX                    *
+
+CVTTNO  PROC
+        PUSH    BX
+        PUSH    CX
+        MOV     BL,AL
+
+        AND     BL,0FH          ;GET LOW NIBBLE TO BL
+        MOV     CL,4
+        SHR     AL,CL           ;GET HIGH NIBBLE TO AL
+        MOV     CL,10
+        MUL     CL
+        MOV     BH,0            ;MULT HIGH NIBBLE BY 10
+        ADD     AX,BX
+        POP     CX              ;COMBINE NIBBLES
+        POP     BX
+        RET
+CVTTNO  ENDP
+
+;*      HIGH-LEVEL PLAY ROUTINE                             *
+;*        START TRACK IN AL                                 *
+;*        AX RETURN NON-ZERO IF ERROR                       *
+
+PLAY    PROC
+        PUSH    SI
+        PUSH    CX
+        PUSH    ES
+        PUSH    BX
+        CMP     AL,LOWTNO       ;CHK GOOD TRACK NUMBER
+        JL      PLAYA
+        CMP     AL,HIGHTNO
+        JNA     PLAYB
+PLAYA:
+        MOV     AX,1
+        JMP     PLAYZ
+PLAYB:
+        MOV     SI,OFFSET TOCINFO
+PLAYC:
+        CMP     AL,[SI].TOC_TNO ;LOOK UP TRACK NUMBER
+        JE      PLAYD
+        ADD     SI,TYPE TOCI
+        JMP     PLAYC
+PLAYD:
+        MOV     AX,WORD PTR [SI].TOC_START  ;START ADDR
+        MOV     BX,WORD PTR [SI].TOC_START+2 ; TO BX:AX
+        CALL    CVTHSG          ;CONVERT TO HIGH SIERRA
+        CALL    PLAYLOW         ;GO PLAY FROM BX:AX TO END
+PLAYZ:
+        POP     BX
+        POP     ES
+        POP     CX
+        POP     SI
+        RET
+PLAY    ENDP
+
+
+
+;*      LOW-LEVEL PLAY ROUTINE                             *
+;* PLAY FROM ADDR IN BX:AX (HIGH SIERRA FMT) TO LAST SECT  *
+;*              AX RETURNED NON-ZERO IF ERROR              *
+
+PLAYLOW PROC
+        PUSH    DX
+        PUSH    SI
+        PUSH    CX
+        PUSH    ES
+        PUSH    AX
+        CALL    STOP
+        POP     AX
+        MOV     REQHDR.RQH_LEN,TYPE RQH+TYPE RQP ;LTH PACKET
+        MOV     DL,DEV_UNIT
+        MOV     REQHDR.RQH_UNIT,DL      ;SUB UNIT ID
+        MOV     REQHDR.RQH_CMD,PLAY_CMD ;PLAY COMMAND
+        MOV     REQHDR.RQH_STATUS,0
+        MOV     REQFLW.RQP_ADDRMD,0     ;HIGH SIERRA MODE
+        MOV     WORD PTR REQFLW.RQP_START+2,BX
+        MOV     WORD PTR REQFLW.RQP_START,AX  ;FILL START
+        PUSH    BX
+        PUSH    AX
+        MOV     BX,WORD PTR ENDADDR+2
+        MOV     AX,WORD PTR ENDADDR
+        CALL    CVTHSG          ;CONVERT END ADDR
+        POP     SI              ; (BX:AX) TO HIGH SIERRA
+        POP     CX              ;GET START(HIGH SIERRA)-CX:SI
+        SUB     AX,SI           ;CALC NUMBER FRAMES
+        SBB     BX,CX
+        MOV     WORD PTR REQFLW.RQP_NUM,AX  ;FILL NUM
+        MOV     WORD PTR REQFLW.RQP_NUM+2,BX
+        PUSH    DS
+        POP     ES
+        MOV     BX,OFFSET REQHDR        ;ES:BX TO REQ HDR
+        CALL    CALL_DVC                ;START AUDIO PLAY
+PLAYLOWZ:
+        POP     ES
+        POP     CX
+        POP     SI
+        POP     DX
+        RET
+PLAYLOW ENDP
+
+;*              ROUTINE TO STOP AUDIO                      *
+;*              AX RETURN NON-ZERO IF ERROR                *
+
+STOP    PROC
+        PUSH    ES
+        PUSH    BX
+        MOV     REQHDR.RQH_LEN,TYPE RQH ;SIZE OF HEADER
+        MOV     AL,DEV_UNIT
+
+        MOV     REQHDR.RQH_UNIT,AL      ;SUB UNIT ID
+        MOV     REQHDR.RQH_CMD,STOP_CMD ;STOP COMMAND
+        MOV     REQHDR.RQH_STATUS,0
+        PUSH    DS
+        POP     ES
+        MOV     BX,OFFSET REQHDR        ;ES:BX TO REQ HDR
+        CALL    CALL_DVC                ;CALL DEVICE DRIVER
+        POP     BX
+        POP     ES
+        RET
+STOP    ENDP
+
+;*              ROUTINE TO RESUME AUDIO                    *
+;*              AX RETURN NON-ZERO IF ERROR                *
+
+RESUME  PROC
+        PUSH    ES
+        PUSH    BX
+        PUSH    DX
+        PUSH    SI
+        CALL    Q_INQ           ;GET Q CHANNEL INFO TO DX:BX
+        OR      AX,AX
+        JZ      RESUMEB
+        JMP     RESUMEZ
+RESUMEB:
+        CMP     DH,0            ;CHK TNO == 0
+        JNE     RESUMEC         ; YES - CAN'T RESUME
+        MOV     AX,1
+        JMP     RESUMEZ
+RESUMEC:
+        MOV     AX,BX
+        MOV     BX,DX           ;GET CURRENT POS TO BX:AX
+        CALL    CVTHSG          ;CONVERT TO HIGH SIERRA
+                                ; THIS IS OFFSET INTO TRACK
+        CMP     DH,LOWTNO       ;CHK GOOD TRACK NUMBER
+        JL      RESUMED
+        CMP     DH,HIGHTNO
+        JNA     RESUMEE
+RESUMED:
+        MOV     AX,1
+        JMP     RESUMEZ
+RESUMEE:
+        PUSH    AX
+        PUSH    BX              ;SAVE HIGH SIERRA OFFSET
+        MOV     SI,OFFSET TOCINFO
+RESUMEF:
+        CMP     DH,[SI].TOC_TNO ;LOOK UP TRACK NUMBER
+        JE      RESUMEG
+        ADD     SI,TYPE TOCI
+        JMP     RESUMEF
+
+
+RESUMEG:
+        MOV     AX,WORD PTR [SI].TOC_START ;START ADDR-BX:AX
+        MOV     BX,WORD PTR [SI].TOC_START+2
+        CALL    CVTHSG          ;CONVERT IT TO HIGH SIERRA
+        POP     DX
+        POP     SI              ;GET SAVED OFFSET TO DX:SI
+        ADD     AX,SI
+        ADC     BX,DX           ;ADD TO FRONT OF TRACK
+        CALL    PLAYLOW         ;PLAY FROM HERE TO END
+RESUMEZ:
+        POP     SI
+        POP     DX
+        POP     BX
+        POP     ES
+        RET
+RESUME  ENDP
+
+;* ROUTINE TO CONVERT REDBOOK TO HIGH SIERRA ADDR IN       *
+;*      BX:AX                                              *
+;* REDBOOK INPUT:  BL=MINUTES, AH=SECONDS, AL=FRAMES       *
+;* HIGH SIERRA = ((MINUTES * 60) + SECONDS) * 75 + FRAMES  *
+
+CVTHSG  PROC
+        PUSH    CX
+        PUSH    DX
+        PUSH    AX      ;SAVE LOW ORDER
+        MOV     BH,0    ;MSB SHOULD BE ZERO
+        MOV     AX,BX
+        MOV     CL,60
+        MUL     CL      ;GET SECONDS TO AX
+        POP     BX      ;GET LOW ORDER
+        PUSH    BX
+        MOV     BL,BH   ;GET SECONDS
+        MOV     BH,0
+        ADD     AX,BX   ;ADD SECONDS
+        MOV     CX,75
+        MUL     CX      ;GET FRAMES TO DX:AX
+        POP     BX
+        MOV     BH,0    ;GET FRAMES
+        ADD     AX,BX   ;ADD FRAMES
+        ADC     DX,0
+        MOV     BX,DX   ;GET RESULT TO BX:AX
+        POP     DX
+        POP     CX
+        RET
+CVTHSG  ENDP
+
+KEEP_MEM LABEL  BYTE    ;MEMORY BELOW DISCARDED ON TSR
+
+
+
+
+        PAGE
+
+;*   ROUTINE TO INSTALL CDCNTL                             *
+;*   THIS ROUTINE GETS CONTROL WHEN CDCNTL CALLED FROM DOS *
+
+PSP     DW      ?       ;TEMP SAVE FOR PSP VALUE
+
+DEVNAME DB      'CDROM1',0       ;DEVICE TO OPEN
+
+
+INSTALL_MSG DB  'CD-ROM AUDIO CONTROL',0DH,0AH
+            DB  'DEPRESS LEFT CTRL AND BOTH SHIFTS TO '
+            DB  ' ACTIVATE',0DH,0AH,'$'
+STATE_MSG   DB  'CDCNTL ALREADY INSTALLED - IGNORED.'
+            DB  0DH,0AH,BELL,'$'
+INSUFDD     DB  'DEVICE DRIVER DOES NOT SUPPORT AUDIO '
+            DB  'PLAY COMMANDS - CDCNTL'
+            DB  ' NOT INSTALLED!',0DH,0AH,BELL,'$'
+BADFIOCTL   DB  'ERROR ON IOCTL - CDCNTL NOT INSTALLED!'
+            DB  0DH,0AH,BELL,'$'
+ERROPEN_MSG DB  'UNABLE TO OPEN CDROM1 DEVICE - CDCNTL '
+            DB  'NOT INSTALLED!'
+            DB  0DH,0AH,BELL,'$'
+IOCTL_PACKET DB 0       ;GET DEVICE HEADER ADDR COMMAND
+IOCTL_PACKAD DD ?       ;DEVICE DRIVER ADDRESS FILLED HERE
+IOCTL_PACKETL EQU  $-IOCTL_PACKET
+
+
+CDCNTL  PROC    FAR
+        CLD
+        MOV     AX,DATA
+        MOV     DS,AX
+        MOV     PSP,ES          ;SAVE PSP SEGMENT
+        MOV     AX,3509H
+        INT     21H             ;GET CURRENT INT09H
+        MOV     DI,BX
+        SUB     DI,SIGL         ;BACKUP UP TO SIG AREA
+        MOV     SI,OFFSET SIG
+        MOV     CX,SIGL
+        PUSH    DS
+        PUSH    CS
+        POP     DS
+        REP     CMPSB           ;CHK ALREADY INSTALLED
+        POP     DS
+        JE      PUTSTATE
+        JMP     DOINSTALL
+
+PUTSTATE:
+
+        MOV     DX,OFFSET STATE_MSG
+        MOV     BL,1    ;END ERRORLEVEL 1-ALREADY INSTALLED
+ERROR_OUT:
+        PUSH    DS
+        PUSH    CS
+        POP     DS
+        MOV     AH,9
+        INT     21H             ;ALREADY INSTALLED MSG
+        POP     DS
+        MOV     AH,4CH
+        MOV     AL,BL
+        INT     21H             ;NORM EOJ-ERROR LEVEL SET
+DOINSTALL:
+        PUSH    ES              ;SAVE INT9 VECTOR VALUE
+        PUSH    BX
+        MOV     DX,OFFSET DEVNAME
+        MOV     AX,3D00H
+        PUSH    DS
+        PUSH    CS
+        POP     DS
+        INT     21H             ;TRY TO OPEN CDROM DEVICE
+        POP     DS
+        JNC     OKDEV_OPEN
+        MOV     DX,OFFSET ERROPEN_MSG
+        MOV     BL,2            ;ERRORLEVEL 2-CANT OPEN
+        JMP     ERROR_OUT
+OKDEV_OPEN:
+        MOV     BX,AX           ;HANDLE TO DEVICE
+        MOV     DX,OFFSET IOCTL_PACKET
+        MOV     CX,IOCTL_PACKETL
+        MOV     AX,4402H
+        PUSH    DS
+        PUSH    CS
+        POP     DS
+        INT     21H             ;DO GENERIC READ IOCTL CALL
+        POP     DS
+        JNC     IOCTL_OK
+        MOV     DX,OFFSET BADFIOCTL
+        MOV     BL,3            ;ERRORLEVEL3-ERROR DOS IOCTL
+        JMP     ERROR_OUT
+IOCTL_OK:
+        MOV     AH,3EH
+        INT     21H             ;CLOSE DEVICE HANDLE
+        LES     BX,IOCTL_PACKAD ;GET ADDR OF DEVICE HEADER
+        MOV     AX,ES
+        MOV     WORD PTR DEV_STRAT+2,AX ;GET ENTRIES FOR
+        MOV     WORD PTR DEV_INT+2,AX   ; STRATEGY
+        MOV     AX,ES:[BX].SDEVSTRAT    ; & INTERRUPT
+        MOV     WORD PTR DEV_STRAT,AX
+        MOV     AX,ES:[BX].SDEVINT
+        MOV     WORD PTR DEV_INT,AX
+        POP     BX
+        POP     ES                      ;GET EXISTING INT9
+        MOV     WORD PTR OLD_INT9,BX
+        MOV     BX,ES
+
+        MOV     WORD PTR OLD_INT9+2,BX
+        MOV     IOCTLB.IOS_CMD,IOC_ADS_CMD  ;SET FOR DEVICE
+        MOV     REQFLW.RQI_NBYTES,TYPE IOS  ; STATUS IOCTL
+        CALL    IOCTL           ;DO IOCTL TO GET STATUS
+        OR      AX,AX           ; OF DRIVE
+        JZ      OKFIOCTL
+        MOV     DX,OFFSET BADFIOCTL
+        MOV     BL,4            ;ERRORLEVEL4 - ERR DEV IOCTL
+        JMP     ERROR_OUT
+OKFIOCTL:
+        TEST    WORD PTR IOCTLB.IOS_STAT,IOS_AUDIO_PLAY
+        JNZ     OKDEVCD                 ;CHK PLAY SUPPORTED
+        MOV     DX,OFFSET INSUFDD
+        MOV     BL,5         ;ERRORLEVEL5-PLAY UNSUPPORTED
+        JMP     ERROR_OUT
+OKDEVCD:
+        CALL    TOC             ;READ THE TABLE OF CONTENTS
+        MOV     IN_POPUP,1      ;DON'T ALLOW POPUP YET
+        MOV     DX,OFFSET TRAP_KB
+        PUSH    DS
+        PUSH    CS
+        POP     DS
+        MOV     AX,2509H
+        INT     21H             ;REPLACE INT9 ADDR VECTOR
+        MOV     DX,OFFSET INSTALL_MSG
+        MOV     AH,9
+        INT     21H             ;SAY INSTALLED
+        POP     DS
+        MOV     ES,PSP
+        MOV     AX,ES:[PSP_ENV]
+        MOV     ES,AX           ;GET ENVIRONMENT ADDR
+        MOV     AH,49H
+        INT     21H             ;RELEASE ENVIRONMENT BLOCK
+        MOV     DX,OFFSET KEEP_MEM
+        ADD     DX,15
+        MOV     CL,4
+        SHR     DX,CL           ;CALC NUMBER OF PARAGRAPHS
+        MOV     AX,CS           ; TO KEEP AFTER TSR
+        ADD     DX,AX
+        SUB     DX,PSP
+        MOV     AX,3100H
+        MOV     IN_POPUP,0      ;MAY NOW POPUP
+        INT     21H             ;TERMINATE AND STAY RESIDENT
+CDCNTL  ENDP
+CODE    ENDS
+
+STACKS  SEGMENT PARA STACK
+        DW      256 DUP (?)
+STACKS  ENDS
+        END     CDCNTL
+
+; End of File 
+

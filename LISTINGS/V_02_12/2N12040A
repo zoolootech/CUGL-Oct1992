@@ -1,0 +1,307 @@
+/*
+ * Listing 1: TOSPKR.C
+ * Play an audio file file out the PC speaker.
+ * Written for Turbo C 2.0, by Bob Bybee, 7/91
+ *
+ * usage: tospkr <filename> [<bits>]
+ *
+ *   <filename> is the audio file to be played.
+ *
+ *   <bits> is the number of speaker bits per sample.
+ *          if not entered, it will be calculated.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <mem.h>
+#include <bios.h>
+#include <alloc.h>
+#include <dos.h>
+#include <conio.h>
+
+#ifndef __LARGE__
+#error must use LARGE memory model!
+#endif
+
+/* audio sample rate, per second */
+#define SAMPRATE 8000
+
+/*
+ * 80x86 opcodes for the instruction sequences we
+ * will need, in order to drive the PC speaker.
+ *
+ *  On entry, to set up the registers:
+ *      BA 61 00   mov     dx,61h
+ *      B5 4A      mov     ch,4ah
+ *      B1 48      mov     cl,48h
+ *
+ * (Note: the 4a/48 values, at offset 4/6, should be
+ * changed to agree with the current value of port 61H.)
+ *
+ * To set the speaker bit high:
+ *      8A C5      mov     al,ch
+ *      EE         out     dx,al
+ *
+ * To set it low:
+ *      8A C1      mov     al,cl
+ *      EE         out     dx,al
+ *
+ * A "far return" to end the routine:
+ *      CB         retf
+ */
+unsigned char ops_begin[] =
+    {0xba, 0x61, 0x00, 0xb5, 0x4a, 0xb1, 0x48};
+unsigned char ops_high[]  = {0x8a, 0xc5, 0xee};
+unsigned char ops_low[]   = {0x8a, 0xc1, 0xee};
+unsigned char ops_end[]   = {0xcb};
+
+/* input buffer size, and pointer to it */
+#define INBUFSIZE 65000U
+unsigned char *inbuf;
+
+/* array of audio segment lengths in file */
+#define MAX_SEGS 200
+unsigned int seg_length[MAX_SEGS];
+unsigned int num_segs = 0;
+char got_lengths = 0;
+
+/* PFV is a pointer to a function taking
+ * no args, and returning void */
+typedef void (*PFV)( void );
+PFV playfuncs[256];
+
+unsigned int bits_per_sample;
+
+/* prototypes */
+void patch_opcodes( void );
+int best_rate( void );
+int test_time( int n_bits );
+void generate_codes( void );
+
+
+void main( int ac, char **av )
+    {
+    FILE *fp;
+    unsigned int nbytes, len, seg, n_to_read;
+    unsigned char *p;
+
+    --ac;
+    ++av;
+    if (ac < 1)
+        {
+        printf("usage: tospkr <voicefile> [<bits>]\n");
+        exit(1);
+        }
+
+    /* open the input file */
+    if ((fp = fopen(*av, "rb")) == NULL)
+        {
+        printf("Can't open voice file: %s\n", *av);
+        exit(1);
+        }
+
+    /* allocate memory for the input buffer */
+    if ((inbuf = calloc(1, INBUFSIZE)) == NULL)
+        {
+        printf("Can't get memory for input buffer!\n");
+        exit(1);
+        }
+
+    /* get the current value of port 61H */
+    patch_opcodes();
+
+    if (ac >= 2 && (bits_per_sample = atoi(av[1])) > 0)
+        ;   /* got our sample rate on the command line */
+    else
+        bits_per_sample = best_rate();
+
+    /* Create the 256 executable functions */
+    generate_codes();
+
+    /* See if the file is prefixed with a list of audio
+     * segment lengths.  If so, read it into the
+     * seg_length[] array.  It contains unsigned ints,
+     * zero-terminated.
+     */
+    fread(inbuf, 4, 1, fp);
+    if (memcmp(inbuf, "LIST", 4) == 0)
+        {
+        got_lengths = 1;
+        do  {
+            fread(&len, 2, 1, fp);
+            seg_length[num_segs++] = len;
+            } while (len != 0);
+        }
+    else
+        ;   /* We could rewind here, but
+             * 4 bytes isn't worth it.
+             */
+
+    /* Read in the file and play it thru the speaker.
+     * On each read, get the next segment's worth (if a
+     * list of segments exists), or as much as we can.
+     */
+    for (seg = 0; ; ++seg)
+        {
+        n_to_read =
+            got_lengths ? seg_length[seg] : INBUFSIZE;
+        if (n_to_read == 0 ||
+            (nbytes = fread(inbuf, 1, n_to_read, fp)) <= 0)
+                break;
+
+        p = inbuf;
+        disable();
+
+        /* For each byte, call one of 256 functions which
+         * were created in the playfuncs[] array.
+         */
+        while (nbytes-- > 0)
+            (*playfuncs[*p++])();
+
+        enable();
+        if (kbhit())    /* if a key was hit, */
+            {
+            getch();    /* eat the key, */
+            break;      /* and quit. */
+            }
+        }
+
+    fclose(fp);
+    exit(0);
+    }
+
+
+/*
+ * Read from port 61H.  Use this value with bit 1
+ * set and cleared, in ops_begin[] opcodes.
+ */
+void patch_opcodes( void )
+    {
+    int val;
+
+    val = inportb(0x61);
+    val &= ~0x03;               /* lose bits 0, 1 */
+    ops_begin[6] = val;
+    ops_begin[4] = val | 0x02;  /* add bit 1 */
+    }
+
+
+/*
+ * Calculate the number of bits we can play to the
+ * speaker, for each audio sample, in order to make
+ * the playback come out at SAMPRATE samples
+ * per second.
+ */
+int best_rate( void )
+    {
+    int bits1, bits2, ticks1, ticks2;
+    float fbits;
+
+    /* Start with 10 bits/sample.  Double it until
+     * it takes at least one second (18 ticks) */
+    printf("I'm timing your CPU, please wait...\n");
+    bits1 = 10;
+    while ((ticks1 = test_time(bits1)) < 18)
+        bits1 *= 2;
+
+    /* Now time it at 5x this number of bits. */
+    bits2 = bits1 * 5;
+    ticks2 = test_time(bits2);
+
+    /* Interpolate to get the optimum number of bits
+     * per sample for this PC. */
+    fbits = (18.2 - ticks1) * (bits2 - bits1);
+    fbits = fbits / (ticks2 - ticks1) + bits1;
+    return ((int)fbits);
+    }
+
+
+/*
+ * Build a set of instructions into inbuf, which will
+ * play n_bits out to the speaker.  Return the number
+ * of BIOS ticks it takes to play this many bits out,
+ * SAMPRATE times.
+ */
+int test_time( int n_bits )
+    {
+    unsigned char *p;
+    int i;
+    long t1, t2;
+    PFV testcode;
+
+    p = inbuf;
+    memcpy(p, ops_begin, sizeof(ops_begin));
+    p += sizeof(ops_begin);
+    for (i = 0; i < n_bits; ++i)
+        {
+        memcpy(p, ops_high, sizeof(ops_high));
+        p += sizeof(ops_high);
+        }
+    memcpy(p, ops_end, sizeof(ops_end));
+
+    testcode = (PFV)inbuf;
+    t1 = biostime(0, 0L);
+    for (i = 0; i < SAMPRATE; ++i)
+        (*testcode)();
+    t2 = biostime(0, 0L) - t1;
+    printf("bits: %d  ticks: %d\n", n_bits, (int)t2);
+    return (int)t2;
+    }
+
+
+/*
+ * Generate opcode streams, in allocated memory, to push
+ * the proper bit patterns out to the PC speaker.
+ */
+#define DEBUG_WAVE 0    /* 1 to enable printouts */
+void generate_codes( void )
+    {
+    unsigned char *p;
+    unsigned int value, sum, i;
+
+    printf("generating code for %d bits per sample...\n",
+        bits_per_sample);
+    for (value = 0; value < 256; ++value)
+        {
+        /* Get memory for the next instruction stream
+         * we're going to create. */
+        p = calloc(1, sizeof(ops_begin) + sizeof(ops_end) +
+            bits_per_sample * sizeof(ops_high));
+        if (p == NULL)
+            {
+            printf("out of memory at value %d\n", value);
+            exit(1);
+            }
+
+        playfuncs[value] = (PFV)p;
+#if DEBUG_WAVE
+        printf("\n%3d: ", value);
+#endif
+        memcpy(p, ops_begin, sizeof(ops_begin));
+        p += sizeof(ops_begin);
+
+        /* evenly distribute the ones over the bits. */
+        sum = 0;
+        for (i = 0; i < bits_per_sample; ++i)
+            {
+            sum += value;
+            if (sum >= 255)
+                {
+                sum -= 255;
+                memcpy(p, ops_high, sizeof(ops_high));
+#if DEBUG_WAVE
+                putchar('1');
+#endif
+                }
+            else
+                {
+                memcpy(p, ops_low, sizeof(ops_low));
+#if DEBUG_WAVE
+                putchar('.');
+#endif
+                }
+            p += sizeof(ops_low);
+            }
+        memcpy(p, ops_end, sizeof(ops_end));
+        }
+    }
+

@@ -1,0 +1,214 @@
+;-------------------------------------------------------------------------
+; BOOT.SYS  Illustrates some DOS device driver tricks.
+;-------------------------------------------------------------------------
+; This simple device driver will reboot the PC whenever an NMI is
+; intercepted.  This is convenient for folks with a Periscope breakout
+; switch or an Atron probe.  The IBM Professional Debugger package also
+; included an NMI card, but the switch is on the card and not so convenient.
+;
+; This device driver could also be useful to a handicapped person where
+; hitting Ctrl-Alt-Del is a difficult or impossible task depending on
+; their keyboard layout.
+;
+; Many times a device driver will want to hook some vectors during init
+; time and then not accept any I/O requests after that.  All the work it
+; does is in it's interrupt handler(s).  The problem with this is that
+; after init, the device is left with a larger DD interrupt routine than
+; is needed if all it's going to do is reject all requests.  By having the
+; device's init code redirect the interrupt routine pointer in the device
+; header to a shorter "mini" DD interrupt routine we can set the ending
+; address of the device driver such that the larger initial interrupt
+; routine is part of the code to be thrown away after initialization.
+; This results results in smaller resident memory requirements for the
+; device driver.
+;
+; By setting the symbol SAVE_MEMORY below to 0 or 1 the device driver can
+; be built with or without the interrupt routine hack.  On my development
+; system running DR-DOS 6.0, the trick saved a paragraph of resident memory.
+; Other device drivers may save a bit more.
+;
+; Another trick used below has to do with the name of the device.  I always
+; worry about character devices invading the name space that the DOS file
+; system uses when writing a device like this one, which is never intended
+; to do I/O.  By having blanks at the start of the device name in the
+; device header, we lessen the possibility of some DOS app stumbling across
+; this device driver by accident.
+;
+; Yet another trick used below is to place a '$' right after the device
+; header.  This allows the string in the device header to be used to
+; print the device name during initialization via Int 21 fn 9.
+;-------------------------------------------------------------------------
+; WARNING: This code WON'T WORK on systems that use NMI for normal system
+;          operation, like the PCjr and PC convertable.
+;-------------------------------------------------------------------------
+; Tony Ingenoso
+; 1323 SE 17th #274
+; Ft. Lauderdale, FL 33316
+;-------------------------------------------------------------------------
+
+SAVE_MEMORY = 0
+
+;----------------------------------------------
+; Device driver request header structure
+;----------------------------------------------
+request_header struc
+len     db      ?
+unit    db      ?
+command db      ?
+status  dw      ?
+reserve db      8 dup (?)
+;--- init specific ---
+nunits  db      ?
+endaddr dd      ?
+request_header ends
+
+;----------------------------------------------
+;    Dummy segment where the BIOS lives
+;----------------------------------------------
+bios    segment at 0FFFFH
+        assume  cs:bios
+        org     0
+boot    label   far             ; Jumping here reboots the PC
+bios    ends
+
+
+cseg    segment para public 'CODE'
+        assume  cs:cseg
+        org     0
+;------------- DEVICE HEADER ------------------
+        dd      -1              ; Link to next device
+        dw      8000H           ; Character device
+        dw      offset strategy ;
+intaddr dw      offset interrupt; Initially point to large interrupt routine
+devname db      '    BOOT','$'  ; Blanks prevent stumbling on dev by accident
+;----------------------------------------------
+
+req_ptr label   dword                   ; Strat saves RQH pointer here
+rh_offset dw    ?
+rh_seg    dw    ?
+
+;----------------------------------------------
+;           NMI trapper routine
+;----------------------------------------------
+NMItrapper proc far
+        mov     ax, 0040H               ; Set BIOS reset flag
+        mov     ds, ax                  ;
+        mov     word ptr ds:[72H],1234H ; WARM
+        jmp     boot                    ; JMP FFFF:0000
+NMItrapper endp
+
+;----------------------------------------------
+;           DD strat routine
+;----------------------------------------------
+strategy proc far
+        mov     cs:rh_offset, bx        ;offset
+        mov     cs:rh_seg, es           ;segment
+        ret
+strategy endp
+
+IF SAVE_MEMORY
+;----------------------------------------------
+; DD interrupt routine for post-INIT requests.
+;----------------------------------------------
+; Using this mini interrupt routine after init
+; reduces the resident memory requirements of
+; the device driver.
+;----------------------------------------------
+mini_interrupt proc far
+        push    ds                      ;
+        push    si                      ;
+        lds     si, cs:req_ptr          ; DS:SI-->request header
+        mov     [si].status, 8103H      ; Status = Done + Error + Unk command
+        pop     si                      ;
+        pop     ds                      ;
+        ret                             ;
+mini_interrupt endp
+
+THROW_AWAY_CODE label near
+ENDIF
+
+;----------------------------------------------
+;    DD interrupt routine for INIT requests
+;----------------------------------------------
+interrupt proc far
+        push    ds                      ; Save what gets whacked
+        push    si                      ;
+        push    ax                      ;
+        lds     si, cs:req_ptr          ; DS:SI-->request header
+        mov     al, ds:[si].command     ; AL == command code
+        cmp     al, 0                   ; Is it an init request?
+        jne     error                   ; All but INIT get error
+        call    initialize              ;
+        mov     ax, 0100H               ; Status = No error + Done
+        jmp     short exit              ;
+error:  mov     ax, 8103H               ; Error + Done + Unknown command
+exit:   mov     ds:[si].status, ax      ; Set status word in RQH.
+        pop     ax                      ; Restore
+        pop     si                      ;
+        pop     ds                      ;
+        ret
+interrupt endp
+
+IF (SAVE_MEMORY EQ 0)
+THROW_AWAY_CODE label near
+ENDIF
+;----------------------------------------------
+;          Initialize the device
+;----------------------------------------------
+initialize proc near
+        push    dx                      ; Save DX
+        push    cs                      ; DS==CS
+        pop     ds                      ;
+        assume  ds:cseg
+
+IF SAVE_MEMORY
+;
+; Relocate the DD's interrupt routine to the "mini".
+;
+        mov     word ptr intaddr, offset mini_interrupt
+ENDIF
+
+;
+; Display the logo message
+;
+        mov     ah, 09H                 ; Display the logo
+        mov     dx, offset logo         ;
+        int     21H                     ;
+;
+; Grab the NMI vector.
+;
+        mov     ax, 2502H               ; NMI is Int 2
+        mov     dx, offset NMItrapper   ;
+        int     21H                     ;
+;
+; Show the name of the initializing device
+;
+        mov     ah, 09H
+        mov     dx, offset devini1      ; Display "Device ["
+        int     21H
+        mov     dx, offset devname      ; Display the device name
+        int     21H
+        mov     dx, offset devini2      ; Display "] initialized."
+        int     21H
+;
+; Set the ending address.
+;
+        lds     si, cs:req_ptr          ; Get RQH pointer back
+        assume  ds:nothing
+        mov     word ptr [si].endaddr, offset THROW_AWAY_CODE
+        mov     word ptr [si].endaddr+2, cs
+        pop     dx                      ; Restore DX
+        ret
+initialize endp
+
+;----------------------------------------------
+;                 Messages
+;----------------------------------------------
+logo    db      'BOOT V1.00, Reboot on NMI',13,10
+        db      'Tony Ingenoso, 1992',13,10,'$'
+
+devini1 db      'Device [$'
+devini2 db      '] initialized.',13,10,'$'
+
+cseg    ends
+        end

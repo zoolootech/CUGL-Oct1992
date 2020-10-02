@@ -1,0 +1,82 @@
+
+/************************************************************
+ *  Program: CMENU Menu Compiler
+ *  Module: cmenu1.c
+ *      Menu Compiler:
+ *      Main and Utility Functions
+ *  Written by: Leor Zolman, 7/91
+ ************************************************************/
+
+#define MASTER
+#include "cmenu.h"
+#include "ccmenu.h"
+
+#include <string.h>
+
+#if __STDC__
+#   include <stdarg.h>
+#else
+#   include <varargs.h>
+#endif
+
+int main(argc,argv)
+int argc;
+char **argv;
+{
+    register i;
+    
+    printf("CMENU Menu Compiler v%s\n", VERSION);
+    if (argc < 2)
+    {
+        puts("usage: cmenu <menu-source-file(s)>\n");
+        return 0;
+    }
+    
+    for (i = 1; i < argc; i++)
+        if (dofile(argv[i]) == ERROR)          /* process source files */
+            return 1;
+    return 0;
+}
+
+/************************************************************
+ * dofile():
+ *  Process a single .mnu source file
+ ************************************************************/
+
+int dofile(name)
+char *name;
+{
+    register i;
+    char *cp;
+    
+    if ((cp = strstr(name, ".mnu")) ||
+       (cp = strstr(name, ".MNU")))
+                *cp = '\0';
+
+    strcpy(src_name, name);
+    strcat(src_name, ".mnu");
+    strcpy(obj_name, name);
+
+    if ((fp = fopen(src_name, "r")) == NULL)
+        return fprintf(stderr, "Can't open %s\n", src_name);
+    
+    n_menus = 0;
+    lineno = 1;
+    in_menu = FALSE;
+    fatal = FALSE;
+    
+    /*  Main processing loop. Read a token and process it,
+     *  until end of file is reached:
+     */
+
+    while ((token = gettok(fp)) != T_EOF)
+    {
+        if (!in_menu && token != T_MENU)
+        {
+            error("Each menu must begin with the Menu keyword");
+            break;
+        }
+        if ((*keywords[token].t_func)() == ERROR)
+            if (fatal)                 /* If fatal error, exit loop    */
+                break;
+    }

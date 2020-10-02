@@ -1,0 +1,237 @@
+/*
+ *    Title:         HEAP.C
+ *    Name:          Heap library source code
+ *    (C) Copyright Avi Farah, 1988.
+ */
+
+
+
+
+#include <stdio.h>
+#include <malloc.h>
+#include <time.h>
+#include "heap.h"
+
+
+
+
+#define  UNDERLINECHAR     '\xdf'
+#define  MAKEWORD( ch )    ((unsigned)((char)(ch)) & 0x00FF)
+
+
+
+
+static int  iInst = 0;        // Instance of enterence
+static char
+      *szDebug     = "HEAP.DBG",    // Output file
+      *szModeFirst = "w",           // File open modes
+      *szModeRest  = "a";
+
+
+
+
+/*
+ *    Prototypes
+ */
+static void WriteStatus( int iHeapStatus,  FILE *pDebug );
+
+
+
+
+/*****   HeapLOOK   ********************************************************/
+/*
+ *    Heap Initialization and Look.
+ */
+void  HeapLOOK( char szFile[],  unsigned uLine,  char cFillChr )
+   {
+   struct _heapinfo  hinfo;           // A structure defined in malloc.h
+   int               iHeapStat;
+   FILE              *pDebug;         // Pointer to debug file
+   char              *szMode;         // File open mode
+
+   /*
+    *    Which instance are we running?
+    *    First is 0th instance.
+    */
+   if (iInst == 0)
+      szMode = szModeFirst;
+   else
+      szMode = szModeRest;
+
+   /*
+    *    Open a dump file
+    */
+   pDebug = fopen(szDebug, szMode);
+   if (pDebug == NULL)   return;
+
+   /*
+    *    Write Header
+    */
+   if (iInst == 0)
+      {
+      time_t   ltime;
+      register unsigned lc;      // lc == Loop Control
+
+      ++iInst;
+      time(&ltime);
+      putchar('\a');             // beep
+      fprintf(pDebug, "\nFile:  %s,\tLine:  %u.\t\t%s", szFile, uLine,
+                 ctime(&ltime));
+      for (lc = 0; lc < 60; ++lc)
+         putc(UNDERLINECHAR, pDebug);
+      }
+   else
+      {
+      fprintf(pDebug, "\n\nHeapLook  %s[%u]:\n", szFile, uLine);
+      }
+
+   /*
+    *    Do a near heap check
+    */
+   fputs("\n\n_nheapchk():  ", pDebug);
+   iHeapStat = _nheapchk();
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Do a far heap check
+    */
+   fputs("_fheapchk():  ", pDebug);
+   iHeapStat = _fheapchk();
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Do a near heap set
+    */
+   fprintf(pDebug, "_nheapset(HEAPSETCHAR = %c [=%X Hex]):  ",
+      cFillChr, MAKEWORD(cFillChr));
+   iHeapStat = _nheapset(cFillChr);
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Do a far heap set
+    */
+   fprintf(pDebug, "_fheapset(HEAPSETCHAR = %c [=%X Hex]):  ",
+      cFillChr, MAKEWORD(cFillChr));
+   iHeapStat = _fheapset(cFillChr);
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Do a near heap walk
+    */
+   fputs("nheapwalk:  \n", pDebug);
+   hinfo._pentry = NULL;
+   while ((iHeapStat = _nheapwalk(&hinfo)) == _HEAPOK)
+      {
+      fprintf(
+         pDebug,
+         "%6s block at %p of size %4.4X(Hex) == %6.6u\n",
+         (hinfo._useflag == _USEDENTRY ? "USED" : "FREE"),
+         hinfo._pentry,
+         hinfo._size, hinfo._size
+             );
+      }
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Do a far heap walk
+    */
+   fputs("fheapwalk:  \n", pDebug);
+   hinfo._pentry = NULL;
+   while ((iHeapStat = _fheapwalk(&hinfo)) == _HEAPOK)
+      {
+      fprintf(
+         pDebug,
+         "%6s block at %p of size %4.4X(Hex) == %6.6u\n",
+         (hinfo._useflag == _USEDENTRY ? "USED" : "FREE"),
+         hinfo._pentry,
+         hinfo._size, hinfo._size
+
+            );
+      }
+   WriteStatus(iHeapStat, pDebug);
+
+   /*
+    *    Close Dump file
+    */
+   fclose(pDebug);
+   }   /* HeapLOOK */
+
+
+
+
+/*****   WriteStatus   *****************************************************/
+
+static void  WriteStatus( int iHeapStatus,  FILE *pDebug )
+   {
+   static char
+      *szHeapOKMsg      = "OK - heap is fine\n\n",
+      *szHeapEmptyMsg   = "OK - heap is empty\n\n",
+      *szHeapBadPtrMsg  = "ERROR - Entry field of the entry structure does\n"
+                          "       not contain a valid pointer to the heaap\n\n",
+      *szHeapBadBeginMsg= "ERROR - The initial header information was not\n"
+                          "        found or it was invalid.\n\n",
+      *szHeapBadNodeMsg = "ERROR - bad node in heap was found or heap\n"
+                          "        is damaged.\n\n",
+      *szHeapEndMsg     = "The end of the heap was reached successfully.\n\n";
+
+   switch(iHeapStatus)
+      {
+      case _HEAPOK:        fputs(szHeapOKMsg,       pDebug);   break;
+      case _HEAPEMPTY:     fputs(szHeapEmptyMsg,    pDebug);   break;
+      case _HEAPBADPTR:    fputs(szHeapBadPtrMsg,   pDebug);   break;
+      case _HEAPBADBEGIN:  fputs(szHeapBadBeginMsg, pDebug);   break;
+      case _HEAPBADNODE:   fputs(szHeapBadNodeMsg,  pDebug);   break;
+      case _HEAPEND:       fputs(szHeapEndMsg,      pDebug);   break;
+      }   /* switch */
+   }   /* WriteStatus */
+
+
+
+
+/*****   MemTrace   ********************************************************/
+
+void  MemTrace( char szFile[],  unsigned uLine )
+   {
+   FILE     *pDebug;
+   size_t   stHeap, stStack;  // stack and heap sizes respectively
+
+   /*
+    *    Open dump file
+    */
+   pDebug = fopen(szDebug, iInst == 0 ? szModeFirst : szModeRest);
+   if (pDebug == NULL)
+      {
+      fprintf(stderr, "File %s cannot open for debugging.\n", szDebug);
+      perror("");
+      return;
+      }
+
+   /*
+    *    Write header
+    */
+   if (iInst == 0)
+      {
+      time_t   ltime;
+      register unsigned lc;
+
+      ++iInst;
+      time(&ltime);
+      putchar('\a');             // beep
+      fprintf(pDebug, "\nFile:  %s,\tLine:  %u.\t\t%s", szFile, uLine,
+                         ctime(&ltime));
+      for (lc = 0; lc < 60; ++lc)
+         putc(UNDERLINECHAR, pDebug);
+      fputs("\n\n", pDebug);
+      }
+
+   stHeap  = _memavl();
+   stStack = stackavail();
+   fprintf(pDebug, "%s[%u]:  Near Heap=%u [=%X(Hex)],  Stack=%u [=%X(Hex)]\n",
+      szFile, uLine, stHeap, stHeap, stStack, stStack);
+
+   /*
+    *    Close Dubmp file
+    */
+   if (EOF == fclose(pDebug))
+      fprintf(stderr, "Cannot close debugging file %s\n", szDebug);
+   }   /* MemTrace */

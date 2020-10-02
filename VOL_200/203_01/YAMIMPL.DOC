@@ -1,0 +1,304 @@
+                           Implementation Manual for
+                            YAM (Yet Another Modem)
+                               by Chuck Forsberg
+
+                     (Converted for MS-DOS and Lattice-C)
+                                by Olen Pederson
+
+
+1. FILE TRANSFER PROTOCOL
+
+	The transmission of pathnames in batch mode differs from that 
+	used in MODEM7.  Yam sends the pathname as a null terminated 
+	string in a standard Ward Christensen type packet with a 
+	sector number of 0.
+
+	The sender may append the following additional information 
+	starting one byte after the null that terminates the 
+	pathname:
+
+	sprintf(p, "%lu %lo %o", f.stsize, f.stmtime, f.stmode);
+
+	where stsize is the exact length of the file in bytes,  
+	stmtime is the modification date in seconds since 1970, and  
+	stmode is the file mode, as defined for Unix V7/Sys3.  If  
+	the mod time is unavailable, a 0 value will cause the  
+	receiver to ignore it.  If the file mode is unavailable, a 
+	0  value will cause the receiver to ignore it and use a 
+	default  file mode.
+
+	Disk specifiers (B:) are not sent.  Directory names of full 
+	pathnames are not (generally) sent.  If this information 
+	(including the trailing null provided by sprintf) exceeds 
+	the 128 byte standard sector length, a long sector must be 
+	sent.
+
+	The sender waits for an initial NAK before sending the  
+	pathname.  An explicit NAK is sent by the receiver at  
+	intervals when is ready to receive a pathname.  Upon  
+	receiving and acknowledging the pathname packet, the 
+	receiver opens the file and then sends the initial NAK for 
+	the data in the file.  A null pathname terminates batch 
+	transmission.
+
+	The remainder of the pathname sector is set to nulls.
+
+
+2. YAM IMPLEMENTATION
+
+	Yam consists of the files:
+		yam.h		header and globals
+		yamsys.h	installation specific data
+		yam1.c		First time initialization
+				Main command decoding
+		yam2.c		Christensen protocol handler
+		yam3.c		Conversation with data capture
+				File xmsn w/o error checking.
+		yam4.c		CIS A Protocol handler (see MYSYSYTEM )
+		yam5.c		Misc modem related functions, such as 
+				baudrate
+				user specific modem init, etc.
+		yam7.c		Disk i/o open,close, directory
+				Wild card expansion, O/S related stuff
+		yam8.asm	CRCK calculation routine.
+		yam9.asm	CRC calculation routine.
+		yam10.c		USQ and some time critical functions
+		yam11.asm	MS-DOS assembly language interface
+		yamcfg.t	default start up config file
+		yamphone.t	phone list
+		yamhelp.t	help file
+
+	Yam utilizes a circular buffer for file receive.  Characters 
+	are placed into this buffer by the modem input routine.  
+	This routine places data at bufcq.  Data is removed from the 
+	buffer by using another pointer, bufcdq(console) or 
+	bufpdcq(printer). This method allows the buffer to be filled 
+	faster than it is emptied, as long as it eventually gets a 
+	chance to empty out.
+
+	Design goals: A general program performing the functions of 
+	MODEM and XMODEM, easily portable to non-timesharing 
+	computer systems. YAM facilitates communications and s/w 
+	exchange via timesharing, RCP/M, and Bulletin Board systems. 
+	Coding style is/was aimed at portability and clarity. File 
+	transfer routines are written without timing assumptions 
+	allowing error free high speed operation even if view 
+	selected
+
+	The MS-DOS implementation of YAM is for the IBM pc and its 
+	lookalikes.  Because of the slow screen output functions of 
+	the IBM-PC, the modem input routine was written as an 
+	interrupt procedure.  This has the added advantage of 
+	allowing transfers of data at high baud rates without 
+	loosing characters.  The IBM version has been tested at 9600 
+	baud with no loss of data.
+
+	If your machine uses a different type of UART chip, or a 
+	built-in modem card, then the yamsys.h, yam11.asm and 
+	yam5.c  files will need work.
+
+	Special effort was made to not use any of the cute calls for 
+	special graphics capability of the IBM pc.  This results in 
+	a no-nonsense but terse program which can easily be modified 
+	to run on ANY MS-DOS compatible machine.
+
+	There are versions of Yam available for the Z89 (with aux 
+	board), Cromemco TUART, TRS-80 II, and Apple (currently with 
+	Z19 console).
+
+	There will be multiple versions of yam5.c depending on the 
+	target system.  The file yam7.c will vary between different 
+	operating systems.  Most of the rest of the files should 
+	remain fairly constant.
+
+	Compilation and proper operation of this version of YAM is 
+	based on version 2.15e of the Lattice 'C' compiler and 
+	version 2.1 of MS-DOS.  Other versions of YAM may be 
+	available from the BDS C Users Group.
+
+
+3. PROPAGATING YAM
+
+	Often the question arises, "How do I get YAM (or whatever) 
+	into this neat new machine with the *%!@$@ format disks?
+
+	One possibility would be to convert the yam-target.com image 
+	into a hex file.  Then run copy on the target machine with 
+	input from the serial port    and output to a file.
+
+	Once you have a working yam running on target machine, other  
+	files come across effortlessly with the batch file transfer  
+	option.
+
+
+4. IMPORTANT #define's
+
+	CDO
+		Define a test for carrier drop out so that XYAM will 
+		automatically exit T(erm) function when the 
+		connection is broken.
+
+	CICHAR  Unadorned unconditional console input.  This must  
+		not trap on any control characters needed for host   
+		communications.
+ 
+	CONOUT(c)
+		Unadorned output of c to the local display.  YAM  
+		checks that the local display is ready before  
+		executing CONOUT(c).  CONOUT(c) must return  
+		immediately regardless of what is in c.
+
+	HELPFILE
+		This defines the file name (usually YAMHELP.T:") 
+		which contains a short summary of commands and 
+		other  useful information to jog your memory when 
+		you forget a command.
+
+	IBMPC
+		If defined, will pull in some IBM-PC specific 
+		routines.
+
+	IOTYPE
+		This defaults to char for i/o mapped systems with  
+		256 ports.  This may be defined to unsigned or long  
+		for systems with more ports (8086 or memory mapped 
+		i/o).
+
+	KBDBRK
+		This defines the keyboard character that translates 
+		to a break in yam3.  It should not be a normally 
+		used character.  Found in yam3.c.
+
+	LOGRX
+		Log all files received from remote systems in the 
+		file LOGRX.  Information stored includes user 
+		number, disk, filename, baudrate, and the name of 
+		the remote system given in the last call command 
+		(LASTCALR in xyam).
+
+	LOGTX
+		Log all files transmitted to remote systems in file 
+		LOGTX.  Information same as above.
+
+	LOGFILE
+		Must be defined if either of the above are.
+
+	LPOUT(c)
+		Likewise, unadorned output of c to the printer.  
+		LPOUT(c) must return immediately regardless of what 
+		is in c.
+
+	LPREADY
+		This define returns non zero if the line printer is 
+		ready to accept a character.  It must always return 
+		0 if LPOUT(c) would not return immediately.  If 
+		POREADY is slow, enabling the printer at high baud 
+		rates may cause characters to be lost.
+
+	MOCHAR(c)
+		This outputs the character c to the modem.  This 
+		macro need not check whether the modem is ready for 
+		a  character as that has already been done.  
+		MODOUT(c) must return immediately regardless of what 
+		is in c.
+
+	MYSYSTEM
+		Defining this causes yam2 to be compiled with a call 
+		to yam4.c for handling the Compuserve A protocol for 
+		file transfer (see 2 mode).  Unless you know what 
+		you are doing, you should use the following even if 
+		it is a bloody lie as xftran may not accept 
+		something original.  If this is included, you will 
+		need yam4.c, otherwise not.
+
+		#define MYSYSTEM "#CPMHeath/Zenith,CC,HC,PA,PL\015"
+
+	PATHSEP
+		This is defined as a string which defines the 
+		pathname separators.  This supports those who have 
+		inserted the patch for the DOS SWITCHAR by defining 
+		the PATHSEP as "\/".
+
+	PHONES
+		This defines the file (usually "YAMPHONE.T") which 
+		contains a list of names, phone numbers, and 
+		baudrates. The names must be in lower case.
+
+	RESTRICTED
+		Certain commands and options are disabled. Existing 
+		files cannot be deleted.
+
+	RXNONO
+		Define this as a string of characters, any of which 
+		would cause your terminal and/or cbios grief if not 
+		suppressed by term function.
+
+	STATLINE
+		Define this if your terminal has an extra (viz., 
+		25th) line usable for status information which does 
+		not scroll up nor interfere with scrolling.  
+		lpstat() writes to the entire status line, clearing 
+		out any previous contents.  pstat() writes starting 
+		at the 48th position, not disturbing any information 
+		written by lpstat().  Lpstat and pstat routines will 
+		need to be appropriately modified.
+
+	TERMINIT
+		This string should unconditionally initialize and 
+		clear the screen.
+
+	USQ
+		Allows the type command to automatically recognize 
+		squeezed files and display them in ASCII form.  Adds 
+		about 4k to program size.
+
+	YAMCONFIG
+		This defines the file (usually "YAMCONFIG.T") which 
+		contains configuration data which YAM will use on 
+		startup to configure itself.
+
+
+5.  TUNING PARAMETERS
+
+	Yam uses a number of tuneable parameters for portability.  
+	The values used depend strongly on the speed of functions 
+	and operating system calls used to interrogate the keyboard 
+	and modem port.  They are also affected by the clock speed 
+	and code quality of the compiler used.  These parameters 
+	have been added on a somewhat ad hoc basis, so one should 
+	grep the source files to determine the extent of their 
+	effects.
+
+	CLKMHZ
+		This is a ``master'' parameter.  Use it to calibrate 
+		the timeout in readchar (see yam5 or equivalent).
+
+	LOOPS
+		Timing value in sleep.
+
+	LOWWATER
+		When receiving text from the host in term function, 
+		term transmits XOFF (DC3) when the free buffer space 
+		gets down to LOWATER.
+
+
+6.  Recent Revisions/Enhancements to YAM
+
+	YAM has undergone a nearly complete re-write as of this 
+	revision.  Some of the major changes have been the extensive 
+	addition of comments and the re-formating of the code so it 
+	is all written in a consistent manner.  As the conversion 
+	from CPM to MS-DOS progressed it became apparent the 
+	conditional compile approach for different operating systems 
+	was unwieldy.  As a result, defines for conditional compiles 
+	were removed.  Nearly all the modules suffered major changes 
+	as the code quality had degraded over the years of several 
+	different authors adding features.  Some commands were 
+	deleted because they either didn't work or served no useful 
+	purpose.   So, here we start again anew.
+
+7.  Wish list
+
+	Kermit protocol handler
+	Terminal emulation
+

@@ -1,0 +1,237 @@
+/**********************************************/
+/* Listing 2.                                 */
+/*                                            */
+/* Module to write text on any bit boundry    */
+/* on EGA/VGA graphics screen                 */
+/* For Borland C++ Compiler.                  */
+/*                                            */
+/* (c)copyright 1991, Michael Chapin          */
+/**********************************************/
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <dos.h>
+#include <string.h>
+#include <bfont.h>
+
+
+BFont BF[] =
+  {{7, 8, 8, NULL},
+   {7, 8, 14, NULL},
+   {7, 8, 16, NULL}};
+
+
+BOOL BFontsLoaded;
+unsigned CurrBFFont;
+
+unsigned VideoSeg = 0xA000;/* current video segment */
+unsigned ScnWidth;         /* screen width in bytes */
+unsigned ScrMode;          /* current grapics mode  */
+
+
+void GetBFFontAdr(unsigned Which)
+{
+  struct REGPACK Regs;
+  unsigned num;
+
+  switch(Which){
+    case 0 : num = 3; break;
+    case 1 : num = 2; break;
+    case 2 : num = 6;
+  }
+  Regs.r_ax = 0x1130;
+  Regs.r_bx = num << 8;
+  intr(0x10, &Regs);
+  BF[Which].FontPtr = MK_FP(Regs.r_es, Regs.r_bp);
+}
+
+unsigned getvideomode()
+{
+  struct REGPACK Regs;
+
+  Regs.r_ax = 0x0F00;
+  intr(0x10, &Regs);
+  return Regs.r_ax & 0xFF;
+}
+
+void SetBFonts()
+{
+  unsigned Mode;
+
+  Mode = getvideomode();
+  if(!(Mode >= 13 && Mode <= 18))
+    exit(1);
+  VideoSeg = 0xA000;
+  if(Mode == 13)
+    ScnWidth = 40;
+  else
+    ScnWidth = 80;
+  GetBFFontAdr(0);
+  GetBFFontAdr(1);
+  if(Mode > 16)
+    GetBFFontAdr(2);
+  BFontsLoaded = TRUE;
+  ScrMode = Mode;
+}/* SetBFonts */
+
+
+/*** Low level routine to write to screen ***/
+
+unsigned shift;
+
+unsigned GetOffset(unsigned x, unsigned y)
+{
+  unsigned ofs, l;
+
+  ofs = x >> 3;            /* byte offset for col */
+  if(ScrMode >= 13)  /* add offset for row  */
+    ofs += y * ScnWidth;
+  shift = x % 8;
+  return ofs;
+}/* GetOffset */
+
+void SetWrt2(void)
+{
+  outportb(0x3CE, 5);  /*index 5 to address register*/
+  outportb(0x3CF, 2);  /*send out wrt mode num */
+}/* SetWrt2 */
+
+void SetWrt0(void)
+{
+  outportb(0x3CE, 5);  /*index 5 to address register*/
+  outportb(0x3CF, 0);  /*send out wrt mode num */
+}/* SetWrt0 */
+
+void print_char(unsigned x, unsigned y,
+                unsigned color, unsigned height,
+                unsigned char far *pattern)
+{
+  unsigned char far *scnptr, far *ts;
+  unsigned c;
+  unsigned linebyte;
+  unsigned char scrbyte;
+  unsigned char lbyte, rbyte;
+
+  scnptr = MK_FP(VideoSeg, GetOffset(x, y));
+  /* set ega/vga write mode 2 */
+  SetWrt2();
+
+  /* loop through height of character */
+  for(c = 1; c <= height; c++)
+  {
+    ts = scnptr;
+    linebyte = *pattern << 8;
+    if(shift)
+      linebyte >>= shift;
+
+    lbyte = linebyte >> 8;
+    rbyte = linebyte;
+
+    /* address the bit map register */
+    outportb(0x3CE, 8);
+    /* send upper byte */
+    outportb(0x3CF, lbyte);
+    /* latch the screen byte */
+    scrbyte = *ts;
+    /* write masked byte to the screen */
+    *ts = color;
+    /* do the right byte if needed */
+    if(shift)
+    {
+      ++ts;
+      outportb(0x3CE, 8);
+      outportb(0x3CF, rbyte);
+      scrbyte = *ts;
+      *ts = color;
+    }
+
+    scnptr += ScnWidth;
+    ++pattern;
+  }
+
+  SetWrt0();
+}/* print_char */
+
+void EGABlock(unsigned x, unsigned y,
+              unsigned width, unsigned height,
+              unsigned color)
+{
+  unsigned char ml, mr, scrbyte;
+  unsigned bytewidth, i;
+  unsigned char far *scnptr, far *ts;
+
+  ml = 0xFF >> (x % 8);
+  mr = 0xFF << (8 - ((x + width) % 8));
+  bytewidth = (width >> 3) + 1;
+
+  /* This makes vertical lines possible */
+  if(bytewidth == 1)
+    ml = ml & mr;
+  scnptr = MK_FP(VideoSeg, GetOffset(x, y));
+  SetWrt2();
+
+  while(height)
+  {
+    ts = scnptr;
+    outportb(0x3CE, 8);
+    outportb(0x3CF, ml);
+    scrbyte = *ts;
+    *ts = color;
+    ++ts;
+    if(bytewidth > 1)
+    {
+      if(bytewidth > 2)
+      {
+        for(i = 0; i < bytewidth - 1; i++)
+        {
+          outportb(0x3CE, 8);
+          outportb(0x3CF, 0xFF);
+          scrbyte = *ts;
+          *ts = color;
+          ++ts;
+        }
+      }
+      outportb(0x3CE, 8);
+      outportb(0x3CF, mr);
+      scrbyte = *ts;
+      *ts = color;
+    }
+    --height;
+    scnptr += ScnWidth;
+  }
+  SetWrt0();
+}
+
+void PrintBF(unsigned x, unsigned y, char *Msg)
+{
+  unsigned StrLen, i;
+  unsigned char far *PatPtr;
+
+  if(!BFontsLoaded)
+    return;
+  StrLen = strlen(Msg);
+  for(i = 0; i < StrLen; i++)
+  {
+    PatPtr = BF[CurrBFFont].FontPtr;
+    PatPtr += Msg[i] * BF[CurrBFFont].Height;
+    print_char(x, y, BF[CurrBFFont].Color,
+               BF[CurrBFFont].Height, PatPtr);
+    x += BF[CurrBFFont].Width;
+  }
+}/* PrintBF */
+
+void SetBFFont(unsigned Which)
+{
+  if(BF[Which].FontPtr == NULL)
+    CurrBFFont = 0;
+  else
+    CurrBFFont = Which;
+}/* SetBFFont */
+
+void SetBFColor(unsigned Which, unsigned Color)
+{
+  /* make sure color is within range */
+  Color = Color & 0xF;
+  BF[Which].Color = Color;
+}/* SetBFColor */
+

@@ -1,0 +1,47 @@
+Listing 1
+
+/*****************************************************/
+/* comboed.c                                         */
+/* -- Subclass the EditItem of a ComboBox.           */
+/*****************************************************/
+
+#include <windows.h>
+#include "comboed.h"
+
+FARPROC
+LpfnSubclassComboEdit(FARPROC lpfn, HWND hwndCombo)
+/*****************************************************/
+/* -- If the given ComboBox contains an EditItem,    */
+/*    subclass it with the given window proc.        */
+/* -- Return the EditItem's original window          */
+/*    procedure, or NULL for failure.                */
+/* -- lpfn      : Procedure instance of subclasser.  */
+/* -- hwndCombo : ComboBox window handle.            */
+/*****************************************************/
+    {
+    HWND    hwndChild;
+    FARPROC lpfnEdit;
+
+    /* Loop over all the child windows of the */
+    /* ComboBox.  Stop if we find an EditItem.  */
+    for (hwndChild = GetWindow(hwndCombo, GW_CHILD);
+      hwndChild != NULL;
+      hwndChild = GetWindow(hwndChild, GW_HWNDNEXT))
+        {
+        char    szClass[10];
+
+        GetClassName(hwndChild, szClass,
+          sizeof szClass);
+        if (lstrcmpi(szClass, "edit") == 0)
+            break;
+        }
+
+    if (hwndChild == NULL)
+        return NULL;    /* Must be CBS_DROPDOWNLIST. */
+
+    lpfnEdit =
+      (FARPROC)GetWindowLong(hwndChild, GWL_WNDPROC);
+    SetWindowLong(hwndChild, GWL_WNDPROC, (LONG)lpfn);
+    return lpfnEdit;
+    }
+

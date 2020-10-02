@@ -1,0 +1,140 @@
+MAKE(1)			MS-DOS Programmer's Manual		    MAKE(1)
+
+NAME
+   make - maintain program groups
+
+SYNOPSIS
+   make [-f <makefile>] [-ainpqrst] [<target>...]
+
+DESCRIPTION
+   Make executes commands in makefile to update one or more target names. Name
+   is typically a program. If no -f option is present, `makefile' is tried. If
+   makefile is `-', the standard input is taken. More than one -f option may
+   appear
+
+   Make updates a target if it depends on prerequisite files that have been
+   modified since the target was last modified, or if the target does not
+   exist.
+
+   Makefile contains a sequence of entries that specify dependencies. The
+   first line of an entry is a blank-separated list of targets, then a colon,
+   then a list of prerequisite files. Text following a semicolon, and all
+   following lines that begin with a tab, are shell commands to be executed to
+   update the target. If a name appears on the left of more than one `colon'
+   line, then it depends on all of the names on the right of the colon on
+   those lines, but only one command sequence may be specified for it. If a
+   name appears on a line with a double colon :: then the command sequence
+   following that line is performed only if the name is out of date with
+   respect to the names to the right of the double colon, and is not affected
+   by other double colon lines on which that name may appear.
+
+   Sharp and newline surround comments.
+
+   The following makefile says that `pgm' depends on two files `a.obj' and
+   `b.obj', and that they in turn depend on `.c' files and a common file
+   `incl'.
+
+          pgm: a.obj b.obj
+            cc a.obj b.obj -lm -o pgm
+          a.obj: incl a.c
+            cc -c a.c
+          b.obj: incl b.c
+            cc -c b.c
+
+   Makefile entries of the form
+
+          string1 = string2
+
+   are macro definitions. Subsequent appearances of $(string1) or ${string1}
+   are replaced by string2. If string1 is a single character, the parentheses
+   or braces are optional.
+
+   Make infers prerequisites for files for which makefile gives no construc-
+   tion commands. For example, a `.c' file may be inferred as prerequisite for
+   a `.obj' file and be compiled to produce the `.obj' file. Thus the prece-
+   ding example can be done more briefly:
+
+          pgm: a.obj b.obj
+            cc a.obj b.obj -lm -o pgm
+          a.obj b.obj: incl
+
+   Prerequisites are inferred according to selected suffixes listed as the
+   `prerequisites' for the special name `.SUFFIXES'; multiple lists accumu-
+   late; an empty list clears what came before. Order is significant; the
+   first possible name for which both a file and a rule as described in the
+   next paragraph exist is inferred.  The default list is
+
+          .SUFFIXES: .obj .asm .c
+
+   The rule to create a file with suffix s2 that depends on a similarly named
+   file with suffix s1 is specified as an entry for the `target' s1s2.  In
+   such an entry, the special macros
+
+   	$* stands for the target name with suffix deleted,
+	$@ for the full target name,
+	$< for the complete list of prerequisites,
+	$? for the list of prerequisites that are out of date.
+
+   For example, a rule for making optimized `.obj' files from `.c' files is
+
+          .c.obj: ; cc -c -O -o $@ $*.c
+
+   Certain macros are used by the default inference rules to communicate op-
+   tional arguments to any resulting compilations.  In particular, `CFLAGS' is
+   used for cc(1) options, and AFLAGS for masm options. In addition, the macro
+   `MFLAGS' is filled in with the initial command line options supplied to
+   make. This simplifies maintaining a hierarchy of makefiles as one may then
+   invoke make on makefiles in subdirectories and pass along useful options.
+
+   Command lines are executed one at a time. First execution of the command
+   is attempted directly from make. If this fails, a secondary COMMAND.COM
+   processor is invoked to do the job. For commands executed by a secondary
+   COMMAND.COM processor, exit status may not be correct, which is a flaw in
+   MSDOS.
+
+   A command line is printed when it is executed unless the special target
+   `.SILENT' is in makefile, or the first character of the command is `@'.
+
+   Commands returning nonzero exit status cause make to terminate unless the
+   special target `.IGNORE' is in makefile or the command begins with the cha-
+   racter sequence <tab><hyphen>, or if the `-i' option was given.
+
+   Interrupt and quit cause the target to be deleted unless the target is a
+   directory or depends on the special name `.PRECIOUS'.
+
+OPTION
+   -a   Disregard date/time stamps, and perform all commands that would be
+   	necessary to update the requested final target(s).
+   -f   Use the next command line token for the makefile name. If this is '-'
+   	then use standard input.
+   -i   Equivalent to the special entry `.IGNORE:'. A single command may be
+   	forced to behave this way by preceding it by '<tab>-'.
+   -n   Trace and print, but do not execute the commands needed to update the
+   	targets.
+   -p   Print all macros and targets. Good for debugging your makefiles.
+   -q   Causes make to return the up-to-date-ness of the target as exit
+   	status.
+   -r   Equivalent to an initial special entry `.SUFFIXES:' with no list. This
+   	means that the built-in inference rules are not used.
+   -s   Equivalent to the special entry `.SILENT:'. A single command may be
+   	forced to behave this way by preceding it by '@'.
+   -t   Touch, i.e. update the modified date of targets, without executing any
+   	commands.
+
+FILES
+   makefile, command.com
+
+SEE ALSO
+   touch
+
+RESTRICTIONS
+   Some commands return nonzero status inappropriately.  Use -i to overcome
+   the difficulty.
+
+   If a command is executed by an invocation a secondary COMMAND.COM, and
+   ties to set environment variables, these settings will only affect the
+   environment of that secondary command processor. As soon asit terminates,
+   the settings are lost. Also, COMMAND.COM always return successful status,
+   even if it tries to execute a non-existen command. In general, the inten-
+   tion is that COMMAND.COM is only to be invoked to run simple commands as
+   COPY, TYPE, DEL and the like.

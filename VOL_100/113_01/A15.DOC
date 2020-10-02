@@ -1,0 +1,851 @@
+/*
+	HEADER:		CUG113;
+	TITLE:		1802 Cross-Assembler (BDS C Version);
+	FILENAME:	A15.DOC;
+	VERSION:	1.2;
+	DATE:		07/22/1985;
+
+	DESCRIPTION:	"This program lets you use your CP/M-80-based computer
+			to assemble code for the RCA 1802, 1804, 1805, 1805A,
+			1806, AND 1806A microprocessors.  The program is
+			written in BDS C for the best possible performance on
+			8-bit machines.  All assembler features are supported
+			except relocation, linkage, listing control, and
+			macros.";
+
+	KEYWORDS:	Software Development, Assemblers, Cross-Assemblers,
+			RCA, CDP1802, CDP1805A;
+
+	SEE-ALSO:	CUG149, 1805A Cross-Assembler (Portable);
+
+	SYSTEM:		CP/M-80;
+	COMPILERS:	BDS C;
+
+	WARNINGS:	"This package is specifically tailored to CP/M-80
+			machines and the rather non-standard, but high-
+			performance BDS C compiler.  For other environments,
+			use the portable version of this package on CUG149.";
+
+	AUTHORS:	William C. Colley III;
+*/
+
+
+
+
+
+
+
+
+
+
+	                 1805A/1802 Cross-assembler
+
+
+                             Version 1.2
+
+
+         Copyright (c) 1980, 82, 83, 85 William C. Colley III
+
+
+
+                      The Manual Such As It Is.
+
+1805A Cross-assembler User Manual                              Page  1
+
+
+Table of Contents
+
+1.0       Format of Cross-assembler Commands........................ 2
+
+     1.1  Command Strings........................................... 2
+     1.2  Options................................................... 2
+     1.3  Examples.................................................. 2
+
+2.0       Format of Cross-assembler Source Files.................... 4
+
+     2.1  Statements................................................ 4
+     2.2  Symbols................................................... 5
+     2.3  Numeric Constants......................................... 5
+     2.4  Strings................................................... 6
+
+3.0       Expression Evaluation..................................... 7
+
+4.0       1805A Instructions........................................ 8
+
+     4.1  No Argument Group......................................... 8
+     4.2  Register Group............................................ 8
+     4.3  8-bit Immediate Group..................................... 8
+     4.4  Short Branch Group........................................ 9
+     4.5  Long Branch Group......................................... 9
+     4.6  Input/Output Group........................................ 9
+     4.7  2-Argument Group.......................................... 9
+
+5.0       Pseudo-operations.........................................10
+
+     5.1  BLK.......................................................10
+     5.2  BYTE......................................................10
+     5.3  Conditional Assembly......................................10
+     5.4  CPU.......................................................11
+     5.5  END.......................................................11
+     5.6  EQU.......................................................12
+     5.7  LOAD......................................................12
+     5.8  ORG.......................................................12
+     5.9  PAGE......................................................13
+     5.10 SET.......................................................13
+     5.11 TEXT......................................................13
+     5.12 WORD......................................................13
+
+6.0  Error Messages.................................................14
+
+7.0  Assembler Abort Conditions.....................................16
+
+8.0  Compiling the Assembler........................................17
+
+9.0  Final Comments.................................................18
+
+1805A Cross-assembler User Manual                              Page  2
+
+
+1.0  Format of Cross-assembler Commands
+
+1.1  Command Strings
+
+     To run the 1805A cross-assembler, type the following command
+line:
+
+          A>a15 filename options
+
+          filename: The name of the source input file is filename.rca,
+                    the list can go to filename.prn, and the hex file
+                    can go to filename.hex.  If any type is appended
+                    to the filename, it is ignored.
+
+          options:  See next section.
+
+
+1.2  Options
+
+     The source file comes from the currently logged disk drive unless
+     it is redirected by putting the string "sd" in the options field.
+     "s" specifies the source file and "d" is a device code from the
+     following list:
+
+          a, b, c, d     disk drives
+          -              the currently logged-in disk drive
+
+     Lines of input containing errors will always be output to the
+     console device.  If the full listing is desired, it must be
+     called for by putting the string "ld" in the options field.  "l"
+     specifies the list file and "d" is a device code as per the
+     source file or one of the following:
+
+          x              console device
+          y              list device
+
+     The hex file will not be output unless called for with the string
+     "hd" with device codes as per the list file.
+
+     Options must be run together into a single string with no
+     embedded blanks.
+
+
+1.3  Examples
+
+     A>a15 barf               source -- a:barf.rca
+                              list   -- none
+                              hex    -- none
+
+     A>a15 barf sblxha        source -- b:barf.rca
+                              list   -- con:
+                              hex    -- a:barf.hex
+
+1805A Cross-assembler User Manual                              Page  3
+
+
+     A>a15 barf ly            source -- a:barf.rca
+                              list   -- lst:
+                              hex    -- none
+
+     A>b:a15 barf sbh-        source -- b:barf.rca
+                              list   -- none
+                              hex    -- a:barf.hex
+
+     B>a:a15 barf h-          source -- b:barf.rca
+                              list   -- none
+                              hex    -- b:barf.rca
+
+1805A Cross-assembler User Manual                              Page  4
+
+
+2.0  Format of Cross-assembler Source Files
+
+     Lines of source input are terminated with CR/LF pairs.
+     Internally, the character before the LF is discarded, so if the
+     CR is missing, the last character of the line will be eaten up.
+     The internal line buffer will hold a 120-character line.  This
+     may be changed by altering the "#define LINLEN 120" statement in
+     a15.h and recompiling the cross-assembler.  Excess characters in
+     the line are thrown out.
+
+     Lower case letters are converted to upper case in as few places
+     as possible.  They are:
+
+          1)  In opcodes,
+
+          2)  In checking for keywords such as NOT, and
+
+          3)  In command strings.
+
+     This means that "not", "NOT", "Not", etc. are all possible
+     spellings of the logical inversion operator.  This also means
+     that "foo" and "FOO" are different symbols.  Watch this if you
+     start encountering U errors of symbols that you "know" you
+     defined.
+
+
+2.1  Statements
+
+     Source files input to the cross-assembler consist of statements
+     of the form:
+
+          [label]   [opcode   [arguments]]   [;comments]
+
+     Labels are recognized by their beginning in column 1.  If it
+     doesn't begin there, it is assumed to be an opcode.  Labels are
+     assigned the current program counter value unless the line's
+     opcode is "EQU" or "SET".
+
+     Opcodes may be either 1805A machine instruction mnemonics or
+     pseudo-ops (i.e. assembler directives).
+
+     The arguments following the opcode will vary with the opcode. In
+     the case of opcodes such as "NOP", they may be absent entirely.
+
+     Lines terminate with either a CR/LF pair or a semicolon that is
+     not embedded in a quoted string.  Anything after a semicolon is
+     ignored by the assembler, but will appear in the listing.  Note
+     that a semicolon in column 1 will make the entire line a comment.
+
+1805A Cross-assembler User Manual                              Page  5
+
+
+2.2  Symbols
+
+     Symbols may be of any length, but only the first 8 characters are
+     significant.  This may be changed by changing the "#define SYMLEN
+     8" statement in a15.h and recompiling the assembler.  Note that
+     this increases the storage required by the symbol table as each
+     entry in the symbol table sits on SYMLEN+2 bytes of storage.  The
+     following characters are legal in a symbol:
+
+          A-Z  a-z  !    #    $    %    &    .    :    ?    @    [
+                    \    ]    ^    _    `    {    |    }
+
+     Note that symbols may not begin with 0-9 as this would make it
+     impossible to tell numbers from symbols.
+
+     A special symbol $ is always equal to the address of the first
+     byte of code generated by a given line.
+
+
+2.3  Numeric Constants
+
+     The default base for numeric constants is decimal.  Putting a
+     trailing H, D, Q, O, or B onto the number will override the
+     default base.  The base designators may be in either lower or
+     upper case and are as follows:
+
+          H    Hexidecimal    (Note that for A-F, lower case is
+                              converted to upper case.)
+          D    Decimal
+
+          O Q  Octal          (Either O or Q will do.)
+
+          B    Binary
+
+     Numbers are 16-bit unsigned quantities.  Overflows from the upper
+     byte are ignored with no error flagged.  For example:
+
+          0fedcbh        evaluates to edcb hex
+          000111000b     evaluates to 0039 hex
+          035Q           evaluates to 001d hex
+          128            evaluates to 0080 hex
+          1feh           evaluates to 01fe hex
+
+     Numbers are recognized by their first character of 0-9, so make
+     sure that hex numbers have a zero padded onto the front if
+     needed.
+
+     A character constant is a string composed of zero, one, or two
+     ASCII characters delimited by either single or double quotes (''
+     or "").  Note that single quotes only balance single quotes and
+
+1805A Cross-assembler User Manual                              Page  6
+
+
+     double quotes only balance double quotes.  Thus, a character
+     constant of 22 hex can be specified by '"'.  For example:
+
+          "ab"           evaluates to 6162 hex
+          ""             evaluates to 0000 hex
+          "'"            evaluates to 0022 hex
+          'A'            evaluates to 0041 hex
+
+     Note that in the two-byte character constant, the left-hand
+     character will appear in the upper-order byte and the right-hand
+     character will appear in the lower-order byte.
+
+
+2.4  Strings
+
+     Strings are formed in the same way as character constants except
+     that they may be of any length up to and including 255
+     characters.  The first character will be placed in the
+     lowest-order memory byte.  A line-feed character may not be
+     embedded in a string as it will yield a quote imbalance error.
+     Note that strings are only valid in the argument field of a
+     "TEXT" pseudo-op.
+
+1805A Cross-assembler User Manual                              Page  7
+
+
+3.0  Expression Evaluation
+
+     The following operators are allowed in expressions.  The
+     operators are listed in order of precedence.
+
+          Unary +   Unary -
+
+          *    /    MOD  SHL  SHR
+
+          +    -
+
+          >    >=   <    <=   <>   =    (These can also be written as
+                                        GT, GE, LT, LE, NE, and EQ.)
+
+          NOT                           (1's complement)
+
+          AND
+
+          OR   XOR
+
+          LOW  HIGH
+
+     Parentheses are used to change the order of precedence.  During
+     evaluation of an expression, as soon as a new operator is
+     encountered that has precedence less than or equal to the last
+     operator encountered, all operations up to the new operator are
+     performed.  That is, subexpressions involving operators of higher
+     precedence are computed first.
+
+     All operators except +, -, *, /, =, <>, >=, <=, >, and < must be
+     separated from their operands by at least one space or tab.
+
+     The operation "HIGH mumble" is equivalent to "mumble SHR 8" and
+     the operation "LOW mumble" is equivalent to "mumble AND 0ffh".
+
+     The relational operators (GE, EQ, etc.) evaluate to 0ffffh if the
+     relationship is true, 0 if it is false.
+
+     Expressions are terminated by commas, semicolons, or CR/LF pairs.
+
+1805A Cross-assembler User Manual                              Page  8
+
+
+4.0  1805A Instructions
+
+     The instructions of the 1805A microprocessor fall into several
+     catagories.  Most require one or more arguments, though some
+     permit none.  Blanks may be used freely throughout the argument
+     field (except within symbols or operators such as NOT and <=) to
+     enhance the readability of the source code.  The basic syntax is
+     as follows:
+
+          [label]   SEX       expression          ;comments.
+
+
+4.1  No Argument Group
+
+     This group contains the following opcodes:
+
+          ADC       ADD       AND       CID       CIE       DADC
+          DADD      DIS       DSM       DSMB      DTC       ETQ
+          GEC       IDL       IRX       LDC       LDX       LSDF
+          LSIE      LSKP      LSNF      LSNQ      LSNZ      LSQ
+          LSZ       MARK      NOP       OR        REQ       RET
+          RSHL      RSHR      SAV       SCM1      SCM2      SD
+          SDB       SEQ       SHL       SHLC      SHR       SHRC
+          SKP       SM        SMB       SPM1      SPM2      STM
+          STPC      STXD      XID       XIE       XOR
+
+     These opcodes permit no arguments.
+
+
+4.2  Register Group
+
+     This group contains the following opcodes:
+
+          DEC       GHI       GLO       INC       LDA       LDN
+          PHI       PLO       RLXA      RNX       RSXD      SEP
+          SEX       SRET      STR
+
+     This group requires one argument in the range 0-15.  The labels
+     R0, R1, ..., R9, RA, RB, ..., RF are predefined by the assembler
+     for specifying registers in these instructions.  If the argument
+     is out of range, a register (R) error is flagged.
+
+     Note that a LDN R0 instruction will draw a register (R) error as
+     its opcode is used for the IDL instruction.
+
+
+4.3  8-bit Immediate Group
+
+     This group contains the following opcodes:
+
+          ADCI      ADDI      ANI       DACI      DADI      DSBI
+          DSMI      LDI       ORI       SDBI      SDI       SMBI
+          SMI       XRI
+
+1805A Cross-assembler User Manual                              Page  9
+
+
+     This group requires one argument between -128 and 255.  If the
+     argument is out of range, a value (V) error is flagged.
+
+
+4.4  Short Branch Group
+
+     This group contains the following opcodes:
+
+          B1        B2        B3        B4        BCI       BDF
+          BGE       BL        BM        BN1       BN2       BN3
+          BN4       BNF       BNQ       BNZ       BPZ       BQ
+          BR        BZ        BXI       NBR
+
+     This group requires one argument whose high-order byte is equal
+     to the high-order byte of $+1 ($+2 for BCI and BXI).  If the
+     high-order bytes do not match, a branch (B) error is flagged.
+
+
+4.5  Long Branch Group
+
+     This group contains the following opcodes:
+
+          LBDF      LBNF      LBNQ      LBNZ      LBQ       LBR
+          LBZ       NLBR
+
+     This group requires one argument having any value.
+
+
+4.6  Input/Output Group
+
+     This group contains the following opcodes:
+
+          INP       OUT
+
+     This group requires one argument in the range 1-7.  If the
+     argument is out of range, a value (V) error is flagged.
+
+
+4.7  2-Argument Group
+
+     This group contains the following opcodes:
+
+          DBNZ      RLDI      SCAL
+
+     This group requires two arguments. The first argument is in the
+     range 0-15 as per the register group.  The second argument can
+     have any value.
+
+1805A Cross-assembler User Manual                              Page 10
+
+
+5.0  Pseudo-operations
+
+5.1  BLK
+
+     This statement is used to reserve a block of memory for working
+     storage, etc.  It requires one argument that gives the number of
+     bytes of storage to reserve.  The syntax is as follows:
+
+          [label]   BLK       expression
+
+
+5.2  BYTE
+
+     This statement is used to place bytes in memory.  Each byte is
+     defined by an expression.  Multiple bytes can be defined by
+     expressions separated by commas.  If an expression evaluates to a
+     quantity outside the range -128 to 255, a value (V) error is
+     flagged.  The syntax follows:
+
+          [label]   BYTE      [expr[,expr[,...]]]
+
+
+5.3  Conditional Assembly
+
+     Blocks of code can be assembled or not assembled based on the
+     value of some expression.  The basic syntax is as follows:
+
+                    IF        expression
+
+                    (lines of code)
+
+                    ENDI
+
+     If the expression evaluates to 0, the code will not be assembled.
+     The source lines will be transferred to the listing, but no hex
+     output will be generated.  It is recommended that a value of
+     0ffffh be used for a true value since it turns into a false value
+     under bitwise inversion.
+
+     In addition, the ELSE directive is supported as follows:
+
+                    IF        expression
+
+                    (lines of code)
+
+                    ELSE
+
+                    (more lines of code)
+
+                    ENDI
+
+1805A Cross-assembler User Manual                              Page 11
+
+
+     This is equivalent to:
+
+                    IF        expression
+
+                    (lines of code)
+
+                    ENDI
+                    IF        NOT expression
+
+                    (more lines of code)
+
+                    ENDI
+
+     Note that labels are not permitted on conditional assembly
+     directives.  Also, note that an END statement can fail to be
+     recognized if it is in a conditional assembly block with a false
+     expression.
+
+     A phasing (P) error will be flagged if there are any forward
+     references in the expression.
+
+
+5.4  CPU
+
+     This statement is used to tell the assembler whether to assemble
+     code for the 1802 CPU or for the 1805A CPU.  The syntax is as
+     follows:
+
+          [label]   CPU       expression
+
+     If the expression evaluates to 1802 (decimal), the 1805A
+     extensions to the 1802 instruction set are disallowed.  If the
+     expression evaluates to 1805 (decimal), the 1805A extensions are
+     allowed.  Any other value results in a value (V) error and the
+     statement has no effect.  The default condition is "CPU 1802",
+     though the default can be changed by changing the "#define DEFEXT
+     FALSE" statement in a15.h and recompiling the assembler.
+
+
+5.5  END
+
+     When this statement is encountered, the assembler decides that
+     the end of the source file has been reached.  If this statement
+     is missing or in a conditional assembly block that is not being
+     assembled, the assembler will encounter end-of-file on the source
+     file.  In this case, the assembler will attach an END statement
+     and will flag a * error.  The syntax is as follows:
+
+          [label]   END
+
+1805A Cross-assembler User Manual                              Page 12
+
+
+     If any IF statement is not closed with an ENDI at this point, an
+     if (I) error will be flagged.
+
+     This statement permits no arguments.
+
+
+5.6  EQU
+
+     This statement is used to assign a permanent value to a symbol.
+     This value may not be subsequently changed by a SET, another EQU,
+     or by writing the symbol in column 1 as a label.  The syntax is
+     as follows:
+
+          label     EQU       expression
+
+     A phasing (P) error will result if any forward references are
+     encountered in the evaluation of the expression.
+
+
+5.7  LOAD
+
+     This statement is used to load a 16-bit immediate value into a
+     register of the 1802 which has no RLDI instruction.  It is, in
+     effect, a built-in macro.  The syntax is as follows:
+
+          [label]   LOAD      reg, data
+
+     The following sequence of instructions is placed into the code:
+
+          [label]   LDI       HIGH data
+                    PHI       reg
+                    LDI       LOW data
+                    PLO       reg
+
+     Note that execution of this macro blows up the D register.
+
+
+5.8  ORG
+
+     This statement is used to load a value into the assembly program
+     counter.  The value is obtained from the expression.  If the
+     expression contains any forward references, a phasing (P) error
+     will result.  If a label is present, it will be EQUed to the new
+     program counter value.  The syntax is:
+
+          [label]   ORG       expression
+
+1805A Cross-assembler User Manual                              Page 13
+
+
+5.9  PAGE
+
+     This statement is used to set the assembly program counter to the
+     beginning of the next 256-byte page.  If the program counter is
+     already at the beginning of a page, the statement has no effect.
+     It permits no arguments, and it handles a label in the same way
+     as an ORG statement does.  The syntax is as follows:
+
+          [label]   PAGE
+
+
+5.10 SET
+
+     This statement is used to assign a temporary value to a symbol.
+     The symbol may not be redefined by an EQU or by writing it in
+     column 1 as a label, but it may be redefined by another SET
+     statement.  The value for the symbol is obtained from the
+     expression.  If it contains forward references, a phasing (P)
+     error will result.  The syntax is:
+
+          label     SET       expression
+
+
+5.11 TEXT
+
+     This statement is used to place strings in memory.  Its
+     arguments may only be strings.  Multiple strings may be placed
+     in memory if the strings are separated by commas.  The syntax is
+     as follows:
+
+          [label]   TEXT      [string[,string[,...]]]
+
+
+5.12 WORD
+
+     This statement is used to place words in memory.  Each word is
+     defined by an expression.  Multiple words may be defined by
+     expressions separated by commas.  Words are placed in memory with
+     the high-order byte in the low-order memory location and the
+     low-order byte in the high-order memory location.  The syntax is
+     as follows:
+
+          [label]   WORD      [expr[,expr[,...]]]
+
+1805A Cross-assembler User Manual                              Page 14
+
+
+6.0  Error Messages
+
+     Error messages are flagged with a single letter in column 1 of
+     the offending line in the listing.  The meaning of each letter
+     follows:
+
+          B    Short branch was not to a location on the current page.
+               Note that the branch must go to the same page as $+1
+               ($+2 for BCI and BXI) is on.  Thus short branch
+               instructions at location 0xxffh (and 0xxfeh for BCI and
+               BXI) act strangely.  Don't ask me, I didn't invent the
+               instruction set!
+
+          D    Digit too large for the base encountered.  In
+               particular, watch for 8 or 9 in an octal number and a-f
+               in a decimal number.
+
+          E    Expression ill-formed.
+
+          I    If stack imbalance.  Look for ELSE or ENDI without an
+               IF or an IF still open at the end of the file.
+
+          L    Invalid label.  Label may contain invalid characters or
+               be equal to a reserved word like NOT.  Label may be
+               present on a conditional assembly directive.
+
+          M    Label multiply defined.  Label defined more than once
+               and all definitions are not SET statements.
+
+          O    Invalid opcode.  Look for misspellings, missing
+               semicolons, or opcodes in column 1.
+
+          P    Phasing error.  Look for expressions in ORG, EQU, SET
+               or IF directives that contain forward references.  If
+               none exist, something weird is going on as a label that
+               was defined in pass 1 mysteriously vanished in pass 2.
+
+          R    Register specification argument out of range (0-15) or
+               LDN R0 instruction.
+
+          S    Syntax error.  Check your syntax against my samples.
+
+          T    Too many arguments on this line.  WORD directives may
+               only define 127 words, while TEXT and BYTE directives
+               may only define 255 bytes.  On other statements, you
+               put superfluous arguments on the line.
+
+          U    Undefined symbol encountered during expression
+               evaluation.
+
+1805A Cross-assembler User Manual                              Page 15
+
+
+          V    Value out of range.  In particular, BYTE expressions
+               and 8-bit immediate values must evaluate to -128 to
+               255, I/O port numbers must evaluate to 1 to 7, and CPU
+               types must evaluate to 1802 or 1805.
+
+          *    This statement generated by the assembler.  Right now,
+               this only happens if you drop an END statement or
+               remove it through conditional assembly.
+
+          "    Quote imbalance error.  Bear in mind that ' will not
+               terminate a string started with " and vice-versa.
+
+          (    Parenthesis imbalance error.  Count them!
+
+1805A Cross-assembler User Manual                              Page 16
+
+
+7.0  Assembler Abort Conditions
+
+     Under certain circumstances, this assembler will just give up and
+     quit in middle of an assembly.  If you don't get the error count
+     diagnostic on the console, read your screen for sure!  The
+     following messages occur:
+
+          1)   Can't open source.
+
+               The source file does not exist on the specified disk
+               drive.
+
+          2)   Can't open list.
+               Can't open hex.
+
+               No directory entries left on the disk drive in
+               question.
+
+          3)   Illegal command line.
+               No file info supplied
+
+               Bone up on command lines.
+
+          4)   If stack overflow.
+
+               IF directives may only be nested 16 deep.  Rebuild your
+               source code to reduce your nesting depth, or change the
+               "#define IFDEPTH 16" statement in a15.h and recompile
+               the assembler.
+
+          5)   Disk write error.
+
+               Out of disk or directory space on the list or hex file.
+
+          6)   Error closing file.
+
+               You shouldn't get this one.
+
+          7)   Symbol Table Overflow.
+
+               Your source program defines too many symbols.  The
+               current limit is 500.  If you have more memory than I
+               do, you can change the "#define SYMBOLS 500" line in
+               a15.h and recompile the assembler.  Otherwise, you must
+               work on your source code.
+
+1805A Cross-assembler User Manual                              Page 17
+
+
+8.0  Compiling the Assembler
+
+     To compile the assembler as it stands, you will need the
+     following software tools:
+
+          1)   40K+ of RAM
+
+          2)   BDS C Compiler Version 1.4x with its CMAC.LIB macro
+               library or Version 1.5x with its CASM utility.
+
+          3)   Digital Research's MAC Macro-assembler and the CP/M
+               LOAD utility (for BDS C 1.4x) or the CP/M ASM and DDT
+               utilities (for BDS C 1.5x).
+
+     To get a15tbl1.crl and a15tbl2.crl up from scratch, you do the
+     following.  I assume that everything lives on drive A.
+
+               BDS C 1.4x                         BDS C 1.5x
+
+          A>mac a15tbl1 $szpz                A>cmac a15tbl1
+          A>mac a15tbl2 $szpz                A>cmac a15tbl2
+          A>load a15tbl1                     A>asm a15tbl1.aaz
+          A>load a15tbl2                     A>asm a15tbl2.aaz
+          A>ren a15tbl1.crl=a15tbl1.com      A>ddt a15tbl1.hex
+          A>ren a15tbl2.crl=a15tbl2.com      -g0
+                                             A>save 6 a15tbl1.crl
+                                             A>ddt a15tbl2.hex
+                                             -g0
+                                             A>save 4 a15tbl2.crl
+
+     You should now have a15tbl1.crl and a15tbl2.crl on drive A. Erase
+     the artifacts a15tbl1.hex and a15tbl2.hex (also a15tbl1.asm and
+     a15tbl2.asm if you're using BDS C 1.5x) if you want to.
+
+     Now you are ready to compile the rest of the beast like this:
+
+          A>cc a15.c -e4600
+          A>cc a15asmln -e4600
+          A>cc a15eval -e4600
+          A>cc a15get -e4600
+          A>cc a15put -e4600
+          A>cc a15symb -e4600
+
+     Now you can link it all together like this (all on one line):
+
+          A>clink a15 a15asmln a15eval a15get a15put
+                    a15symb a15tbl1 a15tbl2
+
+     And, as if by magic, you've got a15.com on drive A.  Note that if
+     you have more than 40K of RAM, you may want to increase your
+     symbol table size.  Symbols are 10 bytes each, so plan
+     accordingly.
+
+1805A Cross-assembler User Manual                              Page 18
+
+
+9.0  Final Comments
+
+     Happy hacking!  If you have questions or note any bugs, I'd
+     appreciate a shout at (216)288-1122 x469 days or at (216)775-3680
+     evenings.  The questions will point out weaknesses in the manual,
+     and the bugs need to be stamped upon unmercifully.
+
+                                                  WCC3
+                                              20-JUN-1985
+ A>cc a15asmln -e4

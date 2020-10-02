@@ -1,0 +1,94 @@
+Figure 2 -- Examples of Deadlocks.
+
+
+Section A -- Certain deadlock, double request of same semaphore:
+
+long a_sem = 0L;
+
+void main( void)
+{
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  other_func();
+  DosSemClear( &sem_a);
+}
+void other_func(void)
+{
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  ...     /* can't get to here */
+  DosSemClear( &sem_a);
+}
+
+
+Section B: -- possible deadlock, request semaphores in different
+order:
+
+void Thread1( void)
+{
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_b, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_b);
+  DosSemClear( &sem_a);
+}
+
+void Thread2( void)
+{
+  DosSemRequest( &sem_b, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_a);
+  DosSemClear( &sem_b);
+}
+
+
+Section C: -- Italian Traffic Jam:
+
+void Thread1( void)
+{
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_b, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_b);
+  DosSemClear( &sem_a);
+}
+
+void Thread2( void)
+{
+  DosSemRequest( &sem_b, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_c, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_c);
+  DosSemClear( &sem_b);
+}
+void Thread3( void)
+{
+  DosSemRequest( &sem_c, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_d, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_d);
+  DosSemClear( &sem_c);
+}
+
+void Thread4( void)
+{
+  DosSemRequest( &sem_d, SEM_INDEFINITE_WAIT);
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  DosSemClear( &sem_a);
+  DosSemClear( &sem_d);
+}
+
+
+Section D: -- possible deadlock, request semaphore in one thread
+and suspend and request in the other:
+
+void Thread1( void)
+{
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  ...
+  DosSemClear( &sem_a);
+}
+
+void Thread2( void)
+{
+  DosSuspendThread( Thread_ID_1);
+  DosSemRequest( &sem_a, SEM_INDEFINITE_WAIT);
+  ...
+  DosSemClear( &sem_a);
+}
+
+

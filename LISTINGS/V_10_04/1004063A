@@ -1,0 +1,305 @@
+/* @(#) money.c                     1991 Adolfo Di Mare  */
+/*                                       adimare@UCRVM2  */
+/*                                                       */
+/*                Test driver for money.h                */
+/*                                                       */
+/* Compiler:                           Borland C++ v 2.0 */
+/*                          [should work with Turbo C++] */
+
+/*
+   To see what is going on, you need to use your symbolic
+   debugger to examine each of the declared variables.
+
+   For Borland C++, I used the following watches:
+
+        m_money      d,f18
+        m,r          i
+        mm,r         l
+        elapsed      s,f18
+
+   Change the compile time macros to see how money's
+   change their behaviour.
+
+*/
+
+#define TEST
+
+#ifdef  TEST /* { */
+
+#if 0
+  #define MONEY_ROUNDING    /* Force rounding of doubles */
+#endif
+
+#define MONEY_DECIMALS  2   /* 2 decimals for money data */
+
+extern "C++" {
+    #include "money.h"
+
+    #ifdef __TURBOC__
+    #include <iostream.h>
+    #else
+    #include <stream.h>
+    #endif
+}
+
+inline ostream& operator<<(ostream &out, money& m) {
+    return out << (double) m;
+}
+
+extern "C" {
+    #include <stdlib.h>
+    #include <time.h>
+    #include <stdio.h>
+}
+
+#define RANGER
+#undef  RANGER           /* takes forever to run...   */
+
+void ranger(void);
+
+int main(void) {
+
+    // To the right is the assigned value
+
+    money m(25.8499); // $  25.84
+    money mm;         // $ #$$#@$@.98
+
+    int     i = 5;    //     5
+    long    l = 6;    //     7
+    double  d = m;    //    25.8399999999999999999999999999
+
+    i  = m;           //    25
+    m  = d;           // $  25.84
+    m  = 7.009999999; // $   7.oo
+    m += 1;           // $   8.oo
+    m += 1.245000001; // $   9.24
+    m += 1L;          // $  10.24
+    m += 'a';         // $  'a'+10.24
+
+    m  = -d;          // $ -25.84
+    m  = -7.00999999; // $ - 7.oo
+    m -= 1;           // $ - 8.oo
+    m -= 1.245000001; // $ - 9.24
+    m -= 1L;          // $ -10.24
+    m -= 'a';         // $ -'a'-10.24
+
+    mm = 10;          // $  10.oo
+    m  = mm+4;        // $  14.oo
+    m  = mm+4.014999; // $  14.01
+    m  = 4.99+mm;     // $  14.99
+    m  = 4+mm;        // $  14.oo
+    m  = m+mm;        // $  24.oo
+    m += m;           // $  48.oo
+
+    d  = mm+4;        //    14.oo
+    d  = mm+4.011;    //    14.0099999999999998
+    d  = 4.99+mm;     //    14.9900000000000002
+    d  = 4+mm;        //    14.oo
+
+    mm = 10;          // $  10.oo
+    m  = mm*4;        // $  40.oo
+    m  = mm*4.0;      // $  40.oo
+    m  = 4*mm;        // $  40.oo
+    m  = 4.0*mm;      // $  40.oo
+
+    mm = 10;          // $  10.oo
+    d  =  7.00001;    //     7.00000999999999962
+    m  = d*mm+d;      // $  77.oo
+    m  = (d*mm)+d;    // $  77.oo
+    m  = d+d*mm;      // $  77.oo
+    m  = d+(d*mm);    // $  77.oo
+
+    m = 10;           // $  10.oo
+            mm = 77;  // $  77.oo
+    m = m % mm;       // $  10.oo
+    // $10 == 0L * $77 + [$10]
+
+    m = 77;           // $  77.oo
+             mm = 10; // $  10.oo
+    m = m % mm;       // $   7.oo
+    // $77 == 7L * $10 + [$7]
+
+    m++;              // $   8.oo
+    m--;              // $   7.oo
+
+    m   = 11.75;                // $  11.75
+    m  +=  0.12;                // $  11.87
+    mm  = flatten(m,0.25,1);    // $  11.75
+
+    m  += 0.01;                 // $  11.88
+    mm  = flatten(m,0.25,1);    // $  12.oo
+
+    m   = 11.75;                // $  11.75
+    m  +=  0.12;                // $  11.87
+    mm  = flatten(m,0.25,0);    // $  11.75
+
+    m  += 0.01;                 // $  11.88
+    mm  = flatten(m,0.25,0);    // $  11.75
+
+    m  -= 5;
+    m  += 0.12;                 // $   7.oo
+    if (m == 0 || 0 == m) {     // nep
+        m += d;
+    }
+    else if (!(m == m)) {       // nep
+        m = m;
+    }
+    else if (m > m) {           // nep
+        m = m;
+    }
+    else if (m < m) {           // nep
+        m = m;
+    }
+    else if (m != m) {          // nep
+        m = m;
+    }
+    else if (m >= m) {          // yep
+        m *= 11;      // $  77.oo
+        m += 15;      // $  92.oo
+    }
+    l  = i = m;       //    92
+    m  = -m;          // $ -92.oo
+    mm = i*l;         // $   8,464.oo
+    m  = m % mm;      // $ -92.oo
+
+    d  = 15.253;      //   15.253
+    m  = 15.25;       // $ 15.25
+
+    if (d == m) {         // TRUE:  d becomes money(d)
+        l = 0;            // l = 0L
+    }
+    if (d == (double) m) { // FALSE: 15.253 != 15.25
+        l++;               // l == 0L
+    }
+
+    // simulate a TAX calculation
+    m = 0.0;
+    for (i = 1; i <= 100; i++) {
+        d  = i*1.005;    // 0.05% tax
+        m += d;
+    }                    // $ 5,075.oo
+    mm = 100;            // $   100.oo
+    m /= (double) mm;    // $    50.75
+    m /=   3;            // $    16.91
+    m *=   3;            // $    50.73
+
+    mm = mm/mm;          //       1.00
+    d  = m * (m / mm);   //    2573.5300000000002
+
+    d  = 1.0/3.0 * m;    //      16.9100000000000001
+    mm = 1.0/3.0 * m;    // $    16.91
+
+    mm = 3 * mm / (3 * mm);                  // $1.oo
+    mm = M_PI * mm / (M_PI * mm);            // $1.oo
+    mm = M_PI;                               // $3.14
+
+    mm = mm/mm + 1 - (3 * mm / (3 * mm));    // $1.oo
+    m *= M_E * mm / (mm * M_E) - 1;          // $0.oo
+
+    // m == 0.0 && mm == $1.oo
+    for (i = 1; i <= 100; i++) {
+        mm /= 3;          // $    0.33
+        m   = m+mm;       // Add a third
+        mm  = 1;
+    }                     // $    33.oo
+
+    d  = m;               //      33.00
+    mm = m / 330;         // $     0.10
+
+    clock_t now;
+    double  elapsed;
+
+    // time statistics, on an 33MHz 386
+    m = 0;
+    now = clock();
+    for (l = 0; l <= 10000l; l++) {
+        m += 1.01;          // Add $1.01
+    }
+    elapsed = (clock()-now) / CLK_TCK;
+    d  = elapsed;           // 3.51 secs
+
+    m = 1;
+    now = clock();
+    for (l = 0; l <= 10000l; l++) {
+        m *= 1.0001;        // Mult
+    }
+    elapsed = (clock()-now) / CLK_TCK;
+    d  = elapsed;           // 3.24 secs
+
+    m = 1;
+    mm = pow(10, 6);
+    now = clock();
+    for (l = 0; l <= 10000l; l++) {
+        mm = m;
+        m /= 0.99001;       // Div
+        if (!m.OK()) {
+            m.FIX();        // won't fix overflows
+        }
+    }
+    elapsed = (clock()-now) / CLK_TCK;
+    d  = elapsed;           //  8.46 secs
+
+    d  = m % m + 33;        //   33.00
+    m  = d;                 // $ 33.oo
+    mm = d / 330;           // $  0.10
+
+    d = (10+mm)/m * m;      //   10.089...
+
+    // Must use (double) type cast
+    printf ("Salary = %10.2f\n",
+           (double) ((10+mm)/m * m));
+    cout <<"Salary = "
+         << (double) ((10+mm)/m * m) << '\n';
+
+
+    // valid only if you define
+    // ostream& operator<< (ostream&, money&)
+    cout <<"Salary = "
+         << (10+mm)/m * m << '\n';
+
+    m = d / m;        // should not compile...
+//  m = m * m;        // won't compile: AMBIGUITY ERROR!!!
+
+    #ifdef  RANGER
+        ranger();
+    #endif // RANGER
+
+    exit(0);
+}
+
+
+void ranger(void) {
+/*
+    Shows that indeed a double can hold up to
+    DBL_DIG digits of precission.
+*/
+    // This should take forever to calculate...
+    char view[] = "0123456789/123456";
+    double s,t;
+    double tenpow,inc;
+    int    i;
+
+    tenpow = pow(10, DBL_DIG); // 10^15
+    inc    = 100.0;            // pick yours
+
+    s = floor(tenpow+inc); // 1,000,000,000,000,000 + inc
+    for (;;) {
+        t = s;
+        s += inc;
+//      i = (int) log10(t-tenpow);
+        if (s == t) {
+            i = (int) log10(t-tenpow);
+            cout << "BOOM t   = " << t      << '\n';
+            cout << "BOOM s   = " << s      << '\n';
+            cout << "BOOM inc = " << s      << '\n';
+            cout << "BOOM i   = " << i      << '\n';
+            view[i] = 0;
+            cout << "view     = " << view   << '\n';
+            return;
+        }
+    }
+
+    return;
+} // ranger
+
+#endif  /* TEST */  /* } */

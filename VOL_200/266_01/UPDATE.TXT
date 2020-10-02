@@ -1,0 +1,287 @@
+**** This text is extracted from the volume 7.4. ****
+
+Porting Microplox To XENIX
+
+Microplox (CUG266) is a graph drawing program that works under CP/M 
+or MS-DOS using an Epson FX-80 printer (or in our case, a laser printer 
+which can emulate the Epson). Recently we adapted the MS-DOS original 
+to work under XENIX. In a technical sense the incompatibilities were 
+relatively mild and commonplace (BIOS I/O calls had to be mapped to 
+XENIX I/O capabilities and int/pointer puns had to be eliminated), 
+but locating and understanding these problems was somewhat complicated 
+by Microplox's unusual coding and design style.
+
+The Implementation
+
+Microplox consists of two programs:plox translates a graph 
+specification into a file of reasonably abstract plotting commands 
+(PLOXCOM.DAT) and ploteps builds and prints an Epson 
+compatible bit map from the plotting commands.
+
+ploteps is conventional in design and coding, but plox 
+is (at least at the top level) an unusual collection of object-like 
+functions, one for each different type of statement in the Microplox 
+specification grammar. These object-like functions have uniform message-passing 
+interfaces which require a single text string (messages) as input.  Each 
+message consists of a series of keyword-value pairs.  The function 
+parses the keyword to select an appropriate method for processing 
+the associated value.  Thus a specification file can be parsed merely 
+by repackaging each statement as a message and sending it to the appropriate 
+object function. 
+
+Each of these object functions also owns certain private (static) 
+data.  Low level messages (those with strictly local effect) result 
+either in changes to this private data or immediate output of a plotting 
+command or both.  Higher level messages (those that affect non-local 
+data), however, may require changes to the private data of several 
+distinct object functions.  Object functions effect changes in the 
+private data of other object functions by constructing a message and 
+sending it via the function SendSpec().
+
+SendSpec() requires three arguments: a string representing 
+the method part of the message, a value, and a pointer to the target 
+object function. SendSpec() formats the value as a string, 
+appends it to the method and invokes (via the pointer) the target 
+function with the resulting message as the single input parameter 
+(see Listing 1). 
+
+/* Send a "keyword value" string to a given function */
+
+void SendSpec (KeyWord, Value, Process)
+char *KeyWord;
+int Value, (*Process)();
+{
+char Digits[7], Spec[20];
+
+strcpy (Spec, KeyWord);
+strcat (Spec, " ");
+sprintf (Digits, "%d", Value);
+strcat (Spec, Digits);
+(*Process) (Spec);
+}
+
+(Listing 1)
+
+The second paramter, Value, is declared as a simple int.  Unfortunately, 
+not all methods require a simple int as their value.  Some 
+require strings, others need several values.  In classic C tradition, 
+SendSpec() ignores these differences, assuming that int 
+is actually a universal type.  Both pointers and ints are passed 
+as values.  SendSpec() converts each to an ASCII string, 
+as if an int had been received, and the receiving function 
+must examine the method and use the received value correctly. 
+
+This type pun works fine as long as ints and pointers 
+are the same size and pointers can be reliably converted to and from 
+an integer representation. But, when pointers are 32 bits and ints 
+16 (as in our target XENIX environment), the result is a program that 
+compiles without warning but immediately dumps core when executed.
+
+We considered several alternative repairs.  We could merely have lengthened 
+Value to 32 bits (cast ints to long at each call).  With 
+appropriate typedefs and a few coding changes, we could have 
+made it easy for others to readjust the variable sizes to match other 
+machines.  But what about environments where pointers don't have a 
+meaningful or unique integer representation? We decided there was 
+no certain way to sprintf() a pointer to a character string 
+and still be able to convert it back.  
+
+We also considered passing through a union, but that seemed to complicate 
+both the sending and receiving code at least as much as the obvious 
+alternative: adding a second field to the basic message.
+
+The New Message
+
+As originally coded, all plox messages were a single string, 
+possibly with multiple method pairs. We modified that so that messages 
+were a string and a possibly NULL pointer value (see Listing 
+2). Most methods are still paired with their values in the message 
+string, but methods requiring a pointer value retreive it from the 
+pointer parameter instead.  
+
+void SendSpec (KeyWord, Value, Scaleptr, Process)
+char *KeyWord;
+int Value, (*Process)();
+SCALING *Scalepr;
+{
+char Digits[7], Spec[20];
+
+strcpy (Spec, KeyWord);
+strcat (Spec, " ");
+if (Value != 0) {
+  sprintf (Digits, "%d", Value);
+  strcat (Spec, Digits);
+}
+(*Process) (Spec, Scaleptr);
+}
+
+(Listing 2)
+
+We considered putting both parts of the message in a structure, but 
+that approach would have required significant changes throughout the 
+program in how variables are declared and used.  Adding a parameter 
+required changes only to the calls to SendSpec(),the calling 
+interfaces of the object functions, and the few methods which expect 
+pointer values.  Passing what is conceptually a single message as 
+two distinct parameters lacks elegance, but works and seems to do 
+less injury to the code than the alternatives. 
+
+The Printer Driver
+
+ploteps is responsible for creating a graphic image and sending 
+it to the printer. In the orginal program, the image was output via 
+calls to BDOS functions a single-user approach not feasible 
+under XENIX. We considered two alternatives: replacing the low-level 
+MS-DOS I/O calls with comparable low-level XENIX/UNIX I/O calls, and 
+restructuring the I/O to take advantage of UNIX streams through high-level 
+buffered I/O commands. 
+
+The first method is straightforward. The program opens the printer 
+device file and writes the graphic image directly to the printer. 
+System functions open(), read(), write(), ioctl() and close() 
+will have to be used in the program. The second method is much more 
+flexible, easier to debug, and doesn't interfere with sharing the 
+printer among several users. Under the second method, the program 
+generates a binary temporary file that holds a graphic image. This 
+binary file is sent to the print spooler using the lp or lpr 
+commands (Figure 1).
+
+ -------                       ---------                  ----
+| plox  | --> PLOTCOM.DAT --> | ploteps | --> IMAGE ---> | lp | 
+ -------                       ---------                  ----
+                                                           |
+                                                           V
+                                                          ---------------------
+                                                         | printer    | device |
+(Figure 1)                                               | interface  | driver |
+                                                          ---------------------
+
+Unfortunately the stock printer interface performs certain post-processing 
+on text files. At a minimum newlines (linefeeds) are converted to 
+CR-LF pairs. The binary file includes escape sequences to put the 
+printer in graphics mode so that it will interpret a binary 0x0A 
+as a dot pattern, but the interface and printer device driver don't 
+recognize the graphics mode, and continue to expand linefeeds. 
+To circumvent this problem, we modified the interface program (a piece 
+of shell script) by adding a local binary option.
+
+Patching The Interface
+
+Each printer device under UNIX/XENIX has its own printer interface 
+program at the subdirectory, /usr/spool/lp/interface. The printer 
+interface program is a piece of shell script that is invoked each 
+time lp is executed with the target printer. The task of the 
+interface program is to configure the device driver (via stty) 
+to properly handle the printer, display a printer request message 
+to the monitor, and forward the contents of the print image to the 
+device handler.
+
+In order to send the Microplox graphic image to the target printer 
+without interference from the interface or device driver, you must:
+
+1. Disable the newline ranslation. 
+
+When printing plain ASCII text, the stty mode onlcr 
+is always set so that a newline character in the text is translated 
+into a combination of a carriage return character (0x0D) and 
+a line feed character (0x0A).  However, when printing a graphic 
+image, this translation should be disabled. 
+
+2. Change the printer emulation mode.
+
+The escape sequence must be sent to the printer prior to sending the 
+contents of a graphic image file. The emulation mode should be set 
+to Epson FX-80. (Normally we keep our laser printer in HP+ mode.)
+
+3. Reset the printer.
+
+On exit, the escape sequence to reset the printer must be sent.
+
+These modifications should be triggered only when the binary option 
+has been requested (a -o flag on the command line). For example, 
+to print a graphics image file, graf, the command line is: 
+
+
+lp -oepson graf
+
+The stock printer interface includes the basic framework for recognizing 
+-o flags and binding the following parameter to the options 
+macro, making it easy to add local options. 
+
+Note that this change is general purpose. We could have overcome these 
+problems by directly controlling the printer, but we would have solved 
+the problem for a single program. Now anytime we need Epson compatibility, 
+we can simple spool the output with the -oepson option. 
+The modified printer driver is shown Listing 3.
+
+printer=`basename $0`
+request=$1
+name=$2
+ntitle=$3
+copies=$4
+options=$5
+shift; shift; shift; shift; shift; 
+
+if [ "$options" = epson ]
+then
+ 	stty -onlcr 0<&1 		# Disable newline char translation
+	echo	"!R! FPRO P1, 5; EXIT;"		# Emulate Epson FX-80
+else
+	stty onlcr 0<&1
+fi
+
+while [ "$copies" -gt 0 ]
+do
+	for file
+	do
+		cat "$file" 2>&1
+		echo "\f\c"
+	done
+	copies=`expr $copies -1`
+done
+echo "!R! FRPO P1, 6;EXIT;"	# Reset the printer
+}
+exit 0
+
+(Listing 3)
+
+If you have modified the printer interface script directly, to activate 
+it you need only disable and then enable the printer. If you have 
+instead modified the interface model (see the manual) you should run 
+lpinstall which will diable the printer, copy the model script 
+to the appropriate printer interface file, and then enable the printer.
+
+We have incorporated our adaptations into the release master for Microplox 
+(CUG266), which can now be compiled under CP/M, MS-DOS, and UNIX/XENIX 
+operating systems.
+
+Conclusion
+
+Microplox is an interesting, but not quite convincing, experiment 
+in object style coding and design. The choice of objects makes parsing 
+elegant (at least at the most abstract levels of the design), but 
+requires kludges (in the form of special purpose messages between 
+objects) to effect the necessary changes to graph modalities. Basically 
+the statements of the specification language aren't sufficiently orthogonal 
+to double as well designed messages to well chosen objects. Given 
+the need to parse this language, it seemed to us that separating the 
+parsing from the graph production would have produced a more satisfying 
+design. 
+
+Second,
+SendSpec("SYLEN", Xlen, AXcon);
+doesn't have any obvious advantages over
+AXcon(build_msg("XYLEN",Xlen));
+since both require the name of the function to be known 
+at compile time. SendSpec() could, however, become much more 
+powerful if it examined the message for the target function name and 
+extracted the appropriate pointer from a table.
+
+Design issues aside, Microplox has proven a useful tool. It is reasonably 
+portable (even more so now), and produces some very usable graphs. 
+If you need a simple graphing utility, you may want to investigate 
+this volume.
+
+
+
+

@@ -1,0 +1,393 @@
+#include <conio.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include "esp.h"
+#include "esp.fu"
+
+#define OK     1
+#define FAIL   0
+#define bool   short
+
+#define high(a) ((a) >> 8)
+#define low(a)  ((a) & 0xFF)
+
+ESP_Reg esp_reg_info[] = {    /* Indexed by ESP_REG_... */
+   {ESP_REG_READY_OFFS,       0,                 },
+   {ESP_REG_SID_OFFS,         0,                 },
+   {ESP_REG_RX1_OFFS,         ESP_REG_RX1_RDY    },
+   {ESP_REG_TX1_OFFS,         ESP_REG_TX1_RDY    },
+   {ESP_REG_RX2_OFFS,         ESP_REG_RX2_RDY    },
+   {ESP_REG_TX2_OFFS,         ESP_REG_TX2_RDY    },
+   {ESP_REG_STATUS1_OFFS,     ESP_REG_STATUS1_RDY},
+   {ESP_REG_CMD1_OFFS,        ESP_REG_CMD1_RDY   },
+   {ESP_REG_STATUS2_OFFS,     ESP_REG_STATUS2_RDY},
+   {ESP_REG_CMD2_OFFS,        ESP_REG_CMD2_RDY   },
+   {ESP_DMA_RX_OFFS,          0,                 },
+   {ESP_DMA_TX_OFFS,          0,                 },
+   };
+
+short esp_uart_addr[] =  /* bits 1-3 on DIP SW1 & SW2 */
+  {0x3F8, 0x2F8, 0x3E8, 0x2E8, 0x1E0, 0x1E8, 0x280, 0x288};
+short esp_irq[] =      /* bits 1-3 on DIP SW1 & SW2 */
+  {    4,     3,     4,     3,     9,     5,     9,     5};
+
+
+short ESP_InitHandle(esp_h,esp_no,port)
+ESP_Handle *esp_h;
+short esp_no;
+short port;
+{
+   char *esp_env;
+   short dips;
+
+   if ((esp_env=getenv("HAYESESP")) == NULL) {
+      printf("Error:  please set HAYESESP = addr,dma,irq\n");
+      return FAIL;
+      }
+
+   if (sscanf(esp_env,"%x,%d,%d", &esp_h->base_addr,
+      &esp_h->dma, &esp_h->irq) != 3) {
+      printf("Error:  please set HAYESESP = addr,dma,irq\n");
+      return FAIL;
+      }
+
+   esp_h->esp_no = esp_no; /* always 1 or 2 */
+   esp_h->port = port;   /* always 1 or 2 (not COMx value!) */
+
+   if (!(dips=ESP_GetNormalModeAddrSwitch(esp_h))) {
+      printf("Error:  MCA-bus version of ESP not yet supported!\n");
+      return FAIL;
+      }
+
+   if (port==2)
+      dips >>= 4;
+   esp_h->uart_addr = esp_uart_addr[dips & 0x07];
+   return OK;
+}
+
+
+/****** SETUP COMMANDS ******/
+
+short ESP_Reset(esp_h)   /* Reset an ESP (both ports) */
+ESP_Handle *esp_h;
+{
+   /* Flush out Status 1, if any data is left over */
+   if (inp(esp_h->base_addr + ESP_REG_READY_OFFS)
+          & ESP_REG_STATUS1_RDY)
+       ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+
+   ESP_WriteCmd1(esp_h, ESP_CMD_RESET);
+   return ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+}
+
+void ESP_GetSelfTestResults(esp_h, firmware_rev, test_results)
+ESP_Handle *esp_h;
+short *firmware_rev;
+short *test_results;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_SELF_TEST_RES);
+   *firmware_rev = ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+   *test_results = ESP_WaitRead(esp_h, ESP_REG_STATUS2);
+}
+
+
+short ESP_GetNormalModeAddrSwitch(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_COMPAT_DIPS);
+   return ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+}
+
+void ESP_DownloadESPCode(esp_h, buffer, address, num_bytes)
+ESP_Handle *esp_h;
+char *buffer;
+short address;
+short num_bytes;
+{
+   short byte_no;
+
+   ESP_WriteCmd1(esp_h, ESP_CMD_DOWNLOAD_CODE);
+   ESP_WriteCmd2WaitWord(esp_h, high(address), low(address));
+   ESP_WriteCmd2Wait(esp_h, num_bytes - 1);
+   for (byte_no=0; byte_no < num_bytes; byte_no++)
+      ESP_WriteCmd2Wait(esp_h, buffer[byte_no]);
+}
+
+void ESP_SetEnhancedIntAndDMA(esp_h, int_dma_data)
+ESP_Handle *esp_h;
+short int_dma_data;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_INTR_AND_DMA);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, int_dma_data);
+}
+
+void ESP_SetDMAtimeout(esp_h, timeout_ms)
+ESP_Handle *esp_h;
+short timeout_ms;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_DMA_TIMEOUT);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, timeout_ms / 10);
+}
+
+void ESP_SetServiceRequestMask(esp_h, serv_rq_mask)
+ESP_Handle *esp_h;
+short serv_rq_mask;
+{
+   ESP_WriteReg(esp_h, ESP_REG_CMD1, ESP_CMD_SET_SERVICE_MASK);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, serv_rq_mask);
+}
+
+void ESP_SetErrorStatusMask(esp_h, status_mask1, status_mask2)
+ESP_Handle *esp_h;
+short status_mask1;
+short status_mask2;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_ERROR_MASK);
+   ESP_WriteCmd2WaitWord(esp_h, status_mask1, status_mask2);
+}
+
+void ESP_SetFlowControlType(esp_h, flow_type1, flow_type2)
+ESP_Handle *esp_h;
+short flow_type1;
+short flow_type2;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_FLOW_CTRL_TYPE);
+   ESP_WriteCmd2WaitWord(esp_h, flow_type1, flow_type2);
+}
+
+void ESP_SetFlowControlChars(esp_h, control_chars)
+ESP_Handle *esp_h;
+char *control_chars;
+{
+   int i;
+
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_FLOW_CTRL_CHAR);
+   for (i=0; i<5; i++)
+      ESP_WriteCmd2Wait(esp_h, control_chars[i]);
+}
+
+void ESP_SetRXFlowControlLevels(esp_h, recv_off, recv_on)
+ESP_Handle *esp_h;
+short recv_off;
+short recv_on;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_RX_FIFO_LEVEL);
+   ESP_WriteCmd2WaitWord(esp_h, high(recv_off), low(recv_off));
+   ESP_WriteCmd2WaitWord(esp_h, high(recv_on), low(recv_on));
+}
+
+void ESP_SetFIFOTriggerLevels(esp_h, rx_level, tx_level)
+ESP_Handle *esp_h;
+short rx_level;
+short tx_level;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_FIFO_TRIGGER);
+   ESP_WriteCmd2WaitWord(esp_h, high(rx_level), low(rx_level));
+   ESP_WriteCmd2WaitWord(esp_h, high(tx_level), low(tx_level));
+}
+
+void ESP_SetReceiveCharTimeout(esp_h, timeout_ms)
+ESP_Handle *esp_h;
+short timeout_ms;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_RCV_CHAR_TMO);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, timeout_ms);
+}
+
+void ESP_SetFlowedOffTimeout(esp_h, timeout_sec)
+ESP_Handle *esp_h;
+short timeout_sec;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_RCV_CHAR_TMO);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, timeout_sec);
+}
+
+void ESP_WriteToUART(esp_h, uart_reg, uart_data)
+ESP_Handle *esp_h;
+short uart_reg;
+short uart_data;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_WRITE_TO_UART);
+   ESP_WriteCmd2WaitWord(esp_h, uart_reg, uart_data);
+}
+
+short ESP_ReadFromUART(esp_h, uart_reg)
+ESP_Handle *esp_h;
+short uart_reg;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_READ_FROM_UART);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, uart_reg);
+   return ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+}
+
+void ESP_SetBaudRate(esp_h, baud_rate)
+ESP_Handle *esp_h;
+long baud_rate;
+{
+   short divisor;
+
+   divisor = (short) (ESP_MAX_COMP_BAUD / baud_rate);
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_BAUD_RATE);
+   ESP_WriteCmd2WaitWord(esp_h, high(divisor), low(divisor));
+}
+
+void ESP_GetMode(esp_h, def_mode, cur_mode)
+ESP_Handle *esp_h;
+short *def_mode;
+short *cur_mode;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_MODE);
+   *def_mode = ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+   *cur_mode = ESP_WaitRead(esp_h, ESP_REG_STATUS2);
+}
+
+void ESP_SetMode(esp_h, new_mode)
+ESP_Handle *esp_h;
+short new_mode;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_SET_MODE);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, new_mode);
+}
+
+/****** OPERATING COMMANDS ******/
+
+void ESP_GetErrorStatus(esp_h, error1, error2)
+ESP_Handle *esp_h;
+short *error1;
+short *error2;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_MODE);
+   *error1 = ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+   *error2 = ESP_WaitRead(esp_h, ESP_REG_STATUS2);
+}
+
+void ESP_GetUARTStatus(esp_h, line_status, modem_status)
+ESP_Handle *esp_h;
+short *line_status;
+short *modem_status;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_UART_STATUS);
+   *line_status = ESP_WaitRead(esp_h, ESP_REG_STATUS1);
+   *modem_status = ESP_WaitRead(esp_h, ESP_REG_STATUS2);
+}
+
+short ESP_GetRXBytesAvail(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_RX_BYTES_AVAIL);
+   return (ESP_WaitRead(esp_h, ESP_REG_STATUS1) << 8) +
+          (ESP_WaitRead(esp_h, ESP_REG_STATUS2));
+}
+
+short ESP_GetTXSpaceAvail(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_GET_TX_BYTES_AVAIL);
+   return (ESP_WaitRead(esp_h, ESP_REG_STATUS1) << 8) +
+          (ESP_WaitRead(esp_h, ESP_REG_STATUS2));
+}
+
+void ESP_InitiateDMAReceive(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_INIT_DMA_RECEIVE);
+}
+
+void ESP_InitiateDMATransmit(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_INIT_DMA_TRANSMIT);
+}
+
+void ESP_FlowOffLocalTransmitter(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h,ESP_CMD_FLOW_OFF_LOC_XMIT);
+}
+
+void ESP_FlowOnLocalTransmitter(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h,ESP_CMD_FLOW_ON_LOC_XMIT);
+}
+
+void ESP_IssueLineBreak(esp_h, break_ms)
+ESP_Handle *esp_h;
+short break_ms;
+{
+   ESP_WriteCmd1(esp_h, ESP_CMD_ISSUE_LINE_BREAK);
+   ESP_WriteReg(esp_h, ESP_REG_CMD2, break_ms / 10);
+}
+
+void ESP_FlushRxFIFO(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, esp_h->port + ESP_CMD_FLUSH_RX_FIFO);
+}
+
+
+void ESP_FlushTxFIFO(esp_h)
+ESP_Handle *esp_h;
+{
+   ESP_WriteCmd1(esp_h, esp_h->port + ESP_CMD_FLUSH_TX_FIFO);
+}
+
+/****** LOW-LEVEL ESP ACCESS ROUTINES ******/
+
+short ESP_WaitRead(esp_h, esp_reg)
+ESP_Handle *esp_h;
+short esp_reg;
+{
+   short esp_reg_mask;
+
+   esp_reg_mask = esp_reg_info[esp_reg].ready_flag;
+
+   /* loop until register ready bit is true */
+   while (!(inp(esp_h->base_addr + ESP_REG_READY_OFFS)
+              & esp_reg_mask));
+   return inp(esp_h->base_addr + esp_reg_info[esp_reg].reg_offset);
+}
+
+
+void ESP_WriteReg(esp_h, esp_reg, cmd_data)
+ESP_Handle *esp_h;
+short esp_reg;
+short cmd_data;
+{
+   outp(esp_h->base_addr + esp_reg_info[esp_reg].reg_offset,
+        cmd_data);
+}
+
+void ESP_WriteCmd1(esp_h, cmd1_data)
+ESP_Handle *esp_h;
+short cmd1_data;
+{
+   /* Op-code is modified by port number in some caes... */
+   if ((cmd1_data >= ESP_CMD_SET_ERROR_MASK) &&
+       (cmd1_data != ESP_CMD_CLEAR_DMA_SERV_RQ))
+      cmd1_data |= ESP_PORT2 * (esp_h->port == 2);
+
+   outp(esp_h->base_addr + ESP_REG_CMD1_OFFS, cmd1_data);
+}
+
+short ESP_WriteCmd2Wait(esp_h, cmd2_data)
+ESP_Handle *esp_h;
+short cmd2_data;
+{
+   outp(esp_h->base_addr + ESP_REG_CMD2_OFFS, cmd2_data);
+
+   /* loop until register ready bit is true */
+   while (!(inp(esp_h->base_addr + ESP_REG_READY_OFFS)
+          & ESP_REG_CMD2_RDY));
+   return inp(esp_h->base_addr + ESP_REG_CMD2_OFFS);
+}
+
+
+void ESP_WriteCmd2WaitWord(esp_h, data1, data2)
+ESP_Handle *esp_h;
+short data1;
+short data2;
+{
+   ESP_WriteCmd2Wait(esp_h, data1);
+   ESP_WriteCmd2Wait(esp_h, data2);
+}

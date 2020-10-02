@@ -1,0 +1,57 @@
+/* compile with -N- -B and -r- options */
+#pragma warn -par
+#include <dos.h>
+
+/* service int 0x7E and send commands to the ai */
+
+void interrupt int7e(ibp,idi,isi,ids,ies,
+                     idx,icx,ibx,iax)
+int ibp,idi,isi,ids,ies,idx,icx,ibx;
+int iax; /* bytes in buffer or 0 to initialize */
+/* returns iax nonzero if error */
+/* initialization returns buffer pointer in icx:ibx */
+
+{
+#     define MAXBUF 1000
+
+      /* real mode buffer */
+      static struct {
+        short jcobsz;       /* buffer size */
+        char pqbuf[MAXBUF]; /* buffer */
+      } c_rmb = {MAXBUF};
+
+      static void pascal (**pptab)(char *);
+      int iloc,nbyts,ncmd;
+
+      nbyts = iax; /* get number of bytes in buffer */
+      iax = 0; /* say request processed successfully */
+
+      if (nbyts <= 0) { /* initialize if requested */
+
+        /* make sure ai is installed */
+        _AX = 0x3500+0x7F;
+        geninterrupt(0x21);
+        if (_BX == 0 && _ES == 0) { iax = 1; return; }
+
+        /* get address of entry table */
+        _AX = 0x0105;
+        geninterrupt(0x7F);
+        asm jnc initok
+        { iax = 1; return; }
+initok: ;
+        ((int *)&pptab)[0] = _DX; /* table pointer */
+        ((int *)&pptab)[1] = _CX;
+
+        /* pass back address of real mode buffer */
+        ibx = FP_OFF(&c_rmb);
+        icx = FP_SEG(&c_rmb);
+        return;
+      }
+
+      /* call ai for each command in the buffer */
+      for (iloc = 0; iloc < nbyts;) {
+        ncmd = c_rmb.pqbuf[iloc++];
+        (*pptab[ncmd])(c_rmb.pqbuf+iloc);
+        iloc += 2+c_rmb.pqbuf[iloc];
+      }
+}

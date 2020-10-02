@@ -1,0 +1,73 @@
+dprintf Synopsis
+(C) February 4  1990  Asaf Arkin
+All rights reserved
+
+
+The definitions below are necessary in order to use dprintf:
+
+typedef  int (*dprintf_fp)(int);
+
+
+int  dprintf(OutFunc, Format, ...);
+     dprintf_fp   OutFunc;
+     const char  *Format;
+
+
+int  vdprintf(OutFunc, Format, Args);
+     dprintf_fp   OutFunc;
+     const char  *Format;
+     va_list      Args;
+
+dprintf and vdprintf return the number of characters successfully printed, or EOF if an error of any sort occured.
+
+
+The complete format specification is (brackets enclose optional parameters):
+
+%[Flags][Width][.[Precision]][Size]Format
+
+
+Flags is a list of zero or more from the following flags:
+
+Flag   Explanation
+ -     Left justify prefix and value within field (cancels flag 0)
+ +     Positive numerical values are prefixed with a plus sign
+ spc   Positive numerical values are prefixed with a space (or a plus)
+ 0     Insert zeros between prefix and numerical value
+ #     Print value in variant format
+
+
+Width and Precision parameters conform to these rules:
+-  Width must not start with a zero, which will be considered a flag; If absent, a zero width is assumed.
+-  If Precision is specified, it must precede with a period.
+-  If a period but no Precision appear, zero is assumed, which is different than omitting both period and precision value.
+-  If an * replaces either Width or Precision, an int is consumed from the variable arguments list for the parameter's value.
+
+
+
+The output of most formats consists of prefix and value. Combined, if they are shorter than Width, they will be justified within their field: by default spaces precede prefix and value to right justify them; if the 0 flag appears, zeros are inserted between prefix and value; if the - flag appears (regardless of 0 flag), spaces follow value to left justify it.
+
+For integers, Precision is the minimum number of digits used (one assumed, if absent); for floating points, Precision is the number of digits to follow the decimal point (6 assumed, if absent); for strings, Precision is the maximum number of characters printed.
+
+
+If the format is %d, %i, %u, %o or %x, the argument consumed is either int, short (size h) or long (size l); if the format is %e, %f or %g, the argument consumed is either double or long double (size L). The short size has no actual meaning, short arguments being promoted to int, and float arguments to double by the compiler.
+
+
+Format is a single letter and can be any one of the following:
+
+Format  Argument Type     Resulting output
+c       unsigned char     A single character
+d       (long) int        Decimal integer with or without sign
+e / E   (long) double     Floating point number in engineering format
+f       (long) double     Floating point number in standard format
+g / G   (long) double     Floating point number in the shortest format of the two. Trailing zeros in the fraction are lost, unless in the variant format.
+i       (long) int        Decimal integer with or without sign
+n       int *             This is not an output format. Rather the number of characters printed so far is stored in the int, whose pointer is consumed.
+o       (long) unsigned   Unsigned integer in octal radix (variant format prefixes 0)
+p       void *            A pointer in implementation-defined format
+s       char *            A character string
+u       (long) unsigned   Unsigned integer in decimal radix
+x / X   (long) unsigned   Unsigned integer in hexadecimal radix (variant format prefixes 0x)
+%       ---               A percent sign
+
+Hexadecimal letters are in the same case as is the format letter (%x or %X). So is the exponent's e of the %e/%E and %g/%G formats. All other formats are specified in lower case only.
+

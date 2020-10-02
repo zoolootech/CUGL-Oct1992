@@ -1,0 +1,57 @@
+LISTING TWO
+
+#include    "channel.hpp"
+
+// initialize the channel
+void CHANNEL::prep(int line)
+{
+	lineno = line;
+
+	// enable events for this line: change in loop
+	// current, ring detected, off-hook or on-hook
+	// completed.  Answer after 1 ring.
+	setcst(lineno, C_LC | C_RING | C_OFFH | C_ONH, 1);
+
+	// initial state is wait for ring
+	begin_func = &CHANNEL::wait_for_ring;  	
+	end_func   = &CHANNEL::wait_complete;	
+
+	begin_state();
+}
+
+// play the message back to the user
+int CHANNEL::play()
+{
+	printf("Playing %s on %d\n", msgname, lineno);
+	clrrwb(&rwb);	// clear the read/write block
+
+	char fname[13];
+	sprintf(fname, "%s%s", msgname, SPEECH_EXT);
+
+	// open the handle to be played back, should 
+	// check against -1 return in production code
+	rwb.filehndl = open(fname, O_RDONLY | O_BINARY);
+
+	// instruct card to cause event if keypad is 
+	// pressed or loop signal detected
+	rwb.maxdtmf  = 1;
+	rwb.loopsig  = 1;
+
+	return(xplayf(lineno, PM_NORM, &rwb));
+}
+
+// execute the state begin function
+int CHANNEL::begin_state()
+{
+	INTPROC fp = this->begin_func;
+	return (this->*fp)();
+}
+
+// execute the state end function
+void CHANNEL::cmplt_state(int evtcode)
+{
+	VOIDPROC fp = this->end_func;
+    (this->*fp)(evtcode);
+}
+
+

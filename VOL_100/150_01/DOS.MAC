@@ -1,0 +1,640 @@
+;
+;				DOS Macros
+;
+;	These macros define the interfaces to DOS.  This aids in making calls
+; to DOS from other assembly language routines.  These macros provide the
+; complete interface to the particular DOS function.
+;
+;
+;			LOADREG
+;
+;	This macro is an "inner" macro for use by the DOS interface macros. It
+; allows the caller of a macro to specify a register or a literal value as the
+; parameter to the macro.  This macro loads the correct register specified by
+; the macro with the literal value or from the register specified.  It will
+; also not generate any code if the register that was passed to the calling
+; macro was where that macro wanted the value.
+;
+loadreg 	macro		destreg,source
+		ifdif		<destreg>,<source>
+		mov		destreg,source
+		endif
+		endm
+;
+;			LDROFF
+;
+;	This macro is an "inner" macro for use by the DOS interface macros.  It
+; allows the caller of a macro to specify a register or a literal value as the
+; parameter to the macro.  This macro loads the correct register specified by
+; the macro with the offset of a particular memory location.  Or it will load
+; the correct register from another register, depending on what the user had
+; coded on the original macro.	This macro will not generate any code if the
+; register that was passed to the calling macro was where that macro wanted the
+; value.
+;
+ldroff		macro		destreg,source,src2
+		ifdif		<destreg>,<source>
+		ifidn		<source>,<offset>
+		lea		destreg,src2
+		else
+		loadreg 	destreg,source
+		endif
+		endif
+		endm
+;
+dosfn		macro		fncnum
+		mov		ah,fncnum
+		int		21h
+		endm
+;
+;			TERMINATE
+;
+;	This macro issues a 'program terminate' interrupt to DOS.  It will
+; cause the currently executing program to return to DOS.  This is the normal
+; way to exit from DOS.
+;
+terminate	macro
+		int		20h
+		endm
+;
+;			ABSDSKRD
+;
+;	This macro performs an 'absolute disk read' interrupt to DOS.  It will
+; read the specified number of sectors from diskette.  The data will be read
+; into the data area that the user specifies.
+;
+absdskrd	macro		drive,numsectrs,lrecnum,transoff
+		loadreg 	al,drive
+		loadreg 	cx,numsectrs
+		loadreg 	dx,lrecnum
+		ldroff		bx,transoff
+		int		25h
+		pop		bx
+		endm
+;
+;			ABSDSKWR
+;
+;	This macro performs an 'absolute disk write' interrupt to DOS.  It will
+; write the specified number of sectors to diskette.  The data will be written
+; from the data area that the user specifies.
+;
+absdskwr	macro		drive,numsectrs,lrecnum,transoff
+		loadreg 	al,drive
+		loadreg 	cx,numsectrs
+		loadreg 	dx,lrecnum
+		ldroff		bx,transoff
+		int		26h
+		pop		bx
+		endm
+;
+;			STAYRES
+;
+;	This macro performs a 'terminate but stay resident' interrupt to DOS.
+; It will cause the caller to return to DOS but the space for the program will
+; remain allocated.
+;
+stayres 	macro		endaddr
+		ldroff		dx,endaddr
+		int		27h
+		endm
+;
+;			KBDIN
+;
+;	This macro requests a character from the keyboard.  The character is
+; echoed on the CRT.
+;
+kbdin		macro
+		dosfn		1
+		endm
+;
+;			DSPOUT
+;
+;	This macro outputs a character to the CRT.
+;
+dspout		macro		outchr
+		loadreg 	dl,outchr
+		dosfn		2
+		endm
+;
+;			AUXIN
+;
+;	This macro inputs a character from the auxilary input device.
+;
+auxin		macro
+		dosfn		3
+		endm
+;
+;			AUXOUT
+;
+;	This macro outputs a character to the auxilary output device.
+;
+auxout		macro		outchr
+		loadreg 	dl,outchr
+		dosfn		4
+		endm
+;
+;			PRNOUT
+;
+;	This macro outputs a character to the first printer.
+;
+prnout		macro		outchr
+		loadreg 	dl,outchr
+		dosfn		5
+		endm
+;
+;			CONSIO
+;
+;
+;	This macro issues a 'direct console I/O' interrupt to DOS.  If no
+; argument is supplied to this macro, console input will be performed.
+; otherwise console output will be performed.
+;
+consio		macro		outchr
+		ifb		<outchr>
+		mov		dl,0ffh
+		else
+		loadreg 	dl,outchr
+		endif
+		dosfn		6
+		endm
+;
+;			CONIONE
+;
+;	This macro issues a 'direct console I/O with no echo' interrupt to DOS.
+; If no argument is supplied to this macro, console input will be performed, the
+; character input from the keyboard will not be echoed.  Otherwise console
+; output will be performed.
+;
+conione 	macro		outchr
+		ifb		<outchr>
+		mov		dl,0ffh
+		else
+		loadreg 	dl,outchr
+		endif
+		dosfn		7
+		endm
+;
+;			KBDINE
+;
+;	This macro gets a character from the keyboard and returns it.  The
+; character is not echoed on the screen.
+;
+kbdine		macro
+		dosfn		8
+		endm
+;
+;			PRNSTR
+;
+;	This macro will issue a 'print string' interrupt to DOS.  It will print
+; the string whose offset is passed to the macro.  It is assumed that DS
+; contains the segment value for the string.  The string must terminate with
+; a '$' character.
+;
+prnstr		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		9
+		endm
+;
+;			BKBDIN
+;
+;	This macro will issue a 'buffered keyboard input' interrupt to DOS.
+; The offset of where the buffer is located is passed to the macro.  It is
+; assumed that DS constains the segment which contains the buffer.  The first
+; byte of the buffer must be the length of the buffer - 2.  The second byte is
+; filled in and contains the number of characters read in.  The characters read
+; in are placed starting at the third byte of the buffer.
+;
+bkbdin		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		0ah
+		endm
+;
+;			CHKBDST
+;
+;	This macro will issue a 'check keyboard status' interrupt to DOS.  The
+; result is that upon return AL will contain 0FFH if there is a character
+; available at the keyboard, otherwise it will contain 00H.
+;
+chkbdst 	macro
+		dosfn		0bh
+		endm
+;
+;			CKBIKF
+;
+;	This macro will issue a 'clear keyboard buffer and invoke keyboard
+; function' interrupt to DOS.  Forces system to wait until a character is
+; actually typed.
+;
+ckbikf		macro
+		dosfn		0ch
+		endm
+;
+;			DSKRSET
+;
+;	This macro will issue a disk reset interrupt to DOS.
+;
+dskrset 	macro
+		dosfn		0dh
+		endm
+;
+;			SELDSK
+;
+;	This macro will issue a select disk interrupt to DOS.  The drive
+; specified will become the defualt drive.
+;
+seldsk		macro		drive
+		ldreg		al,drive
+		dosfn		0eh
+		endm
+;
+;			FCBOPEN
+;
+;	This macro will issue an open file interrupt to DOS.
+;
+fcbopen 	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		0fh
+		endm
+;
+;			FCBCLOSE
+;
+;	This macro will issue a close file interrupt to DOS.
+;
+fcbclose	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		10h
+		endm
+;
+;			FCBSRCH1
+;
+;	This macro will issue a search for first entry interrupt to DOS.
+;
+fcbsrch1	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		11h
+		endm
+;
+;			FCBSRCHN
+;
+;	This macro will issue a search for next entry interrupt to DOS.
+;
+fcbsrchn	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		12h
+		endm
+;
+;			FCBDEL
+;
+;	This macro will issue a delete file interrupt to DOS.
+;
+fcbdel		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		13h
+		endm
+;
+;			FCBSEQRD
+;
+;	This macro will issue a sequential read interrupt to DOS.
+;
+fcbseqrd	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		14h
+		endm
+;
+;			FCBSEQWR
+;
+;	This macro will issue a sequential write interrupt to DOS.
+;
+fcbseqwr	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		15h
+		endm
+;
+;			FCBCRE
+;
+;	This macro will issue a file create interrupt to DOS.
+;
+fcbcre		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		16h
+		endm
+;
+;			FCBRENAME
+;
+;	This macro will issue a file rename interrupt to DOS.
+;
+fcbrename	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		17h
+		endm
+;
+curdsk		macro
+		dosfn		19h
+		endm
+;
+setdta		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		1ah
+		endm
+;
+getfat		macro
+		dosfn		1bh
+		endm
+;
+getsfat 	macro		drive
+		loadreg 	dl,drive
+		dosfn		1ch
+		endm
+;
+rndrd		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		21h
+		endm
+;
+rndwr		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		22h
+		endm
+;
+fcbsize 	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		23h
+		endm
+;
+setrrfld	macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		24h
+		endm
+;
+setivec 	macro		ivec,p1,p2
+		loadreg 	al,ivec
+		ldroff		dx,p1,p2
+		dosfn		25h
+		endm
+;
+crepsp		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		26h
+		endm
+;
+rblkrd		macro		cnt,p1,p2
+		loadreg 	cx,cnt
+		ldroff		dx,p1,p2
+		dosfn		27h
+		endm
+;
+rblkwr		macro		cnt,p1,p2
+		loadreg 	cx,cnt
+		ldroff		dx,p1,p2
+		dosfn		28h
+		endm
+;
+prsfn		macro		p1,p2,p3,p4
+		ldroff		si,p1,p2
+		ifidn		<p1>,<offset>
+		ldroff		di,p3,p4
+		else
+		ldroff		di,p2,p3
+		endif
+		dosfn		29h
+		endm
+;
+getdate 	macro
+		dosfn		2ah
+		endm
+;
+setdate 	macro
+		dosfn		2bh
+		endm
+;
+gettime 	macro
+		dosfn		2ch
+		endm
+;
+settime 	macro
+		dosfn		2dh
+		endm
+;
+srverify	macro		verify
+		loadreg 	al,verify
+		sub		dl,dl
+		dosfn		2eh
+		endm
+;
+setverify	macro
+		srverify	1
+		endm
+;
+resetverify	macro
+		srverify	0
+		endm
+;
+getdta		macro
+		dosfn		2fh
+		endm
+;
+getvernm	macro
+		dosfn		30h
+		endm
+;
+keep		macro		rc,size
+		loadreg 	al,rc
+		loadreg 	dx,size
+		dosfn		31h
+		endm
+;
+cbchk		macro		setflg,stateflg
+		loadreg 	al,setflg
+		loadreg 	dl,stateflg
+		dosfn		33h
+		endm
+;
+getivec 	macro		vecnum
+		loadreg 	al,vecnum
+		dosfn		35h
+		endm
+;
+gdfreesp	macro		drive
+		loadreg 	dl,drive
+		dosfn		36h
+		endm
+;
+cntrydep	macro		p1,p2
+		ldroff		dx,p1,p2
+		sub		al,al
+		dosfn		38h
+		endm
+;
+mkdir		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		39h
+		endm
+;
+rmdir		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		3ah
+		endm
+;
+chdir		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		3bh
+		endm
+;
+creat		macro		acc,p1,p2
+		loadreg 	cx,acc
+		ldroff		dx,p1,p2
+		dosfn		3ch
+		endm
+;
+openfile	macro		access,p1,p2
+		loadreg 	al,access
+		ldroff		dx,p1,p2
+		dosfn		3dh
+		endm
+;
+open		macro		access,p1,p2
+		ifidn		<access>,<r>
+		openfile	0,p1,p2
+		else
+		ifidn		<access>,<w>
+		openfile	1,p1,p2
+		else
+		ifidn		<access>,<u>
+		openfile	2,p1,p2
+		endif
+		endif
+		endif
+		endm
+;
+close		macro		file
+		loadreg 	bx,file
+		dosfn		3eh
+		endm
+;
+read		macro		file,numbytes,p1,p2
+		loadreg 	bx,file
+		loadreg 	cx,numbytes
+		ldroff		dx,p1,p2
+		dosfn		3fh
+		endm
+;
+write		macro		file,numbytes,p1,p2
+		loadreg 	bx,file
+		loadreg 	cx,numbytes
+		ldroff		dx,p1,p2
+		dosfn		40h
+		endm
+;
+unlink		macro		p1,p2
+		ldroff		dx,p1,p2
+		dosfn		41h
+		endm
+;
+lseek		macro		file,mode,hipos,lopos
+		loadreg 	bx,file
+		loadreg 	al,mode
+		loadreg 	cx,hipos
+		loadreg 	dx,lopos
+		dosfn		42h
+		endm
+;
+chmod		macro		mode,attr,p1,p2
+		loadreg 	al,mode
+		loadreg 	cx,attr
+		ldroff		dx,p1,p2
+		dosfn		43h
+		endm
+;
+ioctl		macro		fc,file
+		loadreg 	al,fc
+		loadreg 	bx,file
+		dosfn		44h
+		endm
+;
+dup		macro		file
+		loadreg 	bx,file
+		dosfn		45h
+		endm
+;
+fdup		macro		file1,file2
+		loadreg 	bx,file1
+		loadreg 	cx,file2
+		dosfn		46h
+		endm
+;
+gcurdir 	macro		drive,p1,p2
+		loadreg 	dl,drive
+		ldroff		si,p1,p2
+		dosfn		47h
+		endm
+;
+alloc		macro		size
+		loadreg 	bx,size
+		dosfn		48h
+		endm
+;
+free		macro		ptr
+		loadreg 	es,ptr
+		dosfn		49h
+		endm
+;
+setblock	macro		ptr,size
+		loadreg 	es,ptr
+		loadreg 	bx,size
+		dosfn		4ah
+		endm
+;
+exec		macro		fc,p1,p2,p3,p4
+		ldroff		dx,p1,p2
+		ifidn		<p1>,<offset>
+		ldroff		bx,p3,p4
+		else
+		ldroff		bx,p2,p3
+		endif
+		loadreg 	al,fc
+		dosfn		4bh
+		endm
+;
+exit		macro		rc
+		loadreg 	al,rc
+		dosfn		4ch
+		endm
+;
+wait		macro
+		dosfn		4dh
+		endm
+;
+fndfile1	macro		attr,p1,p2
+		loadreg 	cx,attr
+		ldroff		dx,p1,p2
+		dosfn		4eh
+		endm
+;
+fndfilen	macro
+		dosfn		4fh
+		endm
+;
+rename		macro		p1,p2,p3,p4
+		ldroff		dx,p1,p2
+		ifidn		<p1>,<offset>
+		ldroff		di,p3,p4
+		else
+		ldroff		di,p2,p3
+		endif
+		dosfn		56h
+		endm
+;
+getftime	macro		file
+		loadreg 	bx,file
+		sub		al,al
+		dosfn		57h
+		endm
+;
+setftime	macro		file,date,time
+		loadreg 	bx,file
+		loadreg 	dx,date
+		loadreg 	cx,time
+		mov		al,1
+		dosfn		57h
+		endm
+                                                                     

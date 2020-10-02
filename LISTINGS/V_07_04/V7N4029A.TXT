@@ -1,0 +1,305 @@
+/*                       Listing 1 -- File HEXIO.C                          */
+/*
+              Intel Hex and Motorola S-Record File I/O Functions
+
+                          By William C. Colley, III
+
+     This package of functions presents an interface to two ASCII hexadecimal
+absolute object module formats that is as close to the traditional stream I/O
+interface as I could make it.  The two formats are the Intel hexadecimal
+object module format (Intel hex) and the Motorola S-Record object module
+format (S-record).  The functions and data structure of the package are
+declared in a companion header file, hexio.h.  The functions in the package
+are:
+
+        HFILE *fopen(filename,mode)
+        char *filename, *mode;
+
+     Use this function to open a hex file just as you use fopen() to open a
+normal stream file.  The following access modes are supported:
+                                        
+        "r" or "ri"     open Intel hex file for reading
+
+        "rs"            open S-record file for reading
+
+        "w" or "wi"     open Intel hex file for writing -- If the file exists,
+                        it is truncated to 0 length first.
+
+        "ws"            open S-record file for writing -- If the file exists,
+                        it is truncated to 0 length first.
+
+    The return parameter is used as a file handle just like the return value
+of fopen() is.  A return value of NULL indicates that the file could not be
+opened.  See your compiler's documentation on function fopen() for details.
+
+        int hclose(filehandle)
+        HFILE *filehandle;
+
+    Use this function to close a hex file when you are finished with it.  It
+returns 0 if no errors have occurred since the file was opened and if the file
+has been successfully closed.  Otherwise, the function returns HEOF.
+
+        int hgetc(filehandle)
+        HFILE *filehandle;
+
+     Use this function to retreive the next data byte from a hex file that
+has been opened for reading.  A return value of 0 - 255 is a valid byte.  A
+return value of HEOF indicates that a read error occurred on the file.  Some
+possible causes are an error from getc(), an illegal character in the file,
+or a checksum that doesn't check.
+
+         int hputc(byte,filehandle)
+         unsigned char byte;
+         HFILE *filehandle;
+
+     Use this function to write the next data byte to a hex file that has
+been opened for writing.  A return value of 0 - 255 is the byte that was
+written to the file.  A return value of HEOF indicates that a write error
+occurred on the file.  The error comes from putc().
+
+        void hseek(filehandle,address)
+        HFILE *filehandle;
+        unsigned address;
+
+     Use this function before using hputc() to set the load address for the
+following byte written to the file.  If hseek() is not used, the first byte
+written to the file is assigned a load address of 0x0000, and the rest load
+in sequence after their preceding bytes.  Use of this function on a file
+opened for reading has no effect.
+
+        unsigned htell(filehandle)
+
+     Use this function after using hgetc() to find out the load address of
+the byte that the previous call to hgetc() returned.  Use of this function on
+a file opened for writing will return the load address of the last byte
+written to the file with hputc().
+
+        int herror(filehandle)
+        HFILE *filehandle;
+
+    Use this function to determine if an error has occurred on this hex file
+since it was opened.  The function returns HEOF if an error has occurred or 0
+otherwise.
+
+        int heof(filehandle)
+        HFILE *filehandle;
+
+    Use this function to determine if a file opened for reading has been read
+all the way to end of file yet.  The function returns HEOF if end of file has
+been reached or 0 if more data may be left.  The function always returns 0 for
+files opened for writing.
+*/
+
+/*  Note that the names of the following #include file sometimes varies */
+/*  from system to system.  Adjust it as needed to fit yours.           */
+
+#include <alloc.h>              /*  often called malloc.h               */
+#include <ctype.h>              /*  usually called ctype.h              */
+#include <setjmp.h>             /*  always called setjmp.h              */
+#include "hexio.h"              /*  #include our own header file, too.  */
+
+/*  This defines the bits in the flag byte of the HFILE structure:      */
+
+#define WRITE           0x01    /*  bit 0 set if file open for writing  */
+#define SRECORD         0x02    /*  bit 1 set if file is S-record type  */
+#define ERROR           0x04    /*  bit 2 set if an error has occurred  */
+#define AT_EOF          0x08    /*  bit 3 set if we've read to EOF      */
+
+/*  Some static variables to allow data sharing amongst the routines    */
+/*  and their service routines:                                         */
+
+static unsigned char chksum;
+static jmp_buf error;
+
+/*  Finally, the routines themselves:                                   */
+
+HFILE *hopen(filename,mode)
+char *filename, *mode;
+{
+    unsigned char tflags;
+    HFILE *filehandle;
+
+    tflags = 0;
+    switch (toupper(mode[0])) {
+        case 'W':   tflags += WRITE;
+        case 'R':   break;
+
+        default:    return NULL;
+    }
+    switch (toupper(mode[1])) {
+        case 'S':   tflags += SRECORD;
+        case 'I':
+        case '\0':  break;
+
+        default:    return NULL;
+    }
+    if (filehandle = (HFILE *)malloc(sizeof(HFILE))) {
+        mode[1] = '\0';
+        if (filehandle->file = fopen(filename,mode)) {
+            if ((tflags & (SRECORD + WRITE)) != (SRECORD + WRITE) ||
+                fputs("S007000048445239E1\n",filehandle->file) != EOF) {
+                filehandle->loadaddr = filehandle->count = 0;
+                filehandle->bufp = filehandle->buf;
+                filehandle->flags = tflags;  return filehandle;
+            }
+            fclose(filehandle->file);
+        }
+        free(filehandle);
+    }
+    return NULL;
+}
+
+/*  This routine is for use by hgetc() only, so it's declared static.	*/
+
+static int hgetb(filehandle)
+HFILE *filehandle;
+{
+    int c, d;
+
+    if ((c = getc(filehandle->file)) == EOF || !isxdigit(c) || islower(c))
+        longjmp(error,ERROR);
+    c = c - (isdigit(c) ? '0' : 'A' - 10) << 4;
+    if ((d = getc(filehandle->file)) == EOF || !isxdigit(d) || islower(d))
+        longjmp(error,ERROR);
+    chksum += c += d - (isdigit(d) ? '0' : 'A' - 10);
+    return c;
+}
+
+int hgetc(filehandle)
+HFILE *filehandle;
+{
+    int c, t;
+    unsigned char *p;
+
+    if (setjmp(error) || filehandle->flags & (AT_EOF + ERROR + WRITE)) {
+        filehandle->flags |= ERROR;  return HEOF;
+    }
+    while (!filehandle->count--) {
+        while ((c = getc(filehandle->file)) !=
+            (filehandle->flags & SRECORD ? 'S' : ':'))
+            if (c == EOF) longjmp(error,ERROR);
+        if (filehandle->flags & SRECORD) {
+            if ((t = getc(filehandle->file)) != '0' && t != '1' && t != '9')
+                longjmp(error,ERROR);
+            chksum = 1;  c = -3;
+        }
+        else chksum = c = 0;
+        filehandle->count = c += hgetb(filehandle);
+        filehandle->loadaddr = hgetb(filehandle) << 8;
+        filehandle->loadaddr += hgetb(filehandle);
+        if (!(filehandle->flags & SRECORD))
+            if ((t = hgetb(filehandle)) != 0 && t != 1) longjmp(error,ERROR);
+            else t = (t << 3) + '1';
+        p = filehandle->bufp = filehandle->buf;
+        while (c--) *p++ = hgetb(filehandle);
+        (void)hgetb(filehandle);
+        if (chksum) longjmp(error,ERROR);
+        if (t == '0') filehandle->count = 0;
+        if (t == '9') { filehandle->flags |= AT_EOF;  return HEOF; }
+    }
+    filehandle->loadaddr = filehandle->loadaddr + 1 & 0xffff;
+    return *filehandle->bufp++;
+}
+
+/*  This routine is for use by put_record() only, so it's declared static.  */
+
+static void hputb(byte,filehandle)
+unsigned char byte;
+HFILE *filehandle;
+{
+    static char digits[] = "0123456789ABCDEF";
+
+    chksum += byte;
+    if (putc(digits[byte >> 4],filehandle->file) == EOF ||
+        putc(digits[byte & 0x0f],filehandle->file) == EOF)
+        longjmp(error,ERROR);
+}
+
+/*  This routine is for use by hputc(), hseek(), and hclose() only, so it's */
+/*  declared static.                                                        */
+
+static void put_record(type,filehandle)
+char type;
+HFILE *filehandle;
+{
+    unsigned a;
+
+    if (filehandle->flags & SRECORD) {
+        if (putc('S',filehandle->file) == EOF ||
+            putc(type,filehandle->file) == EOF) longjmp(error,ERROR);
+        chksum = 1;  hputb(filehandle->count + 3,filehandle);
+    }
+    else {
+        if (putc(':',filehandle->file) == EOF) longjmp(error,ERROR);
+        chksum = 0;  hputb(filehandle->count,filehandle);
+    }
+    a = (filehandle->loadaddr - filehandle->count) & 0xffff;
+    hputb(a >> 8,filehandle);  hputb(a & 0xff,filehandle);
+    if (!(filehandle->flags & SRECORD)) hputb(type == '9',filehandle);
+    
+    for (filehandle->bufp = filehandle->buf; filehandle->count;
+        --filehandle->count) hputb(*filehandle->bufp++,filehandle);
+    hputb(-chksum,filehandle);
+    if (putc('\n',filehandle->file) == EOF) longjmp(error,ERROR);
+    filehandle->bufp = filehandle->buf;
+}
+
+int hputc(byte,filehandle)
+unsigned char byte;
+HFILE *filehandle;
+{
+    if (setjmp(error) || (filehandle->flags & (ERROR + WRITE)) != WRITE) {
+        filehandle->flags |= ERROR;  return HEOF;
+    }
+    *filehandle->bufp++ = byte;
+    filehandle->loadaddr = filehandle->loadaddr + 1 & 0xffff;
+    if (++filehandle->count == HEXRECSIZE) put_record('1',filehandle);
+    return byte;
+}
+
+void hseek(filehandle,address)
+HFILE *filehandle;
+unsigned address;
+{
+    if (setjmp(error)) filehandle->flags |= ERROR;
+    if ((filehandle->flags & (ERROR + WRITE)) == WRITE &&
+        filehandle->loadaddr != address) {
+        if (filehandle->count) put_record('1',filehandle);
+        filehandle->loadaddr = address;
+    }
+}
+
+int hclose(filehandle)
+HFILE *filehandle;
+{
+    int i;
+
+    if (i = setjmp(error)) {
+        if (fclose(filehandle->file)) i = ERROR;
+        i = ((filehandle->flags | i) & ERROR) ? HEOF : 0;
+        free(filehandle);  return i;
+    }
+    if (filehandle->flags & WRITE) {
+        if (filehandle->count) put_record('1',filehandle);
+        put_record('9',filehandle);
+    }
+    longjmp(error,AT_EOF);  
+}
+
+unsigned htell(filehandle)
+HFILE *filehandle;
+{
+    return (filehandle->loadaddr - 1) & 0xffff;
+}
+
+int herror(filehandle)
+HFILE *filehandle;
+{
+    return filehandle->flags & ERROR ? HEOF : 0;
+}
+
+int heof(filehandle)
+HFILE *filehandle;
+{
+    return filehandle->flags & AT_EOF ? HEOF : 0;
+}

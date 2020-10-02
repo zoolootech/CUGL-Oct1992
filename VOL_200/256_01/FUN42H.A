@@ -1,0 +1,55 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     FUN42H.A     Move File Pointer
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          long FUN42H(handle, code, num, &_carryf)
+;	-----           int handle;
+;	                int code;   (tells how to move pointer)
+;	                long num;   (number of bytes to move pointer)
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC FUN42H_
+
+FUN42H_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the file handle
+	mov	byte al,[bp+6]	; how to move the pointer
+	mov	ah,42h	; the Function No.
+	mov	dx,[bp+8]	; low byte of number of bytes to move
+	mov	cx,[bp+10]	; high byte of number of bytes to move
+	int	21h
+	jc	FUN42H_ERROR
+	jmp	FUN42H_QUIT
+FUN42H_ERROR:
+	mov	si,[bp+12]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+FUN42H_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

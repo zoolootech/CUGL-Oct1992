@@ -1,0 +1,696 @@
+/* I/O routines and primitives for software tools
+ * source:  newfile.bds
+ * version: November 25, 1981
+ *
+ *	    This file is the version of August 9, 1981
+ *	    put in alphabetical order.
+ */
+
+#include tools.h
+
+/* make the calls to buffered BDS routines more visible */
+
+#define BDS_fclose   _fclose
+#define BDS_fcreat   _fcreat
+#define BDS_fflush   _fflush
+#define BDS_fopen    _fopen
+#define BDS_getc     _getc
+#define BDS_gets     _gets
+#define BDS_gchar    _getchar
+#define BDS_fopen    _fopen
+#define BDS_putc     _putc
+#define BDS_pchar    _putchar
+#define BDS_rename   _rename
+#define BDS_unlink   _unlink
+
+/*
+This file contains:
+
+	_assign		_chkacc		_getunit
+	_open1
+
+	close		creat
+	fcopy		flush
+	getc		getch		getch1
+	getlin
+	isatty
+	mkuniq
+	note
+	open
+	prompt
+	putc		putch		putch1
+	putdec		putint
+	putlin		putstr
+	readf		remove		rename
+	seek
+	writef
+	
+*/
+
+/*	_assign - open a file for STDIN, STDOUT, or ERROUT
+ *                redirect I/O to that file.
+ */
+
+BOOL _assign(unit, filename, access)
+int  unit;
+char *filename;
+int access;
+{
+	BOOL _open1();
+
+	if (unit < 0 || unit >= SYS_STD) {
+		sys_error("_assign\n");
+	}
+
+	if (access == READ && unit != STDIN) {
+		return(NO);
+	}
+
+	if (access == WRITE && unit == STDIN) {
+		return(NO);
+	}
+
+	/* open the unit */
+	if (_open1(unit, filename, access) == NO) {
+		return(NO);
+	}
+
+	/* comment out -----
+	printf("assign:  unit = %d name = %s\n",unit,filename);
+	----- end comment out */
+
+	return(YES);
+}
+
+/*	_chkacc - check access parameter */
+
+BOOL _chkacc(access)
+int access;
+{
+	if (access == READ || access == WRITE) {
+		return (YES);
+	}
+	if (access == READWRITE) {
+		error("READWRITE access not supported\n");
+	}
+	else if (access == APPEND) {
+		error("APPEND access not supported\n");
+	}
+	else {
+		printf("access = %d\n",access);
+		error("unknown file access type\n");
+	}
+	return(NO);
+}
+
+/*	_getunit - return an available file unit number */
+
+int _getunit()
+{
+
+	int i, j;
+
+	/* search sys_bufn [] for unit i */
+
+	for (i = SYS_STD; i < MAXOFILES + MAXOFILES; i++) {
+		if (sys_spec [i] != ERR) {
+			continue;
+		}
+		for (j = 0; j < SYS_STD + MAXOFILES; j++) {
+			if (sys_bufn [j] == i) {
+				/* buffer i in use */
+				break;
+			}
+		}
+		if (j == SYS_STD + MAXOFILES) {
+			/* free buffer found */
+			return(i);
+		}
+	}
+	return(ERR);
+}
+
+/*	_open1 - internal open routine */
+
+BOOL _open1(unit, filename, access)
+int  unit;
+char *filename;
+int access;
+{
+
+	FILEDES fd;
+	int  diskunit;
+	char *iobuf;
+
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		sys_error("_open1:  bad unit\n");
+	}
+
+	/* fill in access mode */
+	if (_chkacc(access) == NO) {
+		return(NO);
+	}
+	else {
+		sys_acc [unit] = access;
+	}
+
+	/* check for special files */
+	if (equal (filename, TERMINAL)) {
+		sys_spec [unit] = SYS_TERM;
+		return(YES);
+	}
+	else if (equal (filename, PRINTER)) {
+		if (access == READ) {
+			return(NO);
+		}
+		else {
+			sys_spec [unit] = SYS_PRT;
+			return(YES);
+		}
+	}
+
+	if (unit < SYS_STD) {
+		/* find a disk file slot */
+		if ((diskunit = _getunit()) == ERR) {
+			return(NO);
+		}
+	}
+	else {
+		diskunit = unit;
+	}
+
+	iobuf = sys_bufs + ((diskunit - SYS_STD) * BUFSIZ);
+
+	if (access == READ) {
+		fd = BDS_fopen(filename, iobuf);
+		if (fd == ERR) {
+			return(NO);
+		}
+		else {
+			/* open system tables */
+			sys_bufp [unit] = iobuf;
+			sys_bufn [unit] = diskunit;
+			return(YES);
+		}
+	}
+	if (access == WRITE) {
+		/* erase the file if it exists ! */
+		fd = BDS_fcreat (filename, iobuf);
+		if (fd == ERR) {
+			return(NO);
+		}
+		else {
+			/* open system tables */
+			sys_bufp [unit] = iobuf;
+			sys_bufn [unit] = diskunit;
+			return(YES);
+		}
+	}
+
+	/* unknown access */
+	return(NO);
+}
+
+/*	close - close unit  */
+
+close (unit)
+int  unit;
+{
+
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		return;
+	}
+	else if (sys_spec [unit] != ERR) {
+		if ( unit == STDIN ||
+		     unit == STDOUT ||
+		     unit == ERROUT
+		   ) {
+			sys_spec [unit] = SYS_TERM;
+		}
+		else {
+			sys_spec [unit] = ERR;
+		}
+	}
+
+	if (sys_bufp [unit] == ERR) {
+		return;
+	}
+
+	/* write end of file mark and flush for output files */
+	if (sys_acc [unit] != READ) {
+		putch (CPMEOF, unit);
+		flush (unit);
+	}
+
+	/* close the file */
+	BDS_fclose(sys_bufp [unit]);
+	sys_bufp [unit] = ERR;
+	sys_bufn [unit] = ERR;
+}
+
+/*	create -  create a clean file
+ *                erase it if it exists.
+ */
+
+int create (filename, access)
+char *filename;
+int access;
+{
+
+	int unit;
+	BOOL _open1();
+
+	if (access != WRITE) {
+		error("in create:  bad access mode\n");
+	}
+
+	if ((unit = _getunit()) == ERR) {
+		return(ERR);
+	}
+
+	if (_open1(unit, filename, WRITE) == NO) {
+		return(ERR);
+	}
+	else {
+		return(unit);
+	}
+}
+
+/*	fcopy - copy file in to file out */
+
+fcopy (in, out)
+int in, out;
+{
+	char line [MAXLINE];
+
+	while (getlin (line, in) != EOF) {
+		putlin (line, out);
+	}
+}
+
+/*	flush - flush file's output buffer */
+
+flush (unit)
+int unit;
+{
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		error("flush:  bad unit\n");
+	}
+
+	if (sys_bufp [unit] == ERR) {
+		return;
+	}
+
+	/* flush buffer */
+	if (sys_acc [unit] != READ) {
+		BDS_fflush(sys_bufp [unit]);
+	}
+}
+
+/*	getc - get char from STDIN */
+
+int getc(c)
+char c;
+{
+	return(getch(STDIN));
+}
+
+/*	getch - get a character from a file
+ *              return the character and set c to character.
+ *              Note:  this is a change from Software Tools
+ */
+
+int getch (unit)
+int unit;
+{
+	int c;
+
+	/* check unit once here */
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		error("in getch:  bad unit\n");
+	}
+
+	/* ignore all carriage returns */
+	while ((c = getch1(unit)) == CR) {
+		;
+	}
+	return(c);
+}
+
+int getch1 (unit)
+int unit;
+{
+
+	int c;
+
+	if (sys_bufp [unit] != ERR) {
+		c = BDS_getc(sys_bufp [unit]);
+		if (c == CPMEOF) {
+			return(EOF);
+		}
+		else {
+			return(c);
+		}
+	}
+
+	else if (sys_spec [unit] == SYS_TERM) {
+			c = BDS_gchar();
+			if (c == CPMEOF) {
+				return(EOF);
+			}
+			else {
+				return(c);
+			}
+	}
+	else {
+		error("getch:  unit not open\n");
+	}
+}
+
+/*	getlin - get a line from a unit
+ *	         return number of chars in the line.
+ */
+
+int getlin (line, unit)
+char *line;
+int unit;
+{
+
+	int i;
+	int c;
+
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		error("getlin:  bad unit\n");
+	}
+
+	if ( sys_bufp [unit] == ERR &&
+	     sys_spec [unit] == SYS_TERM
+	   ) {
+		/* allow delete char & line functions */
+		BDS_gets(line);
+		if (line [0] == (CPMEOF & 0xff)) {
+			return(EOF);
+		}
+		for (i = 0; line [i] != EOS; i++) {
+			;
+		}
+		return (i);
+	}
+
+	for (i = 0; i < MAXLINE - 1; i++) {
+		c = getch(unit);
+		if (c == EOF) {
+			line [i] = EOS;
+			return (EOF);
+		}
+		else if (c == NEWLINE) {
+			line [i] = c;
+			line [i + 1] = EOS;
+			return (i);
+		}
+		else {
+			line [i] = c;
+		}
+	}
+	line [MAXLINE-1] = EOS;
+	return (MAXLINE);
+}
+
+/*	isatty - determine if file is a teletype/CRT device */
+
+BOOL isatty (unit)
+int unit;
+{
+	int type;
+
+	if (sys_bufp [unit] != ERR) {
+		/* disk file */
+		return(NO);
+	}
+	else if (sys_spec [unit] != ERR) {
+		/* special file */
+		return(YES);
+	}
+	else {
+		/* unit not open */
+		return(NO);
+	}
+}
+
+/*	mkuniq - make a scratch file name based on 'seed' */
+
+mkuniq (seed, name)
+char seed[], name[];
+{
+
+	/* name is $$A.$$$ through $$Z.$$$ */
+
+	scopy ("$$", 0, name, 0);
+	name [2] = seed + 'A';
+	scopy (".$$$", 0, name, 3);
+}
+
+/*	note - determine current file position */
+
+note (unit, offset)
+int unit;
+int offset[2];
+{
+	error("note() not implemented\n");
+}
+
+/*	open - open a file */
+
+int open (filename, access)
+char *filename;
+int access;
+{
+
+	int unit;
+	BOOL _open1();
+
+	/* get an available file number */
+	if ((unit = _getunit()) == ERR) {
+		return(ERR);
+	}
+
+	/* open the file */
+	if (_open1(unit, filename, access) == NO) {
+		return(ERR);
+	}
+	else {
+		return(unit);
+	}
+}
+
+/*	prompt - write to/read from teletype */
+
+prompt (str, buf, unit)
+char *str, *buf;
+int  unit;
+{
+
+	int i;
+
+	if (isatty(unit) == YES) {
+		putlin (str, unit);
+		flush (unit);
+	}
+	getlin (buf, unit);
+}
+
+/*	putc - put char c onto STDOUT
+ *             return c
+ */
+
+int putc (c)
+char c;
+{
+	return (putch (c, STDOUT));
+}
+
+/*	putch - put char 'c' to a file
+ *             return 'c'
+ */
+
+int putch (c, unit)
+{
+	/* check unit once here */
+	if (unit < 0 || unit >= SYS_STD + MAXOFILES) {
+		error("in putch:  bad unit\n");
+	}
+
+	/* add carriage returns before LF (NEWLINE) */
+	if (c == NEWLINE) {
+		putch1 (CR, unit);
+	}
+	return(putch1 (c, unit));
+}
+
+int putch1 (c, unit)
+char c;
+int  unit;
+{
+
+	if (sys_bufp [unit] != ERR) {
+		return(BDS_putc(c, sys_bufp [unit]));
+	}
+	else if (sys_spec [unit] == SYS_TERM) {
+		return(BDS_pchar(c));
+	}
+	else if (sys_spec [unit] == SYS_PRT) {
+		bdos(5,c);
+		return(c);
+	}
+	else {
+		error("in putch:  unit not open\n");
+	}
+}
+
+/*	putdec - put decimal int n in field width >= w */
+
+putdec(n,w)
+int n, w;
+{
+
+	char chars [MAXCHARS];
+
+	int i, nd;
+
+	nd = itoc (n, chars, MAXCHARS);
+	for (i = nd; i < w; i++) {
+		putc (' ');
+	}
+	for (i = 0; i < nd; i++) {
+		putc (chars[i]);
+	}
+}
+
+/*	putint - output int in specified field */
+
+putint (n, w, unit)
+int n, w;
+int unit;
+{
+
+	char chars [MAXCHARS];
+
+	itoc (n, chars, MAXCHARS);
+	putstr (chars, w, unit);
+}
+
+/*	putlin - output a line to a unit */
+
+putlin (line, unit)
+char *line;
+int unit;
+{
+
+	int i;
+
+	for (i = 0; line [i] != EOS; i++) {
+		putch (line [i], unit);
+	}
+}
+
+/*	putstr - output char string in specified field */
+
+putstr (str, w, unit)
+char *str;
+int w;
+int unit;
+{
+	int i, len;
+
+	len = length (str);
+
+	/* output leading blanks blanks */
+	for (i = len; i < w; i++) {
+		putch (' ', unit);
+	}
+
+	/* output string */
+	for (i = 0; i < len; i++) {
+		putch (str [i], unit);
+	}
+
+	/* output trailing blanks */
+	for (i = (-w) - len; i > 0; i--) {
+		putch (' ', unit);
+	}
+}
+
+/*	readf - read 'n' bytes/words/whatever from file fd */
+
+readf (buf, n, unit)
+char *buf;
+int n;
+int unit;
+{
+
+	int i;
+
+	for (i = 0; i < n; i++) {
+		if ((buf [i] = getch(unit)) == EOF) {
+			buf[i] = EOS;
+			return (EOF);
+		}
+	}
+	buf[i] = EOS;
+	return (i);
+}
+
+/*	remove - remove a file from the file system */
+
+BOOL remove (filename)
+char *filename;
+{
+	return (BDS_unlink(filename));
+}
+
+/*	rename - change old file name to new file name */
+
+BOOL rename (old, new)
+char *old, *new;
+{
+	BDS_rename(old, new);
+	return(OK);
+}
+
+/*	writef - write 'n' bytes/words/whatever to file */
+
+writef (buf, n, unit)
+char *buf;
+int n;
+int unit;
+{
+
+	int i;
+
+	for (i = 0; i < n; i++) {
+		if (buf[i] == EOS) {
+			break;
+		}
+		putch (buf[i], unit);
+	}
+	return (i);
+}
+
+e system */
+
+BOOL remove (filename)
+char *filename;
+{
+	return (BDS_unlink(filename));
+}
+
+/*	rename - change old file name to new file name */
+
+BOOL rename (old, new)
+char *old, *new;
+{
+	BDS_rename(old, new);
+	return(OK);
+}
+
+/*	writef - w

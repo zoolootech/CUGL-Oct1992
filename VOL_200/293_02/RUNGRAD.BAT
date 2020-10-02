@@ -1,0 +1,1 @@
+c:\ake\grad ctbild -f20 -l25 -nd -dd -z3 -crl75 -cll175 -cre75 -cfr175

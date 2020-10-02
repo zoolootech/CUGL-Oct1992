@@ -1,0 +1,107 @@
+< Portability Note >
+
+1. Compiling cpio programs
+
+	John Snaider and Rainer Gerhaldt have submitted public domain
+	cpio program. We have compiled their prorgams under MSDOS using
+	five popular commercial compilers listed below:
+
+	Microsoft C ver. 5.0
+	Microsoft C ver. 4.0
+	Eco C ver. 3.23
+	Turbo C	ver. 1.5
+	Lattice C ver. 3.21
+
+	The result of compiling indicates that Rainser's cpio (CUGCPIO) is more
+	portable than John's cpio (CCPIO). However, this is only because John
+	Snaider uses Proposed ANSI functions and reseved words, which some
+	compiler vendors don't support yet, and also the compiler vendors
+	inconsistently provide different features for their compilers.
+
+	In order to make CCPIO and CUGCPIO more protable, we made some
+	addition to the programs. All the addition is surrounded by
+	preprocessor directives (#if and #endif) so that you will be able
+	to compile the programs with a little effort if you pick one of five
+	compilers listed above. If you have a compiler not listed above,
+	first, go ahead, try to compile with the default settings and see
+	what error message you get. And then, determine what corrections
+	you need to make. If you have trouble, please feel free to ask us.
+
+2. Compiling CCPIO.C 
+
+	At the beginning of the program, you will see five #define directives.
+	Those indicate which compiler you are using. For example, if you are
+	using Microsoft ver. 5.0, they should look like this:
+
+	#define MSC5	1
+	#define MSC4	0
+	#define LAT3	0
+	#define TURBO	0
+	#define ECOC	0
+
+	The following explains what addition we made to get the program
+	compiled under a certain compiler.
+
+(Microsoft C ver. 5.0)
+
+	John Snaider wrote this program under this compiler.
+	
+(Microsoft C ver. 4.0)
+
+	The only difference between MSC5 and MSC4 is that MSC4 doesn't
+	support Proposed ANSI keyword "const". Therfore, "const" is
+	defined as nothing. (#define const )
+
+(Turbo C ver. 1.5)
+
+	Turbo C is very compatible with Microsoft C. No changes.
+
+(Lattice C ver. 3.21)
+
+	John Snaider uses va_start() and vfprintf() in function error(),
+	which displays a formatted error message and terminates the program.
+	The varargs facility provides programmers a portable way to access
+	the arguments of a fucntion when the fuction takes a variable number
+	of arguments. There are two versions of varargs facility: one is 
+	compatible with UNIX System V and defined in "varargs.h" and the 
+	other is adapted by Draft Proposed ANSI C and defined in "stdarg.h".
+	Unfortunately, Lattice C doesn't support this facility in either
+	form. To simulate this facility, we had to use very low-level function
+	_pf(), which Lattice C uses internally to implement printf style
+	functions. _pf() takes a variable number of arguments and writes a
+	formatted string to the stream.
+	_pf () takes four argumens: display function name, stream, format
+	string, and address of first argument.
+
+(Eco C)
+	 
+	In the program, there are two functions that Eco C libarary doesn't 
+	support. One is access() that checks the accesibility of a file.
+	Since this function is used to check only if the target file exsists,
+	access() is replaced with !fopen(). The other one is filelength() which
+	returns the file length, in bytes, of the target file handle. This
+	problem is solved by the combination of fseek() and ftell().
+	Also, we have discovered that Eco C compiler doesn't write a NULL
+	character to the stream when %c is used in fprintf() and NULL is given
+	as its argument. This is a serious bug. However, because fputc() does 
+	write a NULL character to the stream, the macro phead is redefined
+	to call fputc() and write a NULL character.
+
+3. Compiling CUGCPIO.C
+
+	Compiling CUGCPIO.C is much easier than compiling CCPIO.C.
+	Rainer Gerhards uses functions widely supported by compiler vendors
+	and also provides a header file "environ.h" with the environment
+	dependent information.
+	Indeed, to adapt this program for ECO C, we needed to change only the
+	header file, not the souce code CUGCPIO.C.
+	To compile with ECO C compiler, change the setting of target compiler
+	to the following:
+
+	#define MSC		0
+	#define ECOC		1
+	#define AUTO_SET	1
+	
+
+	
+

@@ -1,0 +1,694 @@
+###makefile.
+FILES=bj.c error.c dekmgr.c \
+	getbet.c hndmgr.c nfrom.c outcom.c query.c takes.c
+
+OBJECTS=bj.o error.o dekmgr.o \
+	getbet.o hndmgr.o nfrom.o outcom.o query.o takes.o
+
+DEFS=local.h bj.h dekmgr.h hndmgr.h ttymgr.h
+
+LINT=lint -phbxac
+
+cleanup:
+	-rm *.o
+	-du
+
+install:
+	size bj /a1/phi/bin/bj
+	cp bj /a1/phi/bin/bj; rm bj
+
+print: Makefile $(DEFS) $(FILES)
+	pr $?
+	date >print
+
+bj: $(DEFS) $(OBJECTS)
+	cc -o bj $(OBJECTS)
+
+bj.lint: $(DEFS)  $(FILES)
+	$(LINT) >bj.lint $(FILES)
+
+outcom.x: $(DEFS) outcom.c error.o
+	cc -o outcom.x -DTRYMAIN outcom.c error.o
+
+all:
+	make bj
+	make bj.lint
+	make install
+###bj.c
+/* bj - blackjack
+ *		Permission is hereby granted to reproduce and use bj
+ */
+#include "local.h"
+#include "bj.h"
+#include "dekmgr.h"
+#include "hndmgr.h"
+#include "ttymgr.h"
+main()
+	{
+	CASH action;	/* how much money has crossed the table */
+	CASH bet;		/* amount of player's current bet per hand */
+	CASH result;	/* net result of this hand, plus or minus */
+	CASH standing;	/* how much has player won or lost */
+	bool canhit;	/* can player's hand take hit? */
+	bool isdbl;		/* did player take DBLDN? */
+	bool isinsur;	/* did player take insurance? */
+	short hand;		/* current hand number */
+	short reply;	/* player's reply to DBLDN, SPLIT */
+	short tophand;	/* how many hands is player playing, 1 or 2 */
+
+	printf("Copyright (c) Plum Hall Inc, 1983\n");
+	/* permission to copy and modify is granted, provided that
+	 * this printout and comment remain intact
+	 */
+	printf("\nWelcome to the Blackjack table\n");
+	action = standing = 0;
+	opndek();
+	while ((bet = getbet()) != 0)
+		{
+		tophand = 1;
+		isinsur = isdbl = NO;
+		if (deklow())
+			shuffl();
+		deal();
+		if (val(DEALER, 0) == 11)
+			isinsur = takes("i");
+		reply = query();
+		if (reply == SPLIT)
+			tophand = split();
+		else if (reply == DBLDN)
+			{
+			hit(1);
+			printf("\n");
+			isdbl = YES;
+			bet *= 2;
+			}
+		for (hand = 1; hand <= tophand; ++hand)
+			{
+			if (tophand == 2)
+				printf("Hand %d:\n", hand);
+			canhit = !isdbl;
+			canhit &= !isbj(1);
+			canhit &= (reply != SPLIT || val(1, 0) != 11);
+			while (canhit && takes("h"))
+				{
+				canhit = hit(hand);
+				printf("\n");
+				}
+			if (21 < score(hand))
+				printf("Bust\n");
+			}
+		printf("Dealer has ");
+		show(DEALER, 0);
+		printf(" + ");
+		show(DEALER, 1);
+		if (!allbst())
+			while (score(DEALER) < 17)
+				hit(DEALER);
+		printf(" = %d\n", score(DEALER));
+		result = outcom(bet, tophand, isinsur, isdbl);
+		action += ABS(result);
+		standing += result;
+		printf("action = ");
+		printf(CASHOUT, action);
+		printf(" standing = ");
+		printf(CASHOUT, standing);
+		printf("\n");
+		}
+	printf("\nThanks for the game.\n");
+	exit(SUCCEED);
+	}
+###bj.h
+/* bj.h - include-file for blackjack
+ */
+
+/* defined types
+ */
+#define CASH long	/* dollars */
+
+/* defined constants
+ */
+#define DEALER 0		/* which hand is dealer; not modifiable */
+#define NONE 0			/* no reply */
+#define DBLDN 1			/* reply: double down */
+#define SPLIT 2			/* reply: split pair */
+#define INSUR 3			/* takes: insurance */
+#define HIT   4			/* takes: hit */
+#define CASHIN "%ld"	/* input format for CASH data */
+#define CASHOUT "%ld"	/* output format for CASH data */
+###dekmgr.c
+/* dekmgr - deck manager
+ */
+#include "local.h"
+#include "bj.h"
+#include "dekmgr.h"
+#define NCARDS 4 * 52
+static short deck[NCARDS] = 0;	/* the deck */
+static short nc = 0;			/* subscript of next card */
+static short shufpt = 0;		/* subscript of shuffle point */
+/* deklow - is deck at or past shuffle point?
+ */
+bool deklow()
+	{
+	return (shufpt <= nc);
+	}
+/* opndek - initialize the deck
+ */
+void opndek()
+	{
+	short i;
+	short low;
+	short varnum();
+
+	for (low = 0; low < NCARDS; low += 52)
+		for (i = 0; i < 52; ++i)
+			deck[i + low] = i;
+	srand(varnum());
+	shuffl();
+	}
+/* shuffl - shuffle the deck
+ */
+void shuffl()
+	{
+	short t;		/* temporary for swap */
+	short i;		/* index for loop over cards */
+	short j;		/* index for swap */
+	short nfrom();	/* fn to produce random number */
+
+	for (i = 0; i < NCARDS - 1; ++i)
+		{
+		j = nfrom(i, NCARDS - 1);
+		t = deck[j], deck[j] = deck[i], deck[i] = t;
+		}
+	shufpt = nfrom(NCARDS - 52, NCARDS - 36);
+	nc = 0;
+	printf("Shuffle\n");
+	}
+
+
+
+/* tkcard - take a card
+ */
+short tkcard()
+	{
+	if (NCARDS <= nc)
+		shuffl();
+	return (deck[nc++]);
+	}
+/* varnum - return a varying startoff number
+ */
+short varnum()
+	{
+	long time();	/* SYSTEM DEPENDENT - NEEDS CLOCK */
+
+	return ((short)time(0));
+	}
+###dekmgr.h
+/* dekmgr.h - interface for deck manager
+ */
+bool deklow();
+void opndek();
+void shuffl();
+short tkcard();
+###error.c
+/* error - print fatal error message
+ */
+#include "local.h"
+void error(s1, s2)
+	char s1[], s2[];
+	{
+	write(STDERR, s1, strlen(s1));
+	write(STDERR, " ", 1);
+	write(STDERR, s2, strlen(s2));
+	write(STDERR, "\n", 1);
+	exit(FAIL);
+	}
+###getbet.c
+/* getbet - get the player's bet
+ */
+#include "local.h"
+#include "bj.h"
+#define MINBET 2
+#define MAXBET 1000
+CASH getbet()
+	{
+	char line[BUFSIZ];	/* input line */
+	short retn;			/* return from getln and sscanf */
+	CASH bet;			/* player's bet */
+
+	printf("\n\nYour bet (amount): ");
+	FOREVER
+		{
+		retn = getln(line, BUFSIZ);
+		if (retn == EOF)
+			return (0);
+		retn = sscanf(line, CASHIN, &bet);
+		if (retn != 1 || bet < MINBET || MAXBET < bet)
+			printf("Number from %d to %d please: ",
+				MINBET, MAXBET);
+		else
+			return (bet);
+		}
+	}
+###hndmgr.c
+/* hndmgr - hand manager
+ */
+#include "local.h"
+#include "bj.h"
+#include "hndmgr.h"
+#include "dekmgr.h"
+static char spots[13][3] = 
+	{"A", "2", "3", "4", "5", "6", "7", "8", "9",
+	"10", "J", "Q", "K"};
+static char suits[4][2] = {"S", "H", "D", "C"};
+static short hands[3][12] = 0;	/* three hands */
+static short ncards[3] = 0;		/* how many cards in each hand */
+static short tophand = 0;		/* how many player hands active */
+/* allbst - are all player's hands busted?
+ */
+bool allbst()
+	{
+	if (score(1) <= 21 || (tophand == 2 && score(2) <= 21))
+		return (NO);
+	else
+		return (YES);
+	}
+/* deal - initialize the hands
+ */
+void deal()
+	{
+	hands[1][0] = tkcard();
+	hands[DEALER][0] = tkcard();
+	hands[1][1] = tkcard();
+	hands[DEALER][1] =tkcard();
+	ncards[DEALER] = ncards[1] = 2;
+	tophand = 1;
+	printf("The dealer shows ");
+	show(DEALER, 0);
+	printf("\nYou have ");
+	show(1, 0);
+	printf(" + ");
+	show(1, 1);
+	printf("\n");
+	}
+
+
+
+
+
+
+
+
+
+
+/* hit - add a card to a hand
+ */
+bool hit(h)
+	short h;		/* which hand */
+	{
+	hands[h][ncards[h]] = tkcard();
+	printf(" + ");
+	show(h, ncards[h]);
+	++ncards[h];
+	if (21 < score(h) || h == DEALER && 17 <= score(h))
+		return (NO);
+	else
+		return (YES);
+	}
+/* isbj - is hand a "natural" 2-card blackjack?
+ */
+bool isbj(h)
+	short h;		/* which hand */
+	{
+	if (h == DEALER)
+		return (ncards[DEALER] == 2 && score(DEALER) == 21);
+	else if (h == 1)
+		return (tophand == 1 && ncards[1] == 2 && score(1) == 21);
+	else
+		return (NO);
+	}
+/* score - tell blackjack value of hand
+ */
+short score(h)
+	short h;		/* which hand */
+	{
+	short aces = 0;	/* number of aces in hand */
+	short i;		/* card counter */
+	short sum = 0;	/* accumulated value of hand */
+
+	for (i = 0; i < ncards[h]; ++i)
+		{
+		sum += val(h, i);
+		if (val(h, i) == 11)
+			++aces;
+		}
+	for (i = aces; 0 < i; --i)
+		if (21 < sum)
+			sum -= 10;
+	return (sum);
+	}
+
+
+
+
+/* show - print a card
+ */
+void show(h, i)
+	short h;	/* which hand */
+	short i;	/* which card */
+	{
+	printf("%s", spots[hands[h][i] % 13]);
+	printf("%s", suits[hands[h][i] / 13]);
+	}
+/* split - split the players pair if allowed
+ */
+short split()
+	{
+	if (val(1, 0) != val(1, 1))
+		return (1);
+	hands[2][0] = hands[1][1];
+	hands[1][1] = tkcard();
+	hands[2][1] = tkcard();
+	ncards[2] = 2;
+	printf("Hand 1: "); show(1, 0); printf(" + "); show(1, 1);
+	printf("\n");
+	printf("Hand 2: "); show(2, 0); printf(" + "); show(2, 1);
+	printf("\n");
+	tophand = 2;
+	return (2);
+	}
+/* val - tell value of card n of hand h
+ */
+short val(h, i)
+	short h;	/* which hand */
+	short i;	/* which card */
+	{
+	short n;	/* spots value of card */
+
+	n = (hands[h][i] % 13) + 1;
+	if (n > 9)
+		return (10);
+	else if (n == 1)
+		return (11);
+	else
+		return (n);
+	}
+###hndmgr.h
+/* hndmgr.h - interface for hand manager
+ */
+bool allbst();
+void deal();
+bool hit();
+bool isbj();
+CASH outcom();
+short score();
+void show();
+short split();
+short val();
+###local.h
+/* local.h - definitions for use with
+ *      Learning to Program in C
+ */
+#ifndef FAIL
+#include <stdio.h>
+#define FAIL		1
+#define FOREVER		for (;;)
+#define NO			0
+#define STDERR		2
+#define STDIN		0
+#define STDOUT		1
+#define SUCCEED		0
+#define YES			1
+#define bits		ushort
+#define bool		int
+#define metachar	short
+#define tbool		char
+#define ushort      unsigned  /* use unsigned short, if you can */
+#define void		int
+#define getln(s, n) ((fgets(s, n, stdin)==NULL) ? EOF : strlen(s))
+#define ABS(x)		(((x) < 0) ? -(x) : (x))
+#define MAX(x, y)	(((x) < (y)) ? (y) : (x))
+#define MIN(x, y)	(((x) < (y)) ? (x) : (y))
+#endif
+###nfrom.c
+/* nfrom - return a number between low and high, inclusive
+ */
+#include "local.h"
+short nfrom(low, high)
+	register short low, high;
+	{
+	short rand();
+	register short nb = high - low + 1;
+
+	return (rand() % nb + low);
+	}
+###outcom.c
+/* outcom - print outcome of hand(s)
+ */
+#include "local.h"
+#include "bj.h"
+#include "hndmgr.h"
+static CASH value = 0;
+/* outcom - print outcome of hand and compute result
+ */
+CASH outcom(bet, tophand, isinsur, isdbl)
+	CASH bet;		/* amount of player's bet */
+	short tophand;	/* how many player hands */
+	bool isinsur;	/* player took insurance? */
+	bool isdbl;		/* is player DBLDN? */
+	{
+	short h;		/* which hand */
+
+	value = 0;
+	if (isinsur && isbj(DEALER))
+		prmsg(1, 1, "Insurance wins\n", bet / (isdbl ? 4 : 2));
+	else if (isinsur)
+		prmsg(1, 1, "Insurance loses\n", -bet / (isdbl ? 4 : 2));
+	if (isbj(DEALER) && !isbj(1))
+		prmsg(1, 1, "Dealer BJ beats all but BJ",
+			-bet / (isdbl ? 2 : 1));
+	else if (isbj(DEALER) && isbj(1))
+		prmsg(1, 1, "Both BJ: push", (CASH)0);
+	else if (isbj(1))
+		prmsg(1, 1, "Your BJ wins 3 for 2", (3 * bet) / 2);
+	else
+		{
+		for (h = 1; h <= tophand; ++h)
+			{
+			if (21 < score(h))
+				value -= bet;	/* "Bust" message printed already */
+			else if (score(DEALER) == score(h))
+				prmsg(h, tophand, "Push", (CASH)0);
+			else if (score(DEALER) < score(h) || 21 < score(DEALER))
+				prmsg(h, tophand, "Win", bet);
+			else
+				prmsg(h, tophand, "Lose", -bet);
+			}
+		}
+	return (value);
+	}
+
+
+
+
+
+
+/* prmsg - print appropriate message
+ */
+static void prmsg(h, tophand, s, delta)
+	short h;		/* which hand */
+	short tophand;	/* how many hands */
+	char s[];		/* message */
+	CASH delta;		/* change of value (+ | -) */
+	{
+	if (tophand == 2)
+		printf("On hand %d, ", h);
+	printf("%s\n", s);
+	value += delta;
+	}
+#ifdef TRYMAIN
+static short bj[2] = 0;	/* isbj, for each hand */
+static short sc[3] = 0;	/* hand scores, for testing */
+main()
+	{
+	char line[BUFSIZ];		/* line of test input */
+	short len;				/* returned value from input fn */
+	short ibet;				/* players bet, as short int */
+	short ins;				/* isinsur? */
+	short toph;				/* tophand */
+	short dbl;				/* isdbl? */
+	CASH value;				/* return from outcom */
+
+	FOREVER
+		{
+		printf("%-8s %-8s %-8s %-8s %-8s %-8s %-8s %-8s %-8s\n",
+			"bet", "toph", "ins", "dbl",
+			"bj[0]", "bj[1]", "sc[0]", "sc[1]", "sc[2]");
+		len = echoln(line, BUFSIZ);
+		if (len == EOF)
+			break;
+		if (9 != sscanf(line, "%hd %hd %hd %hd %hd %hd %hd %hd %hd",
+			&ibet, &toph, &ins, &dbl,
+			&bj[0], &bj[1], &sc[0], &sc[1], &sc[2]))
+			error("outcom input error", "");
+		value = outcom((CASH)ibet, toph, ins, dbl);
+		printf("outcom() = ");
+		printf(CASHOUT, value);
+		printf("\n");
+		}
+	}
+
+
+
+
+
+
+/* score - dummy version for testing
+ */
+short score(h)
+	short h;	/* which hand */
+	{
+	return (sc[h]);
+	}
+/* isbj - dummy version for testing
+ */
+bool isbj(h)
+	short h;	/* which hand */
+	{
+	return (bj[h]);
+	}
+/* echoln - get and echo an input line
+ */
+short echoln(line, size)
+	char line[];
+	short size;
+	{
+	short len;
+
+	if ((len = getln(line, size)) != EOF)
+		printf("%s", line);
+	return (len);
+	}
+#endif
+###ttymgr.c
+/* ttymgr - tty (terminal) manager
+ */
+#include "local.h"
+#include "bj.h"
+#include "hndmgr.h"
+#include "ttymgr.h"
+#define NMSGS 4
+#define LENMSG 15
+static bool askedhit = NO;
+static bool wanthit = NO;
+static char qchar[NMSGS+1] = "dsih";
+static char qmsg[NMSGS][LENMSG+1] =
+	{
+	"Double down",
+	"Split pair",
+	"Insurance",
+	"Hit",
+	};
+static short nmsg[NMSGS] = 0;
+/* query - get players response for DBLDN, SPLIT, HIT
+ */
+short query()
+	{
+	short ask();
+	short ret;		/* return from ask() */
+
+	if (val(1, 0) == val(1, 1))
+		ret = ask("dsh");
+	else
+		ret = ask("dh");
+	askedhit = (ret != SPLIT);
+	wanthit = (ret == HIT);
+	if (wanthit)
+		ret = NONE;
+	return (ret);
+	}
+/* takes - get a YES or NO reply to question
+ */
+bool takes(s)
+	char s[];
+	{
+	short ask();
+
+	if (askedhit && strcmp(s, "h") == 0)
+		{
+		askedhit = NO;
+		return (wanthit);
+		}
+	return (ask(s) != NONE);
+	}
+/* ask - get a choice among alternatives
+ */
+static short ask(s)
+	char s[];
+	{
+	bool isbrief;				/* is prompt brief? */
+	char ans[BUFSIZ];			/* player's reply line */
+	char c;						/* player's one-char answer */
+	short i;					/* index over chars of s */
+	short j;					/* index over chars of qchar */
+	short slen;					/* length of s */
+	static short msglim = 5;	/* verbosity limit */
+	unsigned strscn();			/* gives the index of c in s */
+
+	isbrief = YES;
+	slen = strlen(s);
+	for (i = 0; i < slen; ++i)
+		{
+		j = strscn(qchar, s[i]);
+		if (++nmsg[j] <= msglim)
+			isbrief = NO;
+		}
+	if (isbrief)
+		{
+		for (i = 0; i < slen; ++i)
+			printf("%c?", s[i]);
+		printf("\n");
+		}
+	FOREVER
+		{
+		if (!isbrief)
+			{
+			printf("Type\n");
+			for (i = 0; i < slen; ++i)
+				printf("%c      For %s\n",
+					s[i], qmsg[strscn(qchar, s[i])]);
+			printf("RETURN For None\n");
+			}
+		if (getln(ans, BUFSIZ) == EOF)
+			error("Bye!", "");
+		c = tolower(ans[0]);
+		if (c == '\n')
+				return (NONE);
+		for (i = 0; i < slen; ++i)
+			if (s[i] == c)
+				return (1 + strscn(qchar, c));
+		isbrief = NO;
+		}
+	}
+
+/* strscn - return the index of c in string s
+ */
+unsigned strscn(s, c)
+	char s[];	/* string to be scanned */
+	char c;	/* char to be matched */
+	{
+	register unsigned i;
+
+	for (i = 0; s[i] != c && s[i] != '\0'; ++i)
+		;
+	return (i);
+	}
+###ttymgr.h
+/* ttymgr.h - interface for tty manager
+ */
+CASH getbet();
+bool takes();
+short query();
+###mk_bj.bat
+lccm bj dekmgr getbet hndmgr nfrom outcom ttymgr  ++  bj  +dekmgr+getbet+hndmgr+nfrom+outcom+ttymgr
+###bj.
+###EOF

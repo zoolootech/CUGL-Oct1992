@@ -1,0 +1,124 @@
+#include <stdlib.h>
+#include "pof.h"
+
+ColorNode *Build_Tree(rgb *pal)
+{
+    /* this function builds a color tree based on the palette passed */
+    int i;
+    int watch;
+    ColorNode *Root;
+    rgb temp;
+    unsigned r_ave=0, g_ave=0, b_ave=0;
+
+    for (i=1; i<256; i++)
+    {
+        r_ave += pal->Red;
+        g_ave += pal->Grn;
+        b_ave += pal->Blu;
+    }
+    r_ave /= 255;
+    g_ave /= 255;
+    b_ave /= 255;
+
+    temp.Red = r_ave;
+    temp.Grn = g_ave;
+    temp.Blu = b_ave;
+
+    Root = init_node(temp, 0);     /* Initialize the root */
+
+
+    for (i=1; i<256; i++)          /* For each color */
+    {
+        newnode(pal[i], i, Root, Root);
+    }
+
+    return(Root);
+}
+
+
+ColorNode *init_node(rgb color, char pal)
+{
+    int i;
+    ColorNode *newnode;
+
+    /* Allocate a newnode from memory */
+    newnode = (ColorNode *)malloc(sizeof(ColorNode));
+    if (newnode == NULL)
+    {
+        printf("\n A Critical Error has occurred during node allocation");
+        printf("\n for Palette #%3i.",pal);
+        exit(-1);
+    }
+
+
+    /* Initialize the color variables */
+    newnode->key.Red = color.Red;
+    newnode->key.Grn = color.Grn;
+    newnode->key.Blu = color.Blu;
+    newnode->pal_num = pal;
+
+    /* Initialize the links */
+    for (i=0; i<8; i++) newnode->Link[i] = NULL;
+
+    return(newnode);
+}
+
+ColorNode *newnode(rgb color, char pal_num, ColorNode *parent, ColorNode *child)
+{
+    char watch;
+
+    if (child != NULL)   /* The node exists */
+    {
+        /* Calculate case value  */
+        watch = (((color.Red < child->key.Red)<<2) +
+                ((color.Grn < child->key.Grn)<<1) +
+                (color.Blu < child->key.Blu));
+
+        if ((watch == 0) && (color.Red == child->key.Red) &&
+                    (color.Grn == child->key.Grn) &&
+                                                  (color.Blu == child->key.Blu))
+                                /* We have a degenerate case where two colors match! */
+                                /* So we really just want to skip over this color    */
+                    return(child);
+        child = newnode(color, pal_num, child, child->Link[watch]);
+    } else {
+                /*  A NULL node was sent with a parent node     */
+                /*  therefore a new node must be initialized    */
+
+        child = init_node(color, pal_num);
+
+        /* Now we need to link up to the parent node */
+        /* Calculate case value  */
+
+        watch = (((color.Red < parent->key.Red)<<2) +
+                 ((color.Grn < parent->key.Grn)<<1) +
+                  (color.Blu < parent->key.Blu));
+
+        if ((watch == 0) && (color.Red == parent->key.Red) &&
+                    (color.Grn == parent->key.Grn) &&
+                                                  (color.Blu == parent->key.Blu))
+                  {
+                                free(child);        /* Deallocate the newly created node */
+                                return(parent);     /* Need to return a ColorNode ptr    */
+                  }
+                  parent->Link[watch] = child;
+         }
+
+    return(child);
+}
+
+
+void Kill_Tree(ColorNode *node)
+{
+    int i;
+
+    for (i=0; i<8; i++)
+    {
+        /* If the link is other than null, launch another kill */
+        if (node->Link[i]) Kill_Tree(node->Link[i]);
+    }
+        /* after all the links are NULL, deallocate the memory */
+    free(node);
+    return;
+}
+

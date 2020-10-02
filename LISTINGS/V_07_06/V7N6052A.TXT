@@ -1,0 +1,66 @@
+
+                           Listing 3 
+
+
+/*
+    fillOval() = draws an oval centered at (x,y) with    
+                 radius in y direction of 'b' with       
+                 aspect ratio 'aspect' and fills it      
+                 with color 'color'.                     
+                                                         
+*/
+
+
+
+void fillOval(float x_cen, float y_cen, float radius, 
+    int color, float aspect)
+{
+    union REGS reg;
+
+    #define seq_out(index,val)  {outp(0x3C4,index);\
+                     outp(0x3C5,val);}
+    #define graph_out(index,val)  {outp(0x3CE,index);\
+                     outp(0x3CF,val);}
+
+    unsigned int offset;
+    char far * mem_address;
+    float a,b,aspect_square;
+    int x,y,col,row,dummy,mask,start_x, start_y,end_x,end_y;
+    float a_square,b_square,b_test;
+
+    a = radius/aspect;
+    a_square = a*a;
+    b = .729*radius;
+    b_square = b*b;
+    x = x_cen;;
+    y = y_cen);
+    start_x = max(0,x-a);
+    end_x = min (639,x+a);
+    start_y = max(0,y-b);
+    end_y = min(349,y+b);
+
+    for (col=start_x; col<=end_x; col++)
+    {
+        b_test = b_square - (b_square*(col-x)*(col-x))/a_square;
+        mask = 0x80 >> ((col) % 8);
+        graph_out(8,mask);
+        seq_out(2,0x0F);
+        for (row=start_y; row<=end_y; row++)
+            if ((long)(row-y)*(row-y) <= b_test)
+            {
+                offset = (long)row*80L + ((long)(col)/8L);
+                mem_address = (char far *) 0xA0000000L +
+                    offset;
+                dummy = *mem_address;
+                *mem_address = 0;
+                seq_out(2,color);
+                *mem_address = 0xFF;
+                seq_out(2,0x0F);
+            }
+    }
+    graph_out(3,0);
+    graph_out(8,0xFF);
+}
+
+
+

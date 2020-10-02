@@ -1,0 +1,184 @@
+        PAGE    ,132
+        TITLE   TYPEAHED - Expands type ahead buffer to 127 chars.
+COMMENT $
+        Assemble, link and convert as follows:
+        MASM TYPEAHED;
+        LINK TYPEAHED;
+        EXE2BIN TYPEAHED TYPEAHED.SYS
+
+        Install by adding the following line to CONFIG.SYS
+        DEVICE=TYPEAHED.SYS
+
+        Program changes default buffer pointers to a new area
+        contained herein if this new area is within the 64K
+        limit of the segment at 0040. This new buffer is 128
+        characters (words) long and is always loaded even if
+        not used. The buffer is reset to empty. If the error
+        message is displayed, move the line nearer the beginning
+        of the CONFIG.SYS file. The command should always be
+        ahead of any RAMDisk loader.
+
+        The address of the buffer is adjusted to bypass a bug
+        in the DOS 2.xx CON driver and ANSI.SYS.$
+
+;       ************************************************************
+;       *                                                          *
+;       *               Dummy Device Driver Header                 *
+;       *                                                          *
+;       ************************************************************
+
+CSEG    SEGMENT
+        ORG     00000H                  ; For all device drivers
+
+Header          DD      -1              ; One device
+                DW      08000H          ; Character device
+StratA          DW      Strat           ; Strategy entrance
+IntrA           DW      Intr            ; Interrupt entrance
+                DB      'Typeahed'      ; 8 character dummy name
+
+;       ************************************************************
+;       *                                                          *
+;       *                     Resident data                        *
+;       *                                                          *
+;       ************************************************************
+
+Chars           EQU     128
+Bytes           EQU     Chars*2
+NewBuff         EQU     $               ; Buffer start
+EndBuff         EQU     $+Bytes         ; Buffer end
+
+;       ************************************************************
+;       *                                                          *
+;       *                     Resident code                        *
+;       *                                                          *
+;       ************************************************************
+
+        ASSUME  CS:CSEG, DS:NOTHING, ES:NOTHING
+;       Note: TYPEAHED has no resident code, just a buffer.
+
+;       ************************************************************
+
+;       *                                                          *
+;       *                   Installation data                      *
+;       *                                                          *
+;       ************************************************************
+
+;       ROM BIOS DATA AREAS
+;       -------------------
+DATA            SEGMENT AT 00040H
+                ORG     0001AH
+BUFFER_HEAD     DW      KB_BUFFER       ; POINTER TO HEAD OF KEYBOARD BUFFER
+BUFFER_TAIL     DW      KB_BUFFER       ; POINTER TO TAIL OF KEYBOARD BUFFER
+KB_BUFFER       DW      16 DUP(?)       ; ROOM FOR 15 ENTRIES
+KB_BUFFER_END   LABEL   WORD
+                ORG     00080H
+BUFFER_START    DW      KB_BUFFER       ; ADDRESS OF START OF KEYBOARD BUFFER
+BUFFER_END      DW      KB_BUFFER_END   ; ADDRESS OF END OF KEYBOARD BUFFER
+DATA            ENDS
+
+;       DEVICE DRIVER REQUEST PACKET
+;       ----------------------------
+IOPacket        STRUC
+IO_CMDLEN       DB      ?
+IO_UNIT         DB      ?
+IO_CMD          DB      ?
+IO_STATUS       DW      ?
+                DB      8 DUP(?)
+IO_MEDIA        DB      ?
+IO_ADDRESS      DW      ?
+                DW      ?
+IO_COUNT        DW      ?
+IO_START        DW      ?
+IOPacket        ENDS
+
+;       INSTALLATION DATA
+;       -----------------
+Init    PROC    FAR
+
+Packet          DD      0               ; Request packet address
+THMess          DB      'Too high in memory! No ',07H
+Message         DB      'TYPEAHED installed',0DH,0AH,24H
+
+;       ************************************************************
+;       *                                                          *
+;       *                   Installation code                      *
+;       *                                                          *
+;       ************************************************************
+
+        ASSUME  DS:NOTHING, ES:NOTHING
+Strat:
+        MOV     WORD PTR Packet,BX      ; Save Packet address
+        MOV     WORD PTR Packet+2,ES
+        PUSH    BX                      ; Save all registers used
+        PUSH    DS
+        PUSH    AX
+        PUSH    CX
+        PUSH    DX
+
+;       NORMAL TSR INSTALLATION
+;       -----------------------
+
+
+        MOV     AX,CS                   ; From this segment address
+        SUB     AX,SEG DATA             ; subtract the DATA address
+        ADD     AX,(EndBuff-Header+0FFH)/16     
+                                        ; and add buffer size
+        PUSH    AX
+        CMP     AX,01000H               ; Test within one 64K segment
+        JNB     TooHigh                 ; No, do not change pointers
+        SUB     AX,(EndBuff-Header+0FFH)/16
+                                        ; Get segment difference
+        MOV     CL,4                    ; Convert to byte difference
+        SHL     AX,CL
+        MOV     BX,SEG DATA             ; Change info in DATA segment
+        MOV     DS,BX
+        ASSUME  DS:DATA
+        ADD     AX,OFFSET NewBuff+0FFH  ; Calculate offset of beginning
+        AND     AX,0FF00H               ; Drop last byte (DOS2.xx fix)
+        CLI                             ; Turn off keyboard
+        MOV     BUFFER_HEAD,AX          ; Put into buffer pointers
+        MOV     BUFFER_TAIL,AX
+        MOV     BUFFER_START,AX         ; and buffer addresses
+        ADD     AX,Bytes                ; Add in buffer byte size
+        MOV     BUFFER_END,AX           ; for buffer end address
+        STI                             ; Turn keyboard back on
+        MOV     DX,OFFSET Message       ; OK message
+        JMP     SHORT Installed
+TooHigh:
+        MOV     DX,OFFSET THMess        ; Too High message
+Installed:
+        PUSH    CS                      ; Make DS = CS for DOS
+        POP     DS
+        ASSUME  DS:CSEG
+        MOV     AH,9                    ; Output message
+        INT     021H
+        POP     AX                      ; From highest segment
+        AND     AX,0FFF0H               ; rounded down
+        MOV     BX,CS                   ; and this segment address
+        SUB     BX,SEG DATA             ; less the DATA address
+        SUB     AX,BX                   ; find the paragraphs used
+        MOV     CL,4                    ; Convert to bytes
+        SHL     AX,CL                   ; to save for buffer
+
+;       SPECIAL DDD TERMINATION
+;       -----------------------
+
+        ASSUME  DS:NOTHING
+        LDS     BX,DWORD PTR Packet     ; Restore Packet info
+        MOV     WORD PTR [BX+IO_ADDRESS],AX
+                                        ; Set memory request
+        MOV     WORD PTR [BX+IO_ADDRESS+2],CS
+        MOV     [BX+IO_STATUS],00100H   ; Set done bits
+        POP     DX                      ; Restore registers used
+        POP     CX
+        POP     AX
+        POP     DS
+        POP     BX
+Intr:
+        RET                             ; Exit device installaion
+Init    ENDP
+
+CSEG    ENDS
+
+        END
+; End of File

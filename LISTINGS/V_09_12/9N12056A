@@ -1,0 +1,66 @@
+/*
+INT70.CPP
+
+Source for interrupt 70 driver
+Paul A. Cornelius, August 1991
+*/
+
+#include <dos.h>
+#include <io.h>
+#include <time.h>
+
+#include "int70.hpp"
+
+extern "C" int int_70(INT_DATA*)
+{
+    const long int poke_count = 0xffff;
+    const unsigned COUNT_SEGMENT = 0x40, 
+     COUNT_OFFSET = 0x9C;
+    poke(COUNT_SEGMENT,COUNT_OFFSET,&poke_count,
+     sizeof(long));
+
+    handle_tick();  // application-specific
+
+    return 0;
+}
+
+static unsigned dummy;
+int start_timer()
+{
+    const unsigned STACK_SIZE = 3000;
+    int_intercept(0x70,int_70,STACK_SIZE);
+    REGS r,rout;
+    SREGS sr;
+    // getDS returns data segment
+    sr.es = getDS();                
+    // ES:BX points to dummy
+    // code OK for small memory model only
+    r.x.bx = (unsigned)(&dummy);    
+    // Function 0x83: SET INTERVAL
+    r.h.ah = 0x83;                  
+    r.h.al = 0;
+    // CX:DX = arbitrary large 4-byte value
+    r.x.cx = 0x500;                 
+    r.x.dx = 0;
+
+    // call interrupt 0x15
+    int86x(0x15,&r,&rout,&sr);      
+    // check carry flag per documentation
+    if (rout.x.cflag == 1)
+        return 1;
+
+    // Real Time Clock INT 0x70 is now on!
+    return 0;
+}
+
+int stop_timer()
+{
+    int_restore(0x70);
+    msleep(200);            // 200 millisecond delay
+    if (dummy == 0)
+        return 1;           // error
+
+    // Real Time Clock INT 0x70 is now off!
+    return 0;
+}
+

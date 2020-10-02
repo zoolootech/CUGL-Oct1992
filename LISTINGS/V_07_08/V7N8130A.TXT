@@ -1,0 +1,52 @@
+	
+
+--------------------------------------------------------
+Listing 3
+--------------------------------------------------------
+#include <dos.h>
+#include <time.h>
+int milli_secs = 0;
+long int micro_secs;
+volatile char kicker = 0;
+time_t burn_up , now = 0;
+union REGS uregs;
+struct SREGS sregs;
+main()
+{
+	wait_new_sec();  /* nag timer till second changes */
+	while(same_sec()) { /* for one whole second fritter away & count 976 usec */
+		hang_on_mike();   /*   intervals */
+	}
+	printf("\n~Milliseconds/sec = %d",milli_secs);
+}
+
+wait_new_sec()
+{
+	time(&burn_up); /* get long int current second since 1970 */
+	burn_up++;      /* predict next second */
+	while(now != burn_up)	{  /* are we there yet ? */
+		time(&now);
+	}
+}
+same_sec()
+{
+	if(time(&now) == burn_up)
+		return 1;
+	else
+		return 0;
+}
+hang_on_mike()
+{
+	kicker = 0;           /* unpost expiration byte */
+	uregs.h.ah = 0x83;    /* event wait */
+	uregs.h.al = 0;       /* set interval */
+	uregs.x.bx = FP_OFF(&kicker); /* post target */
+	segread(&sregs);      /* load up segment struct for int */
+	sregs.es   = sregs.ds;/* assure es:bx points to kicker  */
+	uregs.x.cx = 0;
+	uregs.x.dx = 975;     /* cx dx dword is interval in usecs (res 976) */
+	int86x(0x15,&uregs,&uregs,&sregs);
+	while(!kicker); 			/* fritter a 1024th of a sec */
+	milli_secs++;         
+}
+

@@ -1,0 +1,155 @@
+
+program access_CD;
+ var
+  buf: Ptr            (* dummy area to read data into *)
+  IOErr: integer;     (* return from I/O functions *)
+  refnum: integer;
+  startTime: longint; (* timer variables, accurate to 1/60 second *)
+  endTime: longint;
+  count: longint;     (* number of bytes to read or write *)
+  picsize: longint;   (* number of bytes in an "image" *)
+  sndsize: longint;   (* number of bytes in a "sound" *)
+  wrdsize:longint;    (* number of bytes in "text" *)
+  i: integer;         (* ubiquitous counter variable *)
+  s: string;          (* get user input here *)
+
+ procedure checkIO;   (* did I/O come out OK? *)
+ begin
+  if (IOErr <> 0) then
+   begin
+    writeln('IOErr = ', IOErr);
+    halt;
+   end;
+ end;
+
+ procedure separate;  (* access CD as though data is separated *)
+  var
+   i: integer;
+ begin
+
+  (* This first read will start CD spinning if it's quiescent *)
+  IOErr := SetFPos(refnum, fsFromStart, 0);
+  count := 1024;
+  IOErr := FSRead(refnum, count, buf);
+  checkIO;
+
+  (* Start the timer *)
+  startTime := TickCount;
+  for i := 0 to 9 do
+   begin
+    IOErr := SetFPos(refnum, fsFromStart, picsize * i);
+    checkIO;
+
+    count := picsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkIO;
+
+    (* reposition past the pictures, into the sound area *)
+    IOErr := SetFPos(refnum, fsFromStart, 10 * picsize + sndsize * i);
+    checkIO;
+
+    count := sndsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkIO;
+
+    (* reposition past the sounds, into the text area *)
+    IOErr := SetFPos(refnum, fsFromStart, 10 * (picsize + sndsize)
+        + wrdsize * i);
+    checkIO;
+
+    count := wrdsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkio;
+   end;
+
+  endTime := TickCount - startTime;
+  writeln('Separate data areas: ');
+  writeln('Total time=', endTime / 60 : 9 : 4);
+ end;
+
+ procedure adjacent;  (* access CD as though data is adjacent *)
+  var
+   i: integer;
+
+ begin
+  (* This first read will start CD spinning if it's quiescent *)
+  IOErr := SetFPos(refnum, fsFromStart, 0);
+  checkio;
+
+  count := 1024;
+  IOErr := FSRead(refnum, count, buf);
+  checkio;
+
+  startTime := TickCount;
+  for i := 0 to 9 do
+
+   begin
+    (* position to the area where combined data begins *)
+
+    IOErr := SetFPos(refnum, fsFromStart, 
+       (picsize + wrdsize + sndsize) * i);
+    checkIO;
+
+
+    count := picsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkio;
+
+    count := sndsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkio;
+
+    count := wrdsize;
+    IOErr := FSRead(refnum, count, buf);
+    checkio;
+
+   end;
+  endTime := TickCount - startTime;
+  writeln('Adjacent areas:');
+  writeln('Total time=', endTime / 60 : 9 : 4);
+ end;
+
+begin
+
+(* The file named below was one that was big enough to not *)
+(* cause positioning errors *)
+
+ ioerr := FSOpen('AVCM90AA:AIRC.NDX;1', 0, refnum);
+ if (ioerr <> 0) then
+  begin
+   IOErr := FSClose(refnum);
+   halt;
+  end;
+
+ count := 200;
+ count := (count * 1024);  (* gives 200K without overflow *)
+ sndsize := count;
+ picsize := 65536;
+ wrdsize := 32768;
+
+(* allocate area to read dummy data into *)
+ buf := NewPtr(count + picsize + wrdsize);
+ if (buf = nil) then
+  halt;
+
+ ShowText;
+
+ (* Give user a choice of which test to run first; *)
+ (* this way we can cancel out possible vagaries of *)
+ (* system caching [which was not enabled during this test] *)
+ write('Look at CD as separate areas first? (Y/N/Quit) ');
+ readln(s);
+ if (s = 'y') or (s = 'Y') then
+  begin
+   separate;
+   adjacent;
+  end
+ else if (s = 'n') or (s = 'N') then
+  begin
+   adjacent;
+   separate;
+  end;
+ IOErr := FSClose(refnum);
+end.
+
+

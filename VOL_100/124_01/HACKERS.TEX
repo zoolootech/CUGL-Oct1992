@@ -1,0 +1,218 @@
+\input a:scribe
+\f:8=ff12
+\def\FF{\f:8}
+\majorhead{The tex Hackers Guide}
+
+\head{Introduction}
+
+This document is a guide to those tex users who are, for some
+reason, dissatisfied with the way tex works. Since tex is a stage
+one program (pasted up by some hacker with more guts than brains,
+and it does what I want) it is to be expected that lots of people
+will be dissatisfied with the way tex works. Therefore, this
+document is a guide to adding things to tex allowing easy
+integration into the tex distribution, and pointier to things
+that I think need to be done.
+
+The first section discusses extending the existing macro
+packages.  The second section discusses adding new macro
+packages, and how to document them with little pain. The final
+section discusses changes to the actual tex code.
+
+Before going into how these things can be done, there are two
+things to point out. First, the tex package {\b is not in the
+public domain!} I still own all copyrights, etc. I will,
+however, allow redistribution of the package on three conditions:
+{\verse
+1) My copyright notices stay where they are.
+2) The source is distributed with the package.
+3) Fixes and improvements eventually come back to me.
+}
+
+Second, tex was written to satisfy me, and I am happy with it. It
+was designed to let me use the power of {\FF Fancy Font} on my
+math courses, and in writing letters.  It does an adequate job of
+that. It probably won't do an adequate job of anything that
+deviates too far from that.
+
+\head{Changing the Macro Packages}
+
+Probably the simplest thing in tex to change is the macro
+packages themselves. The general rule is: {\b DON'T.} The macro
+packages should be fairly complete. If you really want a large
+set of new commands, the thing to do is to add a new macro
+package that includes the commands you want. In this case, see
+the next section.
+
+\subhead{New Characters}
+
+There are two exceptions to the general rule of not changing
+macro packages. The first one is if you want to change the
+characters set around. For example, you may decide you need a new
+math mode character. Just print off a copy of the math fonts, and
+add it - probably to \example{math2,} as \example{math1} is about
+full. If you do this, send me a copy of the \example{edf} file
+for the character, and the command name you used on the
+character, and I'll see that the character/command pair winds up
+in the next distribution. Maybe not in the same place, but it
+will be there. I will also add that character to the
+documentation.
+
+Along these lines, there are two things that I would like to see
+done, but don't have time to do. First, the Greek characters are
+a bit bolder than I would desire, and not quite to the right
+scale. This could be fixed.
+
+Second, {\b all} the characters in the math2 font cause extra
+lines to be added to the output. I don't know why these lines are
+there, but it annoys me. If somebody (are you listening,
+SoftCraft?) would fix this, I would greatly appreciate it.
+
+\subhead{Changing Tex}
+
+The second reason to want to change a macro package is to take
+advantage of capabilities you have added to tex. There isn't much
+I can say about this, except that you ought to add the new
+commands to the documentation in the command list and the
+appendices. Or, when you send them to me, I can do it, and see
+that things get onto the tex distribution.
+
+\head{Adding a New Macro Package}
+
+If you don't like any of the macro packages currently available
+for tex, you'll probably want to add your own. If you are trying
+to make tex look like your favorite text formatter, I suggest
+that you consider carefully which commands should and shouldn't
+have arguments, based on the current 1K limit to argument sizes.
+For example, when the \example{scribe} package was added - to
+make tex behave like scribble - I made the \example{scribble}
+inline commands take arguments, and those that affect the
+environment were turned into simple commands.
+
+
+You should also document your new macro package in a manner
+similar to what is already there. The standard tex manual has
+been designed so that any macro package documentation can be put
+into it with very little work. Assume that your macro package is
+called \example{gort.} Then you need to create the file
+\example{mgort.tex} which documents the commands in the package.
+This file should look like \example{mbasic.tex.} Place it on the
+same disk as \example{mbasic.tex} (or whichever macro doc file
+you use), and modify the \example{macros} command in the file
+\example{texuman.tex} to use the name of the package in question.
+This should do the trick.
+
+You should also build two versions of the macro package. One
+should include all the math mode commands, and use both math
+fonts. The other should only include the miscellaneous math mode
+commands, and not include the \example{math2} font. The reason for
+this is that there are {\b lots} of math mode commands, and for
+anything but mathematics, you won't need most of them. So the
+second version of the macro package doesn't include them, and
+also frees up another font file for the user. See the two basic
+macro package files, \example{sbasic.tex} and \example{basic.tex,} for
+examples.
+
+I don't have any suggestions as to what kind of new macro
+packages need to be built. Naturally - I built the ones I want.
+
+\head{Changing tex Itself}
+
+Finally, we come to the part that every true hacker probably went
+to first. Well, it's not going to do them any good. I'm not going
+to talk about the details of tex's internals. Instead, I will talk
+about the major organization.
+
+tex was designed to give me the ability to cleanly use the power
+of {\FF Fancy Font} as quickly as possible: I was in the middle
+of a very hairy algebra course when it was written, and wanted to
+get tex up without destroying my grades. I almost succeeded.
+
+\subhead{The Insides of tex}
+
+Given this constraint, it should come as no suprise that the
+basic algorithm that tex uses is stupid. To wit: tex reads in
+characters until it finds a word break, and then outputs the word
+and starts the next one with a space. If, at any time in this
+process, a character should be read in that wouldn't fit on the
+current line, tex starts a new line, and continues collecting
+words. To compound tex's stupidity, I let \example{pfont} do all the
+hard work: pagination, justification, etc. All tex does is word
+filling, macro expansion, and environment nesting. Fortunately,
+the result is very usable.
+
+The last thing I have to say on the internals is that I tried
+hard (well, reasonably hard) to make it easy for other people to
+modify tex. Along these lines, all globals have nice, long names;
+procedures tend to have descriptive names (\examplg{docom, setleft,}
+etc), and every procedure is commented. Hopefully, you will have
+little trouble figuring out what is going on internally.
+
+\subhead{tex Wish List}
+
+There are only three things that I can think of that I would like
+to do to tex. I'm not going to do them - I'm going to play with
+my now two-month old LISP processor.
+
+First, modify tex so that it inputs an entire line and does its
+own justification. This would allow the \example{rtmarg} command to be
+turned on, and a couple of commands for handling quotes, etc
+could be added to the \example{scribe} macro package.
+
+Second, do the same thing as the first change, but vertically
+instead of horizontally: have tex do its own pagination. This
+would fix the \example{eject} kludge mentioned in the user manual,
+allow footers and headers to be done reasonably, and is necessary
+(but not sufficient) for adding footnotes to tex.
+
+Finally, the major change. This is the change I was reserving for
+version 2. Go look at the source code: you will observe that
+the \example{processtext} function is the entry point for what amounts
+to a recursive descent parser for tex files. To facilitate macros
+and such things, the functions in this parser expect that one of
+their arguments is a function that will return the next character
+in the current input stream.
+
+This parser needs to be changed so that its output can go
+somewhere other than the output file, by giving all the
+procedures a functional parameter that you pass characters to be
+output to. Such a change would allow such things as footnotes and
+endnotes. In addition, the input to the \example{ff} (or to the
+header/footer commands, if they exist by then) could be run
+through tex, so that you get to all the nice math mode characters.
+
+\head{Last Note}
+
+Well, so much for the things I think you should/can do to tex,
+and what to do if you do them. I would like to remind all the
+readers that if they are going to stay legal, they have to send
+me any changes they implement. The appropriate addresses are
+currently (Spring '83):
+{\verbatim
+
+Post Offal: Mike Meyer
+P.O. Box 1749
+Norman, OK 73070
+
+Ma Bell: 405/360-2508
+
+ARPANet: mwm@okc-unix
+
+UUCPNet: decvax!duke!uok!uokvax!mwm
+
+CNet: Ishtar - the Oklahoma CNode 406/364-1373
+}
+
+Obviously, I can't do a lot about it if you decide not to send me
+updates - unless you start distributing tex yourself. I probably
+won't get upset in that case, unless you are selling tex without my
+name on it. Then I may get legally angry.
+
+In any case, I hope you get as much good out of tex as I am.
+
+{\closing
+Happy hacking and may all your bugs be small,
+
+Mike}
+header/footer commands, if they exist by then) could be run
+through tex, so th

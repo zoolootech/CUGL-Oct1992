@@ -1,0 +1,1233 @@
+
+
+
+
+       
+                       GRAD Programmers' Reference Manual
+                                        
+                                Table Of Content
+       
+       
+       1   Introduction . . . . . . . . . . . . . . . . . . . . . .    1
+       2   Basic Philosophy . . . . . . . . . . . . . . . . . . . .    2
+       3   calcaddr and plottype  . . . . . . . . . . . . . . . . .    3
+          3.1  calcaddr . . . . . . . . . . . . . . . . . . . . . .    3
+          3.2  plottype . . . . . . . . . . . . . . . . . . . . . .    3
+       4   Frame Table  . . . . . . . . . . . . . . . . . . . . . .    4
+       5   Font Table . . . . . . . . . . . . . . . . . . . . . . .    5
+       6   HorzLine, VertLine and Line  . . . . . . . . . . . . . .    6
+          6.1  HorzLine . . . . . . . . . . . . . . . . . . . . . .    6
+          6.2  VertLine . . . . . . . . . . . . . . . . . . . . . .    6
+          6.3  Line . . . . . . . . . . . . . . . . . . . . . . . .    7
+       7   Circle, Ellipse and Arc  . . . . . . . . . . . . . . . .    9
+          7.1  Circle . . . . . . . . . . . . . . . . . . . . . . .    9
+          7.2  Ellipse  . . . . . . . . . . . . . . . . . . . . . .   10
+          7.3  Arc  . . . . . . . . . . . . . . . . . . . . . . . .   11
+       8   Text Writing . . . . . . . . . . . . . . . . . . . . . .   12
+       9   Region Filling . . . . . . . . . . . . . . . . . . . . .   13
+       10  Block Copy, Save and Load  . . . . . . . . . . . . . . .   15
+       11  Writing Graphics Display Adapter Driver  . . . . . . . .   16
+       12  Writing Printer Driver . . . . . . . . . . . . . . . . .   17
+       13  Hints on Porting to Other C Compiler or Other Machine  .   18
+       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       1   Introduction
+       
+            The source code of the GRAD library are coyrighted. However
+       you  are  free  to modify and re-distribute the source files for
+       non-commerical  use  and  you indiciate the files are originated 
+       from the GRAD library.
+            
+            If you find and bugs in the GRAD routines, please inform me.
+       Your help will be appreciated.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                        1
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       2   Basic Philosophy
+       
+            The idea of GRAD  system come to  me about 1  year ago (1986
+       summer). At that time, I want to write a program that can produce
+       high quality,  high speed full page  text and  graphics print out
+       suitable for report on a dot matrix printer.
+            
+            In order to  produce high  quality text  output,  bit mapped
+       character must be able to be loaded and included in the print out
+       as  graphics  data.  However printing a full  page  of bit mapped
+       graphics data on a dot matrix printer may take  5  to 15 minutes.
+       So  all normal  text  should be printed in  NLQ text  mode of the
+       printer instead of in graphics mode.
+            
+            Furthermore 2  types of graphics data may be included in the
+       print out.  First type is that the graphics  data  are already in
+       bit mapped format.  Another type is that the graphics data are in
+       high level command format  such  as circles,  lines and dots. The
+       advantages of second type are that the graphics data file size is
+       relatively small unless the drawing is very complicated. Further-
+       more and the drawings may be changed easily.
+            
+            Very  quickly,  I realized  that  this  program is  not that
+       simple.  As the first phase of implementation, a graphics library
+       is written which is the GRAD system. The sample program MPrint is
+       a simplified version of my original idea.
+            
+            
+            In GRAD,  you may divide the routines into different layers.
+       Layer  0  contains routines that directly deal with  the hardware
+       (including  memory).   Hence  layer   0   routines  are  hardware
+       dependent.  The  number  of routines in  this layer is kept  to a
+       minimum.   Layer  1  routines  accepts  physical  coordinates  as
+       parameters. No external GRAD functions are in this layer. Most of
+       this routines  are written in  assembly  language. GRAD functions
+       usually  spend most  of  them  in  this  layer of  codes. Layer 2
+       routines handles translation of  logical coordinates  to physical
+       coordinates and also clipping  of drawings under  current defined
+       window.  Most  of  these routines are  written in C.  Most of the
+       layer  2  routines call layer  1  routines to do actual drawings.
+       However there are some exception cases that layer 2 routines call
+       layer 0  routines directly.  But none of the routines  in layer 1
+       and layer 2 access hardware directly.
+            
+            There are also  some  functions  that  do  not  requires any
+       coordinates in the parameter  such as PlotType and ResetWin. They
+       are called system functions and do not belong  to any  one of the
+       above layers.
+
+
+
+
+
+
+
+
+
+
+
+                                                                        2
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       3   calcaddr and plottype
+       
+       3.1  calcaddr
+       
+            $calc and downln  are the two main  routines  in  the module
+       calcaddr. There are also some hardware dependent routines such as
+       settext  and setgraph  but they  would  not be discussed  in this
+       manual.
+            
+            $calc accepts x and y coordinates  in  register  AX  and BX.
+       Segment and offset values are returned in AX and BX respectively.
+       The  return  address a far address that  means the  segment value
+       should not be changed because the segment value may  be a logical
+       number only  and not a actual  segment number.  The  offset value
+       must be a even number and it must  be set  up in such  a way that
+       the  whole line  containing  the point  x,y  can  be  accessed by
+       changing the offset value only.
+            
+            downln accepts  the address of  a frame in  ES:BX and return
+       the address of the next line with  the same number of  words from
+       the beginning  of the line.  This is used to speed up drawings in
+       vertical direction such as VertLine.
+       
+       
+       3.2  plottype
+       
+            The module plottype contain routines  that  access the frame
+       memory using the address returned  by $calc and  downln. There is
+       nothing fancy so the comment in the module should be sufficient.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                        3
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       4   Frame Table
+       
+            In  the frame table,  it  contains  all information  about a
+       frame.  Information include starting address of  the frame, frame
+       width in byte,  horizontal and vertical size,  logical origin and
+       the window defined in  that frame.
+            
+            The  number of entries in  frame table controls  the maximum
+       number of frame that can be existed in GRAD system. The number of
+       entry in the  frame table is  control by the  value NFRAME during
+       compilation time. The default value of NFRAME is 10.
+            
+            The structure of  the frame table may be  changed  in future
+       version.  So do not make any assumption about  the relative order
+       of the variables inside the structure in your routines.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                        4
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       5   Font Table
+       
+            Font  table contains  information  about  each  font loaded.
+       Information  include the font  type (fix size  or variable size),
+       lowest code and highest  code number,  the default character code
+       and  also  pointers  to  the  pattern  and  individual  character
+       information.
+            
+            Individual  character  information  include  width,  height,
+       inkwidth,  cellheight,  leftmargin and topline. This is one entry
+       for fix size font and one entry per character  for  variable size
+       font.
+            
+            There  is also an  additional array of pointers  pointing to
+       pattern of individual characters for variable size font. The font
+       table contains the pointer to the array of pointers.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                        5
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       6   HorzLine, VertLine and Line
+       
+       6.1  HorzLine
+       
+            The C code  can be  used  to  replace  the  assembly routine
+       horzl. It uses the same algorithm as horzl.
+       
+           horzl(x,y,length)
+           int x,y,length;
+           {
+             int far *addr;
+             unsigned int pword;
+             int len,loop;
+           
+             addr=calcaddr(x,y);
+             len = (x & 0x0f) + length;
+             if (len <= 16) {
+               pword=LEFTWORD[x & 0x0f] ^ LEFTWORD[len];
+               fr_write(addr,pword);
+               return;
+               }
+             fr_write(addr,LEFTWORD[x & 0x0f]);
+             addr++;
+             for (loop=len >> 4; loop > 1; loop--,addr++)
+               fr_write(addr,0xffff);
+             fr_write(addr,RIGHTWORD[len & 0x0f]);
+           }
+       
+            The program should not be difficult to understand.
+       
+       
+       6.2  VertLine
+       
+            The C routine below is  functional equivalent to  vert1l. It
+       only draws a line 1 pixel wide.
+       
+           vertline(x,y,length)
+           int x,y,length;
+           {
+             int far *addr, far *downline();
+             unsigned int pword;
+             int loop;
+           
+             addr=calcaddr(x,y);
+             LASTY=y;
+             pword=DOTVALUE[x & 0x0f];
+             while (length-- > 0) {
+               fr_write(addr,pword);
+               addr=downline(addr);
+               }
+           }
+           
+            To draw a vertical line of 1 pixel wide is quite simple. But
+       when the width can be  any number  then  the routine  become much
+       more complicated.  The  routine  vertl  combines  both  horzl and
+       vert1l together.  The  downline  routine is not  included in GRAD
+       library so the code is listed below.
+           
+
+                                                                        6
+
+
+
+                       GRAD Programmers' Reference Manual
+
+           _downline proc  near
+                   push    bp
+                   mov     bp,sp
+                   push    si
+                   les     bx,[bp+smo]
+                   call    downln
+                   mov     dx,es           ; result return in DX:AX
+                   mov     ax,bx
+                   pop     si
+                   pop     bp
+                   ret
+           _downline endp
+            
+       
+       
+       6.3  Line
+       
+            The algorithm used in drawing line is explained in  the book
+       "Fundamental of Interactive  Computer Graphics"  by Foley and Van
+       Dam p.433-436.  The C routine below can draw a line but there are
+       a lot of difference between this routine and the routine  in GRAD
+       library. So the one below is for reference only.
+            
+           line(x1,y1,x2,y2)
+           int x1,y1,x2,y2;
+           {
+             int dx,dy,d,x,y,xend,yend,len,incr1,incr2,xdir,ydir,dir;
+           
+             xdir=ydir=0;
+             if ((dx=x2-x1) < 0) { dx = -dx; xdir=(-1); }
+             if ((dy=y2-y1) < 0) { dy = -dy; ydir=(-1); }
+             if (dx == 0) {
+               if (xdir)
+                 vertline(x1,y2,++dy);
+               else
+                 vertline(x1,y1,++dy);
+               }
+             if (dy == 0) {
+               if (ydir)
+                 horzline(x1,y2,++dx);
+               else
+                 horzline(x1,y1,++dx);
+               }
+             if ((xdir==(-1)) && (ydir==(-1)))
+               dir=1;
+             else if (xdir || ydir)
+               dir=xdir+ydir;
+             else
+               dir=1;
+             if (dy <= dx) {
+               d = (dy << 1) - dx;
+               incr1 = dy << 1;
+               incr2 = (dy - dx) << 1;
+               if (xdir) {
+                 x=x2; y=y2; xend=x1;
+                 }
+               else {
+                 x=x1; y=y1; xend=x2;
+
+                                                                        7
+
+
+
+                       GRAD Programmers' Reference Manual
+
+                 }
+               len=1;
+               while (x++<xend) {
+                 if (d<0) {
+                   d+=incr1;
+                   len++;
+                   }
+                 else {
+                   horzline(x-len,y,len);
+                   len=1;
+                   d+=incr2;
+                   y+=dir;
+                   }
+                 }
+               horzline(x-len,y,len);
+               }
+             else {
+               d = (dx << 1) - dy;
+               incr1 = dx << 1;
+               incr2 = (dx - dy) << 1;
+               if (ydir) {
+                 x=x2; y=y2; yend=y1;
+                 }
+               else {
+                 x=x1; y=y1; yend=y2;
+                 }
+               len=1;
+               while (y++<yend) {
+                 if (d<0) {
+                   d+=incr1;
+                   len++;
+                   }
+                 else {
+                   vertline(x,y-len,len);
+                   len=1;
+                   d+=incr2;
+                   x+=dir;
+                   }
+                 }
+               vertline(x,y-len,len);
+               }
+           }
+            
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                        8
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       7   Circle, Ellipse and Arc
+       
+       7.1  Circle
+       
+            Because a circle is symmetrical so we only need to calculate
+       the  value  for  one-eight  of  a  circle  and  by  making simple
+       transformation of  the value  calculated,  we  may  draw  a whole
+       circle.  The program for drawing circle  is  very  simple but the
+       deriving process is not simple. You may find the algorithm in the
+       book "Fundamentals of Interactive Computer Graphics"  by Foley on
+       page 442-446.
+           
+           circle_pt(ctrx,ctry,x,y)
+           int ctrx,ctry,x,y;
+           {
+             dot(x+ctrx,y+ctry);
+             dot(y+ctrx,x+ctry);
+             dot(y+ctrx,-x+ctry);
+             dot(x+ctrx,-y+ctry);
+             dot(-x+ctrx,-y+ctry);
+             dot(-y+ctrx,-x+ctry);
+             dot(-y+ctrx,x+ctry);
+             dot(-x+ctrx,y+ctry);
+           }
+           
+           circle(centerx,centery,radius)
+           int centerx,centery,radius;
+           { 
+             register int x, d;
+             int y, incr1, incr2;
+           
+             x=0;
+             y=radius;
+             incr1=6;
+             incr2=10-(radius<<2);
+             d=3-(radius<<1);
+             while (x < y) {
+               circle_pt(centerx,centery,x++,y);
+               if (d<0) {
+                   d+=incr1;
+                   incr2+=4;
+               } else {
+                   d+=incr2;
+                   incr2+=8;
+                   y--;
+               }
+               incr1+=4;
+             }
+             if (x==y) circle_pt(centerx,centery,x,y);
+           }
+           
+            The program below is  equivalent to the circle  above except
+       it is shorter but slower.
+           
+           circle(centerx,centery,radius)
+           int centerx,centery,radius;
+           { 
+             int x,y,d;
+
+                                                                        9
+
+
+
+                       GRAD Programmers' Reference Manual
+
+           
+             x=0;
+             y=radius;
+             d=3-(radius<<1);
+             while     (x < y) {
+               circle_pt(centerx,centery,x++,y);
+               d += (d < 0) ? (x << 2) + 6     : ((x - y--) << 2) + 10;
+               }
+             if (x==y) circle_pt(centerx,centery,x,y);
+           }
+       
+       
+       7.2  Ellipse
+       
+            The algorithm for ellipse is the much more  complicated than
+       circle. The equation is derived by myself using method similar to
+       that of the circle. The program below is a simplified version.
+            
+           ellipse_pt(ctrx,ctry,x,y)
+           int ctrx,ctry,x,y;
+           {
+             dot(x+ctrx,y+ctry);
+             dot(x+ctrx,-y+ctry);
+             dot(-x+ctrx,-y+ctry);
+             dot(-x+ctrx,y+ctry);
+           }
+           
+           ellipse(ctrx,ctry,a,b)
+           int ctrx,ctry,a,b;
+           {
+             long incr1,incr2,a2,b2,d,step1,step2,ptx,pty;
+             int x,y;
+           
+             x=0;
+             y=b;
+             a2= (long) a * a;
+             b2= (long) b * b;
+             step1 = a2 << 2;
+             step2 = b2 << 2;
+             d= ((b2 - (a2 * b)) << 1) + a2;
+             incr1= step2 + (b2 << 1);
+             incr2= step1 + step2 + (b2 << 1) - ((a2 * b) << 2);
+             ptx=0;
+             pty=a2 * y;
+             while (ptx < pty) {
+               ellipse_pt(ctrx,ctry,x++,y);
+               if (d<0)
+                 d+=incr1;
+               else {
+                 d+=incr2;
+                 incr2+=step1;
+                 y--;
+                 pty-=a2;
+                 }
+               ptx+=b2;
+               incr1+=step2;
+               incr2+=step2;
+               }
+
+                                                                       10
+
+
+
+                       GRAD Programmers' Reference Manual
+
+             if (ptx == pty) ellipse_pt(ctrx,ctry,x,y);
+             y=0;
+             x=a;
+             d= ((a2 - (b2 * a)) << 1) + b2;
+             incr1= step1 + (a2 << 1);
+             incr2= step2 + step1 + (a2 << 1) - ((b2 * a) << 2);
+             pty=0;
+             ptx=b2 * x;
+             while (pty < ptx) {
+               ellipse_pt(ctrx,ctry,x,y++);
+               if (d<0)
+                 d+=incr1;
+               else {
+                 d+=incr2;
+                 incr2+=step2;
+                 x--;
+                 ptx-=b2;
+                 }
+               pty+=a2;
+               incr1+=step1;
+               incr2+=step1;
+               }
+             if (ptx==pty) ellipse_pt(ctrx,ctry,x,y);
+           }
+       
+       
+       7.3  Arc
+       
+            Program for Arc1  and Earc1 can be obtained by making simple
+       modification of the program  circle and ellipse  in the preceding
+       sections.  Arc2  and Earc2 are much more complicated. I use table
+       instead of using the sine and tangent function in  order to avoid
+       using  floating  arithmetic.  Moreover the  situation  is further
+       complicated by the fact that I do  not know  the exact coordinate
+       of the starting  and ending  point.  There are a  lot  of special
+       cases in the processing.  The consequence is that I use  a lot of
+       time to debug  the routines.  Therefore do not try to  modify the
+       Arc2 and Earc2 routines unless you know what you are doing.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       11
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       8   Text Writing
+       
+            WriteStr  is  quite simple  so I will concentrate  on writec
+       here.
+            
+            In GRAD system,  there are two types of font  can be loaded.
+       They are fix size  character and  variable  size  characters. The
+       font table and the program  are  structure  in  such  a  way that
+       differences in processing are kept to a minimum. This is achieved
+       by using pointers to pointer to the desire information instead of
+       direct referencing.
+            
+            I am  not going to  describe  the  clipping  and  copying of
+       patterns to  the frame because  I  have  already  written  a more
+       efficient routine to do both of them at the same time. It will be
+       included in the next release in the near future.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       12
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       9   Region Filling
+       
+            The routine below will  extend  from the given  point to the
+       left until it  encounters  a pixel  which  value  is  opposite to
+       blankv or left edge  of the frame  is reached.  The line is drawn
+       using  the style given in  pattern.  blankv  can either  be  0 or
+       0xffff but not any other value.
+           
+           xleft(x,y,blankv,pattern)
+           int x,y,blankv,pattern;
+           {
+             int *xyloc;
+             int loop;
+             unsigned int word, word2, temp, tempdot;
+           
+             unsigned int fr_read();
+           
+             xyloc=calcaddr(x,y);
+             word2=(word=fr_read(xyloc)) ^ blankv;
+             if (word2 & DOTVALUE[x & 0x0f]) return;
+           
+             word2=word2 & RIGHTWORD[(x & 0x0f) + 1];
+             if (word2) {
+               tempdot=exchange(DOTVALUE[x & 0x0f]);
+               word2=exchange(word2);
+               for (loop=(x & 0x0f)+1; !(word2 & tempdot);
+                   loop--, word2>>=1) ;
+               temp=LEFTWORD[loop] & RIGHTWORD[(x & 0x0f) + 1];
+               word2=(pattern & temp) & (word & (~temp));
+               fr_write(xyloc,word2);
+               return;
+             }
+             word2=(pattern & RIGHTWORD[(x & 0x0f)+1]) |
+                           (word & LEFTWORD[(x & 0x0f)+1]);
+             fr_write(xyloc,word2);
+             xyloc--; x-=16;
+             while(!((word=fr_read(xyloc))^blankv) && (x >= 0)) {
+               fr_write(xyloc,pattern);
+               x-=16;
+               xyloc--;
+             }
+             if (x>=0) {
+               word2=exchange(word ^ blankv);
+               for(loop=16; !(word2 & 0x01); loop--, word2>>=1) ;
+               word2=(pattern & LEFTWORD[loop]) |
+                             (word & RIGHTWORD[loop]);
+               fr_write(xyloc,word2);
+             }
+           }
+       
+            The XHLine in GRAD system will extend in both  direction and
+       the coordinates of  the end points  are returned.  XHLine  is the
+       basis for region filling. The algorithm for SolidFill is:
+            
+           1. execute XHLine using the starting coordinate.
+           2. if nothing can be drawn, return
+           3. otherwise put the left most coordinate and length on the
+              queue
+
+                                                                       13
+
+
+
+                       GRAD Programmers' Reference Manual
+
+           4. fetch the first item on queue. the coordinates fetched is
+              the current location and the line starting from current
+              location is called the current line
+           5. go up 1 line (decrement y coordinate) and search in the
+              left direction
+           6. if a pixel in background state is found, XHLine is
+              executed and the left most coordinate and the length is
+              put on queue
+           7. the search continue until it is above the right most point
+              of current line.
+           8. go down 1 line from current location (increment y
+              coordinate by 1) and search to the left.
+           9. if a pixel in background state is found, XHLine is
+              executed and the left most coordinate and the length is
+              put on queue
+           10. the search continue until it is below the right most
+              point of current line.
+           11. if there is any item on queue, repeat process 4 to 11
+           
+            
+            Note that I use queue instead of  stack so  that  the region
+       filling routine gives a illusion of  filling in  all direction at
+       the  same time.  The memory for  the queue is  allocated from the
+       stack so it won't 'waste'  any memory when filling  functions are
+       not executed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       14
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       10  Block Copy, Save and Load
+       
+            Block file  structure is  already  explained  in  the Users'
+       manual so  it  would not  be  repeated  here.  A  new  version of
+       BlockCopy, BlockSave and BlockLoad is written such that block can
+       be copied or loaded  to any  location.  They would be included in
+       the next release in the near future.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       15
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       11  Writing Graphics Display Adapter Driver
+       
+            One basic requirement for a graphics adapter  in GRAD system
+       is that the memory for each line must be in consecutive locations
+       and the most significant bit of each byte is the left  most pixel
+       of that  byte  when displayed.  The byte with lower  address in a
+       line is  displayed on the  left.  Furthermore, the number of byte
+       for each line must be even and the memory  in the  same line must
+       be in  the same  bank if the graphics  display memory  is divided
+       into banks.
+            
+            I shall discuss the writing of graphics adapter according to
+       different cases.
+            
+       Case I:   All  graphics  display memory  can be  accessed without
+                 changing any page  register  or  toggling  any software
+                 switch.
+            
+            The modification  required  is quite  simple. Firstly change
+       the  location  defined for _SCREEN in  calcaddr.asm.  Then change
+       $calc  and downln  for  your  graphics  display  card.  Since the
+       address  return  by  $calc is a  far address so  the offset value
+       should be small enough such  that every  byte in the line  can be
+       accessed without changing the segment value.
+       
+       Case II:  Graphics memory  is  divided into banks  but memory for
+                 each line is in the same bank.
+            
+            Same as Case I and then change $or,  $and and $xor such that
+       they  can change  to  appropriate bank  using information  in the
+       segment value. phyaddr routine has to be written too. JLASER is a
+       example for this case.
+            
+            
+            
+            Then you may need to  rewrite some  supporting routines such
+       as settext and setgraph.
+       
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       16
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       12  Writing Printer Driver
+       
+            Information given in the users'  manual should be sufficient
+       for  writing printer drivers  for  all  printer  providing  8 bit
+       graphics mode.  In the section below, I shall describe the way to
+       write drivers for 7 bit and 24 bit graphics mode printer.
+            
+            Firstly,   you  should  define  the  control   sequences  in
+       prtcntl.c as described in the users' manual.
+            
+            For 7 bit graphics mode, change ndot in pframe.c from 8 to 7
+       and then change prt in prtgc.asm so that the data can be send out
+       properly.
+            
+            If you use a  24-pin  printer,  you  need  to  do  some more
+       things. Firstly, change ndot to 24. You need to change the prt in
+       prtgc such that 3  bytes in a row are generated. Inside prt,  you
+       may use any registers except si and di unless you save them first
+       and then restore them  before return.  Furthermore, if the length
+       of data  graphics  are required  to  be  included  in the control
+       sequence,  you may have  to  modify prtpc and  optprt in pframe.c
+       and rmv0  in  prt.asm.  It is because the length  in  the control
+       sequence should be the number of columns of graphics data instead
+       of  the number  of  bytes.  You cannot divide the number  of data
+       byte by  a factor  using the standard  features.  Furthermore the
+       rmv0 only look for the last non-zero byte in the output data. You
+       need to change either  rmv0  or optprt to ensure the length  is a
+       multiple of 3.
+            
+            After making the changes, recompile all modified files.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       17
+
+
+
+                       GRAD Programmers' Reference Manual
+
+       13  Hints on Porting to Other C Compiler or Other Machine
+       
+            To port GRAD  to other C  compiler or other system,  I think
+       the most difficult part is the use far and huge  pointers and the
+       large number of assembly routines.
+            
+            If the C compiler does not have  the far or  huge pointer or
+       the architecture  of  the object  machine does  not need  to have
+       different kinds of pointer,  the first thing you need to do is do
+       eliminate  all those far and huge key words and the none standard
+       function calls halloc and hfree.
+            
+            After that  rewrite calcaddr.asm  and plottype.asm  and then
+       use the C routines supplied  in the documentation  to implement a
+       simple system first.
+            
+            Rewriting  the assemble  routines will be  difficult but not
+       impossible.  But in the initial implementation,  you should avoid
+       the following functions:  Arc2, Earc2 and related portion in circ
+       and Ell, SolidFill, PatternFill and XHLine, Line (use the version
+       given in this manual instead), writec and WriteStr.
+            
+            Good Luck !
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                                                       18
+
+
+

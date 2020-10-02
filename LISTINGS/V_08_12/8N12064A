@@ -1,0 +1,128 @@
+
+
+/*      TITLE:      Mouse Event Queue;
+
+	FUNCTION:   Handles construction and destruction of an event
+		    queue to ease MicroSoft-compatible mouse event
+		    management;
+
+	FILENAME:   MOUSEQ.C;
+
+	COMPILER:   TURBO C V. 1.5+ Small Memory Model;
+
+	REQUIRES:   MOUSEQ.H;
+
+	VERSION:    1.0;
+	DATE:       12/31/89;
+	AUTHOR:     Michael Kelly;
+
+*/
+
+
+#include <stdlib.h>
+#include "mouseq.h"
+
+static unsigned int num_links = 0;
+EVENT *head = NULL, *tail = NULL;
+
+/*
+ *  int set_que(unsigned int que_entries);
+ *
+ *  attempts to create a circular, singly linked list large
+ *  enough to store "que_entries" number of mouse events
+ *
+ *  on success:     head and tail point to first link in list
+ *                  local variable num_links equals que_entries
+ *
+ *  returns:        1
+ *
+ *  on failure:     calls free_que() to free memory allocated
+ *                  before an allocation failure, if any
+ *
+ *  returns:        0
+ */
+int set_que(unsigned int que_entries)
+{
+    if(que_entries < 3)
+	return 0;
+
+    head = (EVENT *) malloc(sizeof(EVENT));
+    if(! head)
+	return(0);
+
+    tail = head;
+    head->next = NULL;
+    head->xcoord = 0;
+    head->ycoord = 0;
+    head->buttonbits = 0;
+    head->maskbits = 0;
+    head->valid = 0;
+
+    num_links = 1;
+
+    while(--que_entries)  {
+	tail->next = NULL;
+	tail->next = (EVENT *) malloc(sizeof(EVENT));
+	if(! tail->next)  {
+	    free_que();
+	    return 0;
+	}
+	else
+	    ++num_links;
+
+	/*
+	 *  could have used calloc() to zero members of EVENT structure
+	 *  but for this example it is done explicitly
+	 */
+	tail = tail->next;
+	tail->xcoord = 0;
+	tail->ycoord = 0;
+	tail->buttonbits = 0;
+	tail->maskbits = 0;
+	tail->valid = 0;
+    }
+
+    /*
+     *  make queue circular, then point head and tail
+     *  to first link in list
+     *  if handler() sees tail->next == head, it assumes the
+     *  event queue is full, and returns to the mouse driver
+     */
+    tail->next = head;
+    tail = tail->next;
+
+    return 1;
+}
+
+void free_que()
+{
+    EVENT *linkptr = NULL, *prev_linkptr = NULL;
+
+    if(! num_links)     /* num_links set by set_que() */
+	return;
+
+
+    linkptr = head->next;
+
+    /*
+     *  save link pointer int prev_linkptr
+     *  bump link pointer to next position
+     *  then free the previous link pointer
+     */
+    do  {
+
+	prev_linkptr = linkptr;
+	linkptr = linkptr->next;
+	if(prev_linkptr)
+	    free(prev_linkptr);
+
+    }
+    while(--num_links);
+
+    if(head)
+	free(head);
+
+     head = tail = NULL;
+}
+
+

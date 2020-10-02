@@ -1,0 +1,2563 @@
+SHERLOCK
+C Programming Tool
+
+ 
+February 1, 1990
+Version 1.5
+
+
+Edward K. Ream
+1617 Monroe Street.
+Madison, WI 53711
+
+
+
+CHAPTER 1  INTRODUCING SHERLOCK
+
+
+Welcome to Sherlock!  Sherlock is not an ordinary programming tool and
+you may have some questions about it: what is it, what features does it
+have, how does it operate, how will it benefit you, how do you use it, how
+does it compare with other tools and techniques, how easy will it be to use,
+how can you customize it?  This chapter poses and answers these kinds of
+questions and along the way provides examples showing how to use
+Sherlock.
+
+
+What is Sherlock, anyway?
+
+Sherlock is a debugging, tracing and profiling tool for the C programming
+language.  That is, Sherlock allows you to test and debug C programs by
+examining various traces.  As an added benefit, Sherlock offers detailed
+statistics about your program.  Sherlock consists of C language macros
+and support routines called by those macros.
+
+
+Why should I use Sherlock?
+
+Sherlock allows you to build, study, enhance and maintain more complex
+programs in less time.  It gives you a better view of your program than
+other kinds of debuggersDyou get more useful information and less
+useless data.  Sherlock reveals your program at any level you wish, from a
+global, overall, landscape view to a very detailed view.  And you get to choose the exact format in which the information is presented.  Sherlock
+is very flexible and can be used with very large and complex programs,
+including programs that use overlays and re-entrant programs.
+
+
+How does Sherlock work?
+
+The basic idea behind Sherlock is simple: you can create individual tracing
+instructions, written in the C language, which lie dormant in your program
+until enabled while your program is executing.
+
+
+That sounds very simple.  What's the big deal?
+
+The ability to add hide latent instructions inside a program and to enable
+them while the program is running turns out to be very powerful.
+Typically these dormant instructions are tracing statements such as print
+statements.  By enabling various sets of these tracing instructions you can
+produce literally thousands of different traces from your program without
+changing it or recompiling it.  This is a very fast and handy way of
+pinpointing the location of bugs, especially pointer bugs.
+
+
+Isn't using Sherlock like putting print statements throughout a program?
+
+Not really.  If you just insert print statements throughout your program
+you are buried in useless output.  The sheer volume of the output hides the
+information that would make a difference to you.  The only way to make
+sense of the output is to get rid of most of it.  Alas, removing the print
+statements and recompiling takes a lot of time.  Also, once print statements
+have been removed they are not available later until they have been re-
+inserted and and the program recompiled and relinked.  You just can't be
+very flexible this way.
+
+With Sherlock, you enable tracing statements without changing your
+program in any way.  Generating different traces is done in a matter of
+seconds, not minutes.  And since your program remains unchanged, bugs
+remain stable;  their symptoms do not change as they would if you added
+or deleted print statements.
+
+
+How is it possible to enable or disable a single C instruction?
+
+It's done with macros.  The instruction or instructions are entered as the
+arguments to special tracing macros.  For instance, suppose you want to
+disable the following print statement:
+
+	printf("The value of i is %d\n", i);
+
+The TRACE macro is one of several that you might use.  It takes two
+arguments.  The first is the name that will be given to the disabled
+statement, say "abc".  The second is the statement or statements we want to
+disable.  The complete TRACE macro would look like this:
+
+	TRACE("abc", printf("The value of i is %d\n", i));
+
+Let's look at this carefully.  The name given to the print statement is
+represented by the C string "abc".  The comma after the "abc" separates the
+two arguments.  Next comes the printf statement and two right
+parentheses, one for the printf statement and one for the TRACE macro.
+Notice that the semicolon that ends the printf statement has been omitted.
+It would also be all right to leave it in, like this:
+
+	TRACE("abc", printf("The value of i is %d\n", i););
+
+The effect of this macro is as follows: the print statement is executed when
+control reaches the macro only if the symbol "abc" has already been
+enabled.
+
+Please note: the operation of the TRACE macro varies drastically from the
+more traditional kind of debugging macros often used in programming
+projects.  Sherlock macros enable or disable tracing code during the
+execution of the program..  Traditional debugging macros require that the
+program be recompiled in order to enable or disable the code in the macros
+  The effect of this difference is enormous.
+
+
+Can other kinds of statements besides print statements be used?
+
+Yes.  You can disable any executable C statement or sequence of
+statements, including blocks.  For instance, a very useful kind of tracing
+statement might be a function call which would print out a complicated data
+structure.
+
+
+How do you tell Sherlock which macros you want to enable or disable?
+
+The most common way is to add special arguments to the command line.
+For instance, to enable any macro whose name is "abc" you would add the
+following argument to the command line:
+
+	++abc
+
+You can also enable macros while your program is running using other
+Sherlock macros.
+
+Won't the extra command line arguments interfere with my program?
+
+No.  Sherlock removes these special arguments from the command line so
+they will be completely invisible to your program.  They will not interfere
+with the argument processing logic of your program in any way.
+
+
+How does Sherlock know which arguments to delete from the command line?
+
+All Sherlock arguments are preceded by one of two prefixes: an "on
+prefix" that enables macros and an "off-prefix" that disables macros.  You
+should choose each prefix to be something that will distinguish Sherlock
+arguments from all other arguments to your program.  In the example
+above, the prefix is ++.
+
+
+Putting these macros into my programs seems like a lot of work to me.
+
+Sherlock includes a utility program called SPP, for Sherlock Pre-Processor,
+which will put macros at the entry and exit of all your functions
+automatically, which is where you most often want them.
+
+
+You mentioned that Sherlock is also a profiling tool.  What does that mean?
+
+Sherlock gathers statistics automatically.  Sherlock counts how many times
+each macro was encountered and also computes timing statistics using an
+interrupt handler.  Sherlock associates these statistics with the names
+defined by the macros.  All the details are handled by the macros.  You
+may print a report of the statistics at any time.
+
+
+How many Sherlock macros are there?
+
+Over 30.
+
+
+Why so many?
+
+Many macros do the same basic thing with minor variations.  For instance,
+ there is a TRACEP macro which is acts the same as TRACE except that
+TRACEP prints its first argument, i.e., the name associated with the
+macro, before executing the disabled instruction.  This saves some space in 
+your program.  There are also macros used to initialize the Sherlock
+system, to enable or disable macros, and to print a report of statistics.
+
+
+Must I remove all the macros when I am done debugging?
+
+No.  You can simply undefine a single compile-time variable, recompile
+and relink.  All the code generated by the macros will disappear and the 
+executable portion of your program will contain absolutely no evidence that 
+Sherlock macros exist in the source code. Thus, there is no need to 
+physically eliminate the macros from your source files.  There is a utility 
+program, called SDEL, which will remove Sherlock macros from a source 
+file if you want.
+
+
+Can I choose different names for the Sherlock macros?
+
+Yes.  All you have to do is to change names defined in a standard header 
+file.  You will still be able to use SPP and SDEL.  Both tools allow you to 
+specify alternate macro names to be used instead of the standard macro 
+names.
+
+
+What if I want to change how the macros work?
+
+Full source code is provided for all macros, support routines and utility 
+programs except SPP. To use the Sherlock system on another machine you 
+need only recompile the support routines on the new machines.  You will 
+need to rewrite the interrupt handler only if you wish to gather timing 
+statistics on the new machineDSherlock will work without the interrupt 
+handler.
+
+
+
+CHAPTER 2  BEFORE USING SHERLOCK
+
+
+This chapter provides information you should know before using 
+Sherlock.  It lists the hardware and software required, it reminds you to 
+create a backup copy of the distribution disk containing Sherlock, and it 
+lists the files that are distributed with the Sherlock system.
+
+
+System Requirements
+
+o An IBM PC/XT/AT computer or compatible with two floppy disks or a 
+hard disk.
+
+o The MS-DOS operating system.
+
+o Either the Microsoft C compiler or the Turbo C compiler.  Minor 
+modifications in Sherlock's source code will allow Sherlock to compile 
+using other C compilers.
+
+o The Microsoft MASM macro assembler.  (Used only when changing the 
+interrupt handler.)
+
+
+Backing Up Your Disks
+
+Please back up the distribution disks before using Sherlock.  Use the DOS 
+COPY command to copy all the files on the distribution disks to backup 
+disks.  Your backup disks will be used as working disks.
+
+
+Files on Your Disk
+
+File		Description
+
+read.me		Late breaking news and information.  Please read 
+		this file first.
+*.mak		Make files for the Turbo C compiler version 1.5.
+*.mmk		Make files for the Microsoft C compiler version 
+		5.00 or later.
+*.lnk		Link files for the Turbo C linker.
+*.ml		Link files for the Microsoft linker.
+cpp.exe		C Preprocessor whose source code illustrates the 
+		use of Sherlock's macros.
+\cpp\*.c	Source code for CPP.
+\cpp\*.h	Header file for CPP.
+dumpregs.c	C Language source code for a program illustrating 
+		the use of regs.asm.
+prf.asm		Assembly language source code for the interrupt 
+		handler.
+prfnear.obj	Object code for interrupt handlerDfor memory 
+		models with small code spaces.
+prffar.obj	Object code for interrupt handlerDfor memory 
+		models with large code spaces.
+regs.asm	Assembly language source code for the register 
+		dumper.
+regsnear.obj	Object code for the register dumperDfor memory 
+		models with small code spaces.
+regsfar.obj	Object code for the register dumperDfor memory 
+		models with large code spaces.
+sdel.exe	Utility program which deletes all Sherlock macros 
+		from a single source file.
+sdel.c		C language source code for SDEL illustrating the 
+		use of Sherlock's macros.
+sdif.exe	Special purpose file comparison program.
+sdif.c		The C language source code for SDIF.
+sherlock.c	C language source code for support routines.
+sl.h		Preferred definitions of macros.
+sl1.h		Alternate definitions of macros.
+spp.exe		Utility program which inserts Sherlock macros 
+		into a single source file.
+
+
+Quick Start
+
+This is the super-condensed version of the installation procedure.
+
+1. Insert Sherlock macros into functions that you want to trace.  Sherlock 
+comes with a stand alone tool, called SPP, which will do this automatically 
+for you.  See the section called SPP of the User's Manual for details.
+
+2. Insert the SL_INIT and SL_PARSE macros into your main() function as 
+the first executable statements.  Again, SPP will do this automatically for 
+you.
+
+3.  Insert the line     #include "sl.h"   in each source file containing a 
+Sherlock macro.  This can be done automatically using the -i option of 
+SPP.  Alternatively, if you have a single header file which is inserted in all 
+your source files, insert the line  #include "sl.h" in that header file.
+
+4. Recompile all files which contain Sherlock macros.  Make sure to 
+#define the compile time symbol called SHERLOCK.  The easiest and best 
+way to do this is with a command line option to the compiler.
+
+5. Compile the source code for the Sherlock support routines, located in 
+sherlock.c.  Make sure the memory model used when compiling the 
+support routines is the same as the memory model used when compiling 
+the rest of the files of your program.  Sample make and link files to 
+accomplish this step are included in the directory called sherlock.
+
+6. Link the following files together to produce an executable version of 
+your program:
+
+o All the .obj files produced by compiling the files of your program.
+o The .obj file produced by compiling sherlock.c.
+o One (and only one) of the following two files:  prffar.obj or prfnear.obj.
+
+Note:  Use prffar.obj when using memory models that have a code space 
+larger than 64K.  Use prfnear when using memory models that have a code 
+space limited to 64K or less.
+
+7. Run your program.  To enable traces, add Sherlock command line 
+arguments to your program's command line. For example, to enable 
+tracing of a function called f(), add the argument ++f to the command line.  
+
+8. When you are done debugging, recompile all your files which contain 
+Sherlock macros with the compile time constant SHERLOCK not 
+#define'd.  The code produced by the Sherlock macros will disappear.  
+Relink all those files to produce a production version of your program.  Do 
+not link in the .obj file produced by compiling sherlock.c.  Do not link in 
+either prffar.obj or prfnear.obj.
+
+
+
+CHAPTER 3  USING SHERLOCK
+
+
+This chapter contains a tutorial introduction to Sherlock.  It tells you 
+everything you need to know to start using Sherlock.  After an initial 
+overview, the various macros comprising Sherlock will be discussed in 
+detail, with numerous examples along the way.  The last section discusses 
+how to enable macros using command line arguments.  For some tips 
+about debugging C programs, see the next chapter.  For the most complete 
+information about any aspect of the Sherlock system, see chapter five.
+
+
+Overview
+
+The Sherlock system consists of three main parts: tracing macros, other 
+macros including initialization and statistics reporting macros and support 
+routines called by the macros.  The support routines form the "hidden 
+machinery" of the Sherlock system and will not be discussed further in this 
+overview.
+
+Sherlock's tracing macros are the most visible and important part of the 
+Sherlock system.  These tracing macros allow you to create tracing 
+statements embedded throughout your program which can be enabled or 
+disabled without recompiling your program or changing the executable 
+image of your program in any way.  Tracing macros also provide a 
+framework for gathering statistics about your program.
+
+Each tracing macro defines a tracepoint, a tracepoint name and a list of 
+tracepoint actions.  A tracepoint is simply the location of the macro, the 
+tracepoint name is a C language string which names the tracepoint and the 
+tracepoint actions consist of one or more executable C language statements 
+which are executed only if the tracepoint has been enabled.
+
+Let's look at one kind of tracing macro, called TRACE.  The format of this 
+macro is:
+
+	TRACE(tracepoint_name, tracepoint_actions);
+
+In other words, this macro takes two arguments, a tracepoint name and a 
+list of tracepoint actions.  For example:
+
+	TRACE("print_abc", printf("The value of abc is %d/n", abc));
+
+Notice the two closing parentheses.  The first ends the printf statement and 
+the second ends the TRACE macro.  In this example, the tracepoint name is 
+a string
+
+literal, namely "print_abc", and the tracepoint actions consists of the single 
+statement:
+
+	printf("The value of abc is %d/n", abc);
+
+The operation of this TRACE macro is straightforward: the print statement 
+will be executed only if the tracepoint named print_abc has been enabled.
+
+Please note: the operation of the TRACE macro varies drastically from the 
+more traditional kind of debugging macros often used in programming 
+projects.  Sherlock macros enable or disable tracing code during the 
+execution of the program. Traditional debugging macros require that the 
+program be recompiled in order to enable or disable the code in the macros.  
+The effect of this difference is enormous.  With Sherlock, you can scatter 
+tracing macros throughout your program with no ill effects. With 
+traditional debugging macros, this strategy is simply not possible because 
+you would be buried in tracing output.
+
+How are tracepoints enabled?  There are two ways: from the command line 
+using special Sherlock arguments or from within your program using 
+Sherlock macros.  In practice, the command line is most often used.  
+Sherlock arguments consist of a prefix followed by a tracepoint name.  
+There are two possible prefixes: an on_prefix which enables the following 
+tracepoint name and an off_prefix which disables the following tracepoint 
+name.  These prefixes are defined by an initialization macro called 
+SL_PARSE and should be chosen so that Sherlock arguments can be 
+distinguished from all other command line arguments.  The SL_PARSE 
+macro processes all Sherlock arguments and then deletes them from the 
+command line so that they will not interfere with the argument processing 
+logic of your program. 
+
+Any string may be used for these prefixes, and in this manual we will 
+assume that the on prefix is ++ and the off prefix is - -.  For example, to 
+enable tracing for the tracepoint named print_abc, the following command 
+line argument could be used:
+
+	++print_abc
+
+Wildcard characters and other construction may be used in Sherlock 
+arguments.  See the section on command line arguments for more details.
+
+To summarize, here are the steps to use Sherlock:
+
+1. Insert Sherlock macros throughout your program.  This is easy because 
+Sherlock comes with a utility program called the Sherlock Preprocessor 
+(SPP)  which will insert tracing macros automatically at the beginning and 
+end of every function in a file.  The tracing macros created by SPP will 
+print the values of all arguments to functions as well as the value returned 
+from all functions.
+
+2. The Sherlock macros are defined in a header file called sl.h.  Insert the 
+following statement in every file that contains a Sherlock macro:
+
+	#include <sl.h>
+
+The SPP program will insert this statement for you if you desire.
+
+3. Compile the files containing the Sherlock macros as usual and link in the 
+support routines to create an executable version of your program.
+
+4. Run your program and enable various tracepoints using Sherlock 
+command line arguments.  On successive runs, focus on important details 
+by enabling different tracepoints.
+
+5. After debugging is complete, remove the code generated by Sherlock 
+macros.  You can do this without removing the macros themselves by 
+undefining the compile time constant called SHERLOCK and recompiling.  
+Absolutely no overhead from the Sherlock macros will remain in your 
+program.
+
+6. Most people will want to leave Sherlock macros inside their source file 
+so that they may be reactivated later by redefining the SHERLOCK 
+constant and recompiling.  However, a utility called SDEL will remove all 
+Sherlock macros from a source file if you desire.
+
+This concludes the overview of the Sherlock system.  The next sections 
+introduce you to all of the Sherlock macros and will discuss details 
+concerning Sherlock command line arguments, header files and statistics.
+
+
+Initialization: SL_INIT, SL_PARSE, SL_ON, and SL_OFF
+
+Right at the start of your program, Sherlock's support routines must be 
+initialized and the Sherlock arguments on the command line must be 
+processed and removed.
+
+The SL_INIT macro initializes Sherlock's support routines.  This macro 
+must be executed before any other macro.  The best place for the SL_INIT 
+macro is the very first executable statement of the main() routine.  The SPP 
+program will insert the SL_INIT macro at that spot for you.  Note that the 
+name is all UPPER CASE, as are the names of all Sherlock macros.
+
+In the language of the draft C standard, the SL_INIT macro, like all of the 
+Sherlock macros, is a "function-like" macro, which means that parentheses 
+are required after it even though the macro takes no arguments.  Like this:  
+SL_INIT();
+
+The SL_PARSE macro enables or disables tracepoints by processing an 
+argument list vector.  Most often, the vector is simply the argv vector 
+passed by the operating system to the main() routine, but it doesn't have to 
+beDyou can set up your own if you want.  The SL_PARSE macro may be 
+called more than once, so you can enable or disable tracepoints from inside 
+your program as well as from the command line.  Typically, the 
+SL_PARSE macro should be placed immediately following the SL_INIT 
+macro in the main() routine.  Again, the SPP program will insert the 
+SL_PARSE macro for you there.
+
+SL_PARSE takes four arguments.  The format is:
+
+	SL_PARSE(argc, argv, on_prefix, off_prefix);
+	int argc; char *argv[], *on_prefix, *off_prefix;
+
+The first two arguments describe an argument list vector just like the argc 
+and argv arguments passed to main().  In other words, argv is a pointer to 
+a list of strings and argc is one more than the number of arguments in 
+argv[].  The argv vector is terminated by a NULL string so that  argv[argc] 
+is NULL.  
+
+The on_prefix and off_prefix arguments must be C strings, either string 
+literals or pointers to arrays of characters.  All arguments (i.e., all strings in 
+the argv vector) whose prefix is either on_prefix or off_prefix are 
+processed as Sherlock arguments and removed from the argv vector.  The 
+argc count is decremented by one for every deleted argument.  Arguments 
+that do not start with either the on_prefix or the off_prefix are not changed 
+by SL_PARSE.
+
+Here is an example of a typical main routine:
+
+	main(int argc, char ** argv)
+	{
+		declarations of local variables.
+
+		SL_INIT();
+		SL_PARSE(argc, argv, "++", "- -");
+
+		executable statements...
+	}
+
+All examples in this manual will assume that the prefixes are ++ and - -.  
+However, any C string may be used for the off prefix or on prefix.  For 
+example, to set the on_prefix to !+ and the off_prefix to !-, you would use 
+the following call to SL_PARSE:
+
+	SL_PARSE(argc, argv, "!+", "!-");
+
+Here is a program that simply prints its command line arguments.  Note 
+that it will not print any Sherlock argument, i.e., any argument starting 
+with ++ or - -.
+
+	/* Echo command line arguments. */
+	main(argc, argv)
+	int argc;
+	char **argv;
+	{
+		int i;
+
+		/* Process and remove Sherlock arguments. */
+		SL_INIT();
+		SL_PARSE(argc, argv, "++", "- -");
+
+		/* Print non-Sherlock arguments. */
+		argc- -;
+		argv++;
+		for (i = 1; i < argc; i++) {
+			printf("argv[%d] = %s\n", i, *argv);
+			argv++;
+		}
+	}
+
+The SL_ON and SL_OFF macros also enable or disable tracepoints from 
+within your program and are easier to use than SL_PARSE.  Each macro 
+takes one argument, the name of the tracepoint to be enabled or disabled.  
+SL_ON enables the tracepoint while SL_OFF disables the tracepoint.  The 
+name of the tracepoint is not preceded by either the on_prefix or the 
+off_prefix.  
+The following example shows how to enable tracing for a selected range of 
+loop iterations:
+
+	for (i = 0; i < 100; i++) {
+		if (i = = 20) {
+			SL_ON("complicated_function");
+		}
+		complicated_function(i);
+		if (i = = 30) {
+			SL_OFF("complicated_function");
+		}
+	}
+
+The following sections discuss tracing macros, the heart of the Sherlock 
+system.
+
+
+Tracepoint Names and Statistics: STAT, STATB and STATX
+
+STAT is the simplest tracing macro.  It takes one argument, a tracepoint 
+name.  For example:
+
+	STAT("rose");
+
+Although closely related to the other tracing macros, STAT produces no 
+output.  STAT's only function is to provide a label for a count statistic, 
+which is simply the number of times control reaches the tracepoint defined 
+by STAT.  All tracing macros have a count statistic associated with their 
+tracepoint name.  Count statistics are always updated regardless of whether 
+tracing for a particular tracepoint has been enabled or not.
+
+In order to provide better error checking, there are restrictions on the kinds 
+of characters that may appear in tracepoint names;  tracepoint names may 
+contain lower case letters, numerals and the underscore character, but not  
+blanks or special characters such as ( ) { } + etc.  The following are valid 
+tracepoint names:
+
+	STAT("rose_is_a_rose");
+	STAT("rose25");
+
+The following are NOT valid tracepoint names:
+
+	STAT("rose water"); 		blank character
+	STAT("wine&roses");		& special character
+
+There are two additional members of the STAT family, STATB and 
+STATX.  These two macros are used to gather timing statistics.  Timing 
+statistics are generally more useful than count statistics since they relate 
+directly to program speed.  On the other hand, timing statistics are a little 
+more difficult to gather than count statistics.  Timing statistics measure the 
+time spent in timing code.
+
+The STATB macro works just like the STAT macro, except that the STATB 
+macro is an entry macro, that is, STATB defines the start of a section of 
+timing code.  Similarly, the STATX macro is an exit macro, that is, STATX 
+defines the end of a section of timing code.  In general, the suffix 'B' in the 
+name of a tracing macro indicates that the macro is an entry macro, while 
+the suffix 'X' in the name of a tracing macro indicates the macro is an exit 
+macro.  Count statistics are updated for STATB but not STATX.
+
+Most often, timing code consists of an entire function, though that is not 
+required.  For example, to measure the time spent in a function without 
+generating any tracing message you would do something like:
+
+int f()
+{
+	STATB("f");
+	body of f;
+	STATX("f");
+}
+
+The support routines keep track of statistics using an internal timing stack.  
+At run time, each entry macro must be paired eventually with an exit 
+macro.  For example, if you put an entry macro at the beginning of a 
+function then every exit from the macro must contain an exit macro.  When 
+an exit macro is executed, Sherlock verifies that its tracepoint name 
+matches the tracepoint name of the last entry macro, i.e., the macro on the 
+top of the timing stack.  A warning message occurs if there is a mismatch. 
+Such a warning indicates that timing statistics are not accurate.
+
+The current nesting level is the number of entry macros that have been 
+executed for which an exit macro has not been executed.  The output from 
+all tracing macros is preceded by level dots, i.e., one period for each level 
+of nesting.
+
+Sherlock provides two kinds of timing statistics: cumulative and non-
+cumulative.  Cumulative timing statistics measure the total time spent in 
+timing code, including any time spent in nested timing code.  Non-
+cumulative timing statistics excludes time spent in nested timing code.  In 
+other words, cumulative statistics are incremented at all levels of the timing 
+stack, while non-cumulative statistics are updated only at the top of the 
+timing stack.
+
+The following paragraphs will be of interest only to advanced users of 
+Sherlock who wish to gather the best timing statistics possible.  Thanks go 
+to James E.G. Morris of Atari Games Corporation for suggesting 
+improvements in the way timing statistics are handled.  
+
+Version 1.5 of the support routines provides ways to adjust the timing 
+statistics gathered by Sherlock to factor out the overhead caused by calling 
+and returning from the Sherlock macros.  The Sherlock support routine 
+sl_dump() now  subtracts a "fudge factor," called TIME_ADJUST, from 
+the timing statistics as the report of the statistics is being generated.  This 
+fudge factor affects only the output of the SL_DUMP macroDthe actual 
+gathering of timing statistics is not affected in any way by 
+TIME_ADJUST.
+
+The units of TIME_ADJUST are ticks per 1000 calls to Sherlock macros, 
+and TIME_ADJUST is supplied as a compile-time constant on the 
+command line when compiling sherlock.c.  If no value for 
+TIME_ADJUST is supplied, it is set to zero, which is what you get by 
+default.
+
+The proper value of TIME_ADJUST depends on several factors: the speed 
+of your machine, its "tick" rate, the "speed up rate,"  i.e., the value of 
+sl_speed used in sherlock.c, which version of Sherlock macros is used, 
+preferred or alternate, and which memory model is used to compile your 
+program.  A new utility program, called measure.c, measures the time 
+overhead involved in calling Sherlock macros, and suggests appropriate 
+values for TIME_ADJUST.
+
+
+Here I am Messages: TICK, TICKB, TICKN and TICKX
+
+The simplest kind of tracing output is a "here I am" message.  The TICK 
+family of macros provide such messages.  The TICK macro takes exactly 
+one argument, a tracepoint name.  Examples:
+
+	char name[] = "petunia";
+	TICK(name);
+	TICK("marigold");
+
+If enabled, TICK simply prints the name of the tracepoint followed by a 
+colon.  The output created from the examples above would look like:
+
+	petunia:
+	marigold:
+
+The only difference between TICK and TICKN is that TICK updates the 
+count statistic associated with the tracepoint name and TICKN does not.  In 
+general, the suffix 'N' in the name of a tracing macro indicates that count 
+statistics are not updated by the macro.
+
+Why suppress the gathering of count statistics?   You might use TICKN 
+rather than TICK in order not to count the same section of code twice.  For 
+example:
+
+	do {
+		TICK("loop");
+		...
+		TICKN("loop");
+	} while (waiting);
+
+Since only one TICK macro was used in the loop, the count statistic for 
+"loop" will reflect how many times the loop was executed.
+
+As you would expect, the TICKB and TICKX macros are entry and exit 
+macros that otherwise work just like TICK.  Count statistics are updated 
+for TICKB but not TICKX.
+
+
+Tracepoints Actions: TRACE, TRACEB, TRACEN and TRACEX
+
+The TRACE family of tracing macros create code that lies dormant until the 
+appropriate tracepoint is enabled.
+
+The members of the TRACE family take exactly two arguments.  As usual, 
+the first is a tracepoint name.  The second is a list of tracepoint actions, 
+consisting of one or more C language statements or blocks.  Statements in 
+the list of tracepoint actions are separated by semicolons as usual.  The list 
+may be terminated by a semicolon, but it doesn't have to be.   For example:
+
+	TRACE("violet", printf("variable v = %d at xyz\n", v));
+
+The tracepoint actions consist of a single print statement, namely:
+
+	printf("variable v = %d at xyz\n", v);
+
+The print statement will be executed only if the tracepoint named "violet" 
+has been enabled.
+
+Any number of C statements may appear in the list of tracepoint actions.  
+For example:
+
+	TRACE("peach",
+		arg = xyz;
+		p=f(arg);
+		printf("f(xyz) is %lx at xyz\n", p));
+
+The tracepoint actions consist of the three C statements:
+
+	arg = xyz;
+	p=f(arg);
+	printf("f(xyz) is %lx at xyz\n", p);
+
+Note that commas within an instruction in the list of tracepoint actions do 
+not change the number of arguments to TRACE.  You can write any C 
+statements in the list of tracepoint actions.  Make sure, though, that you get 
+enough parentheses at the end of the macro.  Without a trailing parenthesis, 
+the C preprocessor will complain about the actual parameters to the macro 
+being too long.
+
+Statements in the list of tracepoint actions may even contain other macros. 
+For example:
+
+	TRACE("abc",TRACE("xyz",
+		printf("abc and xyz both enabled\n")));
+
+The TRACEB, TRACEN and TRACEX macros function similarly to the 
+TRACE macroDthe TRACEN macro does not update count statistics, 
+while the TRACEB macro is an entry macro and the TRACEX macro is an 
+exit macro.
+
+
+TRACEP, TRACEPB, TRACEPN and TRACEPX
+
+The four members of the TRACEP family function just like the 
+corresponding four members of the TRACE family except that the 
+members of the TRACEP family print the name of the tracepoint, a colon 
+and a space before executing the tracepoint actions.  This is often just what 
+you want and it saves a little space in your program.  For example, the 
+following two macros are exactly equivalent, except that the TRACEP 
+macro takes less space:
+
+	TRACE("daisy", printf("daisy: (arg: %d)\n", n));
+	TRACEP("daisy", printf("(arg: %d\n", n));
+
+In order to keep the names of the macros straight, it is useful to think of 
+TRACE and TRACEP as separate families of macros.  In other words, the 
+letter 'P' is  not  a suffix.  For example, there is a macro named TRACEPB 
+but no macro named TRACEBP.
+
+The SPP program uses TRACEPB macros to trace the arguments on entry 
+to a function.  For example, SPP will insert a TRACEPB as shown:
+
+	int example (char *s, int i, float f)
+	{
+		TRACEPB("example",
+			printf("(%s, %d, %f)\n", s, i, f));
+		...
+	}
+
+
+Other Tracepoint Actions
+
+All the tracepoint actions shown so far have consisted of printf statements.  
+While that is common, it is often useful to use other statements.  Sherlock 
+is an open ended tool;  the following paragraphs discuss various kinds of 
+statements that may be used inside macros.
+
+fprintf statements: Useful for sending tracing output to someplace other 
+than the console.  Note that output generated from macros is sent to the 
+standard output stream so that if you redirect output using fprintf be sure to 
+redirect the standard output stream as well.  For example:
+
+	TRACE("mum", fprintf(out_file, "mum: (%s)\n", flower_name));
+
+Function calls: Useful for printing the contents of complicated data 
+structures.  This is an important benefitDyou can afford to create tracing 
+tools that produce a lot of output, because they will be called only when 
+needed.  You won't get swamped with unwanted output.
+
+For example, suppose you have written a routine called print_vcs() which 
+prints the contents of a complicated data structure.  You would want to 
+control that routine by putting it in a Sherlock macro as follows:
+
+	struct very_complicated_struct *vcsp;
+	...
+	TRACE("vcs2", print_vcs(vcsp));
+
+Assignment statements: Useful for controlling debugging switches using 
+command line arguments.  Use assignment statements with caution: they 
+may produce unexpected results if you enable all tracepoints with a 
+wildcard.  For example, suppose you have a variable called enable_pass2 
+which controls whether your program will call a routine called pass2().  
+You can disable that routine from the command line if you insert the 
+following into your program:
+
+	TRACE("no_pass2", enable_pass2 = FALSE);
+
+Flow of control statements: These may sometimes be useful for altering the 
+operation of your program while debugging.  Just as with assignment 
+statements, use these kinds of statements with caution.  For example, you 
+might want to set up a header for some kind of report as follows:
+
+	TRACE("hdr", if(hdr= =NULL){hdr="Pre-Release Version";});
+
+Other Sherlock macros: Sherlock macros may be nested.  This can be used 
+to create levels of debugging.  Indeed, it is often helpful to have several 
+tracepoints with the same name, e.g., v for verbose.  In the following 
+example, the function named dump() is called only if both the verbose 
+option and the dump_x option have been enabled.
+
+	TRACEN("v", TRACE("dump_x", dump(x)));
+
+
+The RETURN_xxx Family of Macros
+
+There are eleven members of the RETURN_xxx family.  All are exit 
+macros.  In addition to signaling the end of timing code, these macros take 
+the place of return instructions.  There is one RETURN_xxx macro for 
+each type that a function can return: char, double, float, int, long, unsigned 
+int, unsigned long and void, and several additional macros for types that 
+benefit from special formatting: bool, pointer and string.
+
+The RETURN family consists of the following members: 
+RETURN_BOOL, RETURN_CHAR, RETURN_DOUBLE, 
+RETURN_FLOAT, RETURN_INT, RETURN_LONG, 
+RETURN_UINT, RETURN_ULONG, RETURN_PTR, 
+RETURN_STRING and RETURN_VOID.
+
+All RETURN_xxx macros except RETURN_VOID take two arguments, 
+the second of which is an expression of the type indicated by the macro.  
+The expression is evaluated exactly once, regardless of whether the 
+tracepoint is enabled.  If so, the macro prints out a message telling the 
+value of the expression.  For example:
+
+	RETURN_BOOL("begonia", 0);
+
+
+The last example prints the following message if begonia is enabled:
+
+	begonia: returns: FALSE
+
+Here are some more examples:
+
+	RETURN_VOID("void_function");
+	RETURN_BOOL("boolean", pi = = 3);
+	RETURN_CHAR("character", '@');
+	RETURN_DOUBLE("double_precision", (double) sin(x));
+	RETURN_FLOAT("floating_point", sin(pi/2.0));
+	RETURN_INT("integer", floor(i));
+	RETURN_UINT("unsigned_int", 0xffff);
+	RETURN_ULONG("unsigned_long", 0xffff);
+	RETURN_LONG("long", 0L);
+	RETURN_PTR("pointer", malloc(255));
+	RETURN_STRING("string", p -> name);
+
+SPP will replace all return instructions by RETURN_xxx macros.  For 
+example, the following instruction:
+
+	return &array[25];
+
+will be replaced by:
+
+	RETURN_PTR(&array[25]);
+
+SPP will generate RETURN_BOOL macros for all functions declared bool 
+as long as the following typedef appears before the function:
+
+	typedef int bool;
+
+Be aware that SPP treats all pointers to char as being pointers to a valid 
+string. This will cause problems in functions such as malloc() which return 
+a pointer to char which may not be used as a string.  Change 
+RETURN_STRING to RETURN_PTR in such cases.
+
+
+Printing Statistics: SL_DUMP and SL_CLEAR
+
+The SL_DUMP macro prints out a report of all statistics gathered so far. 
+It takes no arguments and can be called at any time.  For example:
+
+	SL_DUMP();
+
+The report contains several columns. The tracepoints column is an 
+alphabetized list of tracepoint names, the ticks column gives count statistics 
+for each tracepoint name, the times1 column gives non-cumulative timing 
+statistics, the times2 column gives cumulative timing statistics and the 
+tracing column indicates whether the tracepoint was enabled at the time 
+SL_DUMP was called.
+
+The SL_CLEAR macro zeros all statistics.  Statistics are zeroed by 
+SL_INIT so you normally don't need to use SL_CLEAR.  It might be 
+useful, though, if your program were divided into phases and you wanted 
+to keep separate statistics for each phase.
+
+
+Command Line Arguments
+
+Any command line argument which starts either with the on_prefix or the 
+off_prefix is interpreted as a command to enable or disable a tracepoint or 
+group of tracepoints.  For example, suppose the program you are testing, 
+called z, is usually invoked with two arguments as follows:
+ 
+	z in out
+
+To enable the tracepoint called abc, precede its name with the on_prefix, 
+i.e., ++.  Like this:
+ 
+	z ++abc in out
+
+A Sherlock argument may appear anywhere on the command lineDits 
+position relative to non-Sherlock arguments does not matter because 
+SL_PARSE eliminates all Sherlock arguments from the argv vector.  As far 
+as the rest of your program is concerned, the command line is: 
+
+	z in out
+
+Use the asterisk wildcard and question mark wildcard to select groups of 
+tracepoints.  The asterisk (*) matches zero or more characters and the 
+question mark (?) matches exactly one character.  For example, the 
+following enables all tracepoint names that start with "abc" :
+ 
+	z ++abc* in out
+
+The following enables all tracepoint names that start with abc and contain 
+exactly five letters:
+
+	z ++abc?? in out
+
+Any argument which starts with the off_prefix, i.e., '- -', disables one or 
+more tracepoints.  Sherlock evaluates arguments from left to right, so that 
+their order is significant.  The following enables all tracepoint names 
+starting with abc except abc1:
+
+	z ++abc* - -abc1 in out 
+
+The following enables all tracepoint names starting with abc except those 
+containing exactly five characters, and in addition the tracepoint named 
+abc12 is also enabled:
+
+	z ++abc* - -abc?? ++abc12 in out
+
+It is easy to use wildcards to enable or disable groups of tracepoints if you 
+name your breakpoints in a systematic manner.  A good scheme is to prefix 
+all tracepoint names in a function with the name of that function.
+
+The tracepoint name called "trace" is treated as a special case.  Disabling 
+that tracepoint name disables all tracepoints.  For example, the following 
+two command lines will produce identical results, but the first will execute 
+more quickly than the second:
+
+	z - -trace in out 
+	z in out
+
+Tracepoints can be re-enabled using the SL_PARSE or SL_ON macros, 
+but beware of putting those macros inside some other macro, such as 
+TRACE.  In other words, the following will not work if all tracing has 
+been disabled:
+
+	TRACE("any", SL_ON("*"));
+
+You can temporarily disable a tracepoint by preceding its name with a 
+disable count.  For example, the following will suppress the execution of 
+the first 100 calls to the tracepoint called loop_trace, after which it will be 
+enabled.
+ 
+	z in out ++100loop_trace
+ 
+You can temporarily disable all tracepoints (except STAT macros) by giving 
+a global disable count, which is simply the on_prefix followed by a count.  
+For example, the following will suppress all tracepoints until 1000 macros 
+have been encountered, after which only abc will be enabled:
+ 
+	z ++1000 ++abc in out
+
+Beware of extra spaces in command line arguments.  Compare the 
+following lines: 
+
+	++99abc
+	++99  abc
+
+The first command line has an argument containing a disable count for abc.  
+The second command line contains two arguments: a global disable count 
+and a second argument which is not a Sherlock argument at all.
+
+
+Macro Definitions: Header Files and the SHERLOCK Constant
+
+Sherlock's macros are defined in a header file called sl.h.  This header file 
+must be included in each source file that contains a macro.  A good way to 
+do this is to put the following line in a "master header file" which is 
+included in all source files of your program:
+
+	#include "sl.h"
+
+The expansion of macros is controlled by a compile time constant called 
+SHERLOCK.  Macros expand to code only if this variable is defined.  The 
+value of SHERLOCK is not important, only whether it has been defined or 
+not.  The constant SHERLOCK must be defined before the file sl.h is 
+included.  Thus, the following lines must appear in the order shown:
+
+	#define SHERLOCK 1
+	#include "sl.h"
+
+To completely remove the effects of all Sherlock macros from a file, 
+without removing the macros themselves, you need only undefine the 
+constant SHERLOCK as follows:
+
+	#undef SHERLOCK
+	#include "sl.h"
+
+If you want to disable a single Sherlock macro, just bracket it with #undef 
+SHERLOCK and #define SHERLOCK statements as follows:
+
+	#undef SHERLOCK
+	sherlock macro
+	#define SHERLOCK 1
+
+There may be times when you may want to bracket code with #ifdef 
+SHERLOCK and #endif.  For example, you might define two different 
+signon messages, depending on whether Sherlock macros are in effect:
+
+	#ifdef SHERLOCK 
+	#define USAGE "usage: cb [++- -tracing routine] in [out]"
+	#else 
+	#define USAGE "usage: cb in [out]" 
+	#endif
+
+The file s11.h contains a set of alternate macro definitions.  Most compilers 
+will have no problems with the macros defined in sl.h.  However, some 
+compilers complain about duplicate definitions of a variable called h when 
+compiling the macros defined in sl.h.  If that happens, use the file sl1.h 
+instead of sl.hDthat will fix the problem.  Make sure, though, that you use 
+sl1.h only as a last resort.  The macros defined in sl1.h work much more 
+slowly than the preferred macro definitions in sl.h.
+
+
+
+CHAPTER 4  DEBUGGING WITH SHERLOCK
+
+
+This chapter offers tips on how to find and correct bugs more effectively.  
+Whether you are a student, a hobbyist or a professional programmer, you 
+would probably tackle any kind of programming task with confidence and 
+enthusiasm if you could be assured of finding all the bugs that might be 
+lurking in your code.   Debugging is a crucial step in the programming 
+processDit  separates working, successful programs from non-working 
+failures.  C programs are particularly challenging to debug because the C 
+language does not limit what you can do.  C does not attempt protect you 
+from your own mistakes.  The challenge of debugging C stems directly 
+from the flexibility and power which C provides.
+
+
+Pointer Bugs
+
+The key to learning how to debug C programs is recognizing, 
+understanding and correcting pointer bugs.  Pointers pervade all of C and 
+they give the C language much of its power and flexibility.  However, 
+pointers are dangerous, as well as useful.
+
+This section addresses the most common situations involving pointer bugs:
+
+o Pointer bugs arise from uninitialized pointers, dangling pointers and 
+incorrect use of arguments to function.
+
+o Pointer bugs often destroy the computer code.  The code destroyed by 
+pointer bugs may have been the code you wrote, code comprising run-time 
+functions such as printf(), or operating system code.
+
+o To the new C programmer, pointer bugs produce symptoms that look like 
+hardware malfunctions or compiler bugs.  The experienced C programmer 
+recognizes these same symptoms as clear indications of the existence of 
+pointer bugs.
+
+
+Types of Pointer Bugs
+
+Pointer bugs arise from uninitialized pointers, dangling pointers and 
+incorrect use of arguments to functions.  An uninitialized pointer is simply 
+a pointer variable which is used before it has been given a value.
+
+For example,
+
+	error1()
+	{
+		char *p;
+		*p = 'a';
+	}
+
+In this example, p does not point to any specified location at the time that it 
+used to store the character 'a'.  The location in memory is not specified by 
+the code, and the results are unpredictable.  Possible symptoms will be 
+discussed later.
+
+The second type of pointer bug is the dangling pointer.  A dangling pointer 
+refers to an area of memory which is no longer being used for its original 
+purpose.  For example,
+
+	error2()
+	{
+		char *p, *malloc();
+		p = malloc(25);
+		free(p);
+	}
+	
+The call to malloc() makes p point to an area of memory containing room 
+for 25 characters.  The call to free() deallocates the space and causes p to 
+become a dangling pointer. However, there is no bug in this code.  Any 
+time you deallocate memory you create a dangling pointerDbugs arise from 
+using dangling pointers rather than just creating them.  
+
+Again, the results of using a dangling pointer are unpredictable.  They are 
+not specified by the C program.  In this example, if the memory released by 
+the call to free() is later reallocated, using p will probably corrupt the newly 
+allocated memory.
+
+A third kind of pointer bug is the mistaken parameter bug.  A good example 
+is the following:
+
+	error3()
+	{
+		int i;
+		scanf("%d", i);
+	}
+
+This will not work as expected.  The second argument to scanf() should 
+have been &i, not i.  The scanf() function expects a pointer to i and gets the 
+value of i instead.  Thus, the pointer that scanf() expects is incorrect.  Once 
+again this creates a hard-to-find bug.
+
+This kind of error can corrupt the system stack.  This happens because the 
+called routines assume the stack has a different structure from the stack that 
+was actually created by the caller.  If the called program alters any stack 
+variable, it will be altering a part of the stack that may not actually 
+correspond to the location of the stack variable.
+
+Note:  this kind of bug may largely be eliminated by using function 
+prototyping which will be part of the new ANSI C standard.
+
+
+Effects of Pointer Bugs
+
+Having looked at three kinds of pointer bugs, we see that their effects can 
+be devastating.  Any pointer bug has the potential for destroying any part of 
+memoryDexecutable code, library functions such as printf(), the system 
+stack used to keep track of procedure calls and returns or even the operating 
+system itself.  Exactly which part of memory depends on the value the 
+pointer had at the time your program was loaded.
+
+
+Symptoms of Pointer Bugs
+
+The symptoms of pointer bugs vary depending on just what kind of code or 
+data area are destroyed by the bug.  Such symptoms can not be taken at 
+face value. When confronted with behavior such as described below, 
+always think first of pointer bugs.
+
+
+Symptom 1:
+Your program crashes inside a function which you have 
+written and which you know to be debugged.
+
+Cause:
+A pointer bug has destroyed your carefully debugged function.
+
+Symptom 2:
+A library function suddenly ceases to work correctly.
+
+Cause:
+A pointer bug has destroyed the library function instead of your own code.
+
+Symptom 3:
+A bug is solid, i.e., it manifests itself in the same way when you run
+the program several times.  However, the bug goes away when you insert print
+statements into the code to get more information about it.
+
+Cause:
+Inserting the print statements changed the location of various parts 
+of your code.  Before the print statements were inserted, the pointer bug 
+destroyed code that was still to be executed.  After inserting the print 
+statements, the pointer bug destroyed a part of the program which was no 
+longer executed after the pointer bug occurred.
+
+Symptom 4:
+The symptoms of a bug change after you insert print statements.
+
+Cause:
+Inserting print statements changed the code destroyed by the pointer bug.
+
+Symptom 5:
+By inserting print statements you can determine that control reaches a
+particular statement but not the statement immediately following.
+
+Cause:
+A pointer bug has destroyed one or both of the statements.
+
+Symptom 6:
+Your program calls a function, but control never reaches the function.
+
+Cause:
+A pointer bug has destroyed either the system stack or the function itself.
+
+Symptom 7:
+Control never returns to the caller of a function after the called function
+returns.
+
+Cause:
+A pointer bug has destroyed either the run-time stack or the function itself.
+
+Symptom 8:
+Your program sometimes works and sometimes crashes.
+
+Cause:
+An uninitialized variable is destroying random parts of your program depending
+on the contents of certain memory locations before your program was invoked.
+The pointer bug is destroying different memory locations each time your program
+is being run.  Sometimes the destroyed locations do not affect your program and
+sometimes they do.
+
+Symptom 9:
+Your program always works once, but fails the second time it is run.
+
+Cause:
+Your program contains an uninitialized variable.  The first time your 
+program runs the variable is initialized in a uniform way which does not 
+cause any apparent harm.  The second time your program runs, the variable 
+has a new initial value which depends on the program's first run.  This 
+second initial value causes the symptoms the second time the program is 
+run.
+
+
+Using Sherlock to Find Bugs
+
+Using Sherlock to locate bugs is a two-step process.  The process requires 
+that the bug happen consistently and that you make a plausible guess about 
+its cause.
+
+
+Step 1:  Stabilize the Symptoms.
+
+The first step in finding the cause of any bug is to make the bug "stand 
+still" so that you can study it.  You can do this in the following ways:
+
+1. Fill memory with a constant value before you run your program.  This 
+will insure that uninitialized pointers get the same (though probably still 
+incorrect) value from run to run.  If filling memory with a constant value 
+makes the symptoms of your bug go away, you can be reasonably sure that 
+some kind of initialization problem is causing the bug.
+
+2. Eliminate the effects (including symptoms) of most dangling pointers by 
+disabling any routine which frees a dynamically allocated data structure.  
+You can do that by providing an alternative deallocation routine which is a 
+dummy routine. When you do that, dangling pointers no longer dangle, 
+i.e., they no longer point to deallocated memory.  If disabling a routine 
+such as free() makes the symptoms of your bug go away, you can be 
+reasonably sure that a dangling pointer is at hand.
+
+3. Keep precise records about how you invoked your program.  An easy 
+way to do this is by invoking the program from a batch file, also known as 
+a submit file or shell file. That way the batch file serves as a record for 
+exactly what you have done.  A tip:  when you change the arguments to 
+your program, comment out the old line and save it in the batch file as a 
+record of the your previous runs.  This is especially handy when using 
+numerous Sherlock tracepoints to change the behavior of your program 
+during testing.
+
+4. Keep your program unchanged.  Since pointer bugs destroy code, even 
+the smallest change in your program, or even a change in the order in 
+which functions are linked together, may cause the symptoms of pointer 
+bugs to change or even go away.  Sherlock is a huge help here.  Enabling 
+or disabling different tracepoints does not change the location of any code 
+in your program.  You can run test after test on your program, getting very 
+different information each time, and the symptoms of pointer bugs will not 
+change.
+
+
+Step 2:  Make a Reasonable Guess about the Cause.
+
+The next step in finding a bug is to make a guess about what is causing it.  
+If any of the symptoms mentioned above appear, you probably should 
+assume that a pointer bug is causing your problems.  Use Sherlock to look 
+for bad pointers by tracing the parameters passed to all your functions.  
+
+If a supposed pointer has a small negative number as its value (.e.g., 
+FFFFE hex), you can be sure that the pointer has already been corrupted.  
+You may also notice that a pointer does not have a reasonable value in some 
+other way.  Now ask yourself, "Which routines could have passed that 
+pointer on to the called routine?"  Rerun your program with different 
+tracepoints enabled which will trace the likely culprits.  Once you find the 
+source of a bad pointer, ask whether the code which created the bad pointer 
+was ultimately at fault or whether some other error resulted in the bad 
+pointer as a by-product.
+
+Again, Sherlock stands out in being able to try numerous tracing runs on a 
+program without having to change the program in any way.  You will find 
+that patterns jump out at you as you look at traces and dumps produced by 
+Sherlock.  When you get a hint of something in a trace being "not quite 
+right," you can immediately start a new trace to zero in on those parts of the 
+program that are related to what caught your attention.  By varying your 
+traces to home in on suspects, you are eliminating vast amounts of 
+extraneous information in the debugging output.
+
+
+
+CHAPTER 5  SHERLOCK REFERENCE
+
+
+This chapter provides reference information about all aspects of the 
+Sherlock systemDit contains the most detailed and complete information 
+on any particular topic.  The first sections discuss the following subjects: 
+Header Files, Command Line Arguments, Entry and Exit Macros and the 
+Timing Stack, The Interrupt Handler, Compiling Support Routines, 
+Tracepoint Names and Tracepoint Actions.  The conclusion of this chapter 
+discusses each macro, symbol and support routine in alphabetical order.
+
+
+Header Files
+
+There are two sets of definitions of the Sherlock macros, the preferred 
+definitions in sl.h and the alternate definitions in sl1.h.The support routines 
+called by the alternate macros search an internal symbol table for their 
+tracepoint name every time they are called.  The preferred macros define a 
+static variable named h which is used to avoid searching the symbol table 
+after an initial search.  As a consequence, preferred macros are much faster 
+than the alternate macros.
+
+Alas, some compilers do not allow multiple static variables with the same 
+name, even if the variables are declared in different blocks.  Use the 
+preferred macro definitions unless your compiler objects to constructions 
+such as: 
+
+	void test()
+	{
+		{static char *h = 0;}
+		{static char *h = 0;}
+	}
+
+
+Command Line Arguments
+
+A Sherlock argument is any command line argument whose prefix is either 
+the on_prefix or the off_prefix.  These prefixes are defined by the 
+SL_PARSE macro.  For example:
+
+	SL_PARSE(argc, argv, "++", "- -");
+
+All examples in this manual assume that the on_prefix is "++" and the 
+off_prefix is "- -", but any string of any length may be used for either 
+prefix.
+
+The SL_PARSE macro processes all Sherlock arguments, deleting them 
+from the argv vector and adjusting the argc count appropriately.  Thus, any 
+code following the SL_PARSE macro will be completely unaware of the 
+existence of Sherlock arguments.
+
+Two wildcard characters allow Sherlock arguments to specify classes of 
+tracepoints.  The asterisk (*) character matches zero or more characters.  
+For example, the argument
+
+	++abc*
+
+enables tracing for any tracepoint whose name begins with abc. The 
+asterisk, if present, should be the last character of a Sherlock argument.
+
+The question mark (?) character matches exactly one character.  For 
+example, the argument
+
+	- -abc??
+
+disables tracing for abc12 and abc34 but not abc1 or abc123.
+
+Sherlock arguments are processed left to right.  The order is significant.  
+For example, the following (partial) command line turns on tracing for 
+abc1
+
+	- -abc* ++abc1
+
+As another example, the effect of the first argument in the command line 
+below will always be immediately canceled by the second argument.
+
+	++abc? - -abc*
+
+If the on_prefix or off_prefix is immediately followed by a number, that 
+number is taken to be a disable count.  If a name follows the disable count, 
+tracing for that tracepoint is disabled until that tracepoint has been executed 
+n times, where n is the disable count.  For example,
+
+	++100abc
+
+disables tracing for the tracepoint named abc until abc has been reached 100 
+times.
+
+If no string appears after the disable count, it is a global disable count 
+which applies to all tracepoints.  All tracing is disabled until n tracepoints 
+have been encountered.  For example:
+
+	++1000
+
+disables all tracing until 1000 tracepoints have been executed.
+
+
+Entry and Exit Macros and the Timing Stack
+
+Timing statistics measure the time spent in timing code delimited by two 
+special kinds of macros.  Entry macros signal the beginning of timing 
+code, while exit macros signal the end of timing code.  The support 
+routines use an internal timing stack to gather timing statistics in nested 
+sections of timing code.
+
+There are two kinds of timing statistics: cumulative and non-cumulative.  
+Cumulative statistics measure the total time spent in timing code, including 
+any time spent in nested timing code.  Non-cumulative statistics excludes 
+time spent in nested timing code.
+
+At run time, each entry macro requires a corresponding exit macro.  If an 
+exit macro is omitted, a timing stack overflow will eventually result.  If an 
+extra exit macro is encountered, a timing stack underflow may follow.  A 
+timing stack overflow or underflow indicates that the timing statistics 
+gathered are not accurate.  Sherlock prints a warning message and a stack 
+traceback when either an overflow or an underflow is detected.  The global 
+variable, sl_level, indicates the current nesting depth of timing macrosDit 
+is incremented by entry macros and decremented by exit macros.  You can 
+use the sl_level variable to track down timing stack overflows or 
+underflows.
+
+
+The Interrupt Handler
+
+An interrupt handler is used to gather timing statistics.  In concept, the 
+purpose of the handler is simple: to increment the global C variable called 
+sl_count each time a timing interrupt occurs.  However, the code for the 
+interrupt handler is tricky.
+
+Warning: The interrupt handler is inherently machine dependent.  It will 
+work only on machines which are 100% compatible with the IBM PC, XT 
+or AT.  It will be necessary to rewrite the interrupt handler if you want to 
+gather timing statistics on other machines.
+
+The interrupt handler consists of three parts: an initializer, a tick handler 
+and an exit handler.  The initializer changes the hardware interrupt trap 
+vectors to point to entry points inside the tick handler and the exit handler.  
+The initializer also increases the frequency of the hardware timer interrupt.  
+It does this by directly writing to one of the timer chips.  The speed up 
+factor is determined by the value of the global C variable called sl_speed, 
+which is defined in the file sherlock.c.  The default speed-up factor is 55, 
+which gives an interrupt rate of about 1 interrupt per millisecond, assuming 
+a basic tick frequency of 18.2 ticks per second.
+
+
+The tick handler receives control as the result of tick interrupts.  It 
+increments the global C variable called SL_COUNT.  It also passes on 
+selected ticks on to the default tick handler so that the nominal tick 
+frequency of 18.2 ticks per second is maintained.
+
+The exit handler gets control from any DOS function call or interrupt that 
+results in an exit from the program.  This exit handler restores all the 
+interrupt vectors which were changed by the initializer.
+
+
+Compiling Support Routines
+
+The source code for the support routines was developed on the Turbo C 
+compiler version 1.5 and will compile correctly with the Microsoft C 
+compiler version 5.0 or later.
+
+The source code for the support routines uses function prototypes which 
+are a part of the draft ANSI C standard.  Not all current compilers support 
+function prototypes.  To compile
+Sherlock on compilers that do not, comment out the definition of the 
+compile time variable called HAS_PROTOTYPES at the start of the header 
+file sl.h.
+
+
+Tracepoint Names
+
+Tracepoint names are strings which must contain only the following 
+characters: the letters a-z and A-Z, the numbers 0-9 and the underscore 
+character.  A warning message is printed if a macro is passed a tracepoint 
+name which contains any other character.
+
+
+Tracepoint Actions
+
+Tracepoint actions consist of a statement list consisting of zero, one or 
+more C language statements.  Statements must be separated by semicolons 
+as usual.  The statement list may be terminated by a semicolon, but need 
+not be.
+
+
+Macros, Global Variables and Support Routines
+
+The following sections discuss each Sherlock macro and variable and a few 
+globally visible support routines.  All entries appear in alphabetical order.
+
+
+Macros:
+	RETURN_BOOL  (tracepoint_name, boolean_expression)
+	RETURN_CHAR  (tracepoint_name, char_expression)
+	RETURN_DOUBLE(tracepoint_name, double_expression)
+	RETURN_FLOAT (tracepoint_name, float_expression)
+	RETURN_INT   (tracepoint_name, int_expression)
+	RETURN_LONG  (tracepoint_name, long_expression)
+	RETURN_PTR   (tracepoint_name, pointer_expression)
+	RETURN_STRING(tracepoint_name, string_expression)
+	RETURN_UINT  (tracepoint_name, unsigned_int_expression)
+	RETURN_ULONG (tracepoint_name, unsigned_long_expression)
+	RETURN_VOID  (tracepoint_name)
+
+Synopsis:	Print tracepoint name.  Print and return the value of the 
+expression.
+		
+Examples:
+	RETURN_BOOL  ("abc", a ? 0 : 1);
+	RETURN_CHAR  ("abc", "\n");
+	RETURN_DOUBLE("abc", 0.6666666666666666);
+	RETURN_FLOAT ("abc", 3.14159);
+	RETURN_INT   ("abc", a - 15);
+	RETURN_LONG  ("abc", 1L);
+	RETURN_PTR   ("abc", &abc);
+	RETURN_STRING("abc", "this is a test");
+	RETURN_UINT  ("abc", (unsigned) 0xffff);
+	RETURN_ULONG ("abc", (unsigned) 0xffff0000);
+	RETURN_VOID  ("abc");
+
+These macros are all exit macros.  Each macro prints the tracepoint name, a 
+colon, a space, "returns", a colon, a space, followed by the value of the 
+expression.  The RETURN_VOID macro prints "void" in place of the 
+value of the expression.  Each macro completes and records the timing 
+statistics associated with the timing section begun by the corresponding 
+entry macro.  Each macro then returns from a function of the indicated 
+type.
+
+At run time, each of these macros must be matched with an entry macro.  If 
+an exit macro is encountered without a corresponding entry macro, a timing 
+stack underflow will eventually occur.
+
+The SPP utility program will generate RETURN_BOOL macros for all 
+functions declared bool as long as the following typedef appears before the 
+function:
+
+	typedef int bool;
+
+Be aware that SPP treats all pointers to char as being pointers to a valid 
+string. This will cause problems in functions such as malloc() which return 
+a pointer to char which may not be used as a string.  Change 
+RETURN_STRING to RETURN_PTR in such cases.
+
+
+Compile time symbol:	SHERLOCK
+
+Synopsis:	Enable or disable expansion of all Sherlock macros.
+
+Example:	#define SHERLOCK 1
+		#include "sl.h"
+
+Sherlock's macros expand into actual code only if this symbol is defined.  
+The value assigned to the variable SHERLOCK does not matter, only 
+whether it is defined or not.  If SHERLOCK is not defined, then all 
+Sherlock's macros expand to no code, or a return statement in the case of 
+RETURN_xxx macros.
+
+Notice that the definition of SHERLOCK must precede the definitions of 
+the macros in sl.h.  The following will not work as expected:
+
+	#include "sl.h"
+	#define SHERLOCK 1
+
+Do this instead:
+
+	#define SHERLOCK 1
+	#include "sl.h"
+
+Actually, it is usually a good idea to enable the SHERLOCK constant from 
+the command line.  When using the Microsoft C compiler, use the /D 
+option, like this:
+
+	/DSHERLOCK
+
+When using the Turbo C compiler, use the -D option, as follows:
+
+	-DSHERLOCK
+
+
+Support Routines:
+	typedef int bool;
+	void	sl_bout(bool b);
+	void	sl_cout(char c);
+	void	sl_dout(double d);
+	void	sl_iout(int i);
+	void	sl_lout(long l);
+	void	sl_pout(void * s);
+	void	sl_sout(char * p);
+	void	sl_uiout(unsigned int ui);
+	void	sl_ulout(unsigned long ul);
+
+Synopsis:
+	sl_bout:	Print a boolean expression using sl_cout().
+	sl_cout:	Print a character using putchar().
+	sl_dout:	Print a double or float expression using sl_cout().
+	sl_iout:		Print an int expression using sl_cout().
+	sl_lout:		Print a long expression using sl_cout().
+	sl_pout:	Print a pointer expression using sl_cout().
+	sl_sout:	Print a string using sl_cout().
+	sl_uiout:	Print an unsigned int expression using sl_cout().
+	sl_ulout:	Print an unsigned long expression using sl_cout().
+	
+Example:
+	void sample(b, c, d, f, i, l, p, s, u, ul)
+	bool b; char c;
+	double d; float f;
+	int i; long l;
+	struct some_struct *p; char *s;
+	unsigned ui; unsigned long ul;
+	{
+		TICKB("sample",
+			sl_bout(b); sl_sout(", ");
+			sl_cout(c); sl_sout(", ");
+			sl_dout(d); sl_sout(", ");
+			sl_dout(f); sl_sout(", ");
+			sl_iout(i); sl_sout(", ");
+			sl_lout(l); sl_sout(", ");
+			sl_pout(p); sl_sout(", ");
+			sl_sout(s); sl_sout(", ");
+			sl_uiout(u); sl_sout(", ");
+			sl_ulout(ul));
+		...
+		TICKX("sample");
+	}
+
+These support routines print a single expression of the indicated type.  The 
+sprintf() function is used to format the value into a character buffer, which 
+is then printed using sl_sout().  The sl_sout() routine calls sl_cout() so the 
+output of all these routines eventually is funneled through sl_cout().  
+Indeed, all output produced by the macros and the support routines 
+eventually is handled by sl_cout().
+
+
+Macro:		SL_CLEAR()
+
+Synopsis:	Clear all statistics.
+
+Example:	SL_CLEAR();
+
+See also:	SL_DUMP
+
+This macro clears all the statistics gathered so far.  The SL_INIT macro 
+also does this, so normally there is no need to use this macro.  You might 
+use this macro to begin gathering statistics about a selected portion of your 
+code.  Call SL_CLEAR at the start of the section and SL_DUMP at the end 
+of the section.
+
+
+Macro:		SL_DUMP()
+
+Synopsis:	Write a report of statistics.
+
+Example:	TRACE("dump", SL_DUMP());
+
+See Also:	SL_CLEAR
+
+This macro writes a report of all the statistics gathered for all tracepoints 
+encountered so far.  Output is written using the sl_cout() support routine.
+
+The report contains five columns. The tracepoints column is an 
+alphabetized list of tracepoint names.  The ticks column gives count 
+statistics for each tracepoint name.  The times1 column gives non-
+cumulative timing statistics and the times2 column gives cumulative timing 
+statistics.  The tracing column indicates whether the tracepoint was enabled 
+when SL_DUMP was called.
+
+Reports may be enabled from the command line by inserting the 
+SL_DUMP macro in another macro such as TRACE or TRACEN.
+
+
+Macro:		SL_INIT()
+
+Synopsis:	Initialize Sherlock's support routines.
+
+Example:
+	main(argc, argv)
+	int argc;
+	char **argv;
+	{
+		/* Local declarations. */
+		SL_INIT();
+		SL_PARSE(argc, arg, "++", "- -");
+
+		/* Sherlock arguments not visible here. */
+		...
+	}
+
+This macro initializes Sherlock's support routines.  It must be called before 
+any other Sherlock macro.
+
+
+Global Variable:
+	sl_level
+
+Synopsis:
+	The current nesting level.
+
+Example:
+	if (sl_level > 0) {
+			printf("unmatched entry macro.\n");
+	}
+
+This global variable is incremented every time an entry macro is 
+encountered and is decremented every time an exit macro is encountered.  
+This variable can be used to find unpaired entry and exit macros.
+
+
+Macro:		SL_NAME(tracepoint_tag, tracepoint_name)
+
+Synopsis:	Define a static char array which can be used as a tracepoint 
+		name.
+
+Example:
+
+	int
+	long_winded_function_name()
+	{
+		SL_NAME(func2_tag, "long_winded_function_name");
+		TICKB(func2_tag);
+		...
+		RETURN_VOID(func2_tag);
+	}
+
+Use the SL_NAME macro to reduce the space required to store tracepoint 
+names.  In the example above, space for the string "func2" is allocated 
+once, rather than twice.
+
+Note: The SDEL program will retain all SL_NAME macros if the -r option 
+is given to SDEL.  Use the -r option when using SDEL to delete Sherlock 
+macros just prior to reinserting them with SPP.
+
+
+Macros:
+	SL_OFF(tracepoint_name)
+	SL_ON(tracepoint_name)
+
+Synopsis:
+	SL_OFF:	Disable one or more tracepoints.
+	SL_ON:	Enable one or more tracepoints.
+
+Examples:
+	SL_OFF("abc");
+	SL_ON("200abc");
+
+Special cases:
+	SL_OFF("trace");
+	SL_ON("trace");
+
+See Also:		SL_PARSE
+
+These macros enable or disable the tracing for a single tracepoint, just as if 
+the name of the tracepoint were appended to the end of the command line.  
+Neither the on_prefix nor the off_prefix is used.  Wildcard characters and 
+disable counts are allowed.  The name "trace" is a special case which 
+enables or disables the tracing of all tracepoints.
+
+
+Macro:
+	SL_PARSE(argc, argv, on_prefix, off_prefix)
+
+Synopsis:
+	Enable or disable tracepoints indicated by an argument vector.
+
+Example:
+	SL_INIT();
+	SL_PARSE(argc, argv, "++", "- -");
+
+See also:	SL_ON, SL_OFF
+
+This macro enables or disables tracepoints indicated by an argument vector 
+and removes all Sherlock arguments from the vector. 
+
+The argc argument gives a count of the number of elements in the argv 
+argument, which is an array of pointers to strings.  The on_prefix and 
+off_prefix arguments are strings which denote Sherlock command line 
+arguments.  Arguments in argv starting with on_prefix enable tracing, 
+while arguments in argv starting with off_prefix disable tracing.
+
+The argv vector is scanned for argc - 1 arguments starting with argv[1].  
+Argv[0] is ignored.  When arguments starting with either the on_prefix or 
+off_prefix are found, the indicated tracepoint is enabled or disabled, the 
+argument is removed from the argv vector and the argc count is 
+decremented.  On entry to SL_PARSE, argv[argc] must be NULL.
+
+This macro may be called more than once and the argc and argv arguments 
+need not be the same as the argc and argv arguments passed to the main() 
+function by the operating system.  In other words, you are free to call this 
+macro with a "simulated command line."  For example:
+
+	static int count = 4;
+	static char * vect [] =
+		{NULL, "++*", "- -sys*", "++sys_fopen", NULL};
+
+	...
+
+	SL_PARSE(count, vect, "++", "- -");
+
+
+Support Routine:
+	sl_regs()
+
+Synopsis:
+	Put the contents of all machine registers into global variables.
+
+Example:
+	TRACE("dump_regs", sl_regs());
+
+This support routine does not have a corresponding macro.  It places the 
+contents of the PC's registers into global memory locations.  See regs.asm 
+for details.
+
+
+Macros:
+	STAT(tracepoint_name)
+	STATB(tracepoint_name)
+	STATX(tracepoint_name)
+
+Synopsis:
+	STAT:	Update the count statistics for a tracepoint.
+	STATB:	Entry macro.  Otherwise same as STAT.
+	STATX:	Exit macro.  Otherwise same as STAT.
+
+Example:
+	int f1()
+	{
+		int i, val;
+		STATB("f1");
+		for (i = 0; i < 5; i++) {
+			STAT("f1_loop");
+			val++;
+		}
+		STATX("f1");
+	}
+
+These STAT family of macros update the count statistics associated with the 
+tracepoint name, regardless of whether the tracepoint name is enabled or 
+not.  This family of macros never produces output.  The STATB macro 
+begins timing code and the STATX macro ends timing code.
+
+
+Macros:
+	TICK(tracepoint_name)
+	TICKB(tracepoint_name)
+	TICKN(tracepoint_name)
+	TICKX(tracepoint_name)
+
+Synopsis:
+	TICK:	Print the tracepoint name, a colon and a newline and update 
+		count statistic.
+	TICKB:	Entry macro.  Otherwise same as TICK.
+	TICKN:	Do not update count statistic.  Otherwise same as TICK.
+	TICKX:	Exit macro.  Otherwise same as TICK.
+
+Example:
+	int f2(int i)
+	{
+		int val;
+
+		TICKB("f2");
+		for (i = 0; i < 5; i++) {
+			TICK("f2_before");
+			val++;
+		}
+		TICKX("f2");
+
+		return val+5;
+	}
+
+If enabled, the TICK family of macros print the tracepoint name, a colon 
+and a newline using the sl_sout() support routine.
+
+The TICK, TICKB and TICKX macros update the count statistics 
+associated with the tracepoint, whether enabled or disabled.  However, the 
+statistics are not updated if all tracing has been disabled as the result of 
+disabling the special tracepoint named "trace". The TICKN macro never 
+updates any statistics.
+
+The TICKB macro begins timing code and the TICKX macro ends timing 
+code.
+
+
+Macros:
+	TRACE(tracepoint_name, code_list)
+	TRACEB(tracepoint_name, code_list)
+	TRACEN(tracepoint_name, code_list)
+	TRACEX(tracepoint_name, code_list)
+
+Synopsis:
+	TRACE: 	Execute code list and update count statistics.
+	TRACEB:	Entry macro.  Otherwise same as TRACE.
+	TRACEN:	Do not update count statistics.  Otherwise same as TRACE.
+	TRACEX:	Exit macro.  Otherwise same as TRACE.
+
+Example:
+	int f3(int i)
+	{
+		int val;
+
+		TRACEB("f3", printf("f3 entry: %d\n", i));
+		for (i = 0; i < 5; i++) {
+			TRACE("f3_loop",
+				printf("f3: i = %d\n", i));
+			val++;
+		}
+		RETURN_INT("f3", val+5);
+	}
+
+If enabled, the TRACE family of macros execute a code list containing 
+zero, one, or more executable C statements of any kind.
+
+The TRACE, TRACEB and TRACEX macros update the count statistics 
+associated with the tracepoint, whether enabled or disabled.  However, the 
+statistics are not updated if all tracing has been disabled as the result of 
+disabling the special tracepoint named "trace".  The TRACEN macro never 
+updates any statistics.
+
+The TRACEB macro begins timing code and the TRACEX macro ends 
+timing code.
+
+
+Macros:
+	TRACEP(tracepoint_name, code_list)
+	TRACEPB(tracepoint_name, code_list)
+	TRACEPN(tracepoint_name, code_list)
+	TRACEPX(tracepoint_name, code_list)
+
+Synopsis:
+	TRACEP: 	Print the tracepoint name, execute code list and 
+			update count statistics.
+	TRACEPB:	Entry macro.  Otherwise same as TRACEP.
+	TRACEPN:	Do not update count statistics.  Otherwise same as 
+			TRACEP.
+	TRACEPX:	Exit macro.  Otherwise same as TRACEP.
+
+Example:
+	int f4(int i)
+	{
+		int val;
+
+		TRACEPB("f4", printf("(%d)\n", i));
+		for (i = 0; i < 5; i++) {
+			TRACEP("f4_loop", printf("i = %d\n", i));
+			val++;
+		}
+		RETURN_INT("f4", val+5);
+	}
+
+If enabled, the TRACEP family of macros print the tracepoint name, a 
+colon and a blank, and then execute a code list containing zero, one, or 
+more executable C statements of any kind.  The tracepoint name, colon and 
+blank are printed using the sl_sout() support routine.
+
+The TRACEP, TRACEPB and TRACEPX macros update the count 
+statistics associated with the tracepoint, whether enabled or disabled.  
+However, the statistics are not updated if all tracing has been disabled as 
+the result of disabling the special tracepoint named "trace".  The 
+TRACEPN macro never updates any statistics.
+
+The TRACEPB macro begins timing code and the TRACEPX macro ends 
+timing code.
+
+
+
+CHAPTER 6  SPP REFERENCE
+
+SPP is a utility program that copies an input file to an output file, inserting 
+Sherlock macros that trace the entry and exit of all functions.  TICKB 
+macros or TRACEPB macros containing printf statements are inserted at 
+the start of functions, return instructions are replaced by RETURN_xxx 
+macros, and TICKX macros are inserted where control might "fall off the 
+end" of functions.  SPP also inserts SL_INIT and SL_PARSE macros at 
+the start of the main() function.  Several command line options vary the 
+kind and quantity of macros output inserted by SPP.  
+
+SPP is essentially a source-to-source C compiler which understands the 
+type of all variables and functions.  SPP handles all styles of C syntax, 
+from K&R to the ANSI draft standard of January 11, 1988.  SPP is 
+robust: it flags all syntax errors and will place correct macros in the 
+appropriate locations in spite of most syntax errors.  It is recommended, 
+however, that  SPP be used only on files that contain no syntax errors, 
+i.e., on files that have been previously been compiled without generating 
+any error messages.
+
+SPP generates RETURN_BOOL macros in functions declared bool as long 
+as the declaration:
+
+	typedef int bool;
+
+appears before the bool function.  SPP generates printf statements that 
+print boolean arguments as either "TRUE" or "FALSE" instead of 1 or 0.  
+This is done using calls to a support routine called sl_sbout().  The 
+RETURN_BOOL macro is not affected by this feature.For example, SPP 
+will insert the following macros:
+
+	bool f(bool b)
+	{
+		TRACEPB("f", printf("(%s)\n", sl_sbout(b)));
+		...
+		RETURN_BOOL("f", 1);
+	}
+
+SPP assumes that all pointers to characters are pointers to a valid string.  
+As a result, you should change the RETURN_STRING macros generated 
+by SPP to RETURN_PTR macros in functions such as malloc() which 
+return a pointer that can not be printed as a string. 
+
+SPP warns about functions that do not return a value and are not explicitly 
+declared void.
+
+SPP issues the warning, "Macro found where entry macro should be," if 
+SPP finds a macro call where the first executable statement of a function is 
+expected.  In such cases, SPP will skip the generation of an entry macro, 
+i.e., TICKB or TRACEPB.  Instead, SPP assumes the macro starts 
+executable code.
+
+For example:
+
+	int f(void)
+	{
+		int a;
+		MY_TRACE_MACRO(a);
+		return a;
+	}
+
+SPP will generate the following code:
+
+int f(void)
+	{
+		int a;
+		MY_TRACE_MACRO(a);
+		RETURN_INT("f",a);
+	}
+
+SPP generates macros for a function only if the first executable statement 
+of that function is not already a Sherlock macro.  SPP will generate the 
+warning, "Sherlock macros generated for this function," if a Sherlock 
+macro is encountered while generating macros for a function.  That is, the 
+warning will be generated if the function contains Sherlock macros but the 
+first executable statement is not a Sherlock macro.  This new feature is 
+very handyDyou can now run your source files through SPP any time you 
+add any function and SPP will leave the functions already containing 
+Sherlock macros alone.
+
+Two new macros, SL_ENABLE() and SL_DISABLE(), allow function-
+by-function control over SPP.  Both macros always expand to empty code. 
+Insert SL_DISABLE() as the first executable statement of a function in 
+which you want no more Sherlock macros to be inserted.  For example: 
+
+	int f(void)
+	{
+		declarations;
+		SL_DISABLE();
+		No Sherlock macros will be generated in this function.
+	}
+
+The SL_ENABLE() macro forces SPP to insert macros into a function.  
+Use this macro when a function starts with a Sherlock macro that you 
+inserted yourself.  For example:
+
+	int do_command_line(int argc, char **argv)
+	{
+		declarations;
+		SL_ENABLE();
+		TRACEP("do_command_line",
+				for (i = 1; i < argc; i++) {
+					printf("argv[%d]: %s\n", argc, argv);
+				}
+		);
+		Sherlock macros will be generated as usual.
+	}
+
+Be sure to delete the SL_ENABLE() macro after SPP processes the 
+function.
+
+
+Invoke SPP as follows:
+
+	SPP input_file  output_file  [options]
+
+SPP supports the INCLUDE environment variable, which is set with the 
+DOS set command.  For example, the DOS command:   
+
+	set INCLUDE=c:\include;d:\sherlock
+
+will cause SPP to search the c:\include and d:\sherlock directories for 
+#include files.  The directories specified by the INCLUDE environment 
+variable are searched after any directories specified by the -s SPP option.
+
+Options are one of the following:
+
+
+-d <id>=<string>
+
+Define <id> to be <string>, as if the statement #define <id> <string> 
+appeared at the start of the program.  A space must separate -d and <id>, 
+but no space may appear in <string> or around the equal sign.  The 
+<string> is optional, in which case the equal sign can be omitted.  
+Examples:
+
+	-d STDC=1
+	-d SHERLOCK
+
+
+-f <file name>
+
+Use alternate macro names.  The file named in <file name>  contains a list 
+of synonym lines.  Each line contains two macro names, a standard name 
+and a synonym.  SPP will output the synonyms instead of the standard 
+macro names.  The pound character (#) starts a comment which continues 
+to the end of the line.  An example synonym file:
+
+	#synonym file:  May 20, 1988
+	#
+	TICKB		BEGIN_TIMING_CODE
+	TICKX		END_TIMING_CODE
+	SL_DUMP		REPORT_STATISTICS
+
+
+-i
+
+Insert the line #include <sl.h> at the start of the output file.
+
+
+-n
+
+Allow nested comments.  By default, comments do not nest.
+
+
+-o
+Output sl_cout() and related support routines instead of printf().  SPP 
+generates more compact code when using the -o option by generating calls 
+to three new support routines: sl_lpout(void), sl_rpout(void) and 
+sl_csout(void).  These routines are equivalent to sl_cout("("), sl_sout(")"), 
+and sl_sout(", ") respectively.
+
+
+-s <path>
+
+Add <path> to the list of paths used to search for include files.  More than 
+one -s option may be used.  A space must separate -s and <path>.  Example:
+
+	-s \usr\include  -s \sources  -s \sherlock
+
+-t
+
+Suppress the generation of entry or exit macros.  TICK and TRACEP macros are
+generated instead of TICKB and TRACEPB macros.  No RETURN_xxx macros are
+generated.
+
+
+-u <id>
+
+Undefine <id>, as if the statement #undef <id> appeared at the start of the 
+program.  A space must separate -u and <id>.
+
+-x
+
+Do not recognize single-line comments.
+
+By default, SPP recognizes single-line comments, which start with // and 
+continue to the end of the line.  As you would expect, the // sequence is 
+treated as ordinary characters in comments and inside strings.  Single-line 
+comments are not part of the Draft ANSI C standard, but are offered as 
+language extensions by several C compilers, including the Microsoft C 
+compiler.
+
+A fine point:  each single-line comment is converted to a single blank in the 
+replacement text of a #define preprocessor directive.  The // characters and 
+any following characters do not become part of the replacement text of the 
+macro being defined.  This is consistent with how ordinary C comments 
+are handled in the Draft ANSI C Standard, and is also consistent with how 
+current C++ compilers work.  However, old C++ translators handled // 
+differently.  Warning: the description of single-line comments on page 130 
+of The C++ Programming Language, by Bjarne Stroustrup, describes the 
+anachronistic operation of the old C++ translators, not current C and C++ 
+compilers.
+
+
+Example:
+
+Original program:
+				
+int example(char * string, double)
+{
+	int i;
+	i = 25;
+	return i;
+}
+
+Default output from SPP:
+
+int example(char * string, double d)
+{
+	int i;
+	TRACEPB("example",printf("(%s, %f)\n", string, d));
+	i = 25;
+	RETURN_INT("example", i);
+}
+
+Output from SPP with the -t option on:
+
+int example(char * string, double d)
+{
+	int i;
+	TRACEP("example",printf("(%s, %f)\n", string, d));
+	i = 25;
+	return i;
+}
+
+Output from SPP with the -o option on:
+
+int example(char * string, double d)
+{
+	int i;
+	TRACEPB("example",	  sl_lpout();
+		sl_sout(string);  sl_csout();
+		sl_dout(d);       sl_rlout());
+	i = 25;
+	RETURN_INT("example", i);
+}
+
+
+
+CHAPTER 7  SDEL REFERENCE
+
+
+SDEL is a utility program that copies an input file to an output file, deleting 
+all calls to Sherlock macros as it does so.  It is not usually necessary to 
+remove Sherlock macros from a program in order to eliminate all the code 
+generated by Sherlock macros.  Indeed, you can eliminate all Sherlock 
+tracing code from your application simply by undefining the constant called 
+SHERLOCK and recompiling your program.  However, there may be 
+times when you want to remove all Sherlock macros from one of your 
+source files.  For instance, you may want to delete all Sherlock macros 
+before automatically re-introducing them with SPP.
+
+Invoke SDEL as follows:
+
+	SDEL input_file output_file [options]
+
+For your protection, the name of the input file may not be the same as the 
+output file, and the output file must not already exist.
+
+Options are one of the following:
+
+
+-d
+
+Do not delete SL_DISABLE() macros.
+
+
+
+-f	<file name>
+
+Use alternate macro names.  The file named in <file name>  contains a list 
+of synonym lines.  Each line contains two macro names, a standard name 
+and a synonym.  SDEL will delete the synonyms instead of the standard 
+macro names.  The pound character (#) starts a comment which continues 
+to the end of the line.  An example synonym file:
+
+	#synonym file:  May 20, 1988
+	#
+	TICKB		BEGIN_TIMING_CODE
+	TICKX		END_TIMING_CODE
+	SL_DUMP	REPORT_STATISTICS
+
+
+-i
+
+Remove any lines consisting solely of:
+
+	#include "sl.h"
+
+
+-n
+
+Allow nested comments.  By default, comments do not nest.
+
+
+-r
+
+Retain all SL_NAME macros (or synonyms for SL_NAME) in the output.
+
+
+-t
+
+Output trigraph sequences instead of the following nine characters:
+
+	  #  [  ]  \  {  }  ^  |  ~
+
+
+
+CHAPTER 8  SDIF REFERENCE
+
+
+SDIF is a special purpose file comparison programDit compares two files 
+which should be identical except for the presence of Sherlock macros.  
+SDIF allows you to see at a glance which macros where inserted into a file 
+by SPP.  You can also use SDIF to check the operation of SPP and SDEL.  
+Given any file f.c containing Sherlock macros, the following sequence of 
+commands should produce output from SDIF consisting of lines containing 
+only white space:
+
+	sdel f.c     temp1.c
+	spp  temp1.c temp2.c
+	sdel temp2.c temp3.c
+	sdif temp1.c temp3.c
+
+Invoke SDIF as follows:
+
+	SDIF file1(with_macros)  file2(without_macros) [-b] [-v]
+
+File1 is assumed to be identical to file2 except that file1 contains Sherlock 
+macros and file2 does not.
+
+The -b option causes SDIF to display inserted or deleted lines consisting 
+only on blanks or tabs.  By default SDIF does not display such lines 
+unless the -v option is in effect.
+
+If the -v option is present, each line of file1 is printed, preceded by its 
+position in file1 and its position in file2 if the line also appears in file2.  If 
+the -v option is not present, only lines which are present in one file but not 
+the other are printed.
+
+All output is sent to the standard output stream and may be redirected on 
+the command line.
+
+
+
+CHAPTER 9  CPP REFERENCE
+
+
+CPP is a preprocessor for the C language which has been included as an 
+extensive example of how to use Sherlock macros.  CPP fully implements 
+the draft ANSI standard of January 11, 1988.  For a complete discussion 
+of what CPP does read section 3.8 of the draft standard.  A more general 
+discussion of what CPP does can be found in the book, The C 
+Programming Language, by Brian W. Kernighan and Dennis M. Ritchie, 
+published by Prentice-Hall.
+
+Basically, CPP copies an input file to an output file doing the following as 
+it does so:
+
+o It includes files whenever it sees an include directive.  Included files may 
+themselves contain include directives, which may be nested to any depth.
+
+o It expands macros.  Macros may have arguments and may be call other 
+macros.
+
+o It conditionally includes lines based on whether symbols have been 
+defined or on the value of constant expressions. The directives used for 
+this purpose may be nested to any depth.
+
+o It eliminates all white space, including comments, thereby reducing the 
+size of the output. White space can be included in the output using a 
+command line option.
+
+Invoke CPP as follows:
+
+	CPP input_file  output_file  [options]
+
+Options are one of the following:
+
+
+-c
+
+Include comments and white space in the output file.
+
+
+-d	<id>=<string>
+
+Define an identifier as if a define directive appeared before the first line of 
+the program.  For example:
+
+	CPP  in  out  -d  a=xyz
+
+The last example defines the macro a to have the replacement text xyz.  The 
+equal sign is not part of the replacement text.  If the equal sign and 
+replacement text are omitted, a null definition is created.  For example, the 
+following is valid:
+
+	CPP  in  out  -d  a
+
+One or more spaces are required following the -d argument and spaces are 
+prohibited around the equal sign.  In other words, the -d and a=5 are two, 
+and only two, separate command line arguments.
+
+
+-n
+
+Allow nested comments. For example, the following is a nested comment 
+which is valid only when using the -n option.
+
+	/*comment out - - - - -
+		a = 5;
+		/* This is a nested comment. */
+		b = 5;
+	- - - - - end comment out */
+
+
+
+-s	<path>
+
+Add a path to the list of "standard places" which is used when searching 
+for included files. 
+For example:
+
+	CPP  in  out  -s  \src  -s  \etc
+
+adds the directories called \src and \etc to the end of the list of standard 
+places.  Initially, the list of standard places is obtained by reading the 
+INCLUDE environment variable.  For example:
+
+	set INCLUDE=c:\include;c:\usr\include
+
+causes the list of standard places to contain c:\include and c:\usr\include.
+
+
+-u	<id>
+
+Cancel the initial definition of a macro.  For example,
+
+	CPP in out -u SHERLOCK
+
+cancels the effect of the first definition of the macro called SHERLOCK, 
+just as if that definition had been immediately followed by
+
+	#undef SHERLOCK
+
+
+
+APPENDIX A: RUN TIME ERROR MESSAGES
+
+
+This appendix lists the error messages that are generated by the support
+routines in the file sherlock.c.  You will encounter these messages only
+while you are running a program containing Sherlock macros, never
+while compiling.  There are two sources of errors that will produce these
+messages: faulty Sherlock command line arguments and faulty tracepoint
+names in Sherlock macros.  The following abbreviations will be used in
+the explanation of these error messages:
+
+	<addr> 	The hexadecimal address where the error occurred.
+	<char> 	A single character, printed in %c format.
+	<name> 	The name of the macro, i.e., TICK, TRACE, etc.
+	<on_prefix>  	The on_prefix parameter to the SL_PARSE macro.
+	<off_prefix> 	The off_string parameter to the SL_PARSE macro.
+	<string> 	The string representing the tracepoint name. 
+
+
+sl_check:<name>: null string @ <addr>.
+
+The tracepoint name passed to a macro was the NULL string.
+
+
+sl_check:<name>: bad character <char> in <string> @ <addr>.
+
+The tracepoint name of a macro contains an invalid character.  Only
+the following characters are valid in tracepoint names:
+
+o The letters a through z and A through Z.
+o The numerals 0 through 9.
+o The underscore character.
+o The wildcard characters * and ? (on the command line only.)
+
+
+sl_check: <name>: run on argument: <string> @ <addr>.
+
+The tracepoint name passed to a macro contained more than 25 characters.
+
+
+sl_init: Header version does not match run-time version.
+
+The version of the macros in the file sl.h or sl1.h does not match the
+version of the code in the file sherlock.c.  Change either the version of
+the header file that you use to compile your programs or the version of
+the support routines that are linked with your program.
+
+
+sl_ret:  Entry/Exit mismatch at exit point <string>.
+Check for missing or misnamed exit macros.
+Dump of call stack:
+
+The tracepoint name passed to an exit macro does not match the
+tracepoint name on top of the timing stack.  This indicates that name of
+the most recently executed entry macro does not match the name of the
+current exit macro.  As an aid in finding out where the problem occurred,
+the tracepoint names on the call stack are printed out.
+
+
+Lone <on_prefix>
+
+The on_prefix appeared alone on the command line.  It must be
+followed immediately with no intervening spaces by a tracepoint name.
+This command line error  immediately terminates the program.
+
+
+Lone <off_prefix>
+
+The off_prefix appeared alone on the command line.  It must be followed
+immediately with no intervening spaces by a tracepoint name. This
+command line error  immediately terminates the program.
+
+
+Trace table overflow.
+
+Too many tracepoint names were encountered during execution of your
+program.  Different tracepoints with the same names do not add to this
+total.  Neither do tracepoints that are never executed.
+
+To increase the maximum allowable number of tracepoint names, increase
+the MAX_STAT variable in sherlock.c and recompile sherlock.c.  To
+decrease the number of tracepoint names used by your program,  undefine
+SHERLOCK in one or more of your source files and recompile those files.
+
+The tracing tables used by Sherlock are statically allocated so they do not
+interfere with the tracing of routines that do dynamic storage allocation.

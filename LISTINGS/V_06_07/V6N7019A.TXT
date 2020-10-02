@@ -1,0 +1,485 @@
+/* floppydr - floppy "doctor" program: low-low-level access to FDC */
+#include <conio.h>
+#include <dos.h>
+#include <bios.h>
+#include <stdio.h>
+#include <ctype.h>
+
+#define UBYTE unsigned char
+
+#define flop_cmd(dr, motflag, moton, c, r, n, b) \
+    { drive_sel(dr, motflag, moton); \
+    fdc_cmd(c, r, n, b); \
+    results(c[0], r);}
+
+#define out_dor(cmd) outp(0x3F2, cmd)
+#define in_stat() (inp(0x03f4))
+#define out_dat(d) outp(0x3f5,d)
+#define in_dat() (inp(0x3f5))
+	/* notes for Turbo-C:  use outportb() and inportb() */
+
+UBYTE buffer[1024];
+char get_menu_choice();
+UBYTE peekbyte(unsigned, unsigned);
+long start_tmo(void);
+
+#define READ_DATA 6
+#define READ_DELETED_DATA 0xC
+#define WRITE_DATA 5
+#define WRITE_DELETED_DATA 9
+#define READ_TRACK 2
+#define READ_ID 0xA
+#define FORMAT_TRACK 0xD
+#define RECALIBRATE 7
+#define SENSE_INTR_STATUS 8
+#define SPECIFY 3
+#define SENSE_DRIVE_STATUS 4
+#define SEEK 0xF
+
+typedef struct {
+    unsigned int ncmd;
+    unsigned int nres;
+    char ctype;         /* N, I, R, or W,
+                    for "no DMA", "Interrupt", "Read", "Write") */
+    } CMD_INFO;
+
+CMD_INFO cmdt[16] = {
+    {0, 0, ' '}, /* 0x00 */
+    {0, 0, ' '}, /* 0x01 */
+    {9, 7, 'R'}, /* 0x02 read track */
+    {3, 0, 'N'}, /* 0x03 specify */
+    {2, 1, 'N'}, /* 0x04 sense drive status */
+    {9, 7, 'W'}, /* 0x05 write data */
+    {9, 7, 'R'}, /* 0x06 read data */
+    {2, 0, 'I'}, /* 0x07 recalibrate */
+    {1, 2, 'N'}, /* 0x08 sense interrupt status */
+    {9, 7, 'W'}, /* 0x09 write deleted data */
+    {2, 7, 'N'}, /* 0x0a read id */
+    {0, 0, ' '}, /* 0x0b */
+    {9, 7, 'R'}, /* 0x0c read deleted data */
+    {6, 7, 'W'}, /* 0x0d format track */
+    {0, 0, ' '}, /* 0x0e */
+    {3, 0, 'I'}, /* 0x0f seek */
+    };
+
+#define NDPARM 12
+struct DPARM {
+    UBYTE spec1;        /* 0 specify byte 1 */
+    UBYTE spec2;        /* 1 specify byte 2 */
+    UBYTE mot_off_wt;   /* 2 meaningless */
+    UBYTE nrec;         /* 3 number of bytes code */
+    UBYTE eot;          /* 4 end-of-track */
+    UBYTE gpl;          /* 5 gap length */
+    UBYTE dtl;          /* 6 data length (if N = 0) */
+    UBYTE fgpl;         /* 7 gpl for format */
+    UBYTE fd;           /* 8 fill byte for format */
+    UBYTE hdsttl;       /* 9 head settle time (milliseconds) */
+    UBYTE mot_start;    /* 10 motor start time (1/8 seconds) */
+    UBYTE mt_mfm_sk;    /* 11 bits: 0x80 = MT, 0x40 = MFM,
+                            0x20 = SK */
+    } dparm = {0xcf, 0x02, 0x25, 0x02, 0x12, 0x2A, 
+        0xFF, 0x50, 0xF6, 0x01, 0x04, 0xE0};
+
+static char *dparmmsg[] = {
+    "0 - specify byte 1 (bits 0-3 = HUT, 4-7 = SRT)  ", 
+    "1 - specify byte 2 (bit 1-7 = HLT, 0 = 'no dma')", 
+    "2 - meaningless (was motor start time)", 
+    "3 - N: number of bytes code (2=512)", 
+    "4 - EOT: end-of-track", 
+    "5 - GPL: gap length", 
+    "6 - DTL:data length (if N = 0)", 
+    "7 - gpl for format", 
+    "8 - fill byte for format", 
+    "9 - head settle time (milliseconds) (not used)", 
+    "10 - motor start time (1/8 seconds) (not used)", 
+    "11 - bits: 0x80 = MT, 0x40 = MFM, 0x20 = SK"};
+
+int main()
+    {
+    UBYTE unit = 0;
+    UBYTE track = 0;
+    UBYTE head = 0;
+    UBYTE sector = 1;
+    UBYTE nsector = 9;
+
+    UBYTE cd[9], rs[7], c, hdsds;
+	int nbyte, i, j;
+
+    printf("\n\nfloppy doctor program\n\n");
+    out_dor(0);         /* reset card */
+    out_dor(0xC);       /* select drive 0, allow ints & DMA */
+
+    while (1)
+        {
+        c = get_menu_choice();
+        switch (c)
+            {
+        case '0':
+            printf("  Enter Drive number:");
+            getnum("%d", &unit);
+            cd[0] = SENSE_DRIVE_STATUS;
+            cd[1] = (hdsds = unit + (head << 2));
+            flop_cmd(unit, 0, 0, cd, rs, 0, buffer);
+            break;
+        case '1':
+            cd[0] = SPECIFY;
+            cd[1] = dparm.spec1;
+            cd[2] = dparm.spec2;
+            flop_cmd(unit, 0, 0, cd, rs, 0, buffer);
+            break;
+        case '2':
+            cd[0] = RECALIBRATE;
+            cd[1] = unit;
+            flop_cmd(unit, 1, 200, cd, rs, 0, buffer);
+            break;
+        case '3':
+            printf("  Enter cylinder (track) number: ");
+            getnum("%d", &track);
+            cd[0] = SEEK;
+            cd[1] = hdsds;
+            cd[2] = track;
+            drive_sel();
+            flop_cmd(unit, 1, 200, cd, rs, 0, buffer);
+            break;
+        case '4':
+            printf("  Enter Head number:");
+            getnum("%d", &head);
+            hdsds = (hdsds & 0x3) | head;
+            break;
+        case '5':
+            cd[0] = READ_DATA + dparm.mt_mfm_sk;
+            goto read_write;
+        case '6':
+            cd[0] = WRITE_DATA + (dparm.mt_mfm_sk & 0xC0);
+read_write:
+            printf("  Enter sector number: ");
+			getnum("%d", &sector);
+			nbyte = 128 << dparm.nrec;
+            cd[1] = hdsds;
+            cd[2] = track;
+            cd[3] = head;
+            cd[4] = sector;
+            cd[5] = dparm.nrec;
+            cd[6] = dparm.eot;
+            cd[7] = dparm.gpl;
+            cd[8] = dparm.dtl;
+			flop_cmd(unit, 1, 200, cd, rs, nbyte, buffer);
+            if ((cd[0] & 0x0f) == READ_DATA) {
+                puts("");
+				dump_buf(nbyte, buffer);
+                }
+            break;
+        case '7':
+            for (i = 0;  i < nsector;  i++)
+                buffer[i * 4 + 2] = i;
+            cd[0] = FORMAT_TRACK + (dparm.mt_mfm_sk & 0x40);
+            cd[1] = hdsds;
+            cd[2] = dparm.nrec;
+            cd[3] = nsector;
+            cd[4] = dparm.fgpl; /* gap length for format */
+            cd[5] = dparm.fd;   /* fill byte for format */
+            fdc_cmd(unit, 1, 200, cd, rs, nsector * 4, buffer);
+            break;
+        case '8':
+            printf("Enter number of times to read ids: ");
+            getnum("%d", &j);
+            drive_sel(unit, 1, 200);
+            cd[0] = READ_ID + (dparm.mt_mfm_sk & 0x40);
+            cd[1] = hdsds;
+            for (i = 0;  i < j;  i++) {
+                fdc_cmd(cd, rs, 0, buffer);
+                buffer[i * 4 + 0] = rs[3];
+                buffer[i * 4 + 1] = rs[4];
+                buffer[i * 4 + 2] = rs[5];
+                buffer[i * 4 + 3] = rs[6];
+                }
+            results(cd[0], rs);     /* of the last command */
+            for (i = 0;  i < j;  i++)
+                printf("c = %d, h = %d, r = %d, n = %d\n",
+                    buffer[i * 4 + 0], buffer[i * 4 + 1],
+                    buffer[i * 4 + 2], buffer[i * 4 + 3]);
+            puts("Enter a key when ready");
+            getch();
+            puts("");
+            break;
+        case 'R':
+            dparm_rpt_chg();
+            break;
+        case 'X':
+            exit(0);
+            break;
+        default:
+            printf("\nIllegal command.\n");
+            }
+        }
+    }
+
+char get_menu_choice()
+    {
+    char inp[80];
+
+    puts("");
+    puts("Menu:");
+    puts("     0 - Drive #");
+    puts("     1 - Specify (Step rate, Head unload, etc.)");
+    puts("     2 - Recalibrate");
+    puts("     3 - Seek (cylinder (track) number");
+    puts("     4 - Head (surface)");
+    puts("     5 - Read sector");
+    puts("     6 - Write sector");
+    puts("     7 - Format a track");
+    puts("     8 - Read IDs");
+    puts("     R - Report and change the DPARM table");
+    puts("     X - Exit program");
+    puts("\n");
+    printf("Command:  ");
+    gets(inp);
+    puts("");
+    return (isalpha(inp[0]) ? toupper(inp[0]) : inp[0]);
+    }
+
+int dparm_rpt_chg()
+    {
+    int i, pi;
+    unsigned int nv;
+    UBYTE *a = &dparm.spec1;
+
+    for (i = 0;  i < NDPARM;  i++)
+        printf("(0x%02x)  ", a[i]),  puts(dparmmsg[i]);
+    puts("");
+    printf("Which to change (enter -1 if none to change): ");
+    getnum("%d", &pi);
+    if ((pi < 0) || (pi >= NDPARM))
+        return;
+    printf("dparm[%d] = %02x, new value:  ", pi, a[pi]);
+    getnum("%x", &nv);
+    a[pi] = nv;
+    }
+
+int fdc_cmd(UBYTE cmds[], UBYTE results[], int nbyte, UBYTE buffer[])
+    {                       /* fdc_cmd */
+    int i, ccode, s;
+
+    ccode = cmds[0] & 0xF;
+    if (cmdt[ccode].ctype == 'R')
+        set_dma_up(buffer, 0, nbyte);   /* set up DMA to read */
+    else if (cmdt[ccode].ctype == 'W')
+        set_dma_up(buffer, 1, nbyte);   /* set up DMA to write */
+    set_for_int();
+    for (i = 0;  i < cmdt[ccode].ncmd;  i++) {
+        s = out_fdccmd(cmds[i]);
+        if (s)
+            printf("fdc_cmd: Error from out_fdccmd = %d\n", s);
+        }
+    if (cmdt[ccode].ctype == 'I') {
+        if (s = wait_for_int())
+            printf("fdc_cmd: Error from wait_for_int = %d\n", s);
+        s = out_fdccmd(SENSE_INTR_STATUS);
+        if (s)
+            printf("fdc_cmd: Error "
+                "during sense_intr_stat from out_fdccmd = %d\n", s);
+        in_fdcres(results++);   /* from sense_intr_status */
+        in_fdcres(results);
+        }
+    else {
+        if (cmdt[ccode].ctype != 'N') {
+            if (s = wait_for_int())
+                printf("fdc_cmd: Error from wait_for_int = %d\n", s);
+            }
+        for (i = 0;  i < cmdt[ccode].nres;  i++) {
+            s = in_fdcres(results++);
+            if (s)
+                printf("fdc_cmd: Error from in_fdcres = %d\n", s);
+            }
+        }
+    }                               /* fdc_cmd */
+
+int results(UBYTE cmd, UBYTE res[])
+    {
+    int i;
+
+    printf("\nresults :");
+    for (i=0; i < (cmdt[cmd & 0xf].nres); i++)
+        printf("%02x ", res[i]);
+    printf("\n");
+    }
+
+int dump_buf(int n, UBYTE buf[])
+    {                           /* dump_buf */
+    int i, j;
+
+    for (i = 0;  i < n;  i++) {
+        if ((i & 0xF) == 0)
+            printf("%4x:  ", i);
+        else if ((i & 0x7) == 0)
+            printf(" |");
+        printf(" %02x", buf[i]);
+        if ((i & 0xF) == 15) {
+            printf("  |");
+            for (j = i - 15;  j <= i;  j++)
+                if (isprint(buf[j]))
+                    putchar(buf[j]);
+                else
+                    putchar('.');
+            printf("|\n");
+            if ((i & 0xFF) == 0xFF) {
+                printf("hit any key to continue");
+                getch();
+                puts("");
+                }
+            }
+        }
+    }
+
+int set_motor_tmo(int count)
+    {
+    pokebyte(0x40, 0x40, &count);   /* set motor_count for BIOS */
+    }
+
+int getnum(char *fmt, int *num)
+    {
+    char s[80];
+
+    gets(s);
+    sscanf(s, fmt, num);
+    }
+
+int out_fdccmd(UBYTE byte)
+    {
+    long st;
+
+    st = start_tmo();
+	while ((in_stat() & 0xC0) != 0x80)
+        if (check_tmo(st, 18))
+            return 1;
+    out_dat(byte);
+    return 0;
+    }
+
+int in_fdcres(UBYTE *byte)
+    {
+    long st;
+
+    st = start_tmo();
+	while ((in_stat() & 0xC0) != 0xC0) {
+        if (check_tmo(st, 18))
+            return 2;
+        }
+    *byte = in_dat();
+    return 0;
+    }
+
+int set_for_int()
+    {                   /* set_for_int */
+    UBYTE seek_status;
+
+    seek_status = 0;
+    pokebyte(0x40, 0x3E, seek_status);
+    }                   /* set_for_int */
+
+int wait_for_int()
+    {                   /* wait_for_int */
+    UBYTE seek_status;
+	long t1;
+
+    t1 = start_tmo();
+    do  {
+        if (check_tmo(t1, 18))
+            return 3;
+        seek_status = peekbyte(0x40, 0x3E);
+        }
+    while (seek_status == 0);
+    return 0;
+    }                   /* wait_for_int */
+
+#define DMACH2AD    0x04
+#define DMACH2WC    0x05
+#define DMACLRFF    0x0C
+#define DMAMODE     0x0B
+#define DMAWAMRB    0x0A        /* WRITE A MASK REGISTER BIT */
+#define PAGEREG     0x81
+                           /* cmd = 0 for read, 1 for write */
+int set_dma_up(char *ptr, int cmd, int count)
+    {                   /* set_dma_up */
+    unsigned long paddr, test;
+    UBYTE lobyte, hibyte, hinybl;
+    struct SREGS seg;
+
+    segread(&seg);
+
+    paddr = (seg.ds * 0x10L) + (unsigned) ptr;
+    lobyte = (char) (paddr & 0xFF);
+    hibyte = (char) ((paddr >> 8) & 0xFF);
+    hinybl = (char) ((paddr >> 16) & 0xF);
+    test = (paddr & 0xFFFFL) + (unsigned) count;
+    if (test & 0xFFFF0000L) {
+        printf("paddr - attempt for dma to cross 64K boundary\n");
+        printf("paddr = 0x%08lx: %01x %02x %02x\n",
+            paddr, hinybl, hibyte, lobyte);
+        exit(0);
+        }
+	_disable();     /* for Turbo-C: disable(); */
+    outp(DMACLRFF, 0);  /* clear byte ptr flip/flop */
+    if (cmd == 0)
+        outp(DMAMODE, 0x46);
+    else 
+        outp(DMAMODE, 0x4A);
+    outp(DMACH2AD, lobyte);
+    outp(DMACH2AD, hibyte);
+    outp(PAGEREG, hinybl);
+    count--;            /* required for dma chip */
+    lobyte = (char) (count & 0xFF);
+    hibyte = (char) ((count >> 8) & 0xFF);
+    outp(DMACH2WC, lobyte);
+    outp(DMACH2WC, hibyte);
+	_enable();      /* for Turbo-C: enable(); */
+    outp(DMAWAMRB, 2);  /* clear bit for ch 2, enabling transfer */
+    }                   /* set_dma_up */
+
+int drive_sel(int unit, int motor, int timeout)
+    {
+    if (motor)
+        set_motor_tmo(timeout);
+    out_dor(0xC+unit+(motor?(0x10<<unit):0));
+    }
+
+/*******************************************************************/
+long start_tmo()
+    {
+    long t;
+
+    _bios_timeofday(_TIME_GETCLOCK, &t);
+			/* for Turbo-C: t = biostime(0, t); */
+	return t;
+    }
+
+int check_tmo(long startt, int tmoticks)
+    {
+    long t;
+
+	_bios_timeofday(_TIME_GETCLOCK, &t);
+			/* for Turbo-C: t = biostime(0, t); */
+    if (t > startt + tmoticks)
+        return 1;
+    else
+        return 0;
+    }
+
+#pragma check_pointer(off)    /* required here to let these work */
+pokebyte(unsigned seg, unsigned off, UBYTE dbyte)
+    {
+    UBYTE far *sp;
+
+	FP_SEG(sp) = seg;       FP_OFF(sp) = off;
+		 /* for Turbo-C:  sp = MK_FP(seg, off); */
+    *sp = dbyte;
+    }
+
+UBYTE peekbyte(unsigned seg, unsigned off)
+    {
+    UBYTE far *sp;
+
+    FP_SEG(sp) = seg;       FP_OFF(sp) = off;
+		/* for Turbo-C:  sp = MK_FP(seg, off); */
+    return *sp;
+    }

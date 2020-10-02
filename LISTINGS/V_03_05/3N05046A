@@ -1,0 +1,195 @@
+;======================================================================
+; DISKTYPE.ASM
+; Copyright (c) 1992 Schaefer Software, Robert L. Hummel
+;----------------------------------------------------------------------
+; DisketteType() is a function that attempts to identify the type
+; (capacity) of a diskette drive using BIOS calls. It returns an
+; integer value that identifies the type of drive. Note that this
+; routine operates on PHYSICAL diskette drives, not logical drives.
+;
+; To be properly identified, the drive must be supported by the BIOS of
+; the PC. Improper information in the CMOS or incompatible hardware
+; will tend to give incorrect results.
+;----------------------------------------------------------------------
+; Usage:
+;	Result = DisketteType(DriveNumber)
+; where
+;	DriveNumber = (16-bit integer) physical drive number.
+;		      0 = 1st physical diskette
+;		      1 = 2nd physical diskette
+;		      2 = 3rd physical diskette
+;			  etc.
+;
+;	Result = (16-bit integer)
+;		 0, Drive not present or cannot identify
+;		 1, 360K 5.25" 40 track
+;		 2, 1.2M 5.25" 80 track
+;		 3, 720K 3.5"  80 track
+;	 	 4, 1.4M 3.5"  80 track
+;----------------------------------------------------------------------
+PUBLIC  DisketteType	 ;BASIC, PASCAL (FAR)
+PUBLIC _DisketteType	 ;C (FAR)
+PUBLIC  DisketteType$FAR ;ASM (FAR)
+
+;======================================================================
+; Code segment.
+;----------------------------------------------------------------------
+CSEG		SEGMENT	BYTE	PUBLIC	'CODE'
+	ASSUME	CS:CSEG
+
+;======================================================================
+; DisketteType$FAR
+; Copyright (c) 1992 Schaefer Software, Robert L. Hummel
+;
+; The common assembly routine called by the HLL interface routines.
+; May also be called directly from assembly language.
+; All arguments are passed via register.
+;----------------------------------------------------------------------
+; Entry:
+;	DL = Physical drive number
+; Exit:
+;	AX = Drive type
+;----------------------------------------------------------------------
+; Changes: AX BX CX DX ES
+;----------------------------------------------------------------------
+DisketteType$FAR	PROC	FAR
+	ASSUME	CS:CSEG
+
+		PUSH	SI			;Preserve registers
+		PUSH	DI
+;----------------------------------------------------------------------
+; The Read Drive Parameters BIOS function is supported by all PCs
+; except the PC, XT, PCjr, and first AT (BIOS 1/10/84). If successful,
+; it returns the drive type in BL. Otherwise, CF is set.
+;----------------------------------------------------------------------
+		MOV	SI,DX			;Save drive number
+
+		MOV	AH,8			;Get disk type
+						;Drive number in DL
+		INT	13H			; thru BIOS
+	ASSUME	ES:NOTHING			;May change ES
+		JNC	DT_3A
+;----------------------------------------------------------------------
+; The carry flag was set, indicating that this function, and 3.5"
+; drives, are not supported by this BIOS.
+;
+; All PCs that support the 1.2M drive support the Read DASD (Direct
+; Access Storage Device) Type function call.
+;----------------------------------------------------------------------
+		MOV	AH,15H			;Read DASD type
+		MOV	DX,SI			;For drive in DL
+		INT	13H			; thru BIOS
+		JNC	DT_2
+;----------------------------------------------------------------------
+; The carry flag was set, so 1.2M drives are not supported. The only
+; choices left are 360k 5.25" or not present. Check the equipment list
+; to see if the drive number is within range.
+;----------------------------------------------------------------------
+		MOV	DX,SI			;Drive number in DL
+
+		INT	11H			;Get equipment list
+		MOV	DH,AL			;Drives into DH
+
+		SUB	AX,AX			;Assume not present
+
+		TEST	DH,1			;=1 if any drives
+		JZ	DT_EXIT
+
+		ROL	DH,1			;Isolate
+		ROL	DH,1			; number of
+		AND	DH,3			; diskette drives
+		INC	DH			; and make upper limit
+
+		CMP	DL,DH			;CMP drive # to max
+		RCL	AL,1			;Move CF into AL
+		JMP	SHORT DT_EXIT
+;----------------------------------------------------------------------
+; The Read DASD type call was successful.  AH contains the BIOS return
+; code for the drive type. If the drive supports the change line it is
+; a 1.2M. Otherwise, it is a 360k.
+;----------------------------------------------------------------------
+DT_2:
+		SUB	AL,AL			;Clear AL
+		XCHG	AH,AL			;Put type in AX
+		JMP	SHORT DT_EXIT
+;----------------------------------------------------------------------
+; If CX=0, then the specified drive is not installed. AX already
+; contains a 0 (cleared by the BIOS function), so simply return.
+;----------------------------------------------------------------------
+DT_3A:
+		JCXZ	DT_EXIT
+;----------------------------------------------------------------------
+; If BL=0, then the CMOS was corrupt. Determine the drive type by
+; matching the returned drive parameters.
+;----------------------------------------------------------------------
+		ADD	AL,BL			;ZF=1 if BL=0
+		JNZ	DT_EXIT
+
+		MOV	AX,CX			;Save tracks/sectors
+		MOV	CX,5			;Preset return type
+
+		CMP	AX,4F12H		;If type 4
+		LOOPE	DT_3B			; DEC CX and exit
+
+		CMP	AX,4F09H		;Type 3
+		LOOPE	DT_3B
+
+		CMP	AX,4F0FH		;Type 2
+		LOOPE	DT_3B
+
+		CMP	AX,2709H		;Type 1
+		LOOPE	DT_3B
+DT_3B:
+		MOV	AX,CX
+DT_EXIT:
+		POP	DI
+		POP	SI
+		RET
+
+DisketteType$FAR	ENDP
+
+;======================================================================
+; BASIC, PASCAL entry point.
+;----------------------------------------------------------------------
+; 1. Argument is passed by reference.
+; 2. We clean up stack.
+;----------------------------------------------------------------------
+DisketteType	PROC	FAR
+	ASSUME	CS:CSEG
+
+		PUSH	BP			;Create stack frame
+		MOV	BP,SP
+
+		MOV	BX,WORD PTR [BP+6]	;Get pointer
+		MOV	DX,WORD PTR [BX]	;Drive number
+
+		CALL	DisketteType$FAR
+
+		POP	BP			;Destroy stack frame
+		RET	(1)*2			;Discard 1 argument
+
+DisketteType	ENDP
+
+;======================================================================
+; C entry point.
+;----------------------------------------------------------------------
+; 1. Argument is passed by value.
+; 2. Caller cleans up stack.
+;----------------------------------------------------------------------
+_DisketteType	PROC	FAR
+	ASSUME	CS:CSEG
+
+		PUSH	BP			;Create stack frame
+		MOV	BP,SP
+
+		MOV	DX,WORD PTR [BP+6]	;Get drive number
+
+		CALL	DisketteType$FAR
+
+		POP	BP			;Destroy stack frame
+		RET
+
+_DisketteType	ENDP
+
+CSEG		ENDS
+		END

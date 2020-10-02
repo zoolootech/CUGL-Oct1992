@@ -1,0 +1,360 @@
+
+
+                                                                       PAGE   1
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+      1  /*	scanfils.c
+      2   *
+      3   *	Read in two directory listings that have been run through the SORT
+      4   *	utility.  Files names that have a changed date/time or that are in the
+      5   *	new directory listing but not the old have a COPY command generated
+      6   *	in an output file.
+      7   *	Note that files that appear in the old listing but not the new must have
+      8   *	been deleted between the 2 listings.  Although an ERASE statement could
+      9   *	be generated, that's kinda dangerous, so an ECHO is generated instead.
+     10   *
+     11   *	Example of usage:
+     12   *		dir | sort >glopold
+     13   *		... other processing ...
+     14   *		dir | sort >glopnew
+     15   *		scanfils glopold glopnew d: >savefils.bat
+     16   *		savefils
+     17   *
+     18   *	Suppose the directory originally contained files A, B, C, D, E, and F.
+     19   *	Other procesing is done.  Now the directory contains files A, C, D, E,
+     20   *	and G.	In addition, file A was updated.
+     21   *	SCANFILS will generate the following statements in its output:
+     22   *		copy A d:
+     23   *		echo B
+     24   *		echo F
+     25   *		copy G d:
+     26   *	(The "d:" cones from the command line, see example invocation above).
+     27   *	Note that the filenames that are input to this utility on the command
+     28   *	line will be ignored insofar as generating any output lines (but only
+     29   *	if the names are simple, ie don't contain drive or directory).	This
+     30   *	means that when used in the example above, no COPY will be generated
+     31   *	for GLOPOLD or GLOPNEW even though they will appear in the directory
+     32   *	listing.
+     33   *	In addition, "X files added, Y files deleted, Z files changed" will
+     34   *	appear on the standard ERROR output as a report.
+     35   *
+     36   */
+     37  
+     38  #include "stdio.h"
+     39  #include "process.h"		/* For exit () */
+     40  #include "stdlib.h"		/* For perror () */
+     41  #include "memory.h"		/* For memcmp, et al */
+     42  #include "string.h"		/* For strcmp, et al */
+     43  
+     44  char odir[12], ndir[12];
+     45  
+     46  main (argc, argv, envp)
+     47  
+     48  int argc;
+     49  char *argv[];
+     50  char *envp[];
+     51  
+     52  {
+     53  	void usage ();
+     54  	void rl ();
+
+
+                                                                       PAGE   2
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+     55  	void gcopy (), gecho ();
+     56  	FILE *old, *new;
+     57  	int added = 0, changed = 0, deleted = 0;
+     58  	char lold[80], lnew[80];
+     59  	int cresult;
+     60  	char *p;
+     61  
+     62  	if (argc != 4)
+     63  		usage ();
+     64  
+     65  	if (! (old = fopen (argv[1], "r"))) {
+     66  		perror ("scanfils: Unable to open \"old\" directory file");
+     67  		exit (1);
+     68  	}
+     69  
+     70  	if (! (new = fopen (argv[2], "r"))) {
+     71  		perror ("scanfils: Unable to open \"new\" directory file");
+     72  		exit (1);
+     73  	}
+     74  
+     75  	/* Generate filenames in "dir" format for both old and new files */
+     76  	memset (odir, ' ', 12);
+     77  	if (! strpbrk (argv[1], "/\:")) {
+     78  		if (p = strchr (argv[1], '.')) {
+     79  			memcpy (odir, argv[1], p-argv[1]);
+     80  			memcpy (odir+9, p+1, strlen (p+1));
+     81  		} else {
+     82  			memcpy (odir, argv[1], strlen (argv[1]));
+     83  		}
+     84  	}
+     85  	for (p = odir; p < odir+12; p++)
+     86  		*p = toupper (*p);
+***** i:scanfils.c(86) : warning 51: data conversion
+     87  
+     88  	memset (ndir, ' ', 12);
+     89  	if (! strpbrk (argv[2], "/\:")) {
+     90  		if (p = strchr (argv[2], '.')) {
+     91  			memcpy (ndir, argv[2], p-argv[2]);
+     92  			memcpy (ndir+9, p+1, strlen (p+1));
+     93  		} else {
+     94  			memcpy (ndir, argv[2], strlen (argv[2]));
+     95  		}
+     96  	}
+     97  	for (p = ndir; p < ndir+12; p++)
+     98  		*p = toupper (*p);
+***** i:scanfils.c(98) : warning 51: data conversion
+     99  
+    100  	/* Prime the comparison arrays */
+    101  	rl (old, lold, sizeof (lold));
+    102  	rl (new, lnew, sizeof (lnew));
+    103  
+    104  	/* Go thru the files until eof on both */
+    105  	while (lold[0] != '\177' && lnew[0] != '\177') {
+    106  		cresult = memcmp (lold, lnew, 12);
+
+
+                                                                       PAGE   3
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+    107  		if (cresult < 0) {		/* old file deleted */
+    108  			++deleted;
+    109  			gecho (lold);
+    110  			rl (old, lold, sizeof (lold));
+    111  		} else if (cresult == 0) {	/* same file names */
+    112  			if (strcmp (lold, lnew)) { /* ... different attr */
+    113  				++changed;
+    114  				gcopy (lnew, argv[3]);
+    115  			}
+    116  			rl (old, lold, sizeof (lold));
+    117  			rl (new, lnew, sizeof (lnew));
+    118  		} else {			/* new file added */
+    119  			++added;
+    120  			gcopy (lnew, argv[3]);
+    121  			rl (new, lnew, sizeof (lnew));
+    122  		}
+    123  	}
+    124  
+    125  	/* Display summary */
+    126  	fprintf (stderr, "scanfils:  %d added, %d deleted, %d changed", added,
+    127  		deleted, changed);
+    128  	return (0);
+
+main  Local Symbols
+
+Name                            Class    Offset    Register
+
+changed . . . . . . . . . . . . auto      -00ae    
+lold. . . . . . . . . . . . . . auto      -00ac    
+lnew. . . . . . . . . . . . . . auto      -005c    
+added . . . . . . . . . . . . . auto      -000c    
+p . . . . . . . . . . . . . . . auto      -000a    
+deleted . . . . . . . . . . . . auto      -0008    
+old . . . . . . . . . . . . . . auto      -0006    
+new . . . . . . . . . . . . . . auto      -0004    
+cresult . . . . . . . . . . . . auto      -0002    
+argc. . . . . . . . . . . . . . param      0004    
+argv. . . . . . . . . . . . . . param      0006    
+envp. . . . . . . . . . . . . . param      0008    
+
+    129  }
+    130  
+    131  /*	gcopy
+    132   *
+    133   *	Generate a COPY command to the standard output.
+    134   */
+    135  
+    136  void	gcopy (s, d)
+    137  
+    138  char *s;		/* string containing filename (dir listing fmt) */
+    139  char *d;		/* string containing name of destination drive */
+    140  
+    141  {
+    142  	char *p;
+
+
+                                                                       PAGE   4
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+    143  
+    144  	p = strchr (s, ' ');
+    145  	*p = '\0';
+    146  	*(s+12) = '\0';
+    147  	if (memcmp (s+9, "   ", 3))		/* if extension present */
+    148  		printf ("COPY %s.%s %s\n", s, s+9, d);
+    149  	else
+    150  		printf ("COPY %s %s\n", s, d);
+    151  	*p = ' ';
+    152  	*(s+12) = ' ';
+    153  	return;
+
+gcopy  Local Symbols
+
+Name                            Class    Offset    Register
+
+p . . . . . . . . . . . . . . . auto      -0002    
+s . . . . . . . . . . . . . . . param      0004    
+d . . . . . . . . . . . . . . . param      0006    
+
+    154  }
+    155  
+    156  /*	gecho
+    157   *
+    158   *	Generate an ECHO command to the standard output.
+    159   */
+    160  
+    161  void	gecho (s, d)
+    162  
+    163  char *s;		/* string containing filename (dir listing fmt) */
+    164  
+    165  {
+    166  	char *p;
+    167  
+    168  	p = strchr (s, ' ');
+    169  	*p = '\0';
+    170  	*(s+12) = '\0';
+    171  	if (memcmp (s+9, "   ", 3))		/* if extension present */
+    172  		printf ("ECHO %s.%s\n", s, s+9);
+    173  	else
+    174  		printf ("ECHO %s\n", s);
+    175  	*p = ' ';
+    176  	*(s+12) = ' ';
+    177  	return;
+
+gecho  Local Symbols
+
+Name                            Class    Offset    Register
+
+p . . . . . . . . . . . . . . . auto      -0002    
+s . . . . . . . . . . . . . . . param      0004    
+d . . . . . . . . . . . . . . . param      0006    
+
+    178  }
+
+
+                                                                       PAGE   5
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+    179  
+    180  /*	rl
+    181   *
+    182   *	Read a line from the input file specified.
+    183   *	If at end of file, a byte of 0xFF is put in the first byte.
+    184   *	Lines beginning with spaces are skipped (Lines in the directory
+    185   *	listing that we're uninterested in start with a space!)
+    186   *	Ditto for lines beginning with a period.
+    187   *	Ditto for lines that match either the "old" or "new" filenames.
+    188   */
+    189  
+    190  void rl (stream, s, len)
+    191  
+    192  FILE *stream;
+    193  char *s;
+    194  int len;
+    195  
+    196  {
+    197  	char *p;
+    198  
+    199  	do {
+    200  		if (feof (stream))
+    201  			 *s = '\177';
+    202  		else
+    203  			if (! fgets (s, len, stream))
+    204  				*s = '\177';
+    205  	} while (*s <= ' ' || *s == '.' || !memcmp (odir, s, 12) ||
+    206  		!memcmp (ndir, s, 12));
+    207  	return;
+
+rl  Local Symbols
+
+Name                            Class    Offset    Register
+
+p . . . . . . . . . . . . . . . auto      -0002    
+stream. . . . . . . . . . . . . param      0004    
+s . . . . . . . . . . . . . . . param      0006    
+len . . . . . . . . . . . . . . param      0008    
+
+    208  }
+    209  
+    210  /*	usage
+    211   *
+    212   *	Display usage message and exit
+    213   */
+    214  
+    215  void usage ()
+    216  
+    217  {
+    218  	printf ("scanfils usage:  olist nlist drive >output\n");
+    219  	printf ("\n");
+    220  	printf ("where olist:	Sorted old directory listing\n");
+    221  	printf ("      nlist:	Sorted new directory listing\n");
+    222  	printf ("      drive:	Output drive in generated COPY commands\n");
+
+
+                                                                       PAGE   6
+                                                                       10-23-86
+                                                                       23:01:46
+
+  Line#  Source Line                       Microsoft C Compiler Version 3.00.17
+
+    223  	printf ("\n");
+    224  	printf ("Sorted directory listings may be generated via DIR | SORT");
+    225  	printf (" >GLOP\n");
+    226  
+    227  	exit (1);
+    228  }
+
+
+
+Global Symbols
+
+Name                            Type             Size    Class    Offset
+
+_iob. . . . . . . . . . . . . . struct/array      160    extern      ***
+exit. . . . . . . . . . . . . . near function     ***    extern      ***
+fgets . . . . . . . . . . . . . near function     ***    extern      ***
+fopen . . . . . . . . . . . . . near function     ***    extern      ***
+fprintf . . . . . . . . . . . . near function     ***    extern      ***
+gcopy . . . . . . . . . . . . . near function     ***    global     0296
+gecho . . . . . . . . . . . . . near function     ***    global     030e
+main. . . . . . . . . . . . . . near function     ***    global     0000
+memcmp. . . . . . . . . . . . . near function     ***    extern      ***
+memcpy. . . . . . . . . . . . . near function     ***    extern      ***
+memset. . . . . . . . . . . . . near function     ***    extern      ***
+ndir. . . . . . . . . . . . . . struct/array       12    common      ***
+odir. . . . . . . . . . . . . . struct/array       12    common      ***
+perror. . . . . . . . . . . . . near function     ***    extern      ***
+printf. . . . . . . . . . . . . near function     ***    extern      ***
+rl. . . . . . . . . . . . . . . near function     ***    global     0380
+strchr. . . . . . . . . . . . . near function     ***    extern      ***
+strcmp. . . . . . . . . . . . . near function     ***    extern      ***
+strlen. . . . . . . . . . . . . near function     ***    extern      ***
+strpbrk . . . . . . . . . . . . near function     ***    extern      ***
+toupper . . . . . . . . . . . . near function     ***    extern      ***
+usage . . . . . . . . . . . . . near function     ***    global     03e5
+
+Code size = 0448 (1096)
+Data size = 01c8 (456)
+Bss size  = 0000 (0)
+
+No errors detected
+

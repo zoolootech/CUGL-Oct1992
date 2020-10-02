@@ -1,0 +1,275 @@
+.mt 0
+.mb 11
+.po 13
+/*
+HEADER:		;
+TITLE:		C elementary transcendentals;
+VERSION:	1.0;
+
+DESCRIPTION:   	Source    code    for   all   standard    C                            
+               transcendentals
+
+		Employs  ldexp()  and  frexp()  functions;  if                
+               suitable  versions  of these are  not  provided                
+               by  a given compiler,  the versions provided in                
+               source  code  will require  adaptation  to  the                
+               double float formats of the compiler.
+
+KEYWORDS:	Transcendentals, library;
+SYSTEM:		CP/M-80, V3.1;
+FILENAME:	TRANS.C;
+WARNINGS:  	frexp()   and  ldexp()  are   implementation                
+               dependent.   The  compiler  employed  does  not 
+               support    minus   (-)   unary   operators   in                
+               initializer  lists,  which are required by  the                
+               code.
+AUTHORS:	Tim Prince;
+COMPILERS:	MIX C, v2.0.1;
+*/
+              Transcendental Function Algorithms
+
+     All  programming languages which are descended from  FOR-
+TRAN  or  Algol include pre-defined transcendental  functions.     
+Standard  textbooks on programming assume that the usual  math 
+functions  are already available and not worth the  paper  re-
+quired  to describe how they might be coded.   This is  unfor-
+tunate,  as few computer systems provide reliable transcenden-
+tals,  and  a basic understanding of their contents is helpful 
+in their use.
+
+     The  following  examples use polynomial  representations, 
+because  they lead to compact code and give  average  accuracy 
+within one bit of the best available.  Faster algorithms exist 
+but require more code or data storage,  if written in the same 
+language.   Commercial  versions of the functions are  usually 
+written  in  assembler,  but the ideas are best  expressed  in 
+higher  level languages.   Obscure tricks which  an  anonymous 
+coder thought would improve speed are useless when the program 
+fails  and the source code is not available.   These functions 
+have been tested in nearly the same form on several  computers 
+in both FORTRAN and C.
+
+     The  author's hope is that these examples may set a mini-
+mum standard for accuracy and speed of C library  transcenden-
+tals.   Failing  this,  the  individual user should  have  the 
+opportunity  to check whether any deficiencies of his code may 
+be due to the library provided with the C compiler.  C's  soon 
+to  be standardized support of bit fields and low level opera-
+tions on doubles helps in the expression of these  algorithms.  
+Since  C,  even in the future ANSI standard,  will not support 
+pure single precision on computers which were not designed for 
+mixed precision arithmetic, and the standard library functions 
+are double, we show only the double precision, with the under-
+standing that changes in the polynomials would adapt to  other 
+precisions.   The file TRANSLIB.FOR shows FORTRAN versions  in 
+single precision, which should serve as a demonstration of the 
+changes required to vary precision and language.
+
+     The  polynomial  coefficients were determined by  running 
+one  of  Steve Ruzinsky's programs (1).   In  each  case,  the 
+polynomial  is derived by truncating a standard Taylor  series 
+or  rational  polynomial representation of  the  function  and 
+using Steve's program to obtain more accuracy with fewer terms 
+in the required range.   In some cases, 25 digit arithmetic is 
+required  to fit a polynomial accurate to at least 16  digits.  
+Tables of coefficients have been generated for polynomials  of 
+any accuracy required up to 20 or more significant digits.
+
+     Trigonometric  functions can be calculated with  adequate 
+efficiency  using portable code,  even in archaic dialects  of 
+FORTRAN,  Pascal,  and C.   When using polynomials, it appears 
+best  to use the sin() function as the basic series and calcu-
+late the others from it.   A polynomial for tan() requires  as 
+many terms as sin() and cos() together.  Since cos() and tan() 
+may be calculated from sin(),  only one shorter table of coef-
+ficients  is  needed.   In effect,  tan() is calculated  by  a 
+rational polynomial approximation.   Expressing these trigono-
+metric relationships by #define teaches the preprocessor alge-
+bra  which  an  optimizing compiler could  use  to  advantage.  
+Check  that your compiler does not execute functions  multiple 
+times  as a result of macro expansion.   Tan() could be calcu-
+lated much faster with a big table as is built in to the 8087, 
+but  most programs we have seen spend more time on  sin()  and 
+cos().
+
+     The  first  step in calculating sin() is  to  reduce  the 
+range to |x| < pi/2 by subtracting the nearest multiple of pi.  
+The  ODD() function shown assumes that (int) will extract  the 
+low  order  bits  in case the argument  exceeds  maxint.   The 
+multiplication  and subtraction should be done in long  double 
+if it is available, but in any case the range reduction should 
+not reduce accuracy when the original argument was already  in 
+the  desired  range.   The  method most often used  saves  one 
+divide (which may be changed to a multiply), at the cost of an 
+unnecessary  roundoff.   Worse,  the result may  underflow  to 
+zero.   Underflows  in the code shown occur only where a  zero 
+does not affect the result.  With the precautions taken, extra 
+precision   is  not  needed  anywhere  other  than  the  range 
+reduction.
+
+     Most  computer  systems include a  polynomial  evaluation 
+function,  sometimes in microcode.  To save space we prefer to 
+use such a function even though it may be slower than  writing 
+out  the  polynomial in Horner form.   Such functions  operate 
+like poly() shown here,  but (presumably) faster.   This modu-
+larity  permits  special  hardware features to  be  used  more 
+effectively,  although the time required to call another func-
+tion may be excessive.  Loop unrolling (shown here) or odd and 
+even  summing (see exp2()) are often  effective.   The  series 
+used  for elementary functions have terms increasing in magni-
+tude fast enough so that there is no need for extra  precision 
+intermediate computation.
+
+     The  arctan function uses several substitutions to reduce 
+to a range of 0 < x < 1.   Although the Taylor series does not 
+converge over this range,  the minimax polynomial does, but so 
+many terms are needed that one further step of range reduction 
+is preferred.   Code length may be traded for speed by using a 
+table of tangents with a shorter series.   A rational  polyno-
+mial(3)  is used by many run-time libraries,  at some cost  of 
+accuracy.   A  series with one less term would still give over 
+15  digits  accuracy,  which is the maximum possible  on  some 
+systems.
+
+     Although  log base 2 is not usually included in the  list 
+of  library functions,  it is almost always used as the  basic 
+logarithm  for binary floating point,  because it is the  most 
+efficient  base for exponentiation with a float  power.   Many 
+implementations fail to obtain the logarithm of numbers  close 
+to 1.   The following routine is the most widely tested of the 
+examples  given here,  and has been found accurate on all  ma-
+chines which subtract 1 accurately (some don't!).   In theory, 
+precision  is  lost when the exponent is added in at the  end, 
+but  this  is not serious in the most common cases of  numbers 
+near 1.  Making the function long double would correct this.
+
+     Log2  can  be written in portable code  if  the  standard 
+functions  frexp() and ldexp() for extracting and changing the 
+exponent field of a floating point number are  available.   On 
+many  systems,  adequate speed will not be obtained unless the 
+code  is  supplied in line.   This should  be  possible  using 
+unions of structures,  but direct use of any applicable float-
+ing point hardware instructions is preferable.   The algorithm 
+requires separate calculation of the log of a number near 1 by 
+a  series,  which is added to the scale (nearest integer power 
+of 2) of the argument.
+
+     Using  bit  fields  of structures as  an  alternative  to 
+frexp() and ldexp() can be tricky,  but will allow a short int 
+comparison to be substituted for the float comparison. The DEC 
+system  is unusual in that floating point numbers  are  stored 
+with  byte pairs reversed while integers are stored with  full 
+reverse byte order.   This may not ruin the bit field code, if 
+no  field crosses a 16-bit boundary.   The C function  frexp() 
+conflicts  with  the  suggested IEEE standard  which  gives  a 
+result just greater than 1 rather than just less than 1.
+
+     A  common error in commercial implementations of log() is 
+to bypass the conversion of a comparison into an increment  of 
+the  scale  by subtracting and adding sqrt(.5) instead  of  1.  
+This  has  never been seen to work well,  as sqrt(.5)  is  not 
+represented exactly, and all significance of an argument which 
+is  near  1  may be lost.   It isn't even as fast  unless  the 
+machine  is one which is better suited to  extended  precision 
+floating  point  than integer and logical  operations.   Since 
+most systems have immediate constant representations of 1. and 
+2., the difference in code length is small.
+
+     In  a  full IEEE standard(3)  system,  log()  would  need 
+special  code to take care of log(0) and infinities and assure 
+that accuracy is not lost on subnormals.   The code shown will 
+give  a system-dependent result for log(0) which is such  that 
+exp(log(0)) still returns 0.
+
+     The  exponential  is the most difficult of  the  standard 
+functions to calculate with full accuracy.   It could be writ-
+ten  in  portable  code if there were a way to  ascertain  the 
+exponent range at compile time;  IEEE P754 dictates a slightly 
+different  range from older systems and requires special  case 
+handling of out of range arguments.   If ldexp() takes care of 
+over- and underflow, these checks may be omitted.  Many varia-
+tions may be found,  but they have in common a range reduction 
+based on splitting the argument into an integer and a fractio-
+nal part, raising 2 to the power of each part, and (in effect) 
+multiplying to get the result.
+
+     Unlike the other functions,  which have no even terms  in 
+their Taylor series,  exponentiation has a symmetry which  can 
+be  exploited  only in a rational approximation.   Since  
+2^(-x)=1/2^x,  the rational polynomial takes the form 
+P(x)/P(-x),  where the numerator and denominator are identical 
+except for the sign of the odd power terms.   Only half of the 
+terms  need to be evaluated.
+
+     The  coefficients may be calculated by pencil  and  paper 
+algebra,  converting  a continued fraction(4) into a  rational 
+approximation(5).  Since the equations for the coefficients to 
+fit the approximation to a set of points take the same form as 
+for  a simple polynomial,  the minimax fitting program may  be 
+used to reduce the number of terms required.  The precision of 
+the  final result cannot be as great as the precision  of  the 
+numerator  and denominator polynomials,  since changes of  the 
+last  bit  in  numerator and denominator change  the  quotient 
+irregularly but by an average of two bits.   Use of tables  to 
+reduce  the  number  of  terms required would  speed  up  this 
+function.
+
+     Sinh()  should  have its own polynomial for |x|  <  1  to 
+maintain accuracy and save the time which would be required to 
+calculate  even power terms in exp().   Tanh() should  include 
+code  to  give +-1 directly as a result for  large  arguments.  
+The  solution  using a special exp-1 function is workable  but 
+slower  and incompatible with the rational  approximation  for 
+exp().
+
+.cp 5
+     Sqrt()  is  best coded as an arithmetic operation on  the 
+same level as divide,  so that it can execute faster than  and 
+as accurately as divide.   Many systems fail to do this and so 
+a typical procedure is shown.  A minimax polynomial is used to 
+get  an  approximation accurate to 2 or 3 digits,  and  Newton 
+iterations  are performed until maximum accuracy  is  reached.  
+It is faster to perform the maximum number of iterations which 
+may  be  required rather than to go until the  last  iteration 
+makes no significant change.  If the arithmetic operations are 
+properly  rounded,  the result will be within one bit of  full 
+machine accuracy.
+
+     The  code required to implement the algorithms appears to 
+be  consistent  with published standards for the  C  language.  
+Some compiler designers consider that the Reference  Manual(6) 
+definition  is satisfied by accepting but ignoring minus signs 
+in  initializers.   The code was tested by patching  the  con-
+stants  in  the  compiler output code.   This problem  may  be 
+circumvented by expanding the polynomials in line,  which is a 
+favorable  trade of length for speed on some  machines.   This 
+sort  of  problem  does not occur even in  TRANS   DOCee!Xt code.
+
+     Tests show that FORTRAN and C versions of these functions 
+may  be improved in speed or code length by assembler  coding.  
+Except possibly for exp(),  the accuracy of these functions is 
+as  good  as the best and frequently better  than  the  store-
+bought  versions.   
+.pa
+References
+
+1.Ruzinsky,  Steven  A.   "A Simple Minimax  Algorithm,"  Dr. 
+Dobb's Journal #93 pp. 84-91, July 1984
+
+2.Moshier,  Stephen L.   "Computer Approximations,"  Byte pp. 
+161-178, Apr. 1986
+
+3.Cody,  W.  J., Karpinski, R."A Proposed Radix- and 
+Word-length-independent  Standard for Floating-point  Arithme-
+tic," IEEE Micro pp. 86-100, August 1984
+
+4.Abramowitz,  M.,  Stegun,  I.   "Handbook  of  Mathematical 
+Functions," Dover 1968
+
+5.Press,  W.H. et al.  "Numerical Recipes," Cambridge Univer-
+sity Press 1986
+
+6.Ritchie, Dennis M.  "The C Programming Language - Reference 
+Manual,"  in UNIX Programmer's Manual,  v.2, Holt Rinehart amd 
+Winston, 1983
+

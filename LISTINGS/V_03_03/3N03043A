@@ -1,0 +1,481 @@
+// Listing 1 (video.c)
+
+#include <windows.h>
+#include "avkapi.h"
+
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+
+//-----------------------------------------------------
+// Misc constants
+//-----------------------------------------------------
+#define   BOARD_NUM         0   // AVK board number
+#define   STREAM_XRES     256   // X Resolution of Stream
+#define   STREAM_YRES     240   // Y Resolution of Stream
+#define   VIEW_XRES       256   // X Resolution of View
+#define   VIEW_YRES       240   // Y Resolution of View
+#define   STREAM_CT         1   // Number of streams in buffer
+#define   STREAM_INDEX      0   // Index of stream in buffer
+#define   BUF_SIZE      65536L  // Size of AVK buffer
+#define   EMPTY_LEVEL   32768L  // Level which triggers
+                                // buffer empty message
+
+// Macro to check AVK error returns and report errors
+#define RETURN_IF_AVK_ERROR(ret)      \
+    if (ret != AVK_ERR_OK)            \
+      {                               \
+      ReportAvkError(ret, __LINE__);  \
+      return ret;                     \
+      }
+
+//-----------------------------------------------------
+// Function prototypes
+//-----------------------------------------------------
+long FAR PASCAL WndProc(HWND, WORD, WORD, LONG);
+int InitAvk(HWND hwnd);
+int CreateView(void);
+int CreateGroup(void);
+int CreateConnectors(void);
+int TurnOnAudio(void);
+int FormatVideoStream(void);
+int LoadAlgData(void);
+void GuiRectToView(RECT *GuiRect, RECT *ViewRect);
+void StopAvk(void);
+int EnableConnector(HAVK ConnHandle);
+int DisableConnector(HAVK ConnHandle);
+int MoveConnector(HWND hwnd);
+void GetAbsoluteClientRect(HWND hWnd, RECT *pRect);
+void ReportAvkError(int Error, int LineNo);
+BOX *RectToBox(RECT *pRect, BOX *pBox);
+
+//-----------------------------------------------------
+// Module global data
+//-----------------------------------------------------
+HANDLE  hInstance;
+
+HAVK    hAvkSess;       // AVK session handle
+HAVK    hDev;           // AVK Device handle
+HAVK    hView;          // AVK View handle
+HAVK    hGrp;           // AVK Group handle
+HAVK    hGrpBuf;        // AVK Group Buffer handle
+HAVK    hVidStream;     // AVK Video Stream handle
+
+HAVK    hDigiToStrmConn;  // AVK Digitizer to Stream
+                          // connector handle
+HAVK    hStrmToViewConn;  // AVK Stream to View
+                          // connector handle
+
+int     GuiXRes;        // X Resolution of Windows screen
+int     GuiYRes;        // Y Resolution of Windows screen
+
+void    *pVideoAlgData;   // Ptr to Video Algorithm data
+unsigned int LenVideoAlgData;
+
+//-----------------------------------------------------
+// WinMain
+//-----------------------------------------------------
+int PASCAL WinMain(HANDLE hInst, HANDLE hPrevInstance,
+  LPSTR lpszCmdParam, int nCmdShow)
+  {
+  char szAppName[] = "Live Video";
+  HWND    hwnd;
+  MSG     msg;
+  WNDCLASS  wc;
+
+  hInstance = hInst;
+  if (!hPrevInstance)
+    {
+    wc.style         = CS_HREDRAW | CS_VREDRAW;
+    wc.lpfnWndProc   = WndProc;
+    wc.cbClsExtra    = 0;
+    wc.cbWndExtra    = 0;
+    wc.hInstance     = hInstance;
+    wc.hIcon         = NULL;
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = GetStockObject(BLACK_BRUSH);
+    wc.lpszMenuName  = NULL;
+    wc.lpszClassName = szAppName;
+    RegisterClass(&wc);
+    }
+  else
+    {
+    MessageBox(GetFocus(),
+      "Live Video is already active", NULL, MB_OK);
+    return 0;
+    }
+
+  GuiXRes = GetSystemMetrics(SM_CXSCREEN);
+  GuiYRes = GetSystemMetrics(SM_CYSCREEN);
+
+  hwnd = CreateWindow(szAppName, szAppName,
+        WS_OVERLAPPEDWINDOW,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        NULL,               // No Parent
+        NULL,               // No menu
+        hInstance,
+        NULL);
+
+
+  ShowWindow(hwnd, nCmdShow);
+  UpdateWindow(hwnd);
+
+  while(GetMessage(&msg, NULL, 0, 0))
+    {
+    TranslateMessage(&msg);
+    DispatchMessage(&msg);
+    }
+  return msg.wParam;
+  }
+
+//-----------------------------------------------------
+long FAR PASCAL WndProc(HWND hwnd, WORD message,
+  WORD wParam, LONG lParam)
+  {
+  PAINTSTRUCT ps;
+
+  // If the message is from AVK, ignore it
+  if (message >= AVK_MSG_LOW && message <= AVK_MSG_HIGH)
+    return(0);
+
+  switch(message)
+    {
+    case WM_CREATE:
+      if (InitAvk(hwnd)       != AVK_ERR_OK ||
+          CreateView()        != AVK_ERR_OK ||
+          CreateGroup()       != AVK_ERR_OK ||
+          CreateConnectors()  != AVK_ERR_OK ||
+          TurnOnAudio()       != AVK_ERR_OK)
+        DestroyWindow(hwnd);
+      return 0;
+
+    case WM_PAINT:
+      BeginPaint(hwnd, &ps);
+      EndPaint(hwnd, &ps);
+      return 0;
+
+    case WM_MOVE:
+    case WM_SIZE:
+      MoveConnector(hwnd);
+      InvalidateRect(hwnd, NULL, 1);
+      break;
+
+    case WM_SHOWWINDOW:
+      EnableConnector(hDigiToStrmConn);
+      EnableConnector(hStrmToViewConn);
+      break;
+
+    case WM_DESTROY:
+      // Free algorithm data if allocated.
+      if (pVideoAlgData)
+        free(pVideoAlgData);
+      StopAvk();
+      PostQuitMessage(0);
+      return 0;
+    }
+  return DefWindowProc(hwnd, message, wParam, lParam);
+  }
+
+
+//-----------------------------------------------------
+// Open an AVK session and device (board)
+//-----------------------------------------------------
+int InitAvk(HWND hwnd)
+  {
+  int rv;
+
+  rv = AvkBeginMsg(hwnd, &hAvkSess, AVK_SESSION_DEFAULT);
+  RETURN_IF_AVK_ERROR(rv);
+  rv = AvkDeviceOpen(hAvkSess, BOARD_NUM,
+    AVK_DEV_OPEN_EXCLUSIVE, &hDev);
+  RETURN_IF_AVK_ERROR(rv);
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Create and display an AVK View
+//-----------------------------------------------------
+int CreateView(void)
+  {
+  int rv;
+
+  rv = AvkViewCreate(hDev, VIEW_XRES, VIEW_YRES, AVK_YUV9,
+    AVK_VID_VGA_KEYED, &hView);
+  RETURN_IF_AVK_ERROR(rv);
+
+  rv = AvkViewDisplay(hDev, hView,
+    AVK_TIME_IMMEDIATE, AVK_VIEW_DISPLAY_DEFAULT);
+  RETURN_IF_AVK_ERROR(rv);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Create AVK Group, Buffer, and Stream
+//-----------------------------------------------------
+int CreateGroup(void)
+  {
+  int rv;
+
+  rv = AvkGrpCreate(hDev, &hGrp);
+  RETURN_IF_AVK_ERROR(rv);
+
+  rv = AvkGrpBufCreate(hGrp, AVK_BUF_CAPTURE, BUF_SIZE,
+    EMPTY_LEVEL, STREAM_CT, &hGrpBuf);
+  RETURN_IF_AVK_ERROR(rv);
+
+  rv = AvkVidStrmCreate(hGrpBuf, STREAM_INDEX, &hVidStream);
+  RETURN_IF_AVK_ERROR(rv);
+
+  rv = FormatVideoStream();
+  return rv;
+  }
+
+//-----------------------------------------------------
+// Create all required connectors
+//-----------------------------------------------------
+int CreateConnectors(void)
+  {
+  int rv;
+  BOX Box;
+
+  Box.x1 = Box.y1 = 0;
+  Box.x2 = STREAM_XRES - 1;
+  Box.y2 = STREAM_YRES - 1;
+  rv = AvkConnCreate(AVK_CONN_DIGITIZER, NULL, hVidStream,
+    NULL, 0, &hDigiToStrmConn);
+  RETURN_IF_AVK_ERROR(rv);
+
+  rv = AvkConnCreate(hVidStream, NULL, hView, NULL,
+    AVK_PRE_MONITOR, &hStrmToViewConn);
+  RETURN_IF_AVK_ERROR(rv);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Turn on Audio monitoring
+//-----------------------------------------------------
+int TurnOnAudio(void)
+  {
+  int rv;
+
+  rv = AvkDeviceAudioIn(hDev, AVK_CD_LINE, AVK_MONITOR_ON);
+  RETURN_IF_AVK_ERROR(rv);
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Format a video stream
+//-----------------------------------------------------
+int FormatVideoStream(void)
+  {
+  int rv;
+  AVK_RTV_20_ENCODE_ARGS RtvArgs = AVK_RTV_20_DEFAULT_ARGS;
+
+  // Fetch parameter data for video algorithm
+  if (!LoadAlgData())
+    return -1;
+
+  // Build appropriate data structure for algorithm
+  // Use the defaults from the initialization for most fields
+  RtvArgs.xLen = STREAM_XRES;
+  RtvArgs.yLen = STREAM_YRES;
+  RtvArgs.Flags = AVK_RTV_20_PREFILTER | AVK_RTV_20_ASPECT_25;
+
+  // Format stream
+  rv = AvkVidStrmFormat(hVidStream, 6, STREAM_XRES,
+    STREAM_YRES, AVK_YUV9, 33367, AVK_RTV_2_0,
+    (char far *)&RtvArgs, sizeof(RtvArgs), sizeof(RtvArgs), 
+    pVideoAlgData, LenVideoAlgData, 65536L);
+  RETURN_IF_AVK_ERROR(rv);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Read the video algorithm data from disk
+//-----------------------------------------------------
+int LoadAlgData(void)
+  {
+  int fh;
+  int LoadOK = FALSE;
+  char *Filename = "KE080200.VSH";
+
+  // Note that the size of the VSH file is guaranteed to
+  // be less than 64k bytes.
+  fh = _lopen(Filename, OF_READ);
+  if (fh != -1)
+    {
+    unsigned int FileLen = (unsigned int)_llseek(fh, 0, 2);
+
+    LenVideoAlgData = FileLen;
+    pVideoAlgData = malloc(FileLen);
+    if (pVideoAlgData)
+      {
+      _llseek(fh, 0, 0);
+      if (_lread(fh, pVideoAlgData, FileLen) == FileLen)
+        LoadOK = TRUE;
+      }
+    _lclose(fh);
+    }
+
+  if (!LoadOK)
+    {
+    char msg[100];
+    sprintf(msg,
+      "Error loading Algorithm data from file %s", Filename);
+    MessageBox(GetFocus(), msg, "Video Alg Data Load Error",
+      MB_ICONSTOP | MB_OK);
+    }
+  return LoadOK;
+  }
+
+//-----------------------------------------------------
+// GuiRectToView - Converts a RECT specified in System
+// Display Screen coordinates to VIEW bitmap coordinates.
+//-----------------------------------------------------
+void GuiRectToView(RECT *GuiRect, RECT *ViewRect)
+  {
+  // Prevent negative coordinate conversion
+  if (GuiRect->top  < 0) GuiRect->top  = 0;
+  if (GuiRect->left < 0) GuiRect->left = 0;
+  ViewRect->left   = (int)(((long)GuiRect->left   *
+                      VIEW_XRES) / GuiXRes);
+  ViewRect->right  = (int)(((long)GuiRect->right  *
+                      VIEW_XRES) / GuiXRes);
+  ViewRect->top    = (int)(((long)GuiRect->top    *
+                      VIEW_YRES) / GuiYRes);
+  ViewRect->bottom = (int)(((long)GuiRect->bottom *
+                      VIEW_YRES) / GuiYRes);
+  }
+
+//-----------------------------------------------------
+// Shutdown all AVK activity
+//-----------------------------------------------------
+void StopAvk(void)
+  {
+  DisableConnector(hDigiToStrmConn);
+  DisableConnector(hStrmToViewConn);
+
+  AvkDeviceClose(hDev);
+  AvkEnd(hAvkSess);
+  }
+
+//-----------------------------------------------------
+// Enables a single connector with error checking
+//-----------------------------------------------------
+int EnableConnector(HAVK hConn)
+  {
+  int rv;
+
+  if (hConn == 0)
+    return AVK_ERR_OK;
+
+  rv = AvkConnEnable(hConn, AVK_TIME_IMMEDIATE);
+  RETURN_IF_AVK_ERROR(rv);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Disables a single connector with error checking
+//-----------------------------------------------------
+int DisableConnector(HAVK hConn)
+  {
+  int rv;
+
+  if (hConn == 0)
+    return AVK_ERR_OK;
+
+  rv = AvkConnHide(hConn, AVK_TIME_IMMEDIATE);
+  RETURN_IF_AVK_ERROR(rv);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Moves a connector in response to WM_MOVE and WM_SIZE
+// messages.
+//-----------------------------------------------------
+int MoveConnector(HWND hwnd)
+  {
+  RECT RectGui;
+  RECT RectDvi;
+  BOX BoxDvi;
+  int rv;
+
+  // Get screen location of client area and convert to DVI
+  GetAbsoluteClientRect(hwnd, &RectGui);
+  GuiRectToView(&RectGui, &RectDvi);
+
+  // Limit connector to resolution of VIEW
+  if (RectDvi.top    >= VIEW_YRES)
+    RectDvi.top    = VIEW_YRES - 1;
+  if (RectDvi.bottom >= VIEW_YRES)
+    RectDvi.bottom = VIEW_YRES - 1;
+  if (RectDvi.left   >= VIEW_XRES)
+    RectDvi.left   = VIEW_XRES - 1;
+  if (RectDvi.right  >= VIEW_XRES)
+    RectDvi.right  = VIEW_XRES - 1;
+
+  RectToBox(&RectDvi, &BoxDvi);
+  DisableConnector(hStrmToViewConn);
+  rv = AvkConnModSrcDst(hStrmToViewConn, NULL, &BoxDvi,
+    AVK_TIME_IMMEDIATE);
+  RETURN_IF_AVK_ERROR(rv);
+  EnableConnector(hStrmToViewConn);
+
+  return AVK_ERR_OK;
+  }
+
+//-----------------------------------------------------
+// Computes the location of the client area of hwnd in
+// absolute GUI coordinates and returns in *pRect.
+//-----------------------------------------------------
+void GetAbsoluteClientRect(HWND hWnd, RECT *pRect)
+  {
+  POINT Pt;
+
+  GetClientRect(hWnd, pRect);
+  Pt.x = pRect->left;
+  Pt.y = pRect->top;
+  ClientToScreen(hWnd, &Pt);
+  pRect->left = Pt.x;
+  pRect->top = Pt.y;
+
+  Pt.x = pRect->right;
+  Pt.y = pRect->bottom;
+  ClientToScreen(hWnd, &Pt);
+  pRect->right = Pt.x;
+  pRect->bottom = Pt.y;
+  }
+
+//-----------------------------------------------------
+// Reports an AVK error to  the screen
+//-----------------------------------------------------
+void ReportAvkError(int Error, int LineNo)
+  {
+  char msg[250];
+  U16 XErrCode;
+
+  AvkGetSubSysErrCode(hAvkSess, (U16 far *)&XErrCode);
+  sprintf(msg, "AVK function returned error %d at line %d\n"
+    "Subsystem error is %4.4x", Error, LineNo, XErrCode);
+  MessageBox(GetFocus(), msg, "AVK Error", MB_OK);
+  }
+
+//-----------------------------------------------------
+// Converts a RECT to a BOX
+//-----------------------------------------------------
+BOX *RectToBox(RECT *pRect, BOX *pBox)
+  {
+  pBox->x1 = pRect->left;
+  pBox->y1 = pRect->top;
+  pBox->x2 = pRect->right;
+  pBox->y2 = pRect->bottom;
+  return(pBox);
+  }

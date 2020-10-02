@@ -1,0 +1,87 @@
+/* ibmint.dlc */        /***********************************************/
+#define BASAD 0x3f8     /* Ibm 1st serial port base address.           */
+#define INTNUM 0x0c     /* Ibm serial interrupt number, irq4.          */
+#define IBUFSIZ 8192    /* Ring buffer size for serial input.          */
+#define MASKIRQ 0xef    /* Irq4  mask pattern.                         */
+#define LOBAUD  128     /* For  300 baud, high byte,                   */
+#define HIBAUD 1        /*                low byte.                    */
+#define COMBITS 3       /* 8 data, 1 stop, no parity.                  */
+
+static volatile int intptr1,intptr2  ;  /* Ring buffer pointers.       */
+static int enabled = 0 ;                /* Enable-disable flag.        */
+static int intmask ;                    /* Old 8259 interrupt mask.    */
+static char intbuf[IBUFSIZ] ;           /* Ring buffer.                */
+int comerror ;                          /* Error flags.                */
+
+static int status() /******* Read 8250 line status, and update *********/
+{ int byte ;                        /* comerror for framing, parity,   */
+  byte = inp(BASAD+5) ;             /* and overrun errors.             */
+  comerror |= ( (byte >> 1) & 7 ) ; /* Status bits only need shifting. */
+  return(byte) ;
+}
+
+void cleanup()  /*** Disable communications, and restore vectors. ******/
+{ if(! enabled ) return ;  /* Do nothing if not enabled.               */
+  int_restore(0x23) ;      /* Restore old ctrl-C vector.               */
+  outp(BASAD+1,0) ;        /* Disable 8250 interrupts.                 */
+  int_off() ;              /* Disable all interrupts.                  */
+  outp(0x21,intmask) ;     /* Restore old 8259 interrupt mask.         */
+  outp(0x20,0xc7) ;        /* Rotate to standard priorities.           */
+  int_on() ;               /* Enable interrupts.                       */
+  int_restore(INTNUM) ;    /* Restore old irq  interrupt vector.       */
+  enabled = 0 ;            /* Communications now disabled.             */
+}
+
+static int control_C() { cleanup() ; return(0) ; }
+
+static int rxint()   /***** Capture serial byte via interrupt.   *******/
+{ int temp ;                                                         /**/
+  if( status() & 1 )                 /* Check for rx interrupt.        */
+    { intbuf[intptr1] = inp(BASAD) ;          /* Read to buffer.       */
+      temp = (intptr1 + 1) % IBUFSIZ ;        /* Add 1 to head ptr.    */
+      if( temp == intptr2 ) comerror |= 8 ;   /* Does head bite tail?  */
+      intptr1 = temp  ;                       /* Move head ptr.        */
+      outp(0x20,0x20) ;             /* Issue the 8259 EOI command.     */
+      return(1) ;                   /* Return directly.                */
+    }                                                                /**/
+  return(0) ;                       /* Chain to other service routines.*/
+}
+
+void setcom()    /************** Enable communications. ****************/
+{ if( enabled ) return ;            /* Do nothing if enabled already.  */
+  outp(BASAD+1,0) ;                 /* Disable 8250 interrupts.        */
+  outp(BASAD+3,128) ;               /* Access baud rate registers.     */
+  outp(BASAD,LOBAUD) ;              /* Set baud rate, high byte,       */
+  outp(BASAD+1,HIBAUD) ;            /*              low byte.          */
+  outp(BASAD+3,COMBITS) ;           /* Data, stop, parity.             */
+  outp(BASAD+4,0x0b) ;              /* Set DTR, RTS, OUT2.             */
+  int_intercept(0x23,&control_C,200) ; /* Reroute control-C.           */
+  int_intercept(INTNUM,&rxint,200)   ; /* Reroute irq.                 */
+  intptr1 = intptr2 = 0 ;           /* Initialize buffer pointers.     */
+  intmask = inp(0x21) ;             /* Save old 8259 int mask.         */
+  int_off() ;                       /* Disable all interrupts.         */
+  outp(0x21,MASKIRQ & intmask) ;    /* Unmask irq.                     */
+  outp(0x20,0xc3) ;       /* Rotate priorities to put irq4 on top.     */
+  int_on() ;                        /* Enable interrupts.              */
+  outp(BASAD+1,1) ;                 /* Enable 8250 rx interrupt.       */
+  comerror = 0 ;                    /* Initialize error flag.          */
+  enabled = 1 ;                     /* Communications enabled.         */
+}
+
+int rxready() { return( intptr1 != intptr2 ) ; } /* Rx byte available? */
+
+int rxbyte()                      /*******   Get rx byte.      *********/
+{ int b ;                                                            /**/
+  b = intbuf[intptr2] ;             /*     Get byte at tail.           */
+  intptr2 = ++intptr2 % IBUFSIZ ;   /*     Bump tail pointer.          */
+  return(b) ;                       /*     Return byte from buffer.    */
+}
+
+int txready() { return( status() & 32 ) ; }      /* Tx register empty? */
+
+void txbyte(b) int b ;  { outp(BASAD,b) ; }      /* Send tx byte.      */
+
+int kbhit() { return( bdos( 0x0b,0 ) ) ; }       /* Kb byte available? */
+
+void putch(b) int b ; { bdos(0x02,b) ; }         /* Byte to screen.    */
+

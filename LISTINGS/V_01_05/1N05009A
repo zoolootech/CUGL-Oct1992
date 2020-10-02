@@ -1,0 +1,40 @@
+#include <dos.h>
+
+/* 8514/A display adapter support - call AI */
+
+int c8514(nentry,pqbl)
+int nentry; /* number of entry to call */
+char *pqbl; /* parameter block */
+/* returns nonzero if call cannot be made */
+
+{
+  static int linit = 0;
+  static void pascal (**pptab)(char *);
+
+  if (!linit) { /* initialize first time */
+
+    /* be sure the AI is installed */
+    _AX = 0x3500+0x7F;
+    geninterrupt(0x21);
+    if (_BX == 0 && _ES == 0) return (1);
+
+    /* get the address of the entry table */
+    _AX = 0x0105;
+    geninterrupt(0x7F);
+    asm jnc initok
+    return (1);
+initok:
+    ((int *)&pptab)[0] = _DX;
+    ((int *)&pptab)[1] = _CX;
+    linit = 1; /* initialization done */
+  }
+  if (nentry < 0) return (0);
+
+  /* call the entry */
+  asm push si
+  asm push di
+  (*pptab[nentry])(pqbl);
+  asm pop di
+  asm pop si
+  return (0);
+}

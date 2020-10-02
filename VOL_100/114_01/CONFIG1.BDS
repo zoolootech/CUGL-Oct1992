@@ -1,0 +1,733 @@
+/* Screen editor:  configuration program -- BDS C version
+ *
+ * Source:  config1.bds
+ * Version: December 20, 1981.
+ * Transliteration of small-C version of September 6, 1981
+ */
+
+#define VERSION "Version 2:  September 6, 1981."
+
+#include bdscio.h
+#include config.h
+
+
+/* This program has 5 parts.
+ *
+ * Part 1 asks which keys do which special functions.
+ * Part 2 asks which special functions the screen has.
+ * Part 3 asks what code sequences must be output
+ *        to the screen to do the functions in part 2.
+ * Part 4 creates the file ed1.ccc from the answers to
+ *        Part 1.
+ * Part 5 creates the file ed6.ccc from the answers to
+ *        Parts 2 and 3.
+ */
+
+main()
+{
+	/* initialize byte count */
+	bytec=0;
+	/* sign on and give general information */
+	signon();
+	/* get keyboard information */
+	while (part1()==NO) {
+		;
+	}
+	/* get screen features */
+	while (part2()==NO) {
+		;
+	}
+	/* get control sequences for screen features */
+	while (part3()==NO) {
+		;
+	}
+	/* make sure we want to continue */
+	blank();
+	plc("You are now ready to create files ");
+	pc("ed1.ccc and ed6.ccc.");
+	plc("Do you want to proceed ?");
+	if (yesno()==NO) {
+		return;
+	}
+	/* write keyboard info to file ed1.ccc */
+	if (part4()!=YES) {
+		return;
+	}
+	/* write control sequences for screen features
+	 * to file ed6.ccc
+	 */
+	part5();
+	/* sign off and tell about compiling */
+	signoff();
+}
+
+/* sign on and tell how to abort */
+
+signon()
+{
+plc("Welcome to the configuration program for the ");
+pc("screen editor.");
+plc(VERSION);
+plc("Hit control-c to exit this program early.");
+plc("Hit control-p to send output to the printer.");
+}
+
+/* part 1.  find out what keys will be used for
+ *          special functions.
+ */
+
+part1()
+{
+
+blank();
+plc("This section deals with your keyboard.");
+plc("For each function key, enter the DECIMAL ");
+pc("value of the ascii ");
+plc("code that you want to assign to that function key.");
+plc("Hit carriage return to indicate the default value.");
+
+blank();
+plc("Hit any key to get more instructions.");
+getchar();
+
+blank();
+plc("insert up key:");
+indent();
+pc("This key inserts a blank line above the current line,");
+indent();
+pc("then switches the editor to insert mode.");
+indent();
+pc("The default is line feed (10).");
+up1=getval(10);
+
+plc("insert down key:");
+indent();
+pc("This key inserts a blank line below the current line,");
+indent();
+pc("then switches the editor to insert mode.");
+indent();
+pc("The default is carriage return (13).");
+down1=getval(13);
+
+plc("up key:");
+indent();
+pc("This key moves the cursor up,");
+indent();
+pc("then switches the editor to edit mode.");
+indent();
+pc("The default is control-u (21).");
+up2=getval(21);
+
+plc("down key:");
+indent();
+pc("This key moves the cursor down,");
+indent();
+pc("then switches the editor to edit mode.");
+indent();
+pc("The default is control-d (4).");
+down2=getval(4);
+
+plc("left key:");
+indent();
+pc("This key moves the cursor left. ");
+indent();
+pc("The default is back space (8).");
+left=getval(8);
+
+plc("right key:");
+indent();
+pc("This key moves the cursor right. ");
+indent();
+pc("The default is control-r (18).");
+right=getval(18);
+
+plc("insert key:");
+indent();
+pc("This key switches the editor to insert mode.");
+indent();
+pc("The default is control-n (14).");
+ins=getval(14);
+
+plc("edit key:");
+indent();
+pc("This key switches the editor to edit mode.");
+indent();
+pc("The default is control-e (5).");
+edit=getval(5);
+
+plc("command key:");
+indent();
+pc("This key switches the editor to command mode.");
+indent();
+pc("The default is esc (27).");
+cmnd=getval(27);
+
+plc("delete character key:");
+indent();
+pc("This key deletes the character to the left ");
+pc("of the cursor.");
+indent();
+pc("The default is del (127).");
+del=getval(127);
+
+plc("delete line key:");
+indent();
+pc("This key deletes the line on which the cursor rests.");
+indent();
+pc("The default is control-z (26).");
+delline=getval(26);
+
+plc("undo key:");
+indent();
+pc("This key undoes the editing done on a line.");
+indent();
+pc("The default is control-x (24).");
+undo=getval(24);
+
+plc("split key:");
+indent();
+pc("This key splits a line into two lines.");
+indent();
+pc("The default is control-s (19).");
+split=getval(19);
+
+plc("join key:");
+indent();
+pc("This key appends a line to the line above it,");
+indent();
+pc("then deletes the lower line.");
+indent();
+pc("The default is control-p (16).");
+join=getval(16);
+
+/* recap what the user has typed.
+ * ask if everything is all right.
+ */
+
+plc("The values of the keyboard keys are:");
+plc("insert up:    ");
+putdec(up1,3);
+plc("insert down:  ");
+putdec(down1,3);
+plc("up:           ");
+putdec(up2,3);
+plc("down:         ");
+putdec(down2,3);
+plc("left:         ");
+putdec(left,3);
+plc("right:        ");
+putdec(right,3);
+plc("insert mode:  ");
+putdec(ins,3);
+plc("command mode: ");
+putdec(cmnd,3);
+plc("edit mode:    ");
+putdec(edit,3);
+plc("delete char:  ");
+putdec(del,3);
+plc("delete line:  ");
+putdec(delline,3);
+plc("undo:         ");
+putdec(undo,3);
+plc("split:        ");
+putdec(split,3);
+plc("join:         ");
+putdec(join,3);
+plc("are all values correct ?");
+return(yesno());
+}
+
+/* get features of the video screen */
+
+part2()
+{
+
+blank();
+plc("This section deals with the video screen.");
+plc("The screen MUST have a cursor positioning function,");
+plc("but no other special screen functions are required.");
+
+blank();
+plc("screen length:");
+indent();
+pc("How many rows does your screen have ?");
+indent();
+pc("The default is 16.");
+scrnl=getval(16);
+
+blank();
+plc("screen width:");
+indent();
+pc("How many columns does your screen have ?");
+indent();
+pc("The default is 64.");
+scrnw=getval(64);
+
+blank();
+plc("printer width:");
+indent();
+pc("How many columns does your printer have ?");
+indent();
+pc("The default is 132.");
+lwidth=getval(132);
+
+blank();
+plc("erase line:");
+indent();
+pc("Does your screen have a function which erases ");
+indent();
+pc("the line on which the cursor rests ?");
+hasel=yesno();
+
+plc("erase to end of line:");
+indent();
+pc("Does your screen have a function which erases ");
+indent();
+pc("from the cursor to the end of the line ?");
+haseol=yesno();
+
+plc("hardware scroll up: (line feed)");
+indent();
+pc("Does your screen have a function that scrolls the");
+indent();
+pc("screen up when the cursor is on the bottom line ?");
+hassup=yesno();
+
+plc("hardware scroll down:");
+indent();
+pc("Does your screen have a function which scrolls the");
+indent();
+pc("screen down when the cursor is on the top line ?");
+hassdn=yesno();
+
+blank();
+plc("You have answered as follows: ");
+plc("screen length:            ");
+putdec(scrnl,1);
+plc("screen width:             ");
+putdec(scrnw,1);
+plc("printer width:            ");
+putdec(lwidth,1);
+plc("erase line ?              ");
+putyesno(hasel);
+plc("erase to end of line ?    ");
+putyesno(haseol);
+plc("hardware scroll up ?      ");
+putyesno(hassup);
+plc("hardware scroll down ?    ");
+putyesno(hassdn);
+
+blank();
+plc("are all these values correct ?");
+return(yesno());
+}
+
+part3()
+{
+blank();
+plc("This section asks you to supply code sequences for");
+plc("the special functions that you said your screen had.");
+plc("Enter each sequence one byte at a time.");
+plc("End the sequence by typing just a carriage return.");
+plc("Indicate each byte by giving a character expression.");
+blank();
+plc("Hit any character to get more instructions.");
+getchar();
+
+blank();
+plc("An expression consists of terms separated by + or -.");
+plc("Each term is either:");
+plc("1.  a decimal number or");
+plc("2.  an ascii character in single quotes or");
+plc("3.  the letters x or y without quotes.");
+plc("Use x and y only for the goto xy code sequence.");
+plc("The x represents the desired COLUMN for the cursor.");
+plc("The y represents the desired ROW    for the cursor.");
+plc("For example, a common sequence for goto x y is:");
+plc("   27, '=', y+32, x+32");
+
+blank();
+plc("Warning!  make SURE you specify the row and column in");
+plc("the correct order for your terminal.");
+
+blank();
+plc("Hit any character for more instructions.");
+getchar();
+
+blank();
+plc("goto x y:");
+indent();
+pc("Enter code to position the cursor at ROW y and COLUMN x.");
+indent();
+pc("If you mix up x and y, the screen will be gibberish.");
+indent();
+pc("0,0 is the top left corner of the screen.");
+getbytes(&gotoind);
+
+blank();
+plc("Whew! It gets much easier from here on.");
+
+blank();
+if (hasel==YES) {
+
+plc("erase line:");
+indent();
+pc("Enter code to erase the line on which the ");
+pc("cursor rests.");
+getbytes(&elind);
+
+}
+
+blank();
+if (haseol==YES) {
+
+plc("erase to end of line:");
+indent();
+pc("Enter code to erase from the cursor to the ");
+pc("end of the line.");
+getbytes(&eolind);
+
+}
+
+blank();
+if (hassup==YES) {
+
+plc("hardware scroll up: (line feed)");
+indent();
+pc("Enter code to scroll the screen up assuming ");
+indent();
+pc("the cursor is on the bottom line.");
+getbytes(&supind);
+
+}
+
+blank();
+if (hassdn==YES) {
+
+plc("hardware scroll down:");
+indent();
+pc("Enter code to scroll the screen down assuming ");
+indent();
+pc("that the cursor is on the top line.");
+getbytes(&sdnind);
+
+}
+
+}
+
+part4()
+{
+
+if (fcreat("ed1.ccc",outbuf)==ERROR) {
+	plc("open error on ed1.ccc");
+	return(EXIT);
+}
+
+comment();
+plf("Screen editor:  special key definitions");
+plf("Source:  ed1.ccc");
+plf("This file was created by the configuration program:");
+plf(VERSION);
+endcom();
+
+blankf();
+comment();
+plf("Define which keys are used for special edit functions.");
+endcom();
+
+blankf();
+putdef("UP1",   up1);
+putdef("DOWN1", down1);
+putdef("UP2",   up2);
+putdef("DOWN2", down2);
+putdef("LEFT1", left);
+putdef("RIGHT1",right);
+putdef("INS1",  ins);
+putdef("EDIT1", edit);
+putdef("ESC1",  cmnd);
+putdef("DEL1",  del);
+putdef("ZAP1",  delline);
+putdef("ABT1",  undo);
+putdef("SPLT1", split);
+putdef("JOIN1", join);
+
+blankf();
+comment();
+plf("Define length and width of screen and printer.");
+endcom();
+
+blankf();
+putdef("SCRNW",scrnw);
+putdef("SCRNW1",scrnw-1);
+putdef("SCRNL",scrnl);
+putdef("SCRNL1",scrnl-1);
+putdef("SCRNL2",scrnl-2);
+putdef("LISTW",lwidth);
+blankf();
+
+putc(CPMEOF,outbuf);
+fflush(outbuf);
+fclose(outbuf);
+return(YES);
+}
+
+part5()
+{
+
+if (fcreat("ed6.ccc",outbuf)==ERROR) {
+	plc("Open error on ed6.ccc");
+	return(EXIT);
+}
+
+comment();
+plf("Screen editor:  terminal output module");
+plf("Source:  ed6.ccc");
+plf("This file was created by the configuration program:");
+plf(VERSION);
+endcom();
+
+blankf();
+plf("#include ed.h");
+plf("#include bdscio.h");
+plf("#include ed1.ccc");
+plf("#include edext.cc");
+
+blankf();
+comment();
+plf("Define the current coordinates of the cursor.");
+endcom();
+
+/* comment out -----
+blankf();
+plf("int outx, outy;");
+----- end comment out */
+
+blankf();
+comment();
+plf("Return the current coordinates of the cursor.");
+endcom();
+
+blankf();
+plf("outgetx()");
+beginf();
+tab1f(); pf("return(outx);");
+endf();
+
+blankf();
+plf("outgety()");
+beginf();
+tab1f(); pf("return(outy);");
+endf();
+
+blankf();
+comment();
+plf("Output one printable character to the screen.");
+endcom();
+
+blankf();
+plf("outchar(c) char c;");
+beginf();
+tab1f(); pf("syscout(c);");
+tab1f(); pf("outx++;");
+tab1f(); pf("return(c);");
+endf();
+
+blankf();
+comment();
+plf("Position cursor to position x,y on screen.");
+plf("0,0 is the top left corner.");
+endcom();
+
+blankf();
+plf("outxy(x,y) int x,y;");
+beginf();
+tab1f(); pf("outx=x;");
+tab1f(); pf("outy=y;");
+putbytes(gotoind);
+endf();
+
+blankf();
+comment();
+plf("Erase the entire screen.");
+plf("Make sure the rightmost column is erased.");
+endcom();
+
+blankf();
+plf("outclr()");
+if ((hasel==YES)+(haseol==YES)) {
+
+beginf();
+plf("int k;");
+tab1f(); pf("k=0;");
+tab1f(); pf("while (k<SCRNL) {");
+tab2f(); pf("outxy(0,k++);");
+tab2f(); pf("outdelln();");
+tab1f(); pf("}");
+tab1f(); pf("outxy(0,0);");
+endf();
+
+}
+else {
+
+beginf();
+plf("int k;");
+tab1f(); pf("outxy(0,0);");
+tab1f(); pf("k=SCRNL*SCRNW;");
+tab1f(); pf("while ((k--)>0) {");
+tab2f(); pf("syscout(' ');");
+tab1f(); pf("}");
+tab1f(); pf("outxy(0,0);");
+endf();
+
+} /* end else */
+
+blankf();
+comment();
+plf("Delete the line on which the cursor rests.");
+plf("Leave the cursor at the left margin.");
+endcom();
+
+blankf();
+plf("outdelln()");
+if (hasel==YES) {
+
+beginf();
+putbytes(elind);
+endf();
+
+}
+else {
+
+beginf();
+tab1f(); pf("outxy(0,outy);");
+tab1f(); pf("outdeol();");
+endf();
+
+}
+
+blankf();
+comment();
+plf("Delete to end of line.");
+plf("Assume the last column is blank.");
+endcom();
+
+blankf();
+plf("outdeol()");
+if (haseol==YES) {
+
+beginf();
+putbytes(eolind);
+endf();
+
+}
+else {
+
+beginf();
+plf("int k;");
+tab1f(); pf("k=outx;");
+tab1f(); pf("while (k++<SCRNW1) {");
+tab2f(); pf("syscout(' ');");
+tab1f(); pf("}");
+tab1f(); pf("outxy(outx,outy);");
+endf();
+
+}
+
+blankf();
+comment();
+plf("Return yes if terminal has indicated hardware scroll.");
+endcom();
+
+blankf();
+plf("outhasup()");
+beginf();
+tab1f();
+if (hassup==YES) {
+	pf("return(YES);");
+}
+else {
+	pf("return(NO);");
+}
+endf();
+
+blankf();
+plf("outhasdn()");
+beginf();
+tab1f();
+if (hassdn==YES) {
+	pf("return(YES);");
+}
+else {
+	pf("return(NO);");
+}
+endf();
+
+blankf();
+comment();
+plf("Scroll the screen up.");
+plf("Assume the cursor is on the bottom line.");
+endcom();
+
+blankf();
+plf("outsup()");
+if (hassup==YES) {
+
+beginf();
+tab1f(); pf("/* auto scroll */");
+tab1f(); pf("outxy(0,SCRNL1);");
+putbytes(supind);
+endf();
+
+}
+else {
+
+beginf();
+endf();
+
+}
+
+blankf();
+comment();
+plf("Scroll screen down.");
+plf("Assume the cursor is on the top line.");
+endcom();
+
+blankf();
+plf("outsdn()");
+if (hassdn==YES) {
+
+beginf();
+tab1f(); pf("/* auto scroll */");
+tab1f(); pf("outxy(0,0);");
+putbytes(sdnind);
+endf();
+
+}
+else {
+
+beginf();
+endf();
+
+}
+
+/* make sure last line ends with CR */
+plf("");
+
+putc(CPMEOF,outbuf);
+fflush(outbuf);
+fclose(outbuf);
+return(YES);
+}
+
+signoff()
+{
+plc("The configuration process is now complete.");
+plc("You are now ready to compile the screen editor.");
+return(YES);
+}
+
+lf("outhasdn()");
+beginf();
+tab1f();
+if (hassdn==YES) {
+	pf("return(YES);"

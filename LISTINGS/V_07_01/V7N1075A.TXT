@@ -1,0 +1,136 @@
+
+
+ABBREV   OPERATORS          DESCRIPTION OF EXCEPTION CASES
+------   --------------     -----------------------------------------------
+
+OOB      a[n]  a<<n  a>>n   "Out Of Bounds" subscript or shift count
+
+BAD_P    *p    p[n]  p->m   "Bad pointer" -- out-of-bounds, dangling, or
+                            null pointer
+
+OFLO     a*b   a+b   a-b    "Overflow" -- a signed-arithmetic or pointer
+         ++a   a++          expression overflow
+         --a   a--
+
+UFLO     a*b   a/b          "Underflow" -- a floating-point expression
+         a+b   a-b          result too small to represent
+
+CHOP     a=b   f(a)         "Chop" or "Truncation" -- assignment, or
+                            calling prototyped-function, that loses bits
+
+DIV_0    a/b   a%b          "Divide-by-zero"
+
+XALIGN   (ptr *)            "Mis-alignment" -- a pointer cast that loses
+                            alignment information
+
+
+
+
+ 1  /* strcmp - compare (unsigned) strings  */
+ 2  int strcmp(
+ 3      register const char s[],  /* : string */
+ 4      register const char t[])  /* : string */
+ 5      {
+ 6      typedef unsigned char uchar;
+ 7
+ 8      while (*s != '\0' && *s == *t)
+ 9          {
+10          ++s;
+11          ++t;
+12          }
+13      if (*(uchar *)s < *(uchar *)t))
+14          return -1;
+15      else if (*(uchar *)s == *(uchar *)t)
+16          return 0;
+17      else
+18          return 1;
+19      }
+
+
+
+
+LIST OF TEST CASES    PROGRAM LISTING                          EXCEPTIONS?
+------------------    -------------------------------------    -----------
+___F   ___TF  ___TT   8   while (*s != '\0' && *s == *t)         ___BAD_P
+                      9       {
+                     10       ++s;                               ___OFLO
+                     11       ++t;                               ___OFLO
+                     12       }
+___F       ___T      13   if (*(uchar *)s < *(uchar *)t))        ___XALIGN
+___MIN *s  ___MAX *t 14       return -1;
+___F       ___T      15   else if (*(uchar *)s == *(uchar *)t)
+                     16       return 0;
+                     17   else
+___MAX *s  ___MIN *t 18       return 1;
+
+
+
+
+
+
+REVIEWER'S NOTES    SPECIFICATION
+----------------    --------------------------------------------
+                    Outcomes of returned value:
+_1_                   Less than zero:    s compares low to t
+_2_                   Zero:              s compares equal to t
+_3_                   Greater than zero: s compares high to t
+                    Parameters  s  and  t  must point to strings,
+___                   properly nul-terminated.
+
+
+
+
+
+
+TEST CASES AND DESCRIPTIONS
+-------------------------------------------------------------
+
+1.  s is null string, t starts with largest unsigned char value
+2.  s and t are equal strings, e.g.  "a"
+3.  s starts with largest unsigned char value, t is null string
+
+
+
+
+GUARANTEES AGAINST EXCEPTIONS
+-------------------------------------------------------------
+4.  Specification: strings s and t are null-terminated,
+    so the pointer increments cannot overflow.
+5.  C Standard: unsigned char has the same alignment as char.
+
+
+
+
+LIST OF TEST CASES    PROGRAM LISTING                          EXCEPTIONS?
+------------------    -------------------------------------    -----------
+_1_F   _3_TF  _2_TT   8   while (*s != '\0' && *s == *t)         _4_BAD_P
+                      9       {
+                     10       ++s;                               _4_OFLO
+                     11       ++t;                               _4_OFLO
+                     12       }
+_3_F       _1_T      13   if (*(uchar *)s < *(uchar *)t))        _5_XALIGN
+_1_MIN *s  _1_MAX *t 14       return -1;
+_3_F       _2_T      15   else if (*(uchar *)s == *(uchar *)t)
+                     16       return 0;
+                     17   else
+_3_MAX *s  _3_MIN *t 18       return 1;
+
+
+
+
+
+TEST PROGRAM
+-------------------------------------------------------------
+#include <limits.h>
+#include <assert.h>
+#undef NDEBUG   /* turn on assert's */
+char s_max[2] = {UCHAR_MAX, '\0'};  /* string with largest uchar */
+main()
+    {
+    assert(strcmp("", s_max) < 0);      /* case 1 */
+    assert(strcmp("a", "a") == 0);      /* case 2 */
+    assert(strcmp(s_max, "") > 0);      /* case 3 */
+    }
+
+
+

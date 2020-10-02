@@ -1,0 +1,106 @@
+/* Time and date routines for Software Tools
+ * source:  date/ssi.bds
+ * version: May 1, 1982 - OSCAR GOLDMAN
+ * combines date.bds and date/time routines
+ * using Godbout System Support I
+ */
+
+#include tools.h
+
+#define	CLOCK_COMM	0x5A		/* command port for the clock */
+#define	CLOCK_READ	0x10		/* bias for reading clock */
+#define	CLOCK_DATA	0x5B		/* data port */
+
+/*	fmtdat - format date and time information from now
+ *	 which consists of two adjacent string arrays
+ *     form is reserved for a format selector.
+ *      time is a scratch buffer
+ */
+
+fmtdat (date, time, now, form)
+char *date, *time, *now;
+int form;
+{
+
+	/* copy now to date.  do not copy newline */
+	while (*now != NEWLINE && *now != EOS) {
+		*date++ = *now++;
+	}
+	*date = EOS;
+
+	*now++;		/* advance past the eos */
+	while (*now != NEWLINE && *now != EOS) {
+		*time++ = *now++;
+	}
+	*time = EOS;
+}
+
+
+/*  getnow - return pointer to current time and date */
+
+char *getnow ()
+{
+	/* put date and time as two adjacent strings */
+	/* into sys_date - mmddyyEOShhmmssEOS */
+	int k;
+	char i[13];
+	
+	gettod(i);
+	for (k=0;k<12;k++) sys_date[k+k/2]=i[k];
+	sys_date[2]='/';
+	sys_date[5]='/';
+	sys_date[8]=EOS;
+	sys_date[11]=':';
+	sys_date[14]=':';
+	sys_date[17]=EOS;
+	return(sys_date);
+}
+
+gettod(i)
+char	*i;
+{
+	/* reads the date and time into i[] */
+	/* returns when two successive reads are the same */
+
+	char	*tmp;
+
+	while (1){
+	getdata (tmp);		/* read the clock chip */
+	scopy (tmp,0,i,0);
+	getdata (tmp);		/* read it again */	
+	if (equal (i,tmp)) return;
+	}
+}
+	
+getdata (tmp)
+char	*tmp;
+{
+	/* gets the date and time digits in the form */
+	/* mmddyyhhmmss as a character string */
+
+	int	j,b[12];
+	/* b[] contains the order in which the clock digits */
+	/* are to be read - it needs to be specified here */
+
+	for (j=0;j<12;j++) b[j]=10-j+6*((j+6)/10)-5*(j/6);
+
+	for (j=0;j<12;j++) {
+	tmp [j]=getdgt (b[j]);
+	if (b[j]==5) tmp[j] -=8;
+	}
+	tmp[12]='\0';
+}	
+
+getdgt(n)
+int	n;
+{ 
+	outp(CLOCK_COMM,CLOCK_READ+n);
+	return (inp(CLOCK_DATA)+'0');
+}
+
+/
+	int k;
+	char i[13];
+	
+	gettod(i);
+	for (k=0;k<12;k++) sys_date[k+k/2]

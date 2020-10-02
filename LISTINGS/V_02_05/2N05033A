@@ -1,0 +1,98 @@
+/*
+ *  File:	CDRom.C
+ *  Purpose:	Contains the CDROM Device Driver
+ *		specific commands
+ */
+
+#include	"device.h"
+
+
+/*  External Functions  */
+int NetSend (FPTR buf, int size, BYTE session);
+int NetReceive (FPTR buf, int size, BYTE session);
+
+/*  External Data  */
+extern	BYTE	localSession;
+
+
+/*
+ * ReadLong : Read CDROM sectors
+ *   Transfer the read request to the server.
+ *   Receive the update header and the data
+ *   into the dta.  Cooked mode (0) reads handle
+ *   2048 bytes per sector, raw mode (1) handle
+ *   2352.
+ */
+int ReadLong (RH_CDREAD far *rh)
+{
+	int	ret;
+
+	/**  Send request to server  **/
+	ret = NetSend (rh, rh->rh.length,
+		       localSession);
+
+	/**  Get the header results back  **/
+	if (!ret)
+		ret = NetReceive (rh, rh->rh.length,
+				  localSession);
+	
+	/**  See if DTA read to come in  **/
+	if (!ret) {
+		if (rh->rh.status != 0x100)
+			/**  Read failed  **/
+			return rh->rh.status;
+		
+		/**  Okay to get data  **/
+		ret = NetReceive (rh->dta,
+			(2048+304*rh->readMode)*rh->count,
+			localSession);
+	}
+
+	if (ret)
+		/**  An error occurred somewhere  **/
+		return DEV_ERROR | DEV_EREAD | DEV_DONE;
+	
+	else
+		return DEV_DONE;
+}
+
+/*
+ * ReadPrefetch : Prefetch CDROM sectors
+ *   No read or data transfer is required.  This
+ *   command is advisory only.  Therefore, just
+ *   say it happened.
+ */
+int ReadPrefetch (RH_CDREAD far *rh)
+{
+	return DEV_DONE;
+}
+
+/*
+ * Seek : Seek to CDROM sector
+ *   Mandatory seek to given sector.  Only
+ *   the request header must travel to and
+ *   from the server.
+ */
+int Seek (RH_CDSEEK far *rh)
+{
+	int	ret;
+
+	/**  Send request to server  **/
+	ret = NetSend (rh, rh->rh.length,
+		       localSession);
+
+	/**  Get the header results back  **/
+	if (!ret)
+		ret = NetReceive (rh, rh->rh.length,
+				  localSession);
+	
+	if (ret)
+		/**  An error occurred somewhere  **/
+		return DEV_ERROR | DEV_EREAD | DEV_DONE;
+
+	if (rh->rh.status != 0x100)
+		/**  Seek failed  **/
+		return rh->rh.status;
+	else
+		return DEV_DONE;
+}

@@ -1,0 +1,67 @@
+
+
+*****Listing 3*****
+
+001  #include <stdlib.h>
+002  #include <stdarg.h>
+003  #include <stdio.h>
+004  #include "utility.h"
+005  #include "obj.h"
+006  
+007  void new_class(CLASS *class, CLASS *super_class,
+008    int nbr_methods, int size)
+009  {
+010      int x;
+011      class->nbr_methods = nbr_methods;
+012      class->size = size;
+013      class->method = 
+014        (void (**)())malloc
+015          ((unsigned)(nbr_methods * sizeof (void (*)())));
+016      for (x = 0; x < nbr_methods; ++x)
+017          class->method[x] = (void *)NULL;
+018      if (super_class != NULL)
+019          for (x = 0; x < super_class->nbr_methods &&
+020            x < class->nbr_methods; ++x)
+021              class->method[x] = super_class->method[x];
+022  }
+023  
+024  void free_class(CLASS *class)
+025  {
+026      free(class->method);
+027  }
+028  
+029  /* register a method with a class */
+030  void reg_method(CLASS *class, int mth, void (*fcn)())
+031  {
+032      if (mth < 0 || mth >= class->nbr_methods)
+033          fatal("attempting to register an invalid method");
+034      class->method[mth] = fcn;
+035  }
+036  
+037  /* initialize an object */
+038  void new_object(OBJECT *obj, CLASS *class)
+039  {
+040      void *v;
+041      obj->class = class;
+042      v = malloc((unsigned)class->size);
+043      if (v == NULL)
+044          fatal("smalloc failed");
+045      obj->data = (void *)((unsigned char *)v);
+046  }
+047  
+048  /* send a message to an object */
+049  void message(OBJECT *obj, int msg, ...)
+050  {
+051      va_list arg_ptr;
+052      va_start(arg_ptr, msg);
+053      if (obj->class->method[msg] == NULL)
+054          fatal("no method for this class");
+055      (*obj->class->method[msg])(obj, arg_ptr);
+056      va_end(arg_ptr);
+057  }
+058  
+059  /* free the data allocated for an object */
+060  void free_object(OBJECT *obj)
+061  {
+062      free(obj->data);
+063  }

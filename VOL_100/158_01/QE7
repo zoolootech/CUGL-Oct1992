@@ -1,0 +1,184 @@
+/*  VERSION 0003  (DATE: 30/04/87)  (TIME: 12:54)  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qe7
+
+	FUNCTIONS: getkey,testkey,getlow,testlow,getscankey,inkey,putret,
+			dispch,putch,inword,uspr,makedim,makebright,
+			putclr,dohelp
+		   
+	PURPOSE: low level terminal i/o functions
+
+*/
+
+#include "qe.h"
+
+getkey()	/*wait for a key to be pressed & return it, translating
+			to internal codes */
+{
+	char c;
+
+	while (!(c=testkey()));
+	return c;
+}
+
+testkey()	/*if a key has been pressed, return it, else 0, translating*/
+{
+	char c, *tranp;
+	int i;
+
+	if (!(c=inkey())) return 0;
+	if (c == *(tranp=tran)) {
+		while (!(c=inkey()));
+		c|=PARBIT;
+		}
+	if (c == BACKSP) return LEFTKEY;	/* synonym for move cursor left*/
+	for (i=1,tranp++; i < NKEYS; i++, tranp++)
+		if (c == *tranp) return i;
+	return c;
+}
+
+getlow()	/*get a key, converting control and u/c keys to l/c,
+			translation of ESCKEY only */
+{
+	char c;
+	
+	while (!(c=testlow()));
+	return c;
+}
+
+testlow()	/*test for a key, convert upper and control chars to lower case*/
+{
+	char c;
+
+	if (!(c=inkey())) return 0;
+	if (tran[ESCKEY] == c) return ESCKEY;
+	if (c < ' ') c=c+96;
+	return (c >= 'A' && c <= 'Z' ? c+32 : c);
+}
+
+getscankey()	/*get a key, translation of ESCKEY, CR, LEFTKEY, DELLEFT,
+			  		RETRIEVE only. Return parity bit set. */
+{
+	char c;
+	
+	while (!(c=inkey()));
+	if (tran[ESCKEY] == c) return (ESCKEY_P);
+	if (tran[CR] == c) return (CR_P);
+	if (tran[LEFTKEY] == c) return (LEFTKEY_P);
+	if (tran[DELLEFT] == c) return (DELLEFT_P);
+	if (tran[RETRIEVE] == c) return (RETRIEVE_P);
+	
+	return c;
+}
+
+inkey()		/*return last key press,or 0 if none*/
+{
+	char c;
+	sint i;
+
+	if (inbufp) {
+		c=inbuf[0];
+		inbufp--;
+		for (i=0; i < inbufp; i++) inbuf[i]=inbuf[i+1];
+		}
+	else c=bdos(DIRIO,0xff) & ~PARBIT;
+	return c;
+}
+
+putret()	/*type a CR/LF*/
+{
+	putch('\r');
+	putch('\n');
+}
+
+dispch(c)	/*type a character (in different intensity if non-printable*/
+char c;
+{
+	if (c < ' ') {
+		makeother();
+		/*putch(c+64);*/
+		bdos(DIRIO,c+64);
+		makeother();
+		}
+	else bdos(DIRIO,c);		/*putch(c);*/
+}
+
+putch(c)	/*type a character; test for keyboard input*/
+char c;
+{
+	bdos(DIRIO,c);
+	if ( (c=bdos(DIRIO,0xff))) inbuf[inbufp++]=c & ~PARBIT;
+}
+
+inword(c)	/*return true if c is letter or digit*/
+char c;
+{
+	return  isalpha(c) || isdigit(c);
+}
+
+uspr(n)		/*print 'n' as a number; return number of chars typed*/
+unsigned n;
+{
+	int temp;
+
+	if (n < 10) {
+		putch(n+'0');
+		return 1;
+		}
+	temp=uspr(n/10);
+	uspr(n%10);
+	return temp+1;
+}
+
+makedim()
+{
+	if (!isdim) {
+		begdim();
+		isdim=YES;
+		}
+}
+
+makebright()
+{
+	if (isdim) {
+		enddim();
+		isdim=NO;
+		}
+}
+
+makeother()
+{
+	if (isdim) makebright();
+	else makedim();
+}
+
+putclr()	/*clear the screen */
+{
+	delpage(0);
+}
+
+dohelp()	/*display help menu */
+{
+	int y;
+
+	pfirst=loc(pfirst,(HELPLINES-topline));
+	topline=HELPLINES;
+	for (y=1; y < HELPLINES; y++) deleteline(y);
+	if (cline < pfirst || pfirst == lastl) {
+		puttext(); 
+		putpage(); 
+		}
+	gotoxy(0,1);
+	displayhelp();
+}
+har c;
+
+	if (!(c=inkey())) return 0;
+	if (tran[ESCKEY] == c) return ESCKEY;

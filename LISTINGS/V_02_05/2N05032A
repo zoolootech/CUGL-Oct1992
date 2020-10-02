@@ -1,0 +1,158 @@
+/*
+ *  File:	IOCTL.C
+ *  Purpose:	Contains device driver IOCTL
+ *		command function handlers
+ */
+
+#include	"device.h"
+
+/*  External Data  */
+extern	WORD	DevHeader;
+
+/*  External Functions  */
+int NetAddname (char *name);
+int NetDelname (char *name);
+int NetCall (char *local, char *remote, BYTE *session);
+int NetSend (FPTR buf, int size, BYTE session);
+int NetReceive (FPTR buf, int size, BYTE session);
+WORD UnknownCommand (FPTR rh);
+
+
+/*  Global Data  */
+BYTE	localSession = 0;
+char	clientName[] = "CDROM_CLIENT";
+char	serverName[] = "CDROM_SERVER";
+int	dtaInSize[] = { 5, 6, 1, 1,
+			9, 130, 5, 4,
+			5, 2, 7, 7,
+			11, 13, 11, 11 };
+int	dtaOutSize[] = { 1, 2, 1, 9, 130, 1 };
+
+
+/*
+ * IOProcess : General IOCTL (Input/Output) handler
+ *   Sends request header to ther server
+ *   for processing, followed by the DTA.  
+ *   First Receive is for the request
+ *   header coming back with status and
+ *   any other data.  If all ok second Receive
+ *   is for the DTA stuff.
+ */
+
+WORD IOProcess (RH_IO far *rh, int dta_size)
+{
+	int	ret;
+
+	/**  Are we connected?  **/
+	if (!localSession)
+		return DEV_ERROR | DEV_EGEN | DEV_DONE;
+	
+	/**  Send request header and DTA  **/
+	ret = NetSend (rh, rh->rh.length, localSession);
+	if (!ret)
+		ret = NetSend (rh->dta, dta_size,
+			       localSession);
+
+	/**  Wait for RH to come back  **/
+	if (!ret)
+		ret = NetReceive (rh, rh->rh.length,
+				  localSession);
+
+	/**  If good, get dta also  **/
+	if (!ret) {
+		if (rh->rh.status != 0x100)
+			/**  Error on server  **/
+			return rh->rh.status;
+
+		ret = NetReceive (rh->dta, dta_size,
+				  localSession);
+	}
+
+	if (ret)
+		/**  An error occurred somewhere  **/
+		return DEV_ERROR|DEV_DONE|DEV_EREAD;
+	else
+		return DEV_DONE;
+}
+
+/*
+ * IOInput0 : Return Device Header Address
+ *   Establishes communications with the CDROM
+ *   server and returns the device header address
+ *   in the data transfer area.
+ *   DTA format is :
+ *         BYTE  cmd;
+ *         FPTR  address;
+ */
+
+WORD IOInput0 (RH_IO far *rh)
+{
+	struct {
+		BYTE	cmd;
+		FPTR	addr;
+	} far *dta;
+
+	/**  Attach to server  **/
+	if (NetAddname (clientName) ||
+	    NetCall (clientName, serverName, 
+		     &localSession)) {
+
+		/**  Error making connection  **/
+		NetDelname (clientName);
+		return DEV_DONE | DEV_ERROR | DEV_EGEN;
+	}
+
+	/**  Setup device header address  **/
+	dta = rh->dta;
+	dta->addr = (void far *) &DevHeader;
+
+	return DEV_DONE;
+}
+
+/* 
+ * IOInput : IOCTL INPUT function handler
+ *   Dispatches desired request to proper
+ *   IO-In function handler
+ */
+
+
+WORD IOInput (RH_IO far *rh)
+{
+	BYTE	io_cmd;
+
+	/* first byte of dta buffer has
+	   sub-command code */
+	io_cmd = *((char far *) (rh->dta));
+
+	if (io_cmd == 0)
+		return IOInput0 (rh);
+	else if (io_cmd == 1 ||
+		 io_cmd > 2 && io_cmd < 16)
+		return IOProcess (rh, dtaInSize[io_cmd]);
+	else
+		return UnknownCommand (rh);
+
+}
+
+
+/* 
+ * IOOutput : IOCTL OUTPUT function handler
+ *   Dispatches desired request to proper
+ *   IO-In function handler
+ */
+
+
+WORD IOOutput (RH_IO far *rh)
+{
+	BYTE	io_cmd;
+
+	/* first byte of dta buffer has
+	   sub-command code */
+	io_cmd = *((char far *) (rh->dta));
+
+	if (io_cmd < 6)
+		return IOProcess (rh, dtaOutSize[io_cmd]);
+	else
+		return UnknownCommand (rh);
+
+}

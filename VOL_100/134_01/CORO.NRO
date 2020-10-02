@@ -1,0 +1,411 @@
+.so AN.NRO
+.TH C_CALL 3 "Call a coroutine"
+.SH NAME
+C_CALL -- Call a coroutine.
+.SH SYNOPSIS
+.bo
+int c_call (fcv, passval)
+.ti +5
+.bo
+struct c_fcv *fcv;   /* FCV of target coroutine */
+.ti +5
+.bo
+int passval;         /* Value to pass to target */
+.SH DESCRIPTION
+.PP
+C_CALL transfers control to a destination coroutine, given its FCV address
+and a value to pass.  The destination coroutine's state is restored from
+its FCV, and the originating coroutine is recorded as the CALLER of the
+target coroutine.
+.SH EXAMPLES
+.bo
+reply = c_call (mailman, &message);
+.SH "RETURN VALUE"
+.PP
+The return value is the value given as "passval" to whatever coroutine
+primitive (usually C_DETACH) next invokes the originating coroutine.
+.SH "SEE ALSO"
+c_caller (3),
+c_detach (3), 
+c_resume (3),
+CORODOC.NRO
+.bp
+.TH C_CALLBY 3 "Change a coroutine's caller"
+.SH NAME
+C_CALLBY - Change a coroutine's caller
+.SH SYNOPSIS
+.bo
+c_callby (fcv)
+.br
+.ti +5
+.bo
+struct c_fcv * fcv;    /* FCV of new caller */
+.SH DESCRIPTION
+.PP
+C_CALLBY changes the "caller" of the current coroutine to some other coroutine.
+When a C_DETACH is executed, it will resume the coroutine specified by "fcv",
+not the original caller.
+.SH "RETURN VALUE"
+The return value is unspecified.
+.SH "SEE ALSO"
+c_call (3),
+c_caller (3),
+c_detach (3)
+.SH NOTES
+.PP
+C_CALLBY is needed only in a few esoteric applications and should normally
+not be used.
+.bp
+.TH C_CALLER 3 Find calling coroutine
+.SH NAME
+C_CALLER -- Find the present coroutine's "caller."
+.SH SYNOPSIS
+.bo
+struct c_fcv c_caller ();
+.SH DESCRIPTION
+.PP
+C_CALLER returns the FCV of the current coroutine's "caller," i.e., the
+coroutine which would be invoked by a DETACH.  This is normally the
+coroutine that most recently did a C_CALL.
+.SH "RETURN VALUE"
+.PP
+The return value is the FCV address of the "caller" coroutine.
+.bp
+.TH C_CREATE 3 "Create a coroutine"
+.SH NAME
+C_CREATE -- Create a coroutine
+.SH SYNOPSIS
+.bo
+struct c_fcv * c_create (functp, stack, info)
+.br
+.ti +5
+.bo
+int (*functp)();   /* Initial entry of coroutine */
+.br
+.ti +5
+.bo
+int stack;         /* Stack size in bytes        */
+.br
+.ti +5
+.bo
+int info;          /* User_supplied information  */
+.SH DESCRIPTION
+.PP
+C_CREATE allocates space for a coroutine's FCV, and creates the coroutine.
+The coroutine, when activated via C_CALL or C_RESUME, will enter at the
+initial entry point (*functp).  The argument to the function will be the
+"passval" word given to C_CALL or C_RESUME.
+.PP
+The "stack" parameter specifies the number of bytes of stack space given to
+the target coroutine.  The "info" parameter specifies the user information
+word in the coroutine's FCV; this word may be examined by C_GETINFO or
+modified by C_SETINFO.
+.SH EXAMPLES
+.bo
+mailman = c_create (&mailmaid, 1500, &mailbag);
+.br
+.in +20
+.ti -3
+/* Create a coroutine, "mailman", which has as
+its "main program" the function "mailmaid".  Give
+it 1500 bytes of stack, and set its "info" word to
+the address of "mailbag". */
+.in -20
+.SH "RETURN VALUE"
+.PP
+The return value is a pointer to the FCV of the newly-created coroutine.
+If the coroutine cannot be created (due to lack of memory), the symbolic
+constant ERROR (-1) is returned.
+.SH "SEE ALSO"
+c_destroy (3),
+c_resume (3),
+CORODOC.NRO
+.bp
+.TH C_DESTROY 3 "Destroy a coroutine"
+.SH NAME
+C_DESTROY -- Destroy a coroutine.
+.SH SYNOPSIS
+.bo
+c_destroy (fcv)
+.br
+.ti +5
+.bo
+struct c_fcv * fcv;
+.SH DESCRIPTION
+.PP
+C_DESTROY destroys a coroutine, and reclaims the space allocated for its
+stack and FCV.
+.SH CAVEATS
+.PP
+.ul 1
+Never
+attempt to resume (with C_CALL, C_RESUME, or C_DETACH) a coroutine which
+has been destroyed.  The result is disastrous.
+.SH "RETURN VALUE"
+The return value is unspecified.
+.SH "SEE ALSO"
+c_create (3)
+.SH MISCELLANEOUS
+.PP
+C_DESTROY is available only if ALLOC_ON has been #define'd in BDSCIO.H.
+Otherwise, the "free" function (which C_DESTROY uses to reclaim unused memory)
+will not exist.
+.bp
+.TH C_DETACH 3 "Detach to the 'caller'"
+.SH NAME
+C_DETACH -- Detach to the "caller" coroutine.
+.SH SYNOPSIS
+.bo
+int c_detach (passval)
+.br
+.ti +5
+.bo
+int passval;     /* Value to be returned */
+.SH DESCRIPTION
+.PP
+C_DETACH returns to the caller coroutine (generally the one that most
+recently did a C_CALL), preserving the state of the detached one.
+The "passval" parameter will be returned as the value of C_CALL.
+.SH CAVEATS
+It is an error to try to detach the main C program.
+.SH "RETURN VALUE"
+.PP
+The return value is the "passval" parameter of the next C_CALL or C_RESUME
+to the coroutine.
+.SH "SEE ALSO"
+c_call (3),
+c_resume (3),
+CORODOC.NRO
+.SH DIAGNOSTICS
+.bo
+Attempt to detach a coroutine (FCV=xxxx) which has no caller linkage.
+.PP
+The main C program or some coroutine simple RESUMEd by it has attempted to
+DETACH.  Since the caller cannot be determined, the program aborts.
+"xxxx" is the FCV address of the offending coroutine.
+.bp
+.TH C_GETINFO 3 "Get coroutine info word"
+.SH NAME
+C_GETINFO -- Get information word of a coroutine.
+.SH SYNOPSIS
+.bo
+int c_getinfo (fcv)
+.br
+.ti +5
+.bo
+struct c_fcv * fcv;   /* FCV address of coroutine */
+.SH DESCRIPTION
+.PP
+C_GETINFO returns the user-specified information word for the designated
+coroutine.  This word is initialized by C_CREATE, and can be modified by
+C_SETINFO.  It is normally a pointer to a static data area for the 
+coroutine's use.
+.SH EXAMPLES
+.bo
+mailbag = c_getinfo (c_wmi ());
+.SH "RETURN VALUE"
+.PP
+The return value is whatever was stored in the "info" word by C_CREATE or
+C_SETINFO.
+.SH "SEE ALSO"
+c_create (3),
+c_setinfo (3)
+.bp
+.TH C_PASSER 3 "Find previous coroutine"
+.SH NAME
+C_PASSER -- Find coroutine that invoked current one.
+.SH SYNOPSIS
+.bo
+struct c_fcv * c_passer ();
+.SH DESCRIPTION
+.PP
+C_PASSER returns the FCV address of the coroutine that most recently
+transferred to the current one by any means (C_CALL, C_DETACH, or C_RESUME).
+.SH "RETURN VALUE"
+.PP
+The return value is the FCV address of the "passer" coroutine.
+.SH "SEE ALSO"
+c_resume (3)
+.bp
+.TH C_RESUME 3 "Resume another coroutine"
+.SH NAME
+C_RESUME -- Resume another coroutine.
+.SH SYNOPSIS
+.bo
+int c_resume (fcv, passval);
+.br
+.ti +5
+.bo
+struct c_fcv * fcv;  /* FCV address of coroutine */
+.br
+.ti +5
+.bo
+int passval;         /* Value to pass            */
+.SH DESCRIPTION
+.PP
+C_RESUME is the basic means of transferring control among coroutines.
+It accepts the FCV pointer of the coroutine to resume, and a parameter
+which gives the information to pass to it.  This information is returned
+as the value of the transfer function (C_CALL, C_DETACH, or C_RESUME) which
+last departed from the target coroutine, or as the argument to the "initial
+entry" function if the coroutine is being invoked for the first time.
+.SH EXAMPLES
+.bo
+answer = c_resume (oracle, &question);
+.SH "RETURN VALUE"
+.PP
+The return value is the "passval" parameter of the C_RESUME that eventually
+returns to the originating coroutine.
+.SH "SEE ALSO"
+c_create (3), c_destroy (3),
+CORODOC.NRO
+.bp
+.TH C_SETINFO 3 "Change coroutine's 'info'"
+.SH NAME
+C_SETINFO -- Change the "info" word of a coroutine.
+.SH SYNOPSIS
+.bo
+int c_setinfo (fcv, info)
+.br
+.ti +5
+.bo
+struct c_fcv * fcv;   /* FCV of coroutine */
+.br
+.ti +5
+.bo
+int info;             /* New "info" word  */
+.SH DESCRIPTION
+.PP
+C_SETINFO changes the "user specified information" word of the designated
+coroutine.  This word, initialized by C_CREATE and examined by C_GETINFO,
+is generally a pointerto a static storage area for the coroutine.
+.SH "RETURN VALUE"
+.PP
+The "info" parameter is returned unchanged.
+.SH "SEE ALSO"
+create (3),
+getinfo (3)
+.bp
+.TH C_TYPE 3 "Type of coroutine invocation"
+.SH NAME
+C_TYPE -- Find out how current coroutine was invoked.
+.SH SYNOPSIS
+.bo
+int c_type ();
+.SH DESCRIPTION
+.PP
+C_TYPE finds out how the current coroutine was most recently invoked, and
+returns a value indicating the type of invocation
+.SH "RETURN VALUE
+.PP
+The return value is one of the following symbolic constants (available from
+CORO.H):
+.sp
+CT_UNKNOWN
+.PP
+The coroutine has never been invoked.  This value is returned if the
+main C program calls C_TYPE before it has initiated any other coroutine.
+.sp
+CT_CALL
+.PP
+The coroutine was invoked by a C_CALL.
+.sp
+CT_RESUME
+.PP
+The coroutine was invoked by a C_RESUME.
+.sp
+CT_DETACH
+.PP
+The coroutine was invoked by a C_DETACH.
+.sp
+CT_FALLOFF
+.PP
+The coroutine was invoked by the implicit DETACH performed when another
+coroutine "fell off the end".
+.SH "SEE ALSO"
+c_passer (3)
+.bp
+.TH C_WMI 3 "Find current coroutine"
+.SH NAME
+C_WMI -- Find current coroutine's FCV.
+.SH SYNOPSIS
+.bo
+struct c_fcv * c_wmi ();
+.SH DESCRIPTION
+.PP
+C_WMI locates the FCV of the coroutine which is currently executing.
+.SH "RETURN VALUE"
+.PP
+The return value is the FCV address of the coroutine currently in execution.
+.SH NOTES
+.PP
+WMI stands, in some obscure fashion, for "Who aM I?"
+.bp
+.TH CORO.H 7 "Coroutine #include file"
+.SH NAME
+CORO.H -- #include file for coroutine package.
+.SH SYNOPSIS
+.bo
+#include <coro.h>
+.SH DESCRIPTION
+.PP
+CORO.H contains the definitions of the coroutine FCV structure, the
+top few bytes of the stack of a coroutine that is out of execution, and
+the values returned by "C_TYPE". 
+.SH "SEE ALSO"
+CORODOC.NRO
+.bp
+.TH CORPASS 3 "Internal function"
+.SH NAME
+CORPASS -- Internal function of the coroutine package.
+.SH DESCRIPTION
+.PP
+CORPASS is an internal utility function, written in assembly language,
+which the coroutine package uses to perform the stack manipulations needed
+to transfer control among coroutines.  It should not be used directly by
+the user.
+.SH "SEE ALSO"
+.PP
+A description of the operations performed by CORPASS on its way from one
+coroutine to another is available in CORODOC.NRO.
+.bp
+.TH CORSTART 3 "Internal function"
+.SH NAME
+CORSTART -- Internal function of the coroutine package.
+.SH DESCRIPTION
+.PP
+CORSTART is an internal utility function, written in assembly language,
+which the coroutine package uses to get a coroutine started.  It must
+never be called directly from a C program, since its calling sequence
+does not conform to the standards established by the C environment.
+.SH "SEE ALSO"
+.PP
+The coroutine starter and procedure for "falling off the end" of a coroutine
+are described in CORODOC.NRO.
+.bp
+.TH CORWMIP 3 "Internal function"
+.SH NAME
+CORWMIP -- Internal function of the coroutine package.
+.SH DESCRIPTION
+.PP
+CORWMIP is an internal utility function, written in assembly language,
+which returns a pointer to the memory location in which the current
+coroutine's FCV address (the value returned by C_WMI) is stored.  It
+should normally not be called by the user.
+.PP
+The main program's FCV, a dummy FCV corresponding to "the operating system",
+and the procedure which aborts the program if the main program tries to
+do a C_DETACH are also kept in the CORWMIP function.
+.SH CAVEATS
+.PP
+The CORWMIP function will not operate correctly if it is loaded in ROM.
+A ROM-able version can be built by moving the data between symbolic locations
+"wmiptr" and "mainend" to C.CCC, and defining the symbolic locations in
+BDS.LIB.  Since coroutines are generally used for large applications likely
+to be loaded in RAM under some operating system, the non-ROM-ability is
+not a serious limitation.
+DOC.NRO.
+.bp
+.TH CORWMIP 3 "Internal function"
+.SH NAME
+CORWMIP -- In

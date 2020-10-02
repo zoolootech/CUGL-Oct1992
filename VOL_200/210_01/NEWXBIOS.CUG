@@ -1,0 +1,246 @@
+..version for C Users' Group--single spaced
+.HE LOADABLE BIOS EXTENSIONS FOR CP/M 2.2       Ted Carnevale 9/20/86
+     An article by Cal Sondgeroth in Micro/Systems Journal (vol.1 
+#2 pp.66-71, 1985) showed how easy it is to write loadable 
+drivers for CP/M 2.2 (BIOS extension modules).  I modified his 
+XBIOS and XLOAD programs so that:  utilities could tell what BIOS 
+extension modules had been loaded; extensions could be removed as 
+necessary without a cold boot; extensions could accommodate the 
+additional entries found in the BIOS jump tables of nonstandard, 
+enhanced BIOSs.  The files I submitted to the CUG consist of a 
+BIOS extension module and its loader in 8080 assembly language, 
+and a header file and two utility programs written in C for 
+working with these modules.  These files appeared with slight 
+modification in my article in the July/August 1986 issue of 
+Micro/Systems Journal (pp.72-85).
+
+                  HOW THE BIOS EXTENSION WORKS
+
+     How a BIOS extension module is loaded and how it intercepts 
+BIOS calls are described in the two articles in Micro/Systems 
+Journal.  These diagrams illustrate BIOS call interception.
+     This diagram represents the contents of RAM before a BIOS 
+extension module has been loaded:
+
+               +-------------------+
+               |                   |
+               | BIOS              |
+               |                   |
+               |   - - - - - - -   |
+               | (BIOS jump table) |
+               |  .                |
+               | jmp old_const     |
+BIOS_ENTRY     | jmp old_wboot     |
+               | jmp old_boot      |
+               +-------------------+
+BDOS_ENTRY     | BDOS              |
+               +-------------------+
+               | CCP               |
+               +-------------------+
+               |                   |
+               | TPA               |
+0100H          |                   |
+               +-------------------+
+                  .  
+                  .  
+                  .  
+0005H          jmp BDOS_ENTRY
+                  .  
+0000H          jmp BIOS_ENTRY
+
+     When a BIOS extension module is loaded, it is relocated to 
+the top of the TPA, and a copy of the original BIOS's jump table 
+is written into it.  The table in the BIOS is modified to jump to 
+corresponding entries in the extension module (except for the 
+coldboot jump, which isn't worth saving).  Locations 6 and 7 are 
+changed to point to the start of the BIOS extension module, 
+thereby reducing the TPA and protecting the extension from being 
+overwritten by transient programs.  As a result the RAM contents 
+become
+
+               +-------------------+
+               |                   |
+               | BIOS              |
+               |                   |
+               |   - - - - - - -   |
+               | (Modified table--jumps to special 
+               |  jump table in extension module)
+               |  .                |
+               | jmp new_const     |
+BIOS_ENTRY     | jmp new_wboot     |
+               | jmp old_boot      |
+               +-------------------+
+BDOS_ENTRY     | BDOS              |
+               +-------------------+
+               | CCP               |
+               +-------------------+
+               |                   |
+               |  BIOS extension   |
+               |                   |
+               |   - - - - - - -   |
+               | (special warm     |
+xwboot:        |  boot routine)    |
+               |   - - - - - - -   |
+               |                   |
+                  .
+                 (Special table--jumps to copy of original BIOS 
+                  jump table, or to drivers in this extension 
+                  module)
+                  .
+new_const:       jmp . . .    ;to special driver or dup_const
+new_wboot:       jmp xwboot   ;to special warm boot routine
+                (Top of copy of original BIOS jump table)
+                  .
+dup_const:       jmp old_const
+dup_wboot:       jmp old_wboot
+                (Bottom of copy of original BIOS jump table)
+                  .
+                  .
+               |                   |
+XBIOS_ENTRY    | jmp BDOS_ENTRY    |
+               +-------------------+
+               |                   |
+               | TPA               |
+0100H          |                   |
+               +-------------------+
+                  .  
+                  .  
+                  .  
+0005H          jmp XBIOS_ENTRY
+                  .  
+0000H          jmp BIOS_ENTRY
+
+     When a BIOS service call is made in the presence of such an 
+extension module, the modified jump table in the BIOS transfers 
+the request to the BIOS extension module.  Here the call may be 
+passed on to the original BIOS routine, or diverted to a special 
+driver in the extension module instead.  In this example, a call 
+to BIOS function LIST is served by the original BIOS code, but 
+the PUNCH function is handled by a new driver:
+
+               +-------------------+
+               |                   |
+               | BIOS              |
+               |                   |
+               |   - - - - - - -   |
+               | (Modified table--jumps to special 
+               |  jump table in extension module)
+               |  .                |
+               | jmp new_punch     |
+               | jmp new_list      |
+               |  .                |
+BIOS_ENTRY     | jmp new_wboot     |
+               | jmp old_boot      |
+               +-------------------+
+               |                   |
+                  .
+                  .
+                  .
+               |                   |
+               |  BIOS extension   |
+               |                   |
+xpunch:          (start of code for special punch driver)
+                  .
+                 (Special table--jumps to copy of original BIOS 
+                  jump table, or to drivers in this extension 
+                  module)
+                  .
+new_punch:       jmp xpunch   ;to special driver
+new_list:        jmp dup_list ;eventually to original driver
+                  .
+new_wboot:       jmp xwboot   ;to special warm boot routine
+                (Top of copy of original BIOS jump table)
+                  .
+dup_list:        jmp old_list ;to original list driver
+                  .
+dup_wboot:       jmp old_wboot
+                (Bottom of copy of original BIOS jump table)
+                  .
+                  .
+
+
+     Several BIOS extension modules can be loaded, one after 
+another.  Jumps to BIOS routines (except for warm and cold boot) 
+pass through all of the extension modules, until they are 
+intercepted by a special driver or the orignal code in the BIOS 
+is reached.
+
+                    LOADING A BIOS EXTENSION
+
+     The source code for the BIOS extension must be assembled to 
+a REL file, which is then loaded with Digital Research's LINK.COM 
+to produce an SPR file using LINK's "OS" option switch:
+
+     LINK NUXB[OS]
+
+A special loader program (source in LXB.ASM) installs the BIOS 
+extension into place at the top of the TPA, copies the original 
+BIOS's jump table, patches the original table, and alters 
+locations 0006-0007H.  Relocation is governed by the bit map at 
+the end of the SPR file.  If necessary, LXB could be modified to 
+accommodate .PRL files instead.
+
+              DETAILS OF THE BIOS EXTENSION MODULE
+
+     LXB and NUXB are based on Sondgeroth's XLOAD and XBIOS 
+programs.  I revised them so the extension module contains data 
+for utility programs that need to know if a BIOS extension is 
+installed.  I also wrote two other programs in C (described 
+below) that identify what modules have been loaded, and in what 
+order, and enable their removal one at a time without a cold 
+boot.
+     NUXB is an example of a BIOS extension module.  It begins 
+with a 32 byte header that contains certain useful items (see 
+NUXB.ASM).  After the module is loaded, its first three bytes 
+will be "jmp bdos."
+     The fourth and fifth bytes allow the design of generalized 
+utilities to handle BIOS extension modules.  The BIOS extension 
+loader (see LXB.ASM) and other utilities use the fourth byte to 
+find where the jump tables begin.  Its value equals the total 
+length of the "version" and "function" strings (see below), which 
+must be 255 or fewer bytes.
+     The fifth byte in the header specifies how many jump 
+instructions are to be copied from the BIOS into the BIOS 
+extension.  This accommodates "enhanced" BIOSs that have jump 
+tables with additional functions.
+     Bytes 6-16 are presently unused.  Bytes 17-32 contain the 
+string "xbios installed$" which is shown on the console at every 
+warm boot.  It is also checked by utilities to verify that a BIOS 
+extension is in place.
+     The data area that follows the header contains "version" and 
+"function" strings that tell the date and revision number of the 
+BIOS extension, and what it does.  These strings are terminated 
+by nulls for ease of use with C programs.
+     The copy of the previous contents of the BIOS jump table 
+comes next (OLDTBL), followed by the BIOS extension's own jump 
+table.
+     NUXB and LXB were not designed for interception of BDOS 
+calls.  One way to do this might be to use the first two reserved 
+bytes in the BIOS extension header as storage for the BDOS entry 
+address, and change the first three bytes in the header to a jump 
+to a BDOS intercept routine in the extension module itself.  If 
+BDOS calls are to be simply passed on to the BDOS, the intercept 
+routine might just be LHLD RESERV ! PCHL.  Otherwise, the value 
+in register C would be tested and the appropriate action taken.  
+If this approach to BDOS intercepts is used, the loader would 
+have to be revised to patch the BDOS address into the appropriate 
+location in the header.
+
+             UTILITIES FOR USE WITH BIOS EXTENSIONS
+
+     Two utilities for dealing with these BIOS extension modules 
+are CXB.C and RXB.C.  XB.H contains definitions used by both CXB 
+and RXB.  The structures xbhdr and cpmhdr summarize the 
+significance and contents of key locations at the beginning of 
+the BIOS extension module and at the base of CP/M.
+     These programs were written for the Software Toolworks C80 
+compiler, but should run with little or no change with any other 
+compiler.  CXB and RXB test for the presence of a BIOS extension 
+by looking for the string "xbios installed$".  CXB reports the 
+starting address and the version and function strings of all BIOS 
+extensions that have been installed starting with the one lowest 
+in memory (i.e. the one most recently loaded).  RXB removes the 
+most recently installed BIOS extension module, leaving the rest 
+in place.  It fixes locations 0006-0007H and restores the BIOS's 
+jump table from the copy in the BIOS extension lowest in memory.
+

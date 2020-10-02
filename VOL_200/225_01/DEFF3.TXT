@@ -1,0 +1,536 @@
+                        DEFF3.TXT
+                        ---------
+
+         I have given, below, a description of each of the functions
+         which I have written for the file -
+
+                   DEFF3.C
+
+         and which may be accessed through -
+
+                   DEFF3(.CRL)
+
+         when you use the CLINK function with BDS C.   It is not
+         necessary to specify "DEFF3" on the command line as BDS C
+         will look for any missing functions in the DEFF files,
+         automatically, in answer to a RETURN entered when it asks
+         you for instructions as to which CRL files it should search
+         for the missing functions.
+
+         If you intend to use DEFF3 in this way then it should be on
+         the same disk as the BDS C DEFF files.   Now, the functions
+         I have written are -
+
+
+         BINARY         GET_DEFAULT         RESET_DSK
+         BITCOUNT       GET_IOBYTE          REVERSE
+         CGET           INDEX               SEARCH_FIRST
+         CLOSE_FILE     ISALNUM             SEARCH_NEXT
+         CLRSCREEN      ITOA                SELECT_DSK
+         CPUT           LISTC               SET_ATTRIBUTES
+         CON_STAT       MAKE_RO             SETDMA
+         CREATE_FILE    OPEN_FILE           SET_IOBYTE
+         DIRECTC        PRINT_DEC           SHELL_SORT
+         DPB_ADR        PRT_STR             SWAP_POINTERS
+         ERASE_FILE     READ_SEQ_SEC        USER_ID
+         GET_CPM        READ_STR            WRITE_SEQ_SEC
+
+                   ADDED FUNCTIONS
+                   ---------------
+
+         L_SHIFT        R_SHIFT             PRT_BIN
+         BIT_SET        BIT_RESET           ISPRINT
+         SCOPY_N        GET_ALV
+
+
+
+         char BINARY(x, v, n)
+         int x, v[], n;
+         --------------------
+
+         Checks whether a binary number (x) occurs in a sorted array
+         (v, of n elements) and, if so, returns the binary number or
+         else returns -1 if it doesn't occur.
+
+
+         char BITCOUNT(n)
+         unsigned n;
+         ----------------
+
+         Returns the number of set bits ( = 1) in a byte.
+
+
+         unsigned BIT_RESET(u, n)
+         unsigned u;
+         int n;
+         ------------------------
+
+         Will reset (to zero) the nominated bit number ( n = 0 to 15)
+         in an unsigned integer "u".   Returns the unsigned integer
+         with the nominated bit reset to zero.
+
+
+         unsigned BIT_SET(u, n)
+         unsigned u;
+         int n;
+         ----------------------
+
+         Will set (to one) the nominated bit number ( n = 0 to 15)
+         in an unsigned integer "u".   Returns the unsigned integer
+         with the nominated bit set to one.
+
+
+         char CGET()
+         -----------
+
+         Similar to "getchar" in what it does except that it will
+         read ANY byte value from the console.  i.e. the value you
+         enter doesn't have to be either ASCII or printable.
+
+         It returns the value of the byte entry.
+
+
+         char CLOSE_FILE(fcb)
+         char fcb[36];
+         --------------------
+
+         This will close the file whose name is included in the file
+         control block pointed to by "fcb".   It is the companion
+         function to "OPEN_FILE" and should be used to close any file
+         previously opened with OPEN_FILE.   It returns the same
+         values as OPEN_FILE.
+
+
+         void CLRSCREEN()
+         ----------------
+
+         Will clear the screen and home the cursor, using in-built
+         terminal software commands.   It is (probably) only usable
+         by Hazeltine family terminals but could be altered to suit
+         other terminals provided you know the byte value(s) to send
+         to the terminal to activate the clear screen/home function.
+
+         Doesn't return anything.
+
+
+         char CON_STAT()
+         ---------------
+
+         This checks the console status and returns ZERO if there is
+         no character waiting, else it returns 0xff....NOT the
+         character itself.   It is a useful function for those inputs
+         where you tell the user -
+
+              "Enter any character to continue."
+
+
+         void CPUT(c)
+         int c;
+         ------------
+
+         Similar to "putchar" except that it will send ANY byte value
+         to the console.   Naturally the console will only display
+         the "visible" characters.   Doesn't return anything useful.
+
+
+         char CREATE_FILE(fcb)
+         char fcb[36];
+         ---------------------
+
+         This will create the file named in the file control block
+         (see open_file for a description of this) an initialise it
+         for both read and write functions.   Note particularly that
+         it doesn't check to see whether a file of this name already
+         exists so you need to do this independently if you want to
+         make sure you haven't got two files of the same name in the
+         disk directory.
+
+         It is supposed to return 0xff (255 decimal) if the disk is
+         full and the name can't be created, but I'm not so sure
+         that you can rely on it to do so.   Probably the best way
+         to be sure is to now try to open the file (with open_file)
+         and see what happens then.
+
+
+         char DIRECTC(duty)
+         int duty;
+         ------------------
+
+
+         This is CP/M function No. 6 and it can be used to either get
+         a character from the terminal, or to send a character to the
+         console.   It depends on the value of "duty" which should be
+         either -
+
+              0xff                for input from the terminal
+         or   the byte value      for output to the console
+
+         It returns the input character in the first case or zero in
+         the second case.
+
+         unsigned DPB_ADR()
+         ------------------
+
+         Gives the Disk Parameter Block address (pointer to).   You
+         should first have declared the pointer as -
+
+                   struct dpb *pointer;
+
+         This allows access to the following values -
+
+         int  pointer->SPT        No. of records per track
+         char pointer->BSH        Block Shift Factor
+         char pointer->BKM        Block Mask
+         char pointer->EXM        Extent Mask
+         int  pointer->DSM        Disk Space Maximum (highest block)
+         int  pointer->DRM        Directory Maximum (highest entry)
+         char pointer->AL0        Initial Allocation Vector
+         char pointer->AL1        do (high byte)
+         int  pointer->CKS        Check Area Size
+         int  pointer->OFF        Count of reserved tracks
+
+         Note that the definition for "dpb" is given in "PEC.H" and
+         this should be "included" in the programme if you wish to
+         access the disk parameter block.
+
+
+         char ERASE_FILE(fcb)
+         char fcb[36];
+         --------------------
+
+         Erases from the directory the name of the file in the file
+         control block.   For a description of this see open_file.
+         It will return 0xff if the file isn't found.
+
+
+         unsigned GET_ALV()
+         ------------------
+
+         Returns a pointer to the Allocation Vector which gives the
+         allocation block map for the selected disk.   Note the map
+         is a number of bytes with a particular bit set if the block
+         is in use.   You can obtain the highest allocation block
+         number from the Disk Parameter Block (see DPB_ADR).
+
+
+         int GET_CPM()
+         -------------
+
+         Returns a 16-bit number (in HL) with the details -
+
+              H = 0x00 for CP/M  OR  H = 0x01 for MP/M
+              L = 0x00 for all releases prior to 2.0
+              L = 0x20 for version 2.0, 0x21 for version 2.1, 0x22
+                  for version 2.2, and so on.
+
+         If you want to use any of this information then you will
+         need to mask off H (or L) to find out what it was the
+         function returned.
+
+
+         char GET_DEFAULT()
+         ------------------
+
+         Returns the name for the current default disk.   Note A = 0,
+         B = 1....and so on.
+
+
+         char GET_IOBYTE()
+         -----------------
+
+         Returns the current IOBYTE setting under CP/M 2.2.
+
+
+         int INDEX(s, t)
+         char s[], t[];
+         ---------------
+
+         Returns a pointer to the position of string "t" inside
+         string "s", else returns -1 if no match is found.
+
+
+         char ISALNUM(c)
+         char c;
+         ---------------
+
+         Returns TRUE/FALSE whether the character is alpha-numeric.
+
+
+         char ISNUM(c)
+         char c;
+         -------------
+
+         Returns  TRUE/FALSE whether the character is numeric (0..9)
+         or not.
+
+
+         char ISPRINT(c)
+         char c;
+         ---------------
+
+         Returns TRUE/FALSE whether the character is printable (to the
+         console) or not.
+
+
+         void ITOA(n, str)
+         int n;
+         char s[];
+         -----------------
+
+         Will convert an integer (n) into a printable ASCII string,
+         which is placed in "str".   This is one of the obvious
+         functions which should already have been included in BDS C.
+
+         unsigned L_SHIFT(value, number)
+         unsigned value;
+         int number;
+         -------------------------------
+
+         Performs a logical left shift on "value" the number of times
+         specified by "number".   Returns the final left-shifted value.
+
+
+         void MAKE_RO()
+         --------------
+
+         Makes the current logical disk read-only status.   I don't
+         think it returns anything.
+
+
+         char OPEN_FILE(fcb)
+         char fcb[36];
+         -------------------
+
+         Opens the nominated file, the name of which must be in the
+         file control block ("fcb") in the manner required by CP/M.
+         Note that the file is opened for BOTH reading and writing.
+         Before using this function you should have already made a
+         file control block with the function -
+
+              setfcb(fcb, filename)
+
+         Note particularly "fcb" as used in these functions is a
+         pointer to the file control block or, as used in assembly
+         language programming, it is the address of the fcb which
+         holds the file name.   This should be an external buffer so
+         that it is known to all functions in the programme.
+
+         This will return 0xff if the open was unsuccessful or a
+         number 0, 1, 2 or 3 (which is an offset into the DMA buffer)
+         if the open succeeded.   For those who understand the way
+         CP/M works, this offset may be used to get the directory
+         entry information on the opened file.
+
+         To be able to access the DMA buffer you must have first
+         created a DMA buffer whose address (the pointer to) is
+         known to you.   Do this with the function -
+
+              set_dma(dma)
+              char dma[128];
+
+         void PRINT_BIN(n)
+         unsigned n;
+         -----------------
+
+         Prints an unsigned number (Note: No negatives allowed) in
+         binary form.  e.g. the number 15 ( = 0xff) will be printed
+         to the console as -
+
+              0000000011111111
+
+         because all 16 bits are accounted for.
+
+
+         void PRINT_DEC(n)
+         int n;
+         -----------------
+
+         Prints a decimal number (n) to the console.
+
+         void PRT_STR(str)
+         char *str;
+         -----------------
+
+         Prints a string (terminated by the character "$") to the
+         console.   Doesn't return anything.
+
+         Note you shouldn't use this function if you expect to meet
+         with the dollar sign other than as the end of line marker.
+
+
+         char READ_SEQ_SEC(fcb)
+         char fcb[36];
+         ----------------------
+
+         Starting from the first available sector (of 128 bytes) it
+         will reach each successive sector in the file until the end
+         of the file is reached.   Returns zero when the read is
+         successful, else returns a non-zero number.   Note that the
+         file must already have been opened prior to this function
+         being called.
+
+
+         void READ_STR(str)
+         char *str;
+         ------------------
+
+         Will read a RETURN-terminated string from the terminal and
+         place it, as a NULL-terminated string, into the str buffer.
+         Note, when calculating the size of the string buffer you
+         will use, you have to add one for the '\0' character which
+         will terminate the string.
+
+         e.g. if you want the maximum length of the string to be 80
+         characters then specify -
+
+                   char str[81];
+
+         for the string buffer.
+
+
+         void RESET_DSK()
+         ----------------
+
+         This resets the disk system and reads the active disk
+         details into memory again.   It is typically used in a
+         programme after a disk has been changed, or swapped.   It
+         doesn't return anything.
+
+
+         void REVERSE(str)
+         char str[];
+         -----------------
+
+         Will reverse a null-terminated string in place.
+
+         unsigned R_SHIFT(value, number)
+         unsigned value;
+         int number;
+         -------------------------------
+
+         Performs a logical right shift on "value" the number of times
+         specified by "number".   Returns the final right-shifted value.
+
+
+         void SCOPY_N(str1, str2, n)
+         char *str1, *str2;
+         int n;
+         ---------------------------
+
+         This copies "n" characters from string "str2" to string
+         "str1".   Note that if n is greater than strlen(str2) then
+         only strlen(str2) characters will be copied.   Also str1 is
+         not terminated with the '\0' character on completion so this
+         function can be used to overwrite a buffer.
+
+
+         char SEARCH_FIRST(fcb)
+         char fcb[36];
+         ----------------------
+
+         This searches the disk directory for the first file name
+         which matches the name given in the file control block
+         pointed to by "fcb".   Note - see OPEN_FILE for a run-down
+         on the file control block under CP/M.   The file name you
+         choose may be either ambiguous or specific.
+
+         If it is ambiguous, this function will return the first
+         file name which matches the given name.   When a match has
+         occurred, it returns 0, 1, 2 or 3 which is the offset
+         into the DMA buffer where the directory information has
+         been placed by CP/M.   Knowing the offset (which is a factor
+         of 32 bytes) you can now recover the actual directory entry
+         as stored by CP/M.
+
+         e.g. if the offset is, say, 2 then if you look 2 x 32 = 64
+         bytes into the DMA you will find the first byte of the
+         directory entry for the matching file name.
+
+         If it returns 0xff (255 decimal) then you didn't find any
+         file which matched the name you gave.
+
+
+         char SEARCH_NEXT()
+         -----------------
+
+         Carries on from search_first to locate any further names
+         which match the name in the file control block.   Note this
+         can only be used after a successful search_first.   It will
+         return the same parameters as search_first for both failure
+         and success.
+
+
+         void SELECT_DSK(drive)
+         int drive;
+         ----------------------
+
+         This allows you to change the "logical" drive during the
+         course of a programme.   Just enter the drive name as A, B,
+         C...M, etc and the function converts this to the value
+         required by CP/M.   Doesn't return anything.
+
+
+         char SET_ATTRIBUTES(fcb)
+         char fcb[36];
+         ------------------------
+
+         Used to set (or re-set) the attributes for R/O, R/W, DIR,
+         SYS and ARC and CPY (in my backup programme) so that CP/M
+         will know how to deal with a particular file in the disk
+         directory.   To use this function successfully you must
+         have first formulated a file control block with the bits
+         you want CP/M to recognise either set ( = 1) or re-set to
+         zero, as the case may be.   Will return 0xff if the file
+         can't be located in the disk directory.
+
+
+         void SETDMA(buffer)
+         char buffer[128];
+         -------------------
+
+         Creates a pointer to the DMA (CP/M's direct memory address)
+         buffer which can then be used in the read/write and other
+         CP/M functions where a DMA is required.   It is probably
+         most useful when "buffer" is declared externally.
+
+
+         void SET_IOBYTE(iob)
+         int iob;
+         --------------------
+
+         Re-sets the IOBYTE to the specified value.   Doesn't return
+         anything.
+
+
+         void SHELL_SORT(v, n)
+         int v[], n;
+         ---------------------
+
+         Sorts an array "v" of "n" elements into increasing order.
+
+
+         void SWAP_POINTERS(px, py)
+         char *px[], *py[];
+         --------------------------
+
+         Will interchange two pointers.
+
+
+         char USER_ID(code)
+         int code;
+         ------------------
+
+         Will either return the current User Number, if code = 255
+         (0xff), or will change the User Number if code = 0 to 15.
+
+
+         char WRITE_SEQ_SEC(fcb)
+         char fcb[36];
+         -----------------------
+
+         A companion function to read_seq_sec.   This will write
+         successive sectors to the open file named in the file
+         control block.   It will return zero if successful or a
+         non-zero number if not successful in completing the write.
+
+         ch

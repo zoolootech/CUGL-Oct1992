@@ -1,0 +1,47 @@
+// critsec.c example 2
+// cl /AL /Lp critsec.c
+// bind286 critsec
+// critsec
+
+#define INCL_DOS
+#define INCL_SUB
+#include <os2.h>
+#include <malloc.h>        
+#define STACK_SIZE 4096    
+ 
+main() 
+{ 
+  char far *stkptr;        /* stack pointer for threads */
+  void far thread1();      /* prototype for thread 1    */ 
+  void far thread2();      /* prototype for thread 2    */ 
+  unsigned threadID;       /* thread ID number          */ 
+  int count;               /* loop counter              */
+  int i = 400;             /* note frequency            */
+  stkptr = (char far *)malloc(STACK_SIZE) + STACK_SIZE; /* get stack space  */ 
+  DosCreateThread(thread1, &threadID, stkptr);          /* start thread one */ 
+  stkptr = (char far *)malloc(STACK_SIZE) + STACK_SIZE; /* get stack space  */ 
+  DosCreateThread(thread2, &threadID, stkptr);          /* start thread two */ 
+  DosSleep(400L);    /* let other threads run */
+  DosEnterCritSec(); /* stop other threads    */
+  printf("\nEntered critical section");
+    for(count=0; count <1; count++) {		  // beeping starts
+      for(; i < 800; i += 10)
+         DosBeep(i,50);
+      for(; i > 400; i -=5)
+         DosBeep(i,50);
+    }						  // beeping ends
+  printf("    Exited critical section\n");
+  DosExitCritSec(); /* start other threads again  */
+  DosSleep(400L);   /* let other threads continue */
+  exit(0);          /* exit all threads           */ 
+} 
+
+void far thread1() {        /* thread1()              */ 
+   while(TRUE)              /* continuously print "1" */ 
+      VioWrtTTY("1", 1, 0);
+} 
+
+void far thread2() {        /* thread2()              */
+   while(TRUE)              /* continuously print "2" */ 
+      VioWrtTTY("2", 1, 0);
+}

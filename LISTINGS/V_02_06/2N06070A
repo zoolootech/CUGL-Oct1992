@@ -1,0 +1,41 @@
+/******************************************************************
+*     GetPrinterDC - Select a printer and create a printer DC
+*
+*     Returns:
+*            Device Context for printer, or 0 for failure.
+*
+*     Copyright:
+*            Original code by William H. Roetzheim (619) 669-6970
+*            Copyright 1990 by William H. Roetzheim
+*            All rights reserved.
+**********************************************************************/
+
+HDC   GetPrinterDC (HWND hWnd)
+{
+      int                 i;
+      FARPROC             lpfnDM;
+      char szPrinter[64];
+      char szBuffer[64];
+      char *szDevice, *szDriver, *szOutput;
+      HANDLE       hLibrary;
+
+      GetProfileString ("windows", "device", "", szPrinter, 64);
+
+      szDevice = strtok (szPrinter, "," );
+      szDriver = strtok (NULL, ",");
+      szOutput = strtok (NULL, ",");
+
+      strcpy (szBuffer, szDriver);
+      strcat (szBuffer, ".DRV");
+      hLibrary = LoadLibrary (szBuffer);
+      lpfnDM = GetProcAddress (hLibrary, "DEVICEMODE");
+      i = (*lpfnDM) (hWnd, hLibrary, (LPSTR) szDevice, (LPSTR) szOutput);
+      FreeLibrary(hLibrary);
+
+      if ((i == 0) || (szDevice == 0) || (szDriver == 0) || (szOutput == 0)) return 0;
+      else return CreateDC (szDriver, szDevice, szOutput, NULL);
+}
+
+
+
+

@@ -1,0 +1,463 @@
+.ce
+                           SE - Stack Editor
+
+
+.nf
+.ce
+                         Summary of key usage
+
+
+^A                 word left
+^B                 reserved for unimplemented block marking operations
+^C or PgDn         window down one page
+^D or <left arrow> cursor left one character
+^E or <up arrow>   cursor up one line
+^F                 cursor right one word
+^G or <Del>        delete character under cursor
+^H or <Backspace>  delete character to left of cursor
+^I or <Tab>        tab right
+^J                 jump to line n or mark current line for next jump
+^K                 block manipulations
+                       B   block moves
+                       Q   quit
+                           w=write file
+                           a=abandon edited file  (also F9)
+                       X   write file and exit to system (also F10)
+                       R   read and insert disc file
+^L, F3, F4         repeat last find/alter
+^N                 line break (<ret> is preferred)
+^O                 pop a copy of last deleted line.
+^P                 pop last deleted line
+^Q                 'quick' options
+                       A    find and replace  (see also F6)
+                       F    find              (see also F6)
+                       K    editing context (tabs, files, etc.)
+                       P    reform paragraphs per dot commands
+^R or <PgUp>       window up one page
+^S or <left arrow> cursor left one character
+^T                 delete word
+^U or ^<left arrow>   cursor full left
+                      (moves window left if already full left)
+^V or <ins>        character insert/overlay toggle (transitory)
+^W                 window up one line
+^X or <dn arrow>   cursor down one line
+^Y                 delete from cursor to end of line (delete line if full left)
+^Z                 window down one line
+^[                 same as escape key
+^-                 undo the last 100 changes on a line-by-line basis. (+, not
+                   ctrl+, becomes redo in this mode)
+
+<home>             window to beginning of file
+<end>              window to end of file
+^] or ^<right arrow>  cursor full right.  (moves window right if already
+                      full right)
+<esc>              cancel or abort command, nothing if no partial command.
+
+
+F1    help menu  (toggles)
+F2    Initiate string search or search and replace
+F3    repeat last search or search & replace backward (same as forward ^L)
+F4    repeat last search or search & replace forward (same as backward ^L)
+F5    unused
+F6    Center window on cursor  (horizontally and vertically)
+F7    option selection
+F8    directory display
+F9    exit without saving (same as ^KQ)
+F10   save the current file and exit (same as ^KX)
+
+
+.fi
+.rm 80
+
+
+The use of the carriage return is a little different than Wordstar.  First, it
+operates the same in the character insert and character overlay mode.  It is
+used to break lines into two lines. ^N will also do that, but ^N will eventually
+be used to push/delete the remainder of sentences spanning more than one line,
+so <ret> is the prime key for breaking lines.
+
+When a line is broken the cursor normally ends up on the lower line, which is
+the latter portion of the original line.  An exception occurs when the cursor is
+initially in column 1, in which case it stays on the new blank line created by
+the line break, in preparation for the entry of new text.
+
+^Y deletes from the cursor to the end of the line rather than the entire line.
+Use ^U first (as needed) to move the cursor full left to delete the entire line.
+
+Characters are inserted into the existing text in the default mode.  The <ins>
+and ^V keys are used to enter the overlay mode, where the character under
+the cursor is replaced by the new character.  The overlay mode is usually
+used for editing tables with a rigid format.  The simplest way to change
+one or two characters in existing text is to insert the new characters
+then delete the old, rather than entering the overlay mode first.  The
+word OVER appears in the header when in the character replace mode, and
+the mode is transitory.  Any cursor positioning command which moves the
+cursor more than 10 lines in a single step causes reversion to the insert
+mode.
+
+Lines are concatenated by deleting any character to the right of the rightmost
+visible character with ^G or <del>.  That is the only way of concatenating
+lines.  The program has free cursor movement, so the right arrow and ^] can be
+used to move the cursor beyond the visible end of the line.  Line concatenation
+works the same way there, except the point of concatenation is the cursor
+position rather than the last visible character.  If the last character of the
+line is on the screen then the ^] command will move the cursor to just beyond
+it.
+
+The ^O (pop a copy) and ^P (pop) stack operations pop the lines pushed with ^Y.
+The cursor must be in column 1 for a push to occur.  The stack will hold 100
+lines.  This version contains a preliminary version of the stack operations and
+there are some restrictions, which are given in the read.me file.  The functions
+will be refined and expanded in a future release.
+
+The default file extensions are .c and .doc.  The extension for the input file
+need not be specified if it is one of these.
+
+The <esc> key will cancel all prompted ^K and ^Q queries.  It will also abort a
+string search or search and replace operation.  It can also be used to
+exit the help mode.  The escape key has no effect if there is nothing
+to abort.
+
+The program will rarely automatically scroll horizontally with the default
+options.  That is sometimes an inconvenience when editing documents with short
+lines, but is essential when editing material with lines mostly longer than 80
+columns.  Use ^] and ^U repetitively to move the cursor horizontally in large
+chunks.  F6 is often more convenient.
+
+The program takes 0x0D as the input file end of line marker.  The 0x0A is
+ignored, although normally there.  The output file is always the standard 0D 0A.
+
+There is a DOS ambiguity in the way the end of file character appears in the
+file.  The trailing characters in the last line can be either "text" 0D 0A 1A or
+"text 1A".  Most programs don't care which way it is, but the selection is
+controllable.  If the <end> key carries the cursor to a line containing visible
+characters then that line is terminated by ^Z but not by a carriage return and
+line feed.  The selection is controllable by the normal editing commands.
+
+The primary file is never altered by the program.  A copy is first produced,
+then the primary file is renamed to the .bak extension and the copy renamed to
+the original name.
+
+When using a fixed disc system it is usually preferable to exit after saving the
+text file.  With floppies the process of reloading the program can be tedious
+enough that an easy way of saving or abandoning a file and staying resident is
+better.  The commands are optimized for a fixed disc system, but it is possible
+to stay resident.  If a file is to be abandoned, type in a garbage character
+before entering F9 or ^KQ.  The ensuing prompted inputs will allow you to
+discard the text in memory and stay resident.  Similarly, also enter F9 or ^KQ,
+which are normally used to abandon a file, when you really want to save it and
+stay resident.  The program will not exit on one keystroke if changes have been
+made to the file.  It will otherwise.
+
+The program line limit in large systems is 16384 lines.  In smaller systems the
+maximum number of lines is roughly the number of bytes of allocatable memory
+divided by 4.  The lines of text are kept in a temporary disc file when they
+can't be stored in RAM, but each line on disc still requires 4 bytes in RAM.  Up
+to 500 kb of RAM will be used for text storage if available, with a 5-10 percent
+overhead for line pointers.
+
+A second limit is the virtual memory size limitation of 1500 2048-byte pages, or
+3 megabytes.  The pages are kept preferentially in RAM, with the most recently
+accessed pages being there to minimize access time.
+
+The virtual memory management system has been improved somewhat over earlier
+versions.  The new version is faster, and will not create the virtual disc file
+if enough RAM is available to hold the entire document, which is normally
+the case.
+
+The program is capable of producing disc files containing lines one character
+longer than it can read.  The long input lines are split, the second half always
+being a null line.  Fixing the idiosyncrasy would slow the disc transfer rate
+and doing so does not seem to be a good trade-off.  The problem is avoided
+limiting the line length to 253 characters.  Arbitrarily long lines from other
+sources are automatically split into chunks which fit when the file is read.  A
+warning is issued on the occurrence.
+
+In the ^KB block moves, most cursor positioning commands, including ^J, can be
+used to move to the new block location.  String searches can't be used in this
+version, although it ought to work that way.
+
+In support of the philosophy of free cursor movement, the ^X and down arrow
+cursor positioning commands have been enhanced in a way that is a convenience,
+but could occasionally cause trouble.  If the cursor is on the last line of the
+document and moved further down by these keys then new null lines are created at
+the end of the document.  These lines are not automatically removed, and they
+are classified as changed lines.
+
+The handling of error messages is a little different than that of Wordstar, and
+the difference may cause some trouble at first to the experienced Wordstar user.
+There are exceptions, but normally the presence of an error message does not
+mean that the escape key has to be used.  Just continue editing, and the message
+will vanish on the first keystroke.  The use of any cursor positioning command
+is an easy way to make the message vanish.  On the other hand, if the program is
+not in the edit mode at the time of the error then a keystroke is required to
+clear the message but the key is discarded.  The escape key can be used for this
+purpose.
+
+ASCII codes 0x80 to 0xff can be entered by holding down the alt key and entering
+the 3-digit decimal ASCII code from the numeric keypad (the other number keys
+can't be used).  See the Sidekick display or the IBM technical reference manual
+for the full character set.  The resulting characters can be edited like
+ordinary text.
+
+
+
+
+.ce
+                                 Paragraphing
+
+
+The paragraph reform function is a full-fledged runoff program.  It is capable
+of doing things to the text file which in most cases you don't want.  Use the
+dot commands carefully until you are sure of their functioning.  The dot
+commands have been left in this file for tutorial purposes.
+
+These extra features include such things as adding page numbers and headers.
+Such lines have no lasting value in the original file because the page numbers
+change with each update.  If these extended features are to be utilized it is
+best to copy the original file to a temporary file before reforming it.  The
+capability is useful for seeing how the final text will look on a printer, or
+for producing a temporary file for printing.
+
+.in 15
+.rm 65
+               When the dot commands are used to reform the
+               master file, the set should be limited to those
+               that are reversible.  Changing the right margin is
+               a process which can be reversed by reforming with
+               the original right margin in the .rm dot command.
+               Adding new lines containing page numbers cannot be
+               automatically reversed.  The distinction is
+               important in this application, because the master
+               file can be reformed.
+
+.in 0
+.rm 80
+
+The reforming function serves a second purpose.  After editing, the right edges
+of paragraphs become ragged.  The ^QP function will even them up again.  The
+reforming function has defaults appropriate for viewing the material on the
+screen.  It is therefore often not necessary to have any dot commands in the
+material.  The default configuration never creates new lines, except for those
+due to line overflow.  The dot commands remain in the output, as the purpose of
+the default configuration is to make text more readable on the screen, while
+continuing to serve as the master file.  The reformatted file is an ordinary
+text file.  There are no hidden control functions.
+
+Dot commands occupy a line each.  They begin with a period, which must be in
+column 1.  They have no special significance if not in column 1.
+
+The nf (no fill) command stops all reformatting.  Material following the nf will
+not be affected in any way. fi (fill) resumes paragraph reforming.  The blocking
+effect of nf includes indentation.
+
+In order to achieve reversibility, the old indentation in filled regions is
+removed before interpreting the new indentation commands.
+
+The first line of a paragraph may or may not be indented relative to the rest.
+The output will follow the style of the input.  Paragraphs must be separated by
+at least one blank line.
+
+The default .pl (lines per page) value is 66.  The .he command must be used to
+activate pagination.  A blank line can be used for the header if no actual
+header is wanted.
+
+The .ne (need) command is used to force all of a table or other entity to be
+printed on one page.  A new page is begun at the .ne <lines> command if fewer
+than <lines> remain on the current page.
+
+To obtain a complete list of the dot commands enter ^QP followed by F1.
+
+Paragraph reforming can be undone, as can all editing commands, but most
+documents will exceed the 100-line undo limit.  In this case the old line is
+deleted and the reformatted line added, which counts as two steps.  Only 50
+lines can be undone.
+
+Once reforming is requested the program will ask if the dot commands are to be
+deleted.  In major documents the dot commands are not normally deleted in the
+master file, but rather in a temporary copy of it.
+
+If the dot commands are left in the document by the reforming process then the
+dot commands are not counted in determining the location of page breaks.  This
+behavior is by design because the document in that form is intended for analysis
+rather than printer output.
+
+The range of the dot commands is over an integral number of lines, but the lines
+are not necessarily lines in the conventional sense.  If a single word in the
+middle of a sentence is underlined then the word has to appear on a separate
+line in the master file, but after filling the word can be in the middle of a
+line in the output file.
+
+The following illustrates the use of the .he and .fo commands.  These commands
+have been disabled since this file was reformatted by moving them to the right of
+column one.  The argument of pl (lines per page) has to be set to the right
+value for your printer when using these commands. .bp is the begin page command,
+with an optional page number.
+
+.nf
+
+ .he     This line goes at the top of each page.  The page number is #.
+ .fo     This line goes at the bottom    - # -
+ .bp 100
+
+Actual output:
+
+     This line goes at the top of each page.  The page number is 100.
+
+ ......text......
+ ......more text ....
+
+     This line goes at the bottom    - 100 -
+
+ .bp
+
+     This line goes at the top of each page.  The page number is 101.
+
+     This line goes at the bottom    - 101 -
+
+
+.fi
+.ce
+                              Search and Replace
+
+The ^QA and ^QF string search and replace commands are similar to those of
+Wordstar. ^QF searches forward or backward; ^QA searches and replaces.  The
+control key may or may not be held down for the second character of all two-key
+control sequences.  The ^QA and ^QF are prompted.
+
+The function keys provide alternatives to the string commands which are usually
+easier to use.  Their advantage is that the search direction is specified by
+dedicated keys rather than by a prompted response.  The equivalents of the ^L
+repeat command are especially convenient because it is easy to rock back and
+forth between two occurrences of a variable name or label.
+
+Some of the permutations are:
+.nf
+
+F2 string1 F3                 Backward search for string1
+F2 string1 F4                 Forward search for string1
+F2 string1 F2 string2 F3      Backward search and replace
+F2 string1 F2 string2 F4      Forward search and replace
+
+F3        Convert last F2 command to reverse and resume
+F4        Convert last F2 command to forward and resume
+^L        Resume last F2 command without direction change
+
+.fi
+The F4 key is always associated with the forward direction;  the F3 key
+is associated with the reverse direction.
+The ^QF and ^QA commands can be used interchangeably with the F2 commands, and
+the two forms can be intermixed.  F3 resumes a ^QA in exactly the same way it resumes an F2 command,
+for example.  It is also acceptable to terminate an F2 command with a carriage
+return instead of F3 or F4, in which case the program will ask for the search
+direction as though it were a ^Q command.
+
+All search operations wrap at beginning and end of file.  This can be an little
+disconcerting at first.  The advantage to it is that if the sought string exists
+anywhere in the file it will be found.  It is necessary to pay attention to the
+displayed line number in order to retain orientation, though.  EOF is shown in
+the status line when the search passes end of file;  BOF is shown for beginning
+of file when the search wraps in the reverse direction.
+
+Search and replace operations can be aborted with the escape key to perform
+editing in the vicinity of one of the replacements, then resumed by F3 and F4.
+
+The initial replacements on the current line may alter the cursor position after
+the wrap operation returns to that line.  The displacement is considered, and
+the replacement stops at the right location.
+
+The new string in the search and replace command may be a null string (typed in
+as <ret>, or as F2 string F2F4), which totally deletes the old string.
+
+
+.ce
+                                    Options
+
+Control characters are allowed in the replacement string if you must.  A ^Z in
+the middle of a document will cause other processors to proceed as though the
+last portion did not exist.  There are other problems.  SE itself is immune to
+embedded control characters (except ^Z during disc reads, and 0x00 unless you
+mean it), but using them in documents is generally not a good idea.  They will
+be converted to a question mark on input unless you specify the -C option.  The
+-C option enables them in the primary disc read and in the F2 or ^QA replacement
+string.  The only way to enter them from the keyboard is to first enter some
+other character sequence, then with the -C option active, use the F2 command to
+replace the sequence with the control codes.  A message is displayed when the
+file is read if the file contains control codes.  The message indicates whether
+or not the -C option is active.
+
+If the -C option is active the <esc> key embeds like any other control
+character.  As a consequence, once a replacement command is initiated it cannot
+be aborted by <esc> while the replacement string is being entered.  It can be
+aborted during the ensuing prompt if the ^QA form is used, or after the first
+replacement if the F2 key is used.  The first replacement can be undone if
+necessary, effectively canceling the command.
+
+The options are changed at execution time with the F7 key.  They can also be
+specified on the command line at load time.  The load time options are separated
+by spaces.  An example is
+
+se filename -m30 -w
+
+The -p option allows the importation of Wordstar document mode files.  The only
+function performed by the -p option is to zero the parity bit of each ASCII
+character in the primary file as it is read.  Some editing will be required
+after the conversion, but the input is at least legible.  SE does not embed
+control characters unless they originate explicitly at the keyboard.
+
+The -Z option controls whether or not a ^Z end of file marker is written to the
+output files.  Text files on the IBM PC normally do have the ^Z EOF marker, and
+that is default.  Some Intel (R) software for the AT will not accept the ^Z, and
+there are probably other exceptions. (The DOS copy command has options for
+converting files from one type to the other).  The IBM standard for text files
+requires the ^Z, so use the default configuration unless there is a specific
+reason not to.  The option has no effect on disc reads.  If an EOF mark is
+present then that is taken as the end of file; the file size is otherwise
+determined from the file size in the disc directory.
+
+The primary file being edited is automatically detabbed if tabs are present.
+The correct tab setting must be used for the result to look right.  The default
+setting is 8.  The tab setting can be changed in the invocation line.
+
+se filespec -t4
+
+will set the tabs to 4, for example.  This option need be used only once on a
+given file because thereafter the file will not contain any tabs.  The keyboard
+tab key is a cursor positioning command.  It has no direct effect on the text.
+A future version will provide an automatic entab on output if requested.
+
+The -Mnnn option is provided primarily to facilitate testing of the virtual
+memory functions on a system with enough RAM that the disc temporary file is not
+normally activated.  The option would also be useful in a time-shared
+environment where it is not neighborly to take large chunks of memory.  Another
+possible reason for limiting the amount of memory allocated is that when all of
+it is taken DOS must partially reload itself when the editor exits.  DOS shares
+part of high memory with the memory allocation pool.  This DOS function is
+automatic and transparent, but might prove objectionable on a floppy disc
+system.  The heaviest use of the hardware push stack in this version is due to
+the virtual disc activity.  The -M option must therefore be used in evaluating
+the link edit stack size specification if the program is recompiled.
+
+The temporary disc file normally goes in the default directory of the default
+drive.  The -Dd invocation option can be used to place the temporary file on
+drive d, with d = 'A' to 'Z'.  The directory can't be specified for the
+temporary file, but the file is removed before the program exits so that should
+not matter.  The -D option is not normally needed.
+
+The other options can be seen by using the F7 key.
+
+
+
+.nf
+Gary Osborn
+Electro Chemical Devices, inc
+23665 Via Del Rio
+Yorba Linda CA 92686
+
+June 1990
+
+
+
+
+
+

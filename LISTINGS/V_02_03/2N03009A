@@ -1,0 +1,61 @@
+/*
+ * Listing 3: print_stripe() for an AT&T 477 color printer.
+ * Assumes get_pixel() returns direct-mapped color (RGB).
+ */
+void print_stripe( int y_start )
+	{
+	int num_pix, x, y, bit_num, which_color;
+	unsigned char out_pixel, c, mask;
+	static char graph_cmd[4] = {ESC, 'L', 0, 0};
+	static char color_sel[3] = {ESC, 'r', 0};
+
+	/* Send three sets of data.  Have to prefix each set with
+	 * ESC r [1, 2, or 4] for magenta, cyan, yellow respectively.
+	 */
+	for (which_color = 1; which_color <= 4; which_color <<= 1)
+		{
+		color_sel[2] = which_color + '0';
+		write(print_fh, color_sel, 3);
+		switch (which_color)	/* generate proper bit mask */
+			{					/* for this data set */
+			case 1:
+				mask = 2;	/* if magenta, mask is 2 for green */
+				break;
+			case 2:
+				mask = 4;	/* if cyan, mask is 4 for red */
+				break;
+			case 4:
+				mask = 1;	/* if yellow, mask is 1 for blue */
+				break;
+			}
+
+		/* Send ESC L n1 n2, where (256 * n2) + n1 is the
+		 * number of pixels across a line.
+		 */
+		num_pix = x_max + 1;
+		graph_cmd[2] = num_pix & 0xff;
+		graph_cmd[3] = num_pix >> 8;
+		write(print_fh, graph_cmd, 4);
+
+		for (x = 0; x < num_pix; ++x)
+			{
+			/* Accumulate 8 pixels, vertically, into out_pixel.
+			 */
+			out_pixel = 0;
+			y = y_start;
+			for (bit_num = 7; bit_num >= 0; --bit_num, ++y)
+				{
+				if ((getpixel(x, y) & mask) == 0)
+					out_pixel |= (1 << bit_num);
+				}
+			write(print_fh, &out_pixel, 1);
+			}
+
+		c = CR;		/* send CR after each data set */
+		write(print_fh, &c, 1);
+		}
+
+	c = LF;		/* send LF after all three sets */
+	write(print_fh, &c, 1);
+	}
+

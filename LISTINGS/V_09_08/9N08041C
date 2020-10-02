@@ -1,0 +1,127 @@
+/* Example program showing bios_disp.c drawbox.c
+   and mouse.c. This program shows off the basics
+   of event driven programming under MS-DOS!
+*/
+#include <stdio.h>
+#include <dos.h>
+#include <bios.h>
+#include <box.h>
+#include <mouse.h>
+
+main()
+   {
+   void put_menu(void);
+   char buffer[128];
+   int xinfo,yinfo,binfo,l,r,c,ch;
+
+   /* white on blue */
+   cur_attr = 0x17;
+
+   cls();
+
+   /* put up a dummy menu for testing */
+   put_menu();
+
+   mouse_init();
+   mouse_text_cursor(0,0xffff);
+   mouse_set_cursor(0,0);
+   mouse_cursor(1);
+
+   /* report x,y and button status
+      until exit line is chosen */
+   while(1)
+      {
+      /* clear out button variables to 0 */
+      l=r=c= 0;
+
+      /* turn off mouse cursor */
+      mouse_cursor(0);
+
+      /* get mouse x,y and buttons */
+      mouse_status(&binfo,&xinfo,&yinfo);
+
+      /* show mouse coordinates */
+      bios_move(1,1);
+      sprintf(buffer,
+      "Mouse X= %d, Mouse Y= %d",xinfo,yinfo);
+      bios_puts(buffer);
+
+      /* set button variable if needed */
+      if(binfo & 1)
+         l = 1;
+      if(binfo & 2)
+         r = 1;
+      if(binfo & 4)
+         c = 1;
+
+      /* show button status */
+      bios_move(2,1);
+      sprintf(buffer,
+      "Left = %d, Center = %d, Right = %d",l,c,r);
+      bios_puts(buffer);
+
+      /* turn mouse cursor back on */
+      mouse_cursor(1);
+
+      /* if left button is down,
+         show the char under the mouse */
+      if(l)
+         {
+         /* move text cursor to mouse location */
+         bios_move(yinfo/8,xinfo/8);
+
+         /* turn off mouse cursor */
+         mouse_cursor(0);
+
+         /* get char at cursor and show it */
+         ch = bios_rdchar();
+         bios_move(4,1);
+         sprintf(buffer,
+         "Character under mouse is %c",ch);
+         bios_puts(buffer);
+
+         /* turn mouse back on */
+         mouse_cursor(1);
+         }
+
+      /* if right button is down
+         and on the exit line, quit program */
+      if(r)
+         {
+         /* exit line is line 12 * 8 = 96  */
+         if(yinfo == 96)
+            break;
+         }
+
+      /* wait a bit so the mouse cursor shows */
+      for(l=0; l<500; l++)
+         ;
+      }
+
+   /* All done. Turn off mouse cursor */
+   mouse_cursor(0);
+   cls();
+   }
+
+void put_menu()
+   {
+   int x;
+   char buffer[80];
+
+   /* draw a nice box around the display */
+   draw_box(0,0,24,79,2);
+
+   /* and put up a simple menu */
+   for(x = 1; x<6; x++)
+      {
+      bios_move(x+5,10);
+
+      sprintf(buffer,"%d) Menu item",x);
+      bios_puts(buffer);
+      }
+   bios_move(12,10);
+   bios_puts(
+   "Click right button on this line to exit to DOS");
+   }
+
+

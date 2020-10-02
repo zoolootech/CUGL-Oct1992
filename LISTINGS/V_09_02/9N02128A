@@ -1,0 +1,178 @@
+/*
+ *	Login management program for DOS
+ *		
+ *	Written by Leor Zolman, 5/1/89
+ *		
+ *	Usage (typcially in autoexec.bat):
+ *		login 
+ *			
+ *	Control file (PASSWD_FILE) format:
+ *
+ *  -----------------------------------
+ *		name [password]
+ *		name [password]
+ *		.
+ *		.
+ *		.
+ *  -----------------------------------
+ *			
+ *	The directory STARTUP_DIR should contain a batch
+ *	file for each user, named name.BAT. Upon successful
+ *	login, the batch file named for the user will be
+ *  be executed.
+ *	The file named by CURRENT_USER (c:\etc\startup\user.id
+ *	as configured below) will be written containing the
+ *  user id after a successful login.
+ */
+
+#include <stdio.h>
+#include <conio.h>
+#include <stdlib.h>
+							// name of startup batch directory, current
+							// id file, and password control files:
+#define STARTUP_DIR		"c:\\etc\\startup\\"
+#define CURRENT_USER	STARTUP_DIR"user.id"
+#define PASSWD_FILE		STARTUP_DIR"passwd.dat"
+
+
+#define MAXUSERS 100    // Max number of different users 
+#define MAXLINE 100     // For login line input buffer   
+
+#define	ECHO 1					// Parameters to zgets()
+#define	NOECHO 0
+
+char *zgets(char *buffer, int echo);	// prototypes
+int zputs(char *str);               
+
+struct {								// name/password structure      
+	char name[15];
+	char passwd[15];
+} users[MAXUSERS];
+
+void main()
+{
+	int i;
+	FILE *fp;
+	int nusers;
+	char linbuf[MAXLINE];
+												// open password file
+	if ((fp = fopen(PASSWD_FILE, "r")) == NULL)
+		exit(cprintf("Can't open %s\a\n", PASSWD_FILE));
+
+												// read in user name/password data
+	for (nusers = 0; nusers < MAXUSERS; nusers++)
+	{											// default to null password:
+		*users[nusers].passwd = '\0';
+		if (fscanf(fp, "%s %s", users[nusers].name,
+			users[nusers].passwd) < 1)	// scan a line
+				break;					// break if empty
+#if DEBUG
+		else								// for debugging, show data
+			cprintf("read user name: \"%s\", password: \"%s\"\n",
+				users[nusers].name, users[nusers].passwd);
+#endif
+	}
+	if (!nusers)
+		exit(zputs("No valid entries in log file.\a\n"));
+	
+	fclose(fp);					// close password file
+
+	while (1)						// mail loop
+	{
+		zputs("login: ");	// initial prompt
+		zgets(linbuf, ECHO);    // get user id w/echo
+		
+		for (i = 0; i < nusers; i++)	// look it up 
+			if (!strcmp(users[i].name, linbuf))
+				break;
+			
+											// found user id. need password? 
+		if (i != nusers && !*users[i].passwd)
+				break;				// if not, don't prompt 
+		
+		zputs("\npassword: ");	// prompt for password 
+		zgets(linbuf, NOECHO);	// read w/o echo
+		if (i != nusers && !strcmp(linbuf, users[i].passwd))
+			break;					// if correct, break out of loop
+
+		zputs("\nlogin incorrect.\n");
+	}
+	
+	zputs("\n\n");			// success!
+											// write id file
+	if ((fp = fopen(CURRENT_USER, "w")) == NULL)
+		cprintf("Couldn't create %s\a\n", CURRENT_USER);
+	else
+	{
+		if (fputs(users[i].name, fp) == EOF)
+			cprintf("Couldn't write to %s\n", CURRENT_USER);
+		fclose(fp);
+	}
+	
+	strcpy(linbuf, STARTUP_DIR);		// construct startup batch
+	strcat(linbuf, users[i].name);	//     filename
+	strcat(linbuf, ".bat");
+	if ((fp = fopen(linbuf, "r")) != NULL) // is one there?
+	{
+		fclose(fp);							// yes. close it up.
+		if (system(linbuf))			// attempt to run it
+			cprintf("Couldn't execute %s\a\n", linbuf);
+	}
+	else
+		cprintf("Couldn't find %s\a\n", linbuf);
+}
+
+
+/*
+ * function zgets():
+ *		Read a string from the console with optional echo,
+ *      and all Ctrl-C / Ctrl-Breka checks disabled:
+ */
+
+char *zgets(char *str, int echo)
+{
+	char c, *save = str;				// save address of buffer
+
+	while ((c = zgetch()) != '\n')	// read a char
+	{
+		*str++ = c;
+		if (echo)									// echo if required
+			putch(c);
+	}
+	*str = '\0';								// terminate string
+	return save;
+}
+
+
+/*
+ * function zgetch():
+ *		Read a character from the keyboard, without echo,
+ *		performing newline conversion:
+ */
+
+int zgetch()
+{
+	char c;
+
+	c = bdos(7,0,0);						// Use a direct BDOS call
+	return (c == '\r') ? '\n' : c;  // Convert CR to newline
+}
+
+
+/*
+ * function zputs():
+ *		Print a string to the console, with newlines expanded:
+ */
+
+int zputs(char *str)
+{
+	char c;
+	
+	while (c = *str++)
+	{
+		if (c == '\n')
+			putch('\r');
+		putch(c);
+	}
+	return 0;
+}

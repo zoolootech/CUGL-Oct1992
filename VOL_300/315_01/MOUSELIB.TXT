@@ -1,0 +1,176 @@
+DOCUMENTATION FOR MOUSELIB.C
+
+Documentation dated 7/89
+Program and documentation Copyright (c) 1989, E.R.I.  All rights reserved.
+
+INTRODUCTION
+     MOUSELIB.C is the source file for my front-end to the Microsoft mouse.  In
+order to use the functions in MOUSELIB.C, you must have installed MOUSE.SYS in
+your system and have a Microsoft (compatible) mouse.  MOUSE.SYS is installed as
+a device at boot-up.   You should have a line like DEVICE=MOUSE.SYS in your
+config.sys file.  See the mouse manual for details.
+     Since I support Microsoft (-like) mice only, I provide support for a two-
+button mouse only.  If you are using a three-button mouse like the logitech
+mouse, the two outside buttons are the ones that are used.  The middle button is
+not supported.  In general, I try to use the RIGHT mouse button as the
+functional equivalent of a carriage return.  If there is some special function
+that can be controlled by the mouse, that may utilize the LEFT button.  It is
+desirable to maintain consistency in how you utilize the mouse.
+     The mouse driver MOUSE.SYS supports "virtual screen" operation, in which
+the mouse position is scaled to the screen coordinates (use m_install() to
+initialize MOUSE.SYS for the current screen mode).  Alternatively, you may use
+the mouse in its "raw" mode, in which MOUSE.SYS reports change in mouse position
+in mickeys (use mdpos_read() for this).  A mickey is a unitless motion
+increment, and ranges from -32K to +32K.  I use the "raw" mode exclusively.
+There are three reasons for this.  First, I often use the mouse with frame-
+grabber display screens, which are not supported as virtual screens.  Second,
+our computer video adaptors are Hercules monochrome adaptors.  The MOUSE.SYS
+support for Hercules in virtual mode is the CGA 600x200 mode, which means that
+only part of the Hercules screen is mapped to virtual mouse coordinates.  And
+third, when I use the mouse in text mode, I use a different programming model
+than the MOUSE.SYS positional coordinates approach.  I define active fields on
+the screen, and mouse motion highlights the next active field in the direction
+of the mouse motion, instead of placing a cursor in an absolute row and column
+on the screen.
+     MENU.C is the arbitor of input style for my programs.  I call
+get_mouse_flag() from MENU.C in order to decide whether mouse operation should
+be supported in normal text entry or not.  See MENU.C and the MENU_DEM.C
+demonstration program for more discussion of this.  The functions inpause() and
+mouse_gets() in this module are used specifically for mouse support of text-
+screen operation.
+     When you link modules that use MOUSELIB.C, you must either use MOUSE.LIB
+from Microsoft (the version dated 1-23-89 or later will do.  What is important
+is that its large memory model c call must be cmousel().  Early versions of
+MOUSE.LIB used a pascal convention call, mouses() ).  If you do not have
+MOUSE.LIB, my MOUS_SYS.LIB will do the same thing, and may be substituted for
+MOUSE.LIB with these routines.  You should consult the book, Microsoft Mouse
+Programmer's Reference (Microsoft Press, 1989) for a full description of mouse
+programming parameters and MOUSE.SYS function calls.
+
+
+DATA STRUCTURES USED IN MOUSELIB.C
+     MOUSELIB.C uses one data structure, mstruc, defined in mouselib.h as
+follows:
+
+typedef struct
+{
+     int opcode;
+     int status;
+     int dx;
+     int dy;
+} mstruc;
+
+Most MOUSELIB.C functions return structs of type mstruc.  The meaning of each
+argument varies with the given function.
+
+MOUSELIB.C EXTERNALLY-VISIBLE FUNCTIONS
+     The MOUSELIB.C externally-visible functions are declared and the mstruc
+typedef and various constants are defined in mouselib.h, which should be
+included in any program that uses these functions.
+
+FUNCTION: button_clicks()
+TYPE: struct of type mstruc
+ARGUMENTS: one int.
+
+     button_clicks(button) reads the number of button presses for button since
+the last call to button_clicks(button).  The arguments for button are: 1 = LEFT
+button, 2 = RIGHT button.  The values returned in the mstruc structure are:
+mstruc.opcode holds the current status of the specified button (0=not pressed,
+1=pressed); mstruc.status holds the number of presses since the last call to
+this function (and this button.  You can inquire about one button without
+clearing the count for the other button).  mstruc.dx and mstruc.dy hold the
+mouse position in virtual screen coordinates at the time of the last button
+press.
+
+
+
+FUNCTION: button_read()
+TYPE: struct of type mstruc
+ARGUMENTS: none.
+
+     button_read() returns a struct of type mstruc that tells you the following:
+mstruc.status contains the current condition of the buttons (1=LEFT button is
+currently being pressed, 2=RIGHT button is currently being pressed, 3=BOTH
+buttons are currently being pressed), mstruc.dx and mstruc.dy report the
+position in virtual screen coordinates.  This function is most useful for mouse
+"drag" operations, in which an operation continues just as long as a button is
+depressed (see my area selection functions in the cut and paste routine or in
+the area greyscale stretch of NEW_SLO.EXE for examples).
+
+
+
+FUNCTION: inpause()
+TYPE: int
+ARGUMENTS: none.
+
+     c=inpause() is used to support mouse button presses in response to a pause
+with a "Press any key to continue"-style delay. It pauses until either a key is
+pressed or a mouse button is pushed, then returns the keypress value or ASCII
+13 (<CR>) if the RIGHT mouse button was pressed, and ASCII 127 for either
+the LEFT button press or BOTH buttons.  inpause() is a substitute for getch()
+when you are using the mouse.
+
+
+
+FUNCTION: m_install()
+TYPE: struct of type mstruc
+ARGUMENTS: none.
+
+     m_install().status is a value that tells you whether the mouse and driver
+have been installed.  If the value is 0, they are not installed.  If -1, they
+are installed.  No other mstruc variable is used in this function.  A call to
+m_install() will also initialize MOUSE.SYS virtual screen for the currently
+active computer screen mode.
+
+
+
+FUNCTION: mdpos_read()
+TYPE: struct of type mstruc
+ARGUMENTS: none.
+
+     mdpos_read() returns an mstruc structure as follows:
+mstruc.dx and mstruc.dy are the x,y change in position of the mouse in mickeys
+(-32K to +32K) since the last mdpos_read() function call.
+
+
+
+FUNCTION: mouse_clear()
+TYPE: void
+ARGUMENTS: none.
+
+     mouse_clear() clears the buffers for the button_clicks() and mdpos_read()
+functions.  If a button is being held down during a mouse_clear() call, the
+routine waits one second and then beeps to let the user know that the button
+must be released.  mouse_clear() would normally be called at the beginning of a
+sequence, to put the counters in a known, reset state.
+
+
+
+FUNCTION: mouse_gets()
+TYPE: character pointer
+ARGUMENTS: one string pointer
+
+     mouse_gets(string) accepts as an argument a pointer to a character(s)
+buffer and allows a user to enter a string by keyboard.  The string input is
+terminated by either a carriage return or a RIGHT mouse button press.  It
+returns a pointer to string, which is null-terminated.  mouse_gets() operates
+exactly like gets(), except that it allows the RIGHT mouse button to operate as
+a carriage return.  The reason that this is useful is that many input strings
+allow the user to accept a default value by simply pressing <CR>.  Using
+mouse_gets() allows these functions to be performed without releasing the mouse.
+
+
+
+FUNCTION: mouse_response()
+TYPE: struct of type mstruc
+ARGUMENTS: none.
+
+     mouse_response() checks for mouse activity, and returns the following:
+mstruc.status returns 1 if the LEFT button has been pressed since the last call,
+2 if the RIGHT button has been pressed, 3 if BOTH buttons have been pressed, or
+0 if NO buttons have been pressed.  It does not return a button-press count for
+these buttons.  mstruc.dx and mstruc.dy are the change in mouse position since
+the last call to the function, SCALED by MOTION_FACTOR, which is a constant
+defined in mouselib.h.  mouse_response() is a composite function which calls
+both button_clicks() and mdpos_read(), so these functions will be reset by a
+call to mouse_response().

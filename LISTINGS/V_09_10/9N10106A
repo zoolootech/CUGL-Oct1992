@@ -1,0 +1,303 @@
+
+
+/*
+ *      shape1.c
+ *      An Xlib program using the SHAPE
+ *	extension from X11 Release 4.
+ *      Written for the C Users Journal.
+ *
+ *      Link with the X library, e.g.,
+ *
+ *              cc -o shape1 shape1.c -lXext -lX11
+ *
+ *      Define SYSV if you have malloc()
+ *      declared in stdlib.h.
+ *
+ *	14 Dec 90
+ */
+
+#include <stdio.h>
+
+#ifdef SYSV
+#include <stdlib.h>
+#endif
+
+#include  <X11/Xlib.h>
+#include  <X11/Xutil.h>
+#include  <X11/keysymdef.h>
+#include  <X11/keysym.h>
+#include  <X11/extensions/shape.h>
+
+
+/*
+ *      We have a hard-coded size and location
+ */
+#define X_LOCATION              10
+#define Y_LOCATION              20
+#define WIDTH                   400
+#define HEIGHT                  300
+#define MAX_STRING_LENGTH       400
+
+#define	MAX_RECTS		100
+
+/*
+ *      Use xlsfonts to find a font name
+ *      that is available on your system.
+ */
+/* #define FONT_NAME               "fixed"  */
+#define FONT_NAME               "variable"
+
+
+main( argc, argv )
+
+int     argc;
+char    *argv[];
+
+{       /* main */
+        Display         *display;
+        int             screen;
+        Window          rootwindow;
+        Window          window;
+        XSizeHints      *sizehints;
+        XWMHints        *wmhints;
+        GC              gc;
+        XEvent          event;
+        int             done;
+        XFontStruct     *font;
+	int		shape_status, major_version, minor_version;
+	XRectangle	rectangles[ MAX_RECTS + 1 ];
+	int		i, number_rectangles, x, y;
+	char		message[ MAX_STRING_LENGTH + 4 ];
+
+
+        /*
+         * Connect to an X server.
+         */
+        display = XOpenDisplay( (char *) NULL );
+
+        if ( display == (Display *) NULL )
+                {
+                fprintf( stderr, "Error opeing in display\n" );
+                exit( 1 );
+                }
+
+        screen     = DefaultScreen( display );
+        rootwindow = RootWindow( display, screen );
+
+        /*
+         * Create a window, note reversed
+	 * order of colors
+         */
+        window = XCreateSimpleWindow( display,
+                        rootwindow,     /* parent */
+                        X_LOCATION, Y_LOCATION,
+                        WIDTH, HEIGHT,
+                        1,              /* border width */
+                        WhitePixel( display, screen ),
+                        BlackPixel( display, screen ) );
+
+
+        /*
+         * Set up Window Manager Hints for keyboard input
+         */
+        wmhints = (XWMHints *) malloc( sizeof(XWMHints) );
+
+        wmhints->flags = InputHint;
+        wmhints->input = True;
+
+        XSetWMHints(display, window, wmhints );
+
+        free( wmhints );
+
+        /*
+         * Set up hints about the window
+         */
+        sizehints = (XSizeHints *) malloc( sizeof(XSizeHints) );
+
+        sizehints->x      = X_LOCATION;
+        sizehints->y      = Y_LOCATION;
+        sizehints->width  = WIDTH;
+        sizehints->height = HEIGHT;
+        sizehints->flags  = PPosition | PSize;
+
+        /* 
+         * Use XSetWMProperties() in R4
+         *      
+         */
+        XSetStandardProperties( display, window,
+                "Shape1",        /* window name */
+                "Shape1",        /* icon name */
+                (Pixmap) None,   /* Icon pixmap */
+                argv, argc,
+                sizehints );
+
+        free( sizehints );
+
+        /*
+         * Ask for Expose, mouse (Button) and keyboard input
+         */
+        XSelectInput( display, window,
+                ButtonPressMask | ExposureMask | KeyPressMask );
+
+
+        /*
+         * Load up a font. 
+         */
+        font = XLoadQueryFont( display, FONT_NAME );
+
+
+        if ( font == (XFontStruct *) NULL )
+                {
+                fprintf( stderr, "Error in loading %s font.\n",
+                        FONT_NAME );
+
+                XCloseDisplay( display );
+                exit( 1 );
+                }
+
+
+        /*
+         * Create a Graphics Context (GC) for drawing text
+         */
+        gc = XCreateGC( display, window,
+                0L, (XGCValues *) NULL );
+
+        XSetForeground( display, gc, 
+                WhitePixel( display, screen ) );
+
+        /*
+         * Set the background color, to, 
+	 * this time to black, since the 
+	 * foreground is white.
+         */     
+        XSetBackground( display, gc, 
+                BlackPixel( display, screen ) );
+
+        /*
+         * Set the GC to draw in the given font.
+         */
+        XSetFont( display, gc, font->fid );
+
+
+	/*
+	 * Check if we have the SHAPE extension
+	 */
+	shape_status = XShapeQueryVersion( display, 
+		&major_version,
+		&minor_version );
+
+	if( shape_status )
+		{
+		sprintf( message,
+			"SHAPE extension supported at version %d.%d\n",
+			major_version, minor_version );
+
+		/*
+		 * Set up some rectangles
+		 */
+		i = 0;
+        	for ( x = 0; x < WIDTH; x += 50 )
+                	{
+                	for( y = 0; y < HEIGHT; y += 50 )
+				{
+				i++;
+
+				if ( i >= MAX_RECTS )
+					{
+					i = MAX_RECTS - 1;
+					}
+
+				rectangles[i].width  = 45;
+				rectangles[i].height = 45;
+
+				rectangles[i].x = x;
+				rectangles[i].y = y;
+				}
+			}
+
+
+		/*
+		 * Make our window's shape be the set of rectangles
+		 */
+		number_rectangles = i;
+		XShapeCombineRectangles( display, 
+			window,
+			ShapeBounding,
+			0, 0, 		/* x, y, offsets */
+			rectangles,
+			number_rectangles,
+			ShapeSet,
+			Unsorted );  /* we haven't sorted the rects */
+		}
+	else
+		{
+		sprintf( message, 
+			"Sorry, the SHAPE extension is not available" );
+		}
+
+	
+	
+        /*
+         * Make Window appear on the screen
+         */
+        XMapWindow( display, window );
+        XFlush( display );
+
+        done = False;
+
+        while( !done )
+                {
+                XNextEvent( display, &event );
+
+                switch( event.type )
+                        {
+                        case ButtonPress:
+                                XCloseDisplay( display );
+
+                                exit( 0 );
+                                break;
+                        case Expose:
+                                /*
+                                 * Only redraw when all
+                                 * Expose events are in
+                                 */
+                                if ( event.xexpose.count == 0 )
+                                        {
+                                        RedrawText( display, window, 
+                                                gc, message );
+                                        }
+                                break;
+                        }
+
+                }
+
+
+}       /* main */
+
+RedrawText( display, window, gc, string )
+
+Display *display;
+Window  window;
+GC      gc;
+char    string[];
+
+{       /* RedrawText */
+
+        XDrawImageString( display, window, gc,
+                5, 20,          /* location */
+                string,
+                strlen( string ) );
+
+#define MESSAGE "Click a Mouse Button to Exit"
+
+        XDrawImageString( display, window, gc,
+                5, 40,          /* location */
+                MESSAGE,
+                strlen( MESSAGE ) );
+
+        XFlush( display );
+
+}       /* RedrawText */
+
+/* end of file */
+

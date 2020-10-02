@@ -1,0 +1,231 @@
+        ;*************************************************************
+        ; Title         PIPE.ASM - Pipe Virtual Device Driver
+        ; Version:      3.00                                           
+        ; Author:       Thomas W. Olsen                                
+        ; Assembler:    Microsoft Macro Assembler 5.10B
+        ; Linker:       Microsoft Linear-Executable Linker 1.00.058
+        ;               masm5 -p -w2 -Mx -Zd pipe;
+        ;               link386 pipe.obj,pipe.386 /NOI /NOD /NOP,,,pipe.def;
+        ;               addhdr pipe.386
+        ;*************************************************************
+
+        .386p
+        INCLUDE VMM.Inc
+
+        PIPE_DEVICE_ID         EQU 2020H
+        PIPE_MAJOR_VERSION     EQU 03
+        PIPE_MINOR_VERSION     EQU 00
+        PIPE_VERSION_NO        EQU (PIPE_MAJOR_VERSION * 256 + PIPE_MINOR_VERSION)
+        GET_VERSION            EQU 0
+        REGISTER_CALLBACK      EQU 1
+        UNREGISTER_CALLBACK    EQU 2
+        ALLOCATE_GDT_SELECTOR  EQU 3
+        FREE_GDT_SELECTOR      EQU 4
+        CALL_WINDOWS_PROCEDURE EQU 5
+
+        ;*************************************************************
+        ;                       Device Header
+        ;*************************************************************
+
+Declare_Virtual_Device  PIPE, PIPE_MAJOR_VERSION, PIPE_MINOR_VERSION,       \
+                        PIPE_CONTROL, PIPE_DEVICE_ID, Undefined_Init_Order, \
+                        PIPE_API, PIPE_API
+
+        ;*************************************************************
+        ;                    Virtual Machine Data
+        ;*************************************************************
+        VM_Control_Block_Data struc
+                msgNo           dw ?            ;Client_AX
+                wParam          dw ?            ;Client_BX
+                lParamLo        dw ?            ;Client_CX
+                lParamHi        dw ?            ;Client_DX
+        VM_Control_Block_Data ends
+
+        ;*************************************************************
+        ;                       Local Data 
+        ;*************************************************************
+VxD_DATA_SEG
+
+        VM_Control_Block_Offset dd ?
+        WinProc_Installed       dw 0
+        WinProc_hWnd            dw ?
+        WinProc_Callback_CS     dw ?
+        WinProc_Callback_IP     dw ?
+
+        EXPORT_TABLE            label dword
+                                dd offset32 PIPE_Get_Version
+                                dd offset32 PIPE_Register_CallBack
+                                dd offset32 PIPE_Unregister_CallBack
+                                dd offset32 PIPE_Allocate_GDT_Selector
+                                dd offset32 PIPE_Free_GDT_Selector
+                                dd offset32 PIPE_Call_Windows_Procedure
+        NO_OF_EXPORTS           EQU ($ - EXPORT_TABLE) / 4
+
+VxD_DATA_ENDS
+
+        ;*************************************************************
+        ;                      Control Procedures
+        ;*************************************************************
+VxD_LOCKED_CODE_SEG
+        BeginProc PIPE_Device_Init
+                VMMcall _Allocate_Device_CB_Area, <<SIZE VM_Control_Block_Data>, 0>
+                mov     [VM_Control_Block_Offset], eax
+                clc
+                ret
+        EndProc PIPE_Device_Init
+
+        BeginProc PIPE_Control
+                Control_Dispatch Device_Init,   PIPE_Device_Init
+                clc
+                ret
+        EndProc PIPE_Control
+VxD_LOCKED_CODE_ENDS
+        
+        ;*************************************************************
+        ;                           APIs
+        ;*************************************************************
+VxD_CODE_SEG
+
+        ;*************************************************************
+        ;On Entry:  AX = Function Number to Execute
+        ;*************************************************************
+        BeginProc PIPE_API,PUBLIC
+        	and	[ebp].Client_Flags, CF_Mask
+                movzx   eax, [ebp].Client_AX
+                cmp     ax, NO_OF_EXPORTS
+                jae     short @@A99
+                jmp     EXPORT_TABLE[eax * 4]
+        @@A99:
+                ret
+        EndProc PIPE_API
+
+        ;*************************************************************
+        ;On Exit:   AX = Version Number
+        ;*************************************************************
+        BeginProc PIPE_Get_Version,PUBLIC
+                mov     [ebp].Client_AX, PIPE_VERSION_NO
+        	and	[ebp].Client_Flags, NOT CF_Mask
+                ret
+        EndProc PIPE_Get_Version
+
+        ;*************************************************************
+        ;On Entry:  CX:DX = Windows Proc CS:IP EntryPoint
+        ;           BX    = Window Handle
+        ;*************************************************************
+        BeginProc PIPE_Register_CallBack,PUBLIC
+                mov     WinProc_Installed, 1
+                mov     cx,[ebp].Client_CX
+                mov     WinProc_Callback_CS, cx
+                mov     dx,[ebp].Client_DX
+                mov     WinProc_Callback_IP, dx
+                mov     bx,[ebp].Client_BX
+                mov     WinProc_hWnd, bx
+        	and	[ebp].Client_Flags, NOT CF_Mask
+                ret
+        EndProc PIPE_Register_CallBack
+
+        ;*************************************************************
+        ;On Entry:  None
+        ;*************************************************************
+        BeginProc PIPE_Unregister_CallBack,PUBLIC
+                mov     WinProc_Installed, 0
+        	and	[ebp].Client_Flags, NOT CF_Mask
+                ret
+        EndProc PIPE_Unregister_CallBack
+
+        ;*************************************************************
+        ;On Entry:  BX = Real Mode Segment Register
+        ;On Exit:   AX = Protected Mode Selector
+        ;*************************************************************
+        BeginProc PIPE_Allocate_GDT_Selector,PUBLIC
+                Client_Ptr_Flat eax, bx   ;Map a Selector to DOS partition using [ebp].Client_DS
+                VMMCall _BuildDescriptorDWORDs, <eax, 0FFFFh, RW_Data_Type, <D_GRAN_BYTE or D_DEF16>, 0>
+                VMMCall _Allocate_GDT_Selector, <edx, eax, 0>
+                mov     [ebp].Client_AX, ax
+        	and	[ebp].Client_Flags, NOT CF_Mask
+                ret
+        EndProc PIPE_Allocate_GDT_Selector
+        
+        ;*************************************************************
+        ;On Entry:  BX    = Protected Mode Selector
+        ;*************************************************************
+        BeginProc PIPE_Free_GDT_Selector,PUBLIC
+                mov     bx, [ebp].Client_BX
+                movzx   ebx, bx
+                VMMCall _Free_GDT_Selector, <ebx, 0>    ;EBX = GDT Selector
+        	and	[ebp].Client_Flags, NOT CF_Mask
+                ret
+        EndProc PIPE_Free_GDT_Selector
+
+        ;*************************************************************
+        ;On Entry:  BX    = (WORD) msgNo 
+        ;           SI    = (WORD) wParam
+        ;           CX:DX = (LONG) lParam
+        ;*************************************************************
+        BeginProc PIPE_Call_Windows_Procedure,PUBLIC
+                cmp     WinProc_Installed, 0            ;If Not Installed, Abort
+                je      short @@C2
+                mov     esi, ebx                        ;EBX = VM Handle
+                add     esi, [VM_Control_Block_Offset]  ; point to that VM's area
+                mov     ax, [ebp].Client_BX
+                mov     [esi].msgNo, ax
+                mov     ax, [ebp].Client_SI
+                mov     [esi].wParam, ax
+                mov     ax, [ebp].Client_CX
+                mov     [esi].lParamHi, ax
+                mov     ax, [ebp].Client_DX
+                mov     [esi].lParamLo, ax
+
+                VMMcall Test_Sys_VM_Handle              ;Are We in the System VM?
+                jnz     short @@C1
+                VMMcall Get_Crit_Section_Status         ;Is Something Critical Happening?
+                jc      short @@C1
+                mov     edx, ebx                        ;EDX = Current VM Handle
+                mov     esi, offset32 PIPE_EventProcedure
+                VMMcall Call_When_VM_Ints_Enabled       ;Call Event Procedure Now
+                jmp     short @@C2
+        @@C1:
+                mov     edx, ebx                        ;EDX = Current VM Handle
+                VMMcall Get_Sys_VM_Handle               ;EBX = System VM Handle
+                mov     eax, High_Pri_Device_Boost      ;EAX = Priority Boost
+                mov     ecx, PEF_Wait_For_STI or PEF_Wait_Not_Crit ;ECX = Flags
+                mov     esi, offset32 PIPE_EventProcedure   ;ESI = Offset of Event Procedure
+                VMMcall Call_Priority_VM_Event          ;Post Event in Task Queue
+        @@C2:
+                ret
+        EndProc PIPE_Call_Windows_Procedure
+
+        ;*************************************************************
+        ;On Entry:  EDX = Current VM Handle
+        ;*************************************************************
+        BeginProc PIPE_EventProcedure, PUBLIC
+                Push_Client_State
+                mov     esi, edx                        ;EDX = Current VM Handle
+                add     esi, VM_Control_Block_Offset
+                VMMCall Begin_Nest_Exec                 ;Setup Call Frame
+
+                mov     ax, WinProc_hWnd                ;Push Parms onto Stack
+                VMMcall Simulate_Push                   ;Using PASCAL Convention (4,3,2,1)
+                mov     ax, [esi].msgNo                 
+                VMMcall Simulate_Push                   
+                mov     ax, [esi].wParam
+                VMMcall Simulate_Push
+                mov     ax, [esi].lParamHi
+                VMMcall Simulate_Push
+                mov     ax, [esi].lParamLo
+                VMMcall Simulate_Push
+                mov     cx, WinProc_Callback_CS
+                mov     dx, WinProc_Callback_IP
+                movzx   edx, dx
+                VMMCall Simulate_Far_Call               ;Push Address Onto Stack
+
+                VMMCall Resume_Exec                     ;Call Windows Procedure
+                VMMcall End_Nest_Exec
+                Pop_Client_State
+                ret
+        EndProc   PIPE_EventProcedure
+
+VxD_CODE_ENDS
+
+END
+

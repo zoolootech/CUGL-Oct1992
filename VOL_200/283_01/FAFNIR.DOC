@@ -1,0 +1,491 @@
+/* fafnir.doc -- a general purpose forms engine
+                 documentation, history
+                 9/10/88, david c. oshel
+
+    "Why, Doc?"  The user gets Elysian Fields.  The programmer gets 
+                 Forms Nirvana.  Fafnir got the Rheingold (*belch*).  
+                 That's why.  Anyone for elevenis? -- Oshel, 9/11/88
+                 */
+
+/*
+============================================================================
+    Changes, 12/18/88:
+
+    Added Small Model support (SVIDEO.ASM).  Now supports /AL and /AS.
+
+    The Fafnir small model is not especially useful in real life, since
+    most C programs which manage "live" databases are written, for practical
+    reasons, in large model.  However, the small model console i/o library,
+    formerly distributed as CIAO.LIB, is included, and that IS useful!
+
+
+
+
+    Changes, 12/11/88:
+
+    Eliminated snow from CGA direct screen writes.
+
+    Microsoft Systems Journal, November 1988, article by Jeff Prosise,
+    detailed an "approved" algorithm for CGA snow elimination, so I did
+    a complete rewrite on low-level screen i/o in LIAO.LIB to include it.
+    Prosise's method tends toward OS/2 treatment of the screen as a general
+    data object (a "handle"), instead of a physical component of specific
+    hardware.  Accordingly, I isolated all screen writes/reads in functions
+    with an MSJ_ prefix; these are the primitives, and contain NO ptrseg
+    macros at all, and NO int86's except for:  ROM-BIOS cursor size and 
+    location, and module initialization.  (Other parts of the library still
+    use int86's, e.g., to read the system clock or the keyboard status.)
+
+    Also, corrected a few minor bugs here and there, esp. in Fafnir.  Added
+    a "hook" so sliding text fields can call their help functions if user
+    presses Shift-F1, Alt-F1, or Ctrl-F1.  Regular F1 still toggles the
+    shadow cursor in 80 column reversed field at the bottom of the screen.
+
+    The screenmessage() function no longer disturbs field attributes in the
+    receiving region.  Added an automatic flag to the scroll routines so
+    the blank line at top or bottom of a scrolling window uses the original
+    video attribute instead of being upset by wputs().
+
+    I rewrote two of Prosise's MSJ_ functions, and added four of my own
+    because some of my LIAO and FAFNIR routines expect a length byte, and
+    because Prosise did not include an assembler version of mass moves to 
+    and from the screen.  My code is in LVIDEO.ASM.  With monochrome
+    adapter, some of these routines are so fast you get a "wagon wheel"
+    effect on fields which are constantly refreshed by repeating keystroke.
+    The CGA snow elimination is rather slow, but seems acceptable.
+
+    I am now using *** L A R G E   M O D E L *** exclusively, since nearly
+    all of my development puts heavy stress on the heap, and I am getting
+    tired of constantly tweaking code in Small Model to use far pointers.
+
+    Bugs remaining:  I have not generalized the low-level I/O sufficiently
+    to correct problems caused when the hardware screen is wider than 80 
+    chars or more than 25 lines.  Deficiencies do not affect normal BW80
+    or CO80, or MA, text modes.  Should always vid_init(3) or vid_init(2),
+    which has no effect on MA, in applications where this might be a
+    hassle.  Upward mobility toward OS/2 or the like will probably cure
+    the problem automatically, since a general screen handle will include
+    all these dimensions and force low-level code to deal with them.
+
+
+
+
+    Changes, 9/30/88:
+
+    Added bomb0( char *msg,... ) routine which calls user's crash function
+    Added set_crash_function( PTR_TO_CRASH_FN call_on_crash )
+    Added exit_fafnir()
+
+
+    Changes, 9/24/88:
+
+    Added support for sliding fields.  This turned out to be easier than
+    I thought it would be.  Something about clear heads on Saturday a.m.'s?
+    Also added some idiot-proofing in the EditField routines, to prevent
+    still more nonsense in some really quirk-and-ditty field validaters.
+
+    Changes, 9/10/88:
+
+    Added "seek to end of text" to the END key routine.  Added title and
+    version number to the general info.  Promised that Shift_F1 would always
+    give the current version display.  Selected Fafnir and Ciao source
+    code, with a stand-alone make file, suitable for distribution.  Put the
+    F2 exit key back in; turns out this is a useful signal in some existing
+    programs that used earlier versions of the field editor.
+
+    Changes, 9/4/88:
+
+    Changed the dialogue boxes for shorter, intuitive messages about what
+    is meant.  Short, sweet and Anglo-Saxon.
+
+    Changes, 9/3/88:
+
+    Major changes to formedit.h header file, includes macros for standard
+    field types and other elegances and graces to avoid egregious errors 
+    and make the job easier and safer.
+
+    Changes, 9/2/88:
+
+    Added the OldRecord flag to EditForm, OnePageEdit, TwoPageEdit, and
+    included opening dialogue if OldRecord.  These functions now return
+    functionally named MANIFEST CONSTANTS, instead of booleans or function
+    keys; except that EditForm can still return PgDn, PgUp, and End to
+    flag particular exit conditions.  All other exits from these functions
+    are via user dialogue boxes.
+
+    The new return values are: SAVE_FORM, SKIP_FORM, DELETE_FORM, STOP_SEARCH
+    EditForm also may return:  PGDN, PGUP, or END
+
+
+    Changes, 9/1/88:
+
+    Altered the FORM_RULES typedef so that fptr is a char **; this allows
+    dynamic field allocation!  Added two functions to take advantage:
+
+            void AllocateFields( FORM_RULES form[], int NumFields );
+            void ReleaseFields( FORM_RULES form[], int NumFields );
+
+    Note that if fields are already allocated, it is not necessary to
+    to call either of these.  Allocating and assigning to a char *
+    whose address is referred to in the FORM_RULES structure is a
+    somewhat slippery idea, but it allows for multiple occurrences of
+    the identical object within FORM_RULES, provided the second char **
+    is not within range of AllocateFields ... think about it!  We gain
+    a major savings in space by trading off a lesser redundancy (the
+    cost of a field pointer plus its alias) for a greater (the cost of
+    two full-size field allocations, or the cost of special code to
+    make the alias good with an explicit memcpy), in the case of 
+    virtual fields.  The cost to the programmer, when writing FORM_RULES,
+    is simply to add an extra & to the name of the field's char *, plus
+    a little extra care in deciding who gets allocated (!).  [Note to
+    Oshel, from Oshel:  This will be clear as mud in about a month.
+    Please be advised that I knew what I was doing when I wrote this!]
+    
+    It's a design element not easy to weigh, but it seems to me a more 
+    powerful idea than simply allocating and assigning directly to the
+    fptr's lvalue within the array of FORM_RULES structures.  
+
+    AllocateFields() ensures that we are working with null-terminated
+    ASCII strings guaranteed to be the proper length.  (No more debugging
+    len in FORM_RULES!)  This is a major simplification, especially
+    when moving data to and fro between forms and databases.  (No other
+    part of the formedit module makes this assumption; it always uses
+    the field width, internally.)  The R:Base program interface, e.g.,
+    works explicitly with null-terminated strings (cf. a_att(), etc.).
+    
+
+
+
+    Changes, 8/27/88:
+
+    Defined VNOP, in formedit.h, as the "null function".  Any field
+    initializer, character validater or field validater equal to VNOP
+    is equivalent to a call to a No-Operation.  That is, the character
+    typed is valid (EditField), the field is valid, or the field is
+    considered to be initialized.  If a character validater in FORM_RULES
+    is VNOP, however, the field is display-only (EditForm).  Use cgood()
+    or the like to "validate any" printable ASCII keyboard character.
+
+    Defined DISPLAY, same as VNOP, for clarity's sake in FORM_RULES.
+
+    EditField will no longer accept F3, etc., as valid keystrokes, even
+    if cvalid == VNOP.
+
+    InitForm now calls (*field_init)(), as well as EditForm.
+
+
+    Services added 8/23/88;
+
+    (*field_init)() added to FORM_RULES structure.  This function is only
+    called from EditForm.  The field validater, (*fvalid)(), should assume
+    responsibility for "de-initializing" an initialized field.  I added
+    this to provide a way to left-justify a number in an otherwise
+    right-justified field, for data entry convenience with free-form edit
+    masks.  Most commonly, this pointer indicates the noop() function.
+    
+    (*cvalid)( ch, pos ) now includes the relative field position of the
+    data entry cursor.  Allows an otherwise numeric fixed mask to suddenly
+    switch to alphanumeric, etc.  For example, a phone number field in which
+    the last four digits may be either uppercase alpha or digits; or else,
+    a "cryptic" field in which the user's keystroke is stored in a hidden
+    buffer, but the character returned to the screen is always "*".
+
+    These final enhancements make it possible to define an UNLIMITED
+    number of DATA TYPES for any particular field.  That's elegance!
+
+-----------------------------------------------------------------------------
+
+    Functions added 8/20/88, d.c.oshel:
+
+-----------------------------------------------------------------------------
+
+void InitForm( FORM_RULES Form[], int NumFields );
+
+    InitForm copies up to len bytes from each field element's default
+    mask (dflt) to its actual field array (fptr), after first clearing
+    the receiving field array to len blanks.
+
+    Does NOT copy dflt's null terminator if the default character array
+    (source) happens to be smaller than fptr (destination).
+
+-----------------------------------------------------------------------------
+
+int OnePageForm( char *ScreenFileName, FORM_RULES Page[], int NumFields );
+
+int TwoPageForm( char *ScreenFileName1, FORM_RULES Page1[], int NumFields1,
+                 char *ScreenFileName2, FORM_RULES Page2[], int NumFields2,
+                 FALSE);
+
+
+    These two functions are complete screen managers for one- and two-page
+    forms.  They return either 0 or 1, where 0=Abort, 1=Save.  Much simpler
+    and friendlier, they include exit dialogue with the data entry operator.
+
+    ScreenFileName is a pointer to the name of a 4000-byte screen image 
+    file created using ES.EXE, or a similar program.  The functions load
+    the screen file from disk (fairly fast).  There should be one screen
+    image file per page of the form being edited.  The screen image should
+    include instructions to the data entry operator to press Esc when
+    done, how to use F1, PgDn, PgUp, etc.
+
+    If ScreenFileName is NULL, the screen is not altered before editing.
+
+    EXAMPLE, editing a 2-page form; c2upr, fgood are pointers to a field's
+    character-by-character and whole-field input validation functions,
+    VNOP indicates no field initialization is required, or a display-only
+    field in the cvalid position:
+  
+    static FORM_RULES checkout [6] = {
+            field       df   x  y len  init  char   field   
+        { "....v....1", "", 30,10, 10, VNOP, VNOP,  fgood }, <-- element 0, Page 1
+        { "....v....1", "", 30,11, 10, VNOP, c2upr, fgood }, <--    "    1
+        { "....v....1", "", 30,12, 10, VNOP, c2upr, fgood }, <--    "    2
+        { "....v....1", "", 30,13, 10, VNOP, VNOP,  fgood }, <-- element 3, Page 2
+        { "....v....1", "", 30,14, 10, VNOP, VNOP,  fgood }, <--    "    4
+        { "....v....1", "", 30,15, 10, VNOP, c2upr, fgood }, <--    "    5
+    };
+
+
+    result = TwoPageForm( "PAGE1.SCR", &checkout[0], 3,
+                          "PAGE2.SCR", &checkout[3], 3, TRUE );
+
+    if ( result ) save_the_form();
+
+============================================================================
+
+**==========================================================================
+**
+** Edit Form routine, 8/16/88; simplifies forms handling.
+**
+**     Multi-page forms are easily managed by providing the address
+**     of the next FORM_RULES page, with number of fields on the page.
+**
+**     When the MultiPage flag is set, EditForm exits on the last field
+**     of the page, returning PgDn (or End, special exit).
+**
+**     Returns an unsigned integer value, representing a key, as follows: 
+**
+**              ESC           normal exit, done editing
+**              F2            abort form editing (caller does this!)
+**              PGDN, PGUP    next page, previous page
+**              END           special, cursor did not stop in any field 
+**
+**     Esc, F2, PgUp, PgDn terminate BOTH field and form editing.
+**     Caller should assume that F2 is CANCEL FORM, Esc is NORMAL EXIT,
+**     and PgUp, PgDn are like Esc unless caller is managing a multi-page 
+**     form as several calls to EditForm using different ranges of the
+**     appropriate FORM_RULES array.
+**
+**
+**==========================================================================
+
+**  :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+**  :How to prepare DISPLAY or COMPUTED fields for use by EditForm:
+**  :::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+**
+** 		If cvalid is equal to VNOP (i.e., to the null function),
+**      the field is treated as an INFORMATION ONLY display field,
+**      i.e., it is shown on the screen, but cannot be edited.
+**
+**      However, (*finit)() is always called on all fields, so
+**      an appropriate field initializer function may be used to 
+**      calculate a COMPUTED FIELD value for it.
+**
+**      Note:  In EditField, cvalid == VNOP means any key is good!
+**             In EditForm,  cvalid == VNOP means display-only field!
+**
+**      For example, FORM_RULES might contain a field element such as
+**
+**                { fptr, dflt, xloc, yloc, len, VNOP, VNOP, fcalculate },
+**
+**      where cvalid == VNOP flags the field as display-only, and fcalculate
+**      sets fptr to some arbitrary character value, perhaps based on 
+**      the contents of other fields (!).  Note that the fcalculate() 
+**      function can take advantage of whatever knowledge the programmer 
+**      might have about the form's purpose or environment.  Functions
+**      which "validate" a field by altering the field contents return
+**      a non-zero value; but when coupled with the VNOP flag, the return
+**      value is immaterial -- if altered, fptr is presumed correct!
+**
+**      This,
+**                { fptr, dflt, xloc, yloc, len, VNOP, VNOP, VNOP },
+**
+**      on the other hand, is simply an INFORMATION-ONLY field, since
+**      fvalid == VNOP presumes that the field contents are always valid.
+**
+**      Then again, 
+**                { fptr, dflt, xloc, yloc, len, VNOP, ctst, validater },
+**
+**      MAY be a computed field even if ctst() validates the user's
+**      character input; e.g., if user presses F1, validater() may present
+**      a menu of choices and SET its field arg to user's selection, using
+**      memcpy() -- and memcpy() is PREFERRED! -- or strcpy().
+**
+**      Note that "free-form" masks are possible.  These relax the character
+**      position requirements of the field, and expect the field validater
+**      to carry the burden of formatting input.  The cnzip() function,
+**      below, interprets a field of blanks as a signed numeric field, for 
+**      example.  (There are many interpretations!  That's why you need the
+**      field validater.)
+**
+**      In other words, the combination of (*cvalid) and (*fvalid) can be
+**      used in many different effective combinations to assist the user's
+**      data entry task.  This method allows for an unlimited number of
+**      field DATA TYPES -- alphanumeric, masked, computed, menu-selected,
+**      virtual, display-only, password, special-purpose, etc.
+
+
+**==========================================================================
+**
+** Edit Field, with length and character-&-field-validation parameters
+**
+** The field being edited is NOT NECESSARILY a null-terminated string!
+**		caller must ensure that the field has been allocated and that
+**		it contains at least len number of ASCII chars which form
+**		a self-masking string.  For example, if the validation function
+**		is "is_numeric" (a function -- NOT a macro! -- which tests its
+**      argument for digits):
+**
+**			Freely-formed Numeric:  "999999"              ( any length )
+**			Phone Number:           "(515) 555-1212"      ( 14 chars )
+**			Social Security Number: "123-45-6789"         ( 11 chars )
+**			Ten-digit Zipcode:      "00000-0000"          ( 10 chars )
+**			Date (cf_date(adr,2)):  "05/02/88"            (  8 chars )
+**			Miscellaneous:          "Product # 0.00.000"  ( 18 chars, only...)
+**							                   ^ ^^ ^^^   (  6 can be edited )
+**
+** [ WARNING ]  EditField does NOT null-terminate any field, so the 
+**              len argument is critical to preserve buffer integrity.
+**
+** The field is both a source and a receiving field -- therefore, it
+**		automatically provides a default or "carry forward" from the 
+**		previous data, provided caller has not reset or cleared the field 
+**		between calls.  (Note that "Miscellaneous", above, includes 67%
+**      extraneous text in a DATA field; it is only given for illustration.)
+**
+** May only type over the self-masking field string, can't delete chars
+**
+** Skips over (forward or backward) any edit character not "valid",
+**		on ->, <-, BS, or valid keypress
+**		if char in mask is not valid, char cannot be edited, but is
+**		included verbatim in the receiving field
+**
+** Calls (*cvalid)() function to determine if user's keypress is ok; this
+**		function accepts an unsigned int (the keystroke), and returns 0 if 
+**		the char does not meet caller's criteria; ** MUST ** return the
+**		character itself, or another non-zero value, if it does.  THE
+**		VALUE RETURNED WILL BE STORED IN THE FIELD BEING EDITED; this
+**		technique allows caller to convert to uppercase, perform table
+**		lookup, etc., but the simplest and easiest case is simply to
+**		return the valid character "as is".
+**
+**      If cvalid == VNOP, any printable ASCII character is valid.
+**
+**      Note:    (*cvalid)( ch, pos ) sends two arguments to the character
+**               validation routine:  the character to be checked, and its
+**               position in the field, relative to 0.  This allows for
+**               CONSIDERABLE fine-tuning in character validation.  The
+**               actual function which receives these arguments need not
+**               use both of them, courtesy of C calling conventions.
+**
+**      Caution: "self-masking" means that the default string being
+**               edited must contain AT LEAST ONE editable character,
+**               or the cursor will not stop in the field.  For example,
+**               a (*cvalid)() function which accepts only digits 0..9
+**               will cause the field to seem to be "ignored" if the
+**               edit string contains only blanks and no digits!
+**
+** Calls (*fvalid)() function to verify that the entire field is correct
+**		according to caller's criteria.  For example, this function might
+**		check to ensure that numeric values fall within a permissible
+**		range.  Must simply return 0 (for no good), or non-zero (for good).
+**
+**      if (fvalid == VNOP) the field is always valid.
+**
+**		(*fvalid) sends the fldptr, x, y, len to the function, as arguments.
+**		Caller need not use the arguments, but should declare them.
+**
+**		If (*fvalid) fails, EditField() returns 0, field unchanged.
+**
+**      Note:    An (*fvalid)() routine which SETS the field being
+**               "validated" should modify its first argument and return
+**               a non-zero value (COMPUTED FIELDS).  Direct modifications
+**               to a field by name may be overwritten (!) otherwise.
+**
+**               To be perfectly safe, the field validater should use
+**               memcpy(), with the length parameter, and not strcpy(),
+**               to modify its field buffer argument.  With due attention
+**               to detail, especially field length, either method works.
+**
+**
+** F1, Request Assistance:
+**      F1 embeds '' in the FIRST POSITION of edit string.  Field validate
+**      must detect this flag and take appropriate action.  Designed to
+**      be a Request For Assistance signal.  Assumes exit char is CR.
+**      Note that if (*fvalid)() returns 0 in this case, the field is not
+**      altered.  Allows either fixup or information-only message display.
+**
+** If there is a dynamic memory error, EditField will call bomb(), a
+**      global system error handler which should exit softly but
+**      unconditionally from the program.
+**
+** EditField RETURN VALUES:
+**      returns 0, End, or value of user's key which terminated the edit;
+**
+**           Esc, Enter, Up, Down, PgUp, PgDn, F2
+**
+** Original field IS NOT modified when field validation fails; in this
+**      case, EditField returns 
+**
+**           0  [9/10/88, d.c.oshel, DOES NOT RETURN!  Continues!]
+**
+** Original field IS NOT modified if cursor fails to stop in the field
+**      because of a self-mask error; EditField returns
+**
+**           End
+**
+** Original field IS NOT modified (despite changes!) when the user 
+**		terminates a field edit with one of:
+**
+**           Up, Down, PgUp, PgDn, F2
+**
+** Original field IS modified, however, if (*fvalid)() is ok and user 
+**      terminates the edit with one of:
+**
+**           Esc, Enter
+**
+** These user keys do NOT exit from the field, except as noted:
+**
+**           Left, Right - behave like Up and Enter at extremities of field
+**           Home, End   - move to left or right extremity of field
+**
+** Sample call:
+**
+**   |  memcpy( buffer.ssn, "000-00-0000", 11 );
+**   |  EditField( buffer.ssn, 10, 13, 11, FALSE, numeric, goodfield );
+**
+**		The buffer.ssn contains an 11-char edit mask, "000-00-0000", for a
+**		social security number.  The field to be edited is located at
+**		screen column 10, row 13, and contains a TOTAL of 11 characters
+**      including the hyphens (not normally edited, see (*numeric)).
+**
+**		The skip flag is FALSE, so user must press an explicit exit key 
+**		to terminate the edit, such as Esc, Up Arrow, CR, etc.  (Note that
+**      the skip flag is NOT contained in FORM_RULES structures!)
+**
+**		The (*numeric)() function will test for numeric input, and only allow
+**		those characters in the field which are (*numeric)(ch) to be edited.  
+**      Note that the validation function MUST be a function, and CANNOT be 
+**		a macro!
+**
+**		The field validation pointer points to goodfield(), a function whose
+**      name suggests that it always returns a non-zero value (hint!).
+**
+**		Once the receiving field is initialized, it need not be initialized
+**		again.  The next edit on the same field can use the previous value
+**      of the field as its edit mask.  This allows for "carry forward" in
+**      long sequences of redundant data entry, such as many addresses with
+**      the same zip code, etc.
+**
+**==========================================================================
+*/

@@ -1,0 +1,78 @@
+#include <process.h>
+#include <stdio.h>
+#include <dos.h>
+#include "redirector.h"
+
+void interrupt do_nothing();
+
+/******************************************************************
+*      test_share() - test to see if share is installed
+*
+*      Parameters
+*            flag (in) - set to INSTALL or RESTORE
+*
+*      Global
+*            Turbo C global variables for register values
+*
+*      Returns:
+*            0 for success, -1 for failure
+*
+*      Notes:
+*            This function tests for share.exe.  
+*            If share is successfully
+*            installed, it disables interrupt 0x23 to prevent
+*            abnormal termination (leaving locks in place).  This interrupt
+*            is re-enabled by calling this function with the flag set to
+*            RESTORE.
+*
+*      History:
+*            Original code by William H. Roetzheim
+**********************************************************************/
+
+int    test_share(int flag)
+{
+       void        (*interrupt_function);
+       void        interrupt do_nothing();
+       static      *old_interrupt;
+
+       if (flag == RESTORE)
+       {
+             if (old_interrupt == NULL) return -1;
+             else
+             {
+                   _AH = 0x25;
+                   _AL = 0x23;
+                   _DS = FP_SEG(old_interrupt);
+                   _DX = FP_OFF(old_interrupt);
+                   geninterrupt(0x21);
+                   return 0;
+             }
+       }
+
+       _AH = 0x10;              /* test for share */
+       _AL = 0x00;              /* get installed state */
+       geninterrupt(0x2F);
+
+       if (_AL == 0xFF)   /* successfully installed */
+       {
+             /* get original value for abnormal termination */
+             _AH = 0x35;
+             _AL = 0x23;
+             old_interrupt = MK_FP(_ES, _BX);
+
+             /* set new value */
+             interrupt_function = do_nothing;
+             _AH = 0x25;
+             _AL = 0x23;
+             _DS = FP_SEG(interrupt_function);
+             _DX = FP_OFF(interrupt_function);
+             geninterrupt(0x21);
+             return 0;
+       }
+       else return -1;
+}
+
+void interrupt do_nothing()
+{
+       return;
+}

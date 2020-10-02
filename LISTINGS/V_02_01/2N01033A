@@ -1,0 +1,269 @@
+
+/* METER.C   A display and digital filter example
+ *      By Frank Bosso of Product Designs, Danbury CT.
+ *      last edit: 20-Oct.-90
+*/
+#include <stdio.h>  /* call for the standard defines */
+#include <graph.h> /* There are graphic statements here */
+#include <stdlib.h>
+/* 
+ * A little formality
+*/
+char cpyrit[]="METER Copyright (c) 1990 Product Designs";
+/*
+* Declare the program constants
+*/
+#define BLACK_COLOR  0        /* 0 = EGA black */
+#define BACK_COLOR  1         /* 1 = EGA blue */
+#define FORG_COLOR  16        /* 16 = EGA white */
+#define  FULL_SCALE  100      /* The standard full scale*/
+#define  DISPLAY_SCALE  100   /* meter display width */
+#define  STEP_SIZE 25         /*the square wave amplitude*/
+#define  STEP_TIME 150         /* the square wave timing */
+#define WN_MAX 32 /*The highest allowable ratio of Fs/Wn*/
+#define FOREVER for (;;)       /* A long loop construct */
+/*
+ * A structure to contain the control variables
+ * for a metering display
+*/
+typedef struct {
+  int oldvalue;
+  int     x1;             /* first order variable */
+  int     x2;             /* second order variable */
+  int     l;              /*      left posx */
+  int     b;             /*      bottom posy */
+  int     r;             /*      right posx */
+  int     t;             /*      top posy */
+  int     w2; /* (F/W)^2 = position filter constant */
+  int     aw; /* a*F/W = velocity filter constant */
+  } METER;
+/*
+ * Some instances of a meter
+*/
+METER   M0 = {0};
+METER   M1 = {0};
+METER   M2 = {0};
+
+METER   M3 = {0};
+METER   M4 = {0};
+METER   M5 = {0};
+/*
+ * Prototype the display functions
+*/
+void create_all_meter(int wn);
+void create_meter(METER *(p),int posx,int posy,
+                  int warg,int aarg);
+void show_meter(METER *(p), int value);
+int filter_meter(METER *(p), int value);
+int fetch(int arg);
+/*
+ * Now for the mainline
+*/
+main()
+{
+int  i, j, o, tmp;   /* create some working variables */
+int  step;
+int  wn;
+
+_setvideomode(_HRES16COLOR);    /* Select EGA mode */
+
+wn = 2; /* The initial frequency ratio */
+
+create_all_meter(wn);           /* Paint the meter panel */
+
+i=25;
+
+/*
+ * stroke the meter displays through their
+ * full range
+*/
+FOREVER {
+    j = fetch(i);
+
+    show_meter( &M0,j);
+    show_meter( &M1,j);
+    show_meter( &M2,j);
+
+    show_meter( &M3,j);
+    show_meter( &M4,j);
+    show_meter( &M5,j);
+
+    if( kbhit() ){ /* Take action if the user requests */
+      getch(); /* Clear the keyboard buffer */
+      wn+=wn; /*Change the natural frequency of the panel*/
+      if ( wn < WN_MAX) {
+        create_all_meter(wn); /*Paint a new meter screen*/
+        }
+      else
+        break;
+      }
+    }
+/*
+ * shutting down now
+ * attempt to restore the tube to normal
+*/
+_setvideomode(_DEFAULTMODE);
+}
+/*
+* procedure to return a test value
+* this procedure accepts an integer argument which forms
+* the basis for the return value.
+* the argument has a random number in the 0 to 10 count
+*     range
+* an additional 'step' is added to the signal to form
+*     a square wave.
+* the size and period of the square wave are controlled
+* by a pair of #defines
+*/
+int fetch( int arg)
+{
+static int step;
+int j;
+
+/*
+ * simulate a real noisy signal
+*/
+j = arg;
+j += rand()/6540;
+/*
+ * Now add a step function to the signal to show
+ * long term dynamics
+*/
+if( step++ >= STEP_TIME) {
+  j += STEP_SIZE;
+  if( step++ >= STEP_TIME*2)
+    step = 0;
+  }
+return( j );
+}
+/*
+ * execute a second order filter algorithm
+ * Note that these four LOC represent
+ * the reason for this program!
+*/
+int filter_meter(METER *(p), int value)
+{
+int out;
+
+out = p->x1/ p->w2;
+p->x2 = value+ p->x2- p->x2/ p->aw- out;
+p->x1 = p->x1+ p->x2;
+
+return(out);
+}
+/*
+* Display a point on the meter.
+ *              Apply the filtering
+ *    Scale the result to the physical full scale
+ *    Clip the number to physical limits
+ *              Blank out the old point
+ *              Paint the new line
+ *
+ *              The display range is from 0 to 100.
+ *      This range is normalized for the physical scale
+*/
+void show_meter(METER *(p), int value)
+{
+int     v;
+
+/*
+ * First perform the smoothing operation
+*/
+v = filter_meter(p, value);
+/*
+ * now apply the full scale multiplier
+*/
+v = (v*DISPLAY_SCALE/FULL_SCALE)+p->l;  
+/*
+ * Perform a limiting function here to
+ * keep the pointer inside the metering area
+*/
+if ( v < p->l )
+    v = p->l;
+if ( v > p->r )
+    v = p->r;
+/*
+ * rub out the current pointer
+*/
+_setcolor(BACK_COLOR);
+_pie(_GBORDER, p->l,p->b, p->r,p->t,
+     p->oldvalue,p->t, p->oldvalue,p->t);
+/*
+ * Now paint the new pointer
+*/
+_setcolor(FORG_COLOR);
+_pie(_GBORDER, p->l,p->b, p->r,p->t, v,p->t, v,p->t);
+p->oldvalue=v;  /* remember this for contracting out later*/
+}
+/*
+ * procedure to Create a panel of meters
+*/
+void create_all_meter(int wn)
+{
+_setcolor(BLACK_COLOR);
+_clearscreen(_GCLEARSCREEN);    /* blank the whole screen */
+/* Create the reference meter */
+create_meter(&M0, 100,  50, 1,  1);
+create_meter(&M1, 300,  50, wn, 2);
+create_meter(&M2, 500,  50, wn, 4);
+
+create_meter(&M3, 100, 125, wn, 8);
+create_meter(&M4, 300, 125, wn, 32);
+create_meter(&M5, 500, 125, wn, 64);
+
+_settextposition(22, 30);
+printf("OUT = X1/%2u", wn*wn);
+_settextposition(23, 30);
+printf("X2 = IN + X2 - X2/Q*%2u - OUT", wn);
+_settextposition(24, 30);
+printf("X1 = X1 + X2");
+_settextposition(25, 10);
+printf("Type a space");
+}
+/*
+ * procedure to create one meter
+ * Initialize the meter location variables
+ *  and paint the meter display
+ *      p points to a METER structure instance
+ * posx is the meter X axis position argument
+ * posy is the meter Y axis position argument
+ * warg = Fs/Wn sampling frequency to natural
+ *      frequency ratio
+ * aarg = Q*(Fs/Wn) = damping factor control =1/2*Q
+*/
+void create_meter(METER *(p), int posx, int posy,
+                  int warg, int qarg )
+{
+/*
+ * First fill in the meter array data
+*/
+p->l= posx-DISPLAY_SCALE/2;
+p->b =posy+30;
+p->r =posx+DISPLAY_SCALE/2;
+p->t =posy-30;
+p->oldvalue=p->l;
+p->w2 = warg*warg;
+p->aw = (warg*qarg)/8;
+if (p->aw == 0) p->aw++;  /* Force a stable filter algo */
+p->x1 = 0;
+p->x2 = 0;
+
+_setcolor(BACK_COLOR);  /* setup the background color */
+/*
+ * now paint the meter outline
+*/
+_pie(_GFILLINTERIOR,p->l,p->b,p->r,p->t,p->r,p->t,p->l,p->t);
+/*
+ * Identify the filter parameters
+*/
+_settextposition(p->b/8-2, 0+p->l/8);
+printf("F/W    =%2u Q =%4.2f", warg, (double) qarg/8);
+
+_settextposition(1+p->b/8-2, 0+p->l/8);
+printf("(F/W)^2=%2u Q*F/W=%2u", p->w2, p->aw);
+/*
+ *       Paint the zero pointer
+*/
+show_meter( p,0);
+}
+

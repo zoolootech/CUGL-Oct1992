@@ -1,0 +1,62 @@
+#
+#  File:	Makefile for Net_CD.SYS
+#  Purpose:	Constructs the driver from
+#		component objects
+#
+
+# 
+#  Object file options
+#
+aopts	= /ml
+copts	= -AS -c -Zp -Ox -Gs -Zl
+
+#
+#  Object file builders
+#
+cc	= cl $(copts) $*.c
+asm	= masm $(aopts) $*,,$*;
+
+#
+#  Object building rules
+#
+.c.obj:
+	$(cc)
+
+.asm.obj:
+	$(asm)
+
+# 
+#  Dependencies
+#
+incfile	= device.h netbios.h standard.h
+
+net_cd.obj:	net_cd.asm $(incfile)
+
+init.obj:	init.c $(incfile)
+
+command.obj:	command.c $(incfile)
+
+ioctl.obj:	ioctl.c $(incfile)
+
+cdrom.obj:	cdrom.c $(incfile)
+
+netbios.obj:	netbios.c $(incfile)
+
+#
+#  Link Device Driver
+#
+net_cd.sys:	net_cd.obj command.obj ioctl.obj \
+		cdrom.obj netbios.obj init.obj
+	link /noi /nod /m $**;
+	exe2bin net_cd.exe net_cd.sys
+
+#
+#  Server objects
+#
+
+sutil.obj:	sutil.asm $(incfile)
+
+server.obj:	server.c $(incfile)
+
+server.exe:	server.obj netbios.obj sutil.obj
+	link /Co /noi /m $**,,,SLIBCE;

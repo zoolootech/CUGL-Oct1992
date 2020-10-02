@@ -1,0 +1,54 @@
+FIGURE 1, 
+
+; Line 1
+;|*** 
+;|*** long a = 0x9000;
+;|*** long b = 0x8000;
+;|*** long c;
+;|*** 
+;|*** void thread1(void)
+;|*** {
+; Line 8
+     PUBLIC    _thread1
+_thread1  PROC NEAR
+;|*** 
+;|***   a = a + b;
+; Line 10
+     *** 000000     a1 04 00       mov  ax,WORD PTR _b
+     *** 000003     8b 16 06 00         mov  dx,WORD PTR _b+2
+     *** 000007     01 06 00 00         add  WORD PTR _a,ax
+     *** 00000b     11 16 02 00         adc  WORD PTR _a+2,dx
+;|*** }
+; Line 11
+     *** 00000f     c3             ret  
+
+_thread1  ENDP
+;|*** 
+;|*** 
+;|*** 
+;|*** void thread2(void)
+;|*** {
+; Line 16
+     PUBLIC    _thread2
+_thread2  PROC NEAR
+;|*** 
+;|***   c = a;
+; Line 18
+     *** 000010     a1 00 00       mov  ax,WORD PTR _a
+     *** 000013     8b 16 02 00         mov  dx,WORD PTR _a+2
+     *** 000017     a3 00 00       mov  WORD PTR _c,ax
+     *** 00001a     89 16 02 00         mov  WORD PTR _c+2,dx
+;|*** }
+; Line 19
+     *** 00001e     c3             ret  
+     *** 00001f     90             nop  
+
+_thread2  ENDP
+_TEXT     ENDS
+END
+
+Caption:  Actual output of the MSC 6.00 compiler.  If thread1
+starts, but is interrupted before the instruction at 0000b is
+executed, then thread2 runs. But it copies 0x1000 into c, instead
+of the true result, 0x11000.  When thread1 resumes, it continues
+with, stores the correct result in variable a.  

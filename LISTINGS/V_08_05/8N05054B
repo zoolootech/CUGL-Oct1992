@@ -1,0 +1,46 @@
+*****Listing 4*****
+
+class Iregister : public Register {
+public:
+	Iregister()		{ val = 0; }
+	void load( int x)	{ val = x; }
+	int store()		{ return val; }
+
+	void go( Buffer &b, File &output)
+	{
+		if( !b.go( store()))
+			output.put( "?\n" );
+	}
+
+	// print 
+	void print( Buffer &b, File &output)
+	{
+		for( int n = store(); !b.isend() && n; n-- )
+			output.put( b.geta() ), b.next();
+		output.put( '\n');
+	}
+
+	// Inherit parent class insert(), ignore prefix
+
+	void del( Buffer &b, Buffer &kbuf, File &output)
+	{
+		// flush previous contents of kill buffer
+		for( kbuf.begin(); !kbuf.isend(); kbuf.next() )
+			kbuf.dela();
+
+		for( int n = store(); !b.isend() && n; n-- )
+			kbuf.putb( b.dela());
+		if( n)
+			printf( "? %d characters left undeleted\n", n);
+	}
+
+	// re-use kill buffer by geta'ing and not deleting from it
+	void put( Buffer &b, Buffer &kbuf)
+	{
+		for( kbuf.begin(); !kbuf.isend(); kbuf.next())
+			b.putb( kbuf.geta());
+	}
+private:
+	int val;
+};
+

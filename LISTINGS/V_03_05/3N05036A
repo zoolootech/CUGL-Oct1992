@@ -1,0 +1,278 @@
+/*******************************************************
+   File dllparam.c
+
+   Demonstration of Visual Basic to DLL interface
+
+   Written By Daniel Appleman
+   Copyright (c) 1992, by Desawre - All rights reserved
+
+********************************************************/
+
+#define LINT_ARGS
+#define NOMINMAX
+#define OEMRESOURCE
+#define NOREGION
+#define NOWH
+#define NORASTEROPS
+#define NOMETAFILE
+#define NOCLIPBOARD
+#define NOOPENFILE
+#define NOKANJI
+#define NOSOUND
+#define NOCOMM
+#define NOGDICAPMASKS
+#define NOVIRTUALKEYCODES 
+
+#include "windows.h"
+#include "\windows\vb\custom\vbapi.h"
+#include "stdlib.h"
+#include "string.h"
+
+HANDLE modulehandle;    /* module handle for library */
+
+BOOL FAR PASCAL LibMain(HANDLE hModule, WORD wDataSeg,
+                        WORD cbHeap, LPSTR lpszCmdLine)
+{
+   modulehandle = hModule;
+   return(1);
+}
+
+VOID FAR PASCAL WEP (int bSystemExit)
+{   return;  }
+
+char tbuf[80];
+#define MSGBOX(s) MessageBox(GetFocus(), (LPSTR)tbuf, \
+                    (LPSTR)s, MB_OK)
+
+/* Utility function to convert floating point to string
+ * Quick and dirty - as the DLL library does not have
+ * function gcvt  */
+fToString(double d, char *t)
+{
+   int x;
+   static int decimalvar, signvar;
+   char *buffer;
+   buffer = fcvt(d,5,&decimalvar, &signvar);
+   if(signvar) *t++ = '-';
+   for(x=0; x<decimalvar && *buffer; x++) *t++ = *buffer++;
+   if(*buffer) *t++ = '.';
+   while(*buffer) *t++ = *buffer++;
+   *t = '\0';
+}
+
+/* These function demonstrates passing numeric
+ * variables by value, and returning numeric variables. 
+ * The MessageBox statement in each routine shows the
+ * value of the variable received. */
+int FAR PASCAL ReceivesInteger(int x)
+{
+   itoa(x, tbuf, 10); /* Place value in temporary buffer */
+   MSGBOX("ReceivesInteger");
+   return(x);
+}
+
+long FAR PASCAL ReceivesLong(long y)
+{
+   ltoa(y, tbuf, 10); /* Place value in temporary buffer */
+   MSGBOX("ReceivesLong");
+   return(y);
+}
+
+float FAR PASCAL ReceivesSingle(float f)
+{
+   fToString((double)f, tbuf);
+   MSGBOX("ReceivesSingle");
+   return(f);
+}
+
+double FAR PASCAL ReceivesDouble(double d)
+{
+/* Refer to the article text for some important notes
+ * relating to the declaration of functions that
+ * receive or return double parameters.  */
+   fToString(d, tbuf);
+   MSGBOX("ReceivesDouble");
+   return(d);
+}
+
+/*
+ * These functions demonstrate passing numeric
+ * variables by reference.  Note how the DLL function
+ * can modify the variable used by VB.  These
+ * particular examples are defined as VOID to be used
+ * by SUB declarations in VB.  One could just as easily
+ * had these return results as done in the examples
+ * above.  */
+
+VOID FAR PASCAL Add5ToInteger(int FAR *x)
+{  *x = (*x) + 5;  }
+VOID FAR PASCAL Add5ToLong(long FAR *y)
+{  *y = (*y) + 5;  }
+VOID FAR PASCAL Add5ToSingle(float FAR *f)
+{  *f = (*f) + 5;  }
+VOID FAR PASCAL Add5ToDouble(double FAR *d)
+{  *d = (*d) + 5;  }
+
+/* Currency is a special 8 byte data type. 
+ * Fortunately, Microsoft C (and probably others) can
+ * pass structures as parameters by value, and return
+ * them.  You'll need to make sure that your compiler
+ * uses the Microsoft C calling convention on
+ * structures for this to work.  In practice, you will
+ * need to build your own complete library of currency
+ * data type math to use this data type.  Refer to the
+ * article text for details. */
+
+/* Currency data type structure */
+typedef struct currencystruct {
+   char cbuf[8];
+} currency;
+
+/* This example shows passing a currency variable by
+ * value, and returning a currency value */
+currency FAR PASCAL ReceivesCurrency(currency curr)
+{
+   double tres = 0, factor = 1, tval;
+   LPSTR tptr;
+   short x;
+
+/* This currency variable is in base 10 with 4 digits
+ * to the right of the decimal point */
+
+/* This conversion (for display purposes) involves a
+ * loss of precision and does not handle negative
+ * numbers */
+   for(x=0; x<8; x++) { /* Convert currency to double */
+      tval = (double)((WORD)curr.cbuf[x]);
+      tres+= tval*factor;
+      factor *=256;
+      }
+   tres/=10000;   /* Number is fixed 4 digit precision,
+                    divide to obtain the actual value */
+   fToString(tres, tbuf);
+   MSGBOX("ReceivesCurrency");
+   return(curr);
+}
+
+/* This example is call-by-reference. */
+void FAR PASCAL AddPennyToCurrency(currency FAR *curptr)
+{
+   short x;
+   WORD temp, toadd;
+
+/* This currency variable is in base 10 with 4 digits
+ * to the right of the decimal point */
+
+/* Now you can use whatever math routines you have to
+ * maniuplate this buffer - consider this trivial 'add
+ * penny' algorithm */
+   toadd = 100;   /* 1 penny in this scale */
+   for(x=0; x<8 && toadd; x++) {
+      temp = curptr->cbuf[x];
+      temp+=toadd;
+      if(temp>=256) {
+         temp-=256;  toadd=1; /* continue with carry */
+         }
+      else toadd=0;  /* Finished with the addition */
+      curptr->cbuf[x] = temp;
+      }
+}
+
+/* Method used for most API calls.  VB passes a null
+ * terminated string */
+VOID FAR PASCAL ReceivesString(LPSTR tptr)
+{/* Warning - it's not a copy despite the
+  * byval part in the declaration */
+   MSGBOX("ReceivesString");
+}
+
+/* This example shows how a string can be modified - as
+ * long as you don't go beyond the space allocated */
+VOID FAR PASCAL ChangesString(LPSTR tptr)
+{/* Warning on overwriting null!!! */
+   if (*tptr) *tptr = '!';
+}
+
+/* This example shows how you can pass Visual Basic
+ * strings to a DLL, but the DLL must be linked with
+ * VBAPI.LIB - part of the VB control development kit. */
+VOID FAR PASCAL ReceivesVBString(HLSTR sptr)
+{
+   LPSTR tptr;
+   int vbstrlen;
+   WORD x;
+   vbstrlen=VBGetHlstrLen(sptr); /* Get len of VB string */
+   tptr = VBDerefHlstr(sptr); /* Get ptr to VB string */
+   for(x=0; x<vbstrlen && x<sizeof(tbuf)-1; x++)
+      tbuf[x] = *tptr++;
+   tbuf[x] = '\0';   /* Null terminate the string */
+   /* Remember - VB strings can contain NULLs */
+   MSGBOX("ReceivesVBString");
+}
+
+/* This example shows how you can change a string that
+ * was passed as a parameter in a DLL.  No length
+ * restrictions apply when using this technique (other
+ * than the usual VB string length limits */
+VOID FAR PASCAL ChangesVBString(HLSTR sptr)
+{
+   VBSetHlstr((HLSTR FAR *)&sptr,(LPSTR)"Any Length OK",13);
+}
+
+/* This example shows how you can return a VB string
+ * from a DLL.  Note - this technique is not
+ * documented, and while it does seem to work, there is
+ * no guarantee that it will work under future versions
+ * of VB */
+HLSTR FAR PASCAL ReturnsVBString()
+{
+   char *a = "This string is created in the DLL";
+   return(VBCreateHlstr((LPSTR)a,strlen(a)));
+}
+
+typedef struct usertypestruct {
+   int a;   int b;
+   int c;   int d;
+   HLSTR hs;
+} usertype;
+
+/* Call by reference only */
+VOID FAR PASCAL ReceivesUserType(usertype FAR *u)
+{
+   wsprintf((LPSTR)tbuf,
+            (LPSTR)"usertype contains %d %d %d %d",
+            u->a, u->b, u->c, u->d);
+   MSGBOX("ReceivesUserType");
+}
+
+/* VB strings in a user defined type can be accessed. 
+ * If not initialized, they may be null (though I have
+ * never actually seen this - see article text), in
+ * which case the DLL can create the string - otherwise
+ * the DLL should use VBSetHlstr().  */
+VOID FAR PASCAL AddUserString(usertype FAR *u)
+{
+   if(!u->hs)
+   /* Documentation suggests this case may be possible */
+      u->hs = VBCreateHlstr((LPSTR)"New string here!",16);
+   else
+      VBSetHlstr(&u->hs, (LPSTR)"Replaced string", 15);
+}
+
+/* Array of integers - Be careful not to exceed the limit of the array!
+ * This technique can be used on all numeric data types.
+ * Note the special calling sequence in the VB example.
+ * It will not work on strings. */
+VOID FAR PASCAL ReceivesIntArray(int FAR *iptr)
+{
+   wsprintf((LPSTR)tbuf,
+            (LPSTR)"1st 4 entries are %d %d %d %d",
+            *(iptr), *(iptr+1), *(iptr+2), *(iptr+3));
+   MSGBOX("ReceivesIntArray");
+}
+
+/* CDK-oriented stuff */
+HWND FAR PASCAL GetControlHwnd(HCTL hctl)
+{
+   return(VBGetControlHwnd(hctl));
+}

@@ -1,0 +1,333 @@
+unit MaskEdit;
+
+interface
+
+uses WObjects, WinTypes, WinProcs, Strings;
+
+const
+    MAX_MASK_EDIT = 32;
+
+type
+    TMaskEdit = object(TEdit)
+        EditLength
+            : integer;
+        Mask, Pattern
+            : array [0..MAX_MASK_EDIT] of char;
+        constructor Init(AParent : PWindowsObject;
+            Id : integer; MaskPattern : PChar;
+            x, y, w, h, TextLength : integer);
+        procedure ValidateCursor(Forward:boolean);
+        procedure PutChar(AChar : char);
+        procedure Delete(Forward:boolean; Message:TMessage);
+        procedure InputChar(Pressed:char;
+            StartPos, EndPos : integer); virtual;
+    private
+        procedure WM_Char(var Message:TMessage);
+            virtual wm_First + wm_Char;
+        procedure WMLButtonUp(var Message:TMessage);
+            virtual wm_First + wm_LButtonUp;
+        procedure WMKeyDown(var Message:TMessage);
+            virtual wm_First + wm_KeyDown;
+        procedure WMSetFocus(var Message:TMessage);
+            virtual wm_First + wm_SetFocus;
+    end;
+    PMaskEdit = ^TMaskEdit;
+
+implementation
+
+{ Shifted - TRUE if Shift key is pressed }
+
+function Shifted:boolean;
+begin
+    Shifted := (GetKeyState(VK_SHIFT) AND $8000) <> 0;
+end;
+
+{ Control - TRUE if Control key is pressed }
+
+function Control:boolean;
+begin
+    Control := (GetKeyState(VK_CONTROL) AND $8000) <> 0;
+end;
+
+{ Init - Constructor for TMaskEdit }
+
+constructor TMaskEdit.Init(AParent : PWindowsObject; Id : integer;
+    MaskPattern : PChar; x, y, w, h, TextLength : integer);
+
+var
+    i, iMask, iPattern
+        : integer;
+    CharCode
+        : char;
+    Special
+        : boolean;
+begin
+    iMask        := 0;
+    i            := 0;
+    while (MaskPattern[i] <> #0)
+            AND (i < MAX_MASK_EDIT)
+            AND (i < TextLength) do
+        begin
+        CharCode    := MaskPattern[i];
+        { Alphabetics are pattern characters }
+        Special        := CharCode in ['A'..'Z','a'..'z'];
+        { Unless preceded by backslash }
+        if CharCode = '\' then
+            begin
+            i    := i + 1;
+            if i <= TextLength then
+                CharCode    := MaskPattern[i];
+            end;
+        if Special then
+            begin
+            Mask[iMask]       := ' ';
+            Pattern[iMask]    := CharCode;
+            end
+        else
+            begin
+            Mask[iMask]       := CharCode;
+            Pattern[iMask]    := ' ';
+            end;
+        iMask    := iMask+1;
+        i        := i+1;
+        end;
+    Mask[iMask]    := #0;
+    Pattern[iMask]    := #0;
+    EditLength    := iMask;
+    TEdit.Init(AParent, Id, @Mask, x, y, w, h, iMask+1, FALSE);
+end;
+
+{ ValidateCursor - Position cursor on non-literal }
+
+procedure TMaskEdit.ValidateCursor(Forward:boolean);
+var
+    StartPos, EndPos, iMask, Increment
+        : integer;
+    FoundStart
+        : integer;
+
+function  ValidatePos : boolean;
+var
+    Pos    : integer;
+begin
+    Pos        := iMask;
+    if (Pos < 0) or (Pos >= EditLength) then
+        ValidatePos    := FALSE
+    else
+
+        ValidatePos    := (Pattern[Pos] <> ' ');
+end;
+begin
+    GetSelection(StartPos, EndPos);
+    FoundStart    := -1;
+    if Forward then Increment := 1 else Increment := -1;
+    iMask        := StartPos;
+    while iMask <> FoundStart do
+        if ValidatePos then
+            FoundStart    := iMask
+        else
+            begin
+            iMask        := iMask + Increment;
+            { Reverse direction, if necessary }
+            if (iMask < 0) or (iMask >= EditLength) then
+                begin
+                Increment    := -Increment;
+                iMask        := iMask + Increment;
+                end;
+            end;
+    SetSelection(FoundStart, FoundStart+1);
+end;
+
+{ Delete - Delete current selection, maintain mask }
+
+procedure TMaskEdit.Delete(Forward:boolean; Message:TMessage);
+var
+    StartPos, EndPos, iMask
+        : Integer;
+    Finished    : boolean;
+    Buffer      : array[0..MAX_MASK_EDIT] of char;
+begin
+    GetSelection(StartPos, EndPos);
+    for iMask := StartPos to EndPos-1 do
+        Buffer[iMask-StartPos]    := Mask[iMask];
+    Buffer[EndPos-StartPos]    := #0;
+    DefWndProc(Message);
+    Insert(@Buffer);
+    SetSelection(StartPos, StartPos+1);
+
+    { Special futzing for backspace }
+    if not(Forward) then
+        begin
+        if StartPos > 0 then  StartPos := StartPos-1;
+        SetSelection(StartPos, StartPos);
+        ValidateCursor(Forward);
+        Insert(' ');
+        SetSelection(StartPos, StartPos+1);
+        ValidateCursor(Forward);
+        end;
+end;
+
+{ PutChar - Replace current selection with a character }
+
+procedure TMaskEdit.PutChar(AChar:char);
+var
+    StartPos, EndPos
+        : Integer;
+    Dummy
+        : array[0..2] of char;
+
+begin
+    Dummy[0]    := AChar;
+    Dummy[1]    := chr(0);
+    Insert(@Dummy);
+    ValidateCursor(TRUE);
+end;
+
+{ WMKeyDown - Handle delete and insert and
+              maintain overwrite mode }
+
+procedure TMaskEdit.WMKeyDown(var Message:TMessage);
+var
+    StartPos, EndPos, CursorPos, MaxPos
+        : integer;
+    ClipDataPtr
+        : PChar;
+    ClipData
+        : array [0..MAX_MASK_EDIT] of char;
+    ClipDataHandle
+        : THandle;
+begin
+    { If Pasting into control, handle it ourselves }
+    if (Message.WParam = VK_INSERT) AND not(Control) then
+        begin
+        if not(Shifted) then
+            { We don't support insert mode, so beep }
+            MessageBeep(0)
+        else
+            if not(OpenClipboard(HWindow)) then
+                MessageBeep(0)
+            else
+                begin
+                ClipDataHandle   := GetClipboardData(CF_TEXT);
+                if ClipDataHandle = 0 then
+                    begin
+                    MessageBeep(0);
+                    CloseClipBoard;
+                    end
+                else
+                    begin
+                    ClipDataPtr := GlobalLock(ClipDataHandle);
+                    StrLCopy(ClipData,ClipDataPtr,MAX_MASK_EDIT);
+                    GlobalUnlock(ClipDataHandle);
+{ Always close clipboard before generating Windows messages }
+                    CloseClipBoard;
+                    GetSelection(StartPos,EndPos);
+                    MaxPos    := StartPos + StrLen(ClipData);
+                    if MaxPos > EditLength then
+                        MaxPos   := EditLength;
+                    if MaxPos > EndPos-1 then
+                        MaxPos   := EndPos-1;
+                    for CursorPos := StartPos to MaxPos do
+                        begin
+                        SetSelection(CursorPos, CursorPos+1);
+                        InputChar(ClipData[CursorPos-StartPos],
+                            CursorPos, CursorPos+1);
+                        end;
+                    end;
+                end;
+        end
+
+    else if Message.WParam = VK_DELETE then
+        Delete(TRUE, Message)
+    else
+        DefWndProc(Message);
+
+    GetSelection(StartPos, EndPos);
+
+    if Message.WParam = VK_LEFT then
+        begin
+        if not(Shifted) then
+            begin
+            if StartPos > 0 then
+                StartPos    := StartPos - 1;
+            EndPos		:= StartPos + 1;
+            SetSelection(StartPos, EndPos);
+            end
+        end
+    else if Message.WParam = VK_RIGHT then
+        begin
+        if (StartPos = EndPos) AND not(Shifted) then
+            SetSelection(StartPos-1,StartPos);
+        end;
+
+end;
+
+{ WMLButtonUp - Ensure we stay in overwrite mode }
+
+procedure TMaskEdit.WMLButtonUp(var Message:TMessage);
+var
+    StartPos, EndPos
+        : integer;
+begin
+    DefWndProc(Message);
+    GetSelection(StartPos, EndPos);
+    if StartPos = EndPos then
+        SetSelection(StartPos, StartPos+1);
+end;
+
+{ WMSetFocus - Position cursor on non-literal character }
+
+procedure TMaskEdit.WMSetFocus(var Message:TMessage);
+begin
+    DefWndProc(Message);
+    ValidateCursor(TRUE);
+end;
+
+{ InputChar - Virtual handler for input characters }
+
+procedure TMaskEdit.InputChar(Pressed:char; StartPos, EndPos : integer);
+begin
+    case Pattern[StartPos] of
+        'n' :   { Only allow numerics }
+            if Pressed in ['0'..'9'] then
+                PutChar(Pressed)
+            else
+                MessageBeep(0);
+        'a' :   { Only allow alphabetics }
+            if Pressed in ['a'..'z','A'..'Z'] then
+                PutChar(Pressed)
+            else
+
+                MessageBeep(0);
+        else
+            if Pressed = Mask[StartPos] then
+                PutChar(Pressed)
+            else
+                MessageBeep(0);
+        end;
+end;
+
+{ WM_Char - Handle input characters }
+
+procedure TMaskEdit.WM_Char(var Message:TMessage);
+var
+    StartPos, EndPos
+        : integer;
+    Pressed
+        : char;
+begin
+    Pressed    := Chr(Message.WParam);
+    GetSelection(StartPos, EndPos);
+    if Message.WParam = VK_BACK then
+        Delete(FALSE, Message)
+    else
+        InputChar(Pressed, StartPos, EndPos);
+    GetSelection(StartPos, EndPos);
+    if StartPos = EndPos then
+        SetSelection(StartPos, StartPos+1);
+end;
+
+end.
+
+{ End of File } 
+

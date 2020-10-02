@@ -1,0 +1,77 @@
+/* PRN device driver which truncates lines and paginates */
+
+#define  LINES_PER_PAGE  55
+#define  LINE_LENGTH     79
+#define  TAB_SPACING      8
+
+#include "dd.h"
+#include <dos.h>
+
+void init() {
+request_header->status = DONE_STATUS;
+}
+
+void media_check() {bad_device_driver_function();}
+void build_bpb() {bad_device_driver_function();}
+void ioctl_input() {bad_device_driver_function();}
+void input() {bad_device_driver_function();}
+void nondestructive_input() {bad_device_driver_function();}
+void input_status() {bad_device_driver_function();}
+void input_flush() {bad_device_driver_function();}
+
+static void BIOS_print(c) int c; {
+union REGS r;
+r.h.ah = 0;
+r.h.al = c;
+r.x.dx = 0;
+int86(0x17, &r, &r);
+if (r.h.ah&1) {
+  request_header->status = ERROR_STATUS+DONE_STATUS+WRITE_FAULT;
+  exit();
+  }
+}
+
+static int line = 0;
+static int column = 0;
+
+static void print_character(c) int c; {
+switch (c) {
+  case '\t':
+    do print_character(' ');
+    while (column%TAB_SPACING!=0 && column<LINE_LENGTH);
+    break;
+  case '\f':
+    BIOS_print(c);
+    line = 0;
+    break;
+  case '\r':
+    BIOS_print(c);
+    column = 0;
+    break;
+  case '\n':
+    BIOS_print(c);
+    if (++line == LINES_PER_PAGE) {
+      BIOS_print('\f');
+      line = 0;
+      }
+    break;
+  default:
+    if (' '<=c && c<='~' && column<LINE_LENGTH) {
+      BIOS_print(c);
+      column++;
+      }
+  }
+}
+
+void output() {
+int k;
+for (k=0; k<request_header->x.io.count; k++)
+  print_character(request_header->x.io.transfer_address[k]);
+request_header->status = DONE_STATUS;
+}
+
+void output_with_verify() {bad_device_driver_function();}
+void output_status() {bad_device_driver_function();}
+void output_flush() {bad_device_driver_function();}
+void ioctl_output() {bad_device_driver_function();}
+

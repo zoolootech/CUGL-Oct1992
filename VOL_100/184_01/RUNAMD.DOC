@@ -1,0 +1,212 @@
+.HE HARDWARE FLOATING POINT ROUTINES FOR C/80-----------Ted Carnevale
+     Wheî É talkeä witè Walô Bilofskù oæ thå Softwarå Toolworkó 
+oveò á yeaò ago¬ hå suggesteä thaô É senä thió tï thå Ã Users§ 
+Group¬ sï herå iô is®  Additionaì detailó abouô thå desigî oæ 
+theså routines¬ anä possiblå extensionó tï otheò 8080/Z8° Ã 
+implementations¬ arå containeä iî mù articlå iî thå Nov/Deã 198µ 
+issuå oæ Micro/Systemó Journaì (pp.46-54).
+     Mosô oæ thå codå iî theså fileó waó writteî bù me¬ anä É 
+releaså iô tï thå publiã domain¬ grantinç permissioî foò non-
+profiô use®  Thå smalì amounô oæ codå iî theså fileó thaô comeó 
+directlù froí thå C/8° floating-poinô librarù ió copyrighô 198³ 
+bù Walteò Bilofsky¬ anä useä bù permission.
+     Theså fileó contaiî á replacemenô foò parô oæ thå C/8° 
+(Softwarå Toolworks¬ versioî 3.° foò 8080© floatinç poinô librarù 
+thaô useó thå AMÄ 9511Á oò itó Inteì twin¬ thå 8231Á (hencefortè 
+referreä tï aó thå FPP© tï speeä uğ floatinç poinô matè bù morå 
+thaî aî ordeò oæ magnitude®  Iô takeó 23¸ secondó foò C/8° tï ruî 
+Savage'ó benchmarë (Dr.Dobb'ó Journaì vol.9´ (Aug.1984© pp.110-
+114© oî á 6mHú 8085¬ buô á 4mHú machinå witè á 2mHú FPĞ needó 
+onlù 1¶ secondó usinç theså routines®  
+     MCHIP8° bù Jameó Dicë (CUÇ 162© doeó mucè thå samå aó thå 
+patcè describeä here¬ buô therå arå somå importanô differences®  
+MCHIP8° illustrateó ho÷ tï modifù thå performancå oæ softwarå 
+builô froí á librarù oæ linkablå moduleó wheî alì thaô ió knowî 
+abouô theí ió thå nameó oæ theiò entrù points¬ ho÷ theù pasó 
+parameteró anä results¬ anä whaô functionó theù accomplish®  
+Unfortunately¬ thå differencå betweeî thå formató useä bù C/8° 
+anä thå FPĞ tï represenô floatinç poinô valueó complicateó thió 
+approach®  Iô forceó thå useò oæ MCHIP8° tï abandoî initializa
+tioî oæ floats¬ anä requireó speciaì atof(© anä ftoa(© functions.
+     Mù aií waó tï squeezå aó mucè speeä aó possiblå ouô oæ C/8° 
+whilå hidinç unnecessarù detailó froí thå user®  É particularlù 
+didn'ô wanô tï bå bothereä witè anythinç thaô woulä restricô 
+portabilitù oæ sourcå code¬ sincå É collaboratå witè otheò useró 
+oæ C/8° whï dï noô havå thå benefiô oæ aî FPP®  Thå mosô direcô 
+waù tï dï thió waó tï rewritå parô oæ C/80'ó floatinç poinô 
+library®  Fortunately¬ Softwarå Toolworkó provideó thå sourcå 
+code¬ sï thió tasë waó á relativelù straightforward.
+
+
+                         ABOUT THE PATCH
+
+     Thió patcè foò C/80'ó floatinç poinô librarù handleó alì oæ 
+thå dirtù worë relateä tï conversioî betweeî thå differenô 
+floatinç poinô representationó useä bù C/8° anä thå FPĞ (seå 
+noteó beforå labeì C2AMDº iî FL3.MAC)®  C/8° anä thå FPĞ botè uså 
+á 2´ biô two'ó complemenô mantissá normalizeä tï á valuå betweeî 
+0.µ anä 1®  However¬ C/8° assumeó thaô thå higè biô oæ thå 
+mantissá ió ± (reasonablå sincå it'ó normalized)¬ anä useó thå 
+24tè biô foò mantissá sign¬ sï iô caî represenô numberó froí 2^-
+12¸ tï 2^127®  Thå 9511Á oò 8231A¬ whicè retainó thå higè biô oæ 
+thå mantissa¬ haó tï puô thå mantissá sigî biô iî thå exponenô 
+byte¬ anä caî handlå onlù 2^-6´ tï 2^+63.
+     Thå conversioî routineó arå aô labeló C2AMDº anä AMD2Cº iî 
+FL3.MAC®  Theså routineó arå alwayó interposeä betweeî thå resô 
+oæ C/8° anä thå FPP¬ sï thå useò caî emploù C/80'ó floatinç poinô Šinitializatioî anä thå originaì atof(© anä ftoa(© functionó 
+withouô concerî foò thå formaô difference.
+     É firsô wrotå theså routineó aó functionó anä testeä theí 
+witè fpã (filå FPC.C)¬ á prograí thaô printó thå biô patternó foò 
+variouó floatinç poinô valueó beforå anä afteò conversion®  Thió 
+prograí maù bå helpfuì foò useró witè otheò Ã implementationó 
+whoså inneò workingó arå noô detaileä iî thå manual®  Filå 
+C80DEF.È containó definitionó thaô É finä helpfuì wheî usinç 
+C/80.
+     Somå oæ thå routineó iî thió patcè arå concerneä witè 
+passinç argumentó froí C/8° tï thå FPĞ anä returninç resultó tï 
+C/80®  Thå brieæ descriptioî oæ parameteò anä resulô passinç iî 
+thå C/8° manuaì ió accompanieä bù á suggestioî thaô interesteä 
+useró examinå thå codå produceä bù thå compileò tï figurå iô ouô 
+foò themselves®  Thå sourcå codå iî fileó LGFLTLIB.ASÍ anä 
+FLOATLIB.ASÍ thaô comå witè C/8° waó verù helpfuì foò decipherinç 
+whaô happenó tï argumentó anä functioî results.
+     Thå typicaì floatinç poinô operatioî requireó morå thaî 16· 
+microsecondó (usec© jusô tï converô formató anä pasó datá bacë 
+anä fortè tï thå FPĞ oî á 4mHú machinå (8080¬ 808µ oò Z80)®  Thió 
+ió slo÷ enougè thaô iô doesn'ô seeí wortè thå efforô tï replacå 
+thå floating-poinô additioî anä subtractioî routines®  É alsï 
+didn'ô botheò replacinç floatinç poinô comparison¬ oò int-to-
+floaô conversioî routines®  However¬ division¬ multiplication¬ 
+anä thå otheò functionó arå mucè fasteò witè thå hardwarå matè 
+chip.
+     Testó indicateä thaô iô woulä bå beneficiaì tï replacå thå 
+softwarå multiplicatioî anä divisioî routineó foò longó witè 
+hardwarå operations®  C/8° anä thå FPĞ uså thå samå four-bytå 
+formaô foò longs¬ sï thió shoulä bå easy®  Anù volunteeró tï dï 
+this?
+     Beforå replacinç C/80'ó floatinç poinô operationó witè FPĞ 
+routines¬ É wrotå á seô oæ functionó thaô uså thå FPĞ tï 
+duplicatå C/80'ó floatinç poinô operations¬ anä assembleä theí 
+witè M80®  É testeä theí witè á prograí thaô steppeä througè á 
+serieó oæ arguments¬ feedinç theí tï C80'ó originaì floatinç 
+poinô librarù anä tï mù speciaì FPĞ routines¬ anä compareä thå 
+resultó tï bå surå theù gavå thå samå answeró aó theiò softwarå 
+counterparts®  Whicè theù did.
+     É dissecteä FLIBRARY.REÌ witè LIÂ usinç thå /Ì optioî tï 
+determinå thaô thå modulå thaô containeä thå floatinç poinô 
+multiplicatioî anä divisioî routineó waó calleä FLTLIB®  Thå 
+sourcå codå filå FLOATLIB.ASÍ containó thå sourcå foò severaì 
+modules¬ includinç FLTLIB®  FLTLIÂ endó witè á REÔ jusô beforå 
+thå labeì f_stak:.
+
+
+                    HOW TO INSTALL THE PATCH
+
+     Thå fileó FL1.MAC¬ FL2.MAC¬ anä FL3.MAÃ arå replacementó foò 
+portionó oæ thå FLOATLIB.ASÍ filå provideä witè C/80®  Theså werå 
+writteî foò Microsoft'ó M80¬ buô theù caî bå altereä easilù foò 
+uså witè Digitaì Research'ó RMAÃ oò thå assembleò provideä witè 
+C/80.
+     Usinç youò favoritå editor¬ extracô thå FLTLIÂ codå froí ŠFLOATLIB®  Adä thå lisô oæ ENTRYs¬ EXTRNs¬ DSEGó etc® containeä 
+iî FL1.MAC®  Modifù thå fouò worä tablå aô Ftabº aó indicateä bù 
+FL2.MAÃ (commenô ouô thå thirä anä fourtè DWs)®  Theî cuô ouô thå 
+codå froí fmult3º tï jusô beforå pophrtº anä replacå iô witè thå 
+contentó oæ FL3.MAC®  Bå surå tï changå thå i/ï porô addresseó tï 
+suiô youò particulaò hardware!
+     É havå noô includeä thå absolutå valuå oò polynomiaì 
+functionó (fabs(© anä F_poly()© iî thió patch¬ althougè theù arå 
+parô oæ thå original MATHLIB®  Iæ yoõ wanô tï includå theså iî youò 
+versioî oæ FLTLÂ (yes¬ É nameä thå patcheä modulå FLTLÂ tï 
+distinguisè iô froí thå originaì FLTLIB)¬ uså C/8° tï generatå 
+thå appropriatå assembleò codå froí thå Ã sourcå anä patcè thå 
+assemblù codå intï youò FLTLÂ beforå assembly®  Iæ yoõ arå reallù 
+ambitious¬ yoõ coulä speeä uğ Fpoly(© eveî morå bù usinç á 
+modifieä "synthetiã division¢ algorithí thaô leaveó intermediatå 
+resultó iî thå FPP'ó stack®  Bù eliminatinç repeateä unnecessarù 
+conversionó oæ intermediatå resultó tï anä froí C/80'ó floaô 
+format¬ thió shoulä acceleratå Fpoly(© considerably.
+     Whateveò youò choice¬ thå nexô steğ ió tï namå thå resultinç 
+filå NUFLIB.MAÃ anä assemblå iô witè M8° tï producå NUFLIB.REL®  
+No÷ uså LIÂ tï sniğ thå FLTLIÂ modulå ouô oæ FLIBRARY.REÌ thaô 
+camå witè youò copù oæ C/8° anä replacå iô witè NUFLIB®  Thå 
+followinç SUBMIÔ filå shoulä dï thå job:
+
+          ;start of runlib.sub
+          XSUB
+          LIB
+          NEWLIB=FLIBRARY<..FLTLIB-1>
+          NUFLIB,FLIBRARY<FLTLIB+1..>
+          /E
+          ;end of runlib.sub
+
+Thå resulô shoulä bå NEWLIB.REL¬ whicè wilì uså thå AMÄ 9511Á oò 
+Inteì 8231Á foò floatinç poinô operations®  Feedinç NEWLIÂ 
+insteaä oæ FLIBRARÙ tï youò linkinç loadeò wilì producå COÍ fileó 
+that use the FPP for floating point math.
+     Don'ô forgeô thaô NEWLIÂ containó thå squarå rooô anä tran
+scendentaì functionó thaô arå parô oæ thå olä MATHLIB®  Includinç 
+botè NEWLIÂ anä MATHLIÂ iî commandó tï youò linkeò maù producå aî 
+erroò messagå indicatinç duplicatioî oæ theså routines®
+     Iæ yoõ havå alreadù useä LIÂ tï builä á singlå librarù ouô 
+oæ alì oæ thå REÌ fileó thaô yoõ use¬ yoõ wilì havå troublå 
+extractinç MATHLIÂ froí youò library®  LIÂ caî incorporatå 
+moduleó witè · characteò nameó intï á library¬ buô sincå iô wilì 
+onlù accepô nameó witè á maximuí oæ ¶ characteró wheî yoõ trù tï 
+accesó individuaì moduleó iî á library¬ iô won'ô bå ablå tï finä 
+MATHLIB®  Iæ thió happens¬ yoõ havå twï choicesº  builä á ne÷ 
+librarù froí scratch» oò uså LIÂ witè itó /Ì optioî tï identifù 
+thå namå oæ thå lasô modulå thaô precedeó MATHLI(B© anä thå namå 
+oæ thå firsô modulå thaô followó it®  If¬ foò thå sakå oæ 
+argument¬ theså moduleó werå calleä PREÖ anä NEXT¬ anä youò biç Ã 
+librarù waó nameä CLIB¬ theî 
+
+          LIB XCLIB=CLIB<..PREV>,CLIB<NEXT..>/E
+Šwill extract MATHLIB from CLIB, producing library XCLIB.
+
+
+                  ERROR-DETECTION AND HANDLING
+
+     Thå patcheä FLTLÂ haó speciaì error-detectioî anä handlinç 
+routines®  Twï typeó oæ erroró maù occur®  Aî attempô tï pasó aî 
+argumenô thaô ió toï smalì oò toï biç foò thå FPĞ (outsidå thå 
+rangå 2^-6´ tï 2^63© produceó á softwarå error®  Thå FPĞ itselæ 
+produceó á hardwarå erroò iæ iô encounteró arithmetiã overflow¬ 
+underflow¬ dividå bù zero¬ takinç thå loç oò squarå rooô oæ á 
+negativå number¬ oò aî argumenô toï biç foò thå exponentiaì oò 
+inverså sinå oò cosinå functions®  Aó FLTLÂ ió presentlù written¬ 
+anù onå oæ theså erroró resultó iî aî erroò messagå anä thå codå 
+wilì exiô tï thå operatinç system.
+     Aô timeó iô maù bå á betteò strategù tï handlå certaiî 
+hardwarå errors¬ sucè aó underflow¬ bù returninç á zerï oò somå 
+otheò valuå insteaä oæ abortinç thå program®  Thereforå É 
+includeä á functioî fpmask(© thaô caî bå useä tï seô thå erroò 
+detectioî masë undeò prograí control®  Thå defaulô conditioî ió 
+tï tesô for¬ anä crasè iî caså of¬ anù hardwarå error®  Iæ anù oæ 
+thå FPĞ erroò testó ió disabled¬ iô ió uğ tï thå programmeò tï 
+tesô foò anä handlå sucè erroró iî á meaningfuì way®  Thió mighô 
+bå donå witè á Ã routinå thaô checkó thå statuó registeò 
+immediatelù afteò anù suspecô operation¬ branchinç tï aî error-
+handlinç routinå iæ aî erroò occurs.
+
+
+                           CONCLUSION
+
+     Thå finaì resulô oæ Savage'ó benchmarë usinç thå FPĞ ió 232· 
+(roundeä ofæ tï thå nearesô integer--erroò 2E+2)®  Thió ió 
+comparablå tï singlå precisioî FORTRAN¬ slightlù betteò accuracù 
+(á dubiouó terí here© thaî witè softwarå arithmetic¬ anä jusô aó 
+gooä (oò bad© aó anù otheò Am951± oò Inteì 8231Á FPĞ iî thå list®  
+Iô ió noô sufficienô foò ill-conditioneä matriø equations¬ buô iô 
+ió morå thaî adequatå foò lesó demandinç applications¬ sucè aó 
+averaginç anä displaù transformationó oæ datá followinç A/Ä 
+conversion®  However¬ thå speeä oæ operatioî ió fasteò thaî anù 
+otheò ¸ biô machinå runninç aô 4mHz¬ anä abouô 1µ timeó fasteò 
+thaî C80'ó softwarå floatinç poinô library®  
+     Keep on crunching!
+
+Ted Carnevale
+Neurology Dept., SUNY
+HSC T12 Rm020
+Stony Brook, N.Y. 11794
+12/27/85
+

@@ -1,0 +1,445 @@
+#include <dos.h>
+#include "dma.h"
+
+//--- Global Data --------------------------------------------------------
+BYTE PageRegister[ 8 ] = { DMA_PAGE_0, DMA_PAGE_1, DMA_PAGE_2, DMA_PAGE_3, 
+                           DMA_PAGE_4, DMA_PAGE_5, DMA_PAGE_6, DMA_PAGE_7 };
+DMA_DESCRIPTOR DmaDescriptor;
+DMA_INFO DmaInfo;
+//--- External References ------------------------------------------------
+extern void Device_RetrieveDmaInfo( DMA_INFO * );
+extern INTERRUPT_TYPE Device_TypeOfInterrupt( void );
+extern USHORT Device_QuerySpaceAvail( void );
+extern USHORT Device_QueryDataAvail( void );
+extern Env_DoEoi( void );
+//--- Local Functions ----------------------------------------------------
+void DmaAbort(DMA_INFO *);
+void DmaSendComplete( DMA_INFO * );
+void DmaReceiveComplete( DMA_INFO * );
+void DmaSend( DMA_INFO * );
+void DmaReceive( DMA_INFO * );
+void ProgramDmaController( DMA_INFO * );
+USHORT ReadTransferCount( DMA_INFO * );
+void CheckForPageWrap( USHORT *pCount, ULONG physAddr );
+#ifdef DOS
+ULONG Dos_GetPhysAddr( char far *pBuffer, DMA_INFO *pDmaInfo );
+#endif
+#ifdef WIN3
+ULONG Win3_GetPhysAddr( char far * pBuffer, DMA_INFO *pDmaInfo );
+void Win3_ReleaseBuffer( DMA_INFO * );
+#endif
+#ifdef OS2
+ULONG OS2_GetPhysAddr( char *pBuffer, DMA_INFO *pDmaInfo, 
+      BUF_INFO *pBufStruc );
+#endif
+
+void InterruptHandler( void )
+{
+   INTERRUPT_TYPE intType;
+
+   /* Determine cause(s) of interrupt. */  
+   intType = Device_TypeOfInterrupt();
+
+   /* Interrupt priority is:                          
+    * 1. DmaAbort
+    * 2. DmaComplete
+    * 3. DeviceRdyToTx
+    * 4. DeviceRdyToRx */
+   if (intType.DmaAbort)
+      DmaAbort( &DmaInfo );
+   if (intType.DmaComplete)
+   {
+      /* Interrupt type doesn't tell us whether completed 
+       * transfer was TO device or FROM device. Use 
+       * TransferType field to decide. */
+      if (DmaInfo.TransferType == TRANSFER_WRITE_TO_MEM )
+         DmaReceiveComplete( &DmaInfo );
+      else if (DmaInfo.TransferType == TRANSFER_READ_FROM_MEM)
+         DmaSendComplete( &DmaInfo );
+   }
+
+  /* After DmaComplete housekeeping, driver is 
+   * ready to handle another DMA transfer during 
+   * same interrupt, if device is ready. */ 
+  if (intType.DeviceRdyToTx)          
+     DmaReceive( &DmaInfo);           
+  if (intType.DeviceRdyToRx)          
+     DmaSend( &DmaInfo);              
+   /* DMA stuff is complete. Must send EOI to 
+    * interrupt controller before returning. */
+   Env_DoEoi();  
+}
+
+void DmaAbort( DMA_INFO *pDmaInfo )
+{
+   USHORT   bytesNotTransferred;
+
+/* Must determine how many bytes were transferred 
+ * before abort. First ask DMA controller how many 
+ * bytes have not yet been transferred. Then 
+ * subtract from original transfer count. */
+   bytesNotTransferred = ReadTransferCount( pDmaInfo );
+   pDmaInfo->TransferCount = pDmaInfo->TransferCount - bytesNotTransferred;
+   // Now that TransferCount field is updated, 
+   // call subroutine to advance queue pointers.
+   if (pDmaInfo->TransferType == TRANSFER_WRITE_TO_MEM)
+      DmaReceiveComplete( pDmaInfo );
+   else if (pDmaInfo->TransferType == TRANSFER_READ_FROM_MEM)   
+      DmaSendComplete( pDmaInfo );
+}
+
+void DmaReceiveComplete( DMA_INFO *pDmaInfo )
+{
+   // Update receive queue ptr, accounting for wrap.
+   pDmaInfo->RxBuf.pIn += pDmaInfo->TransferCount;
+   if (pDmaInfo->RxBuf.pIn > pDmaInfo->RxBuf.pEnd)
+      pDmaInfo->RxBuf.pIn = pDmaInfo->RxBuf.pStart;
+
+#ifdef WIN3
+   Win3_ReleaseBuffer( pDmaInfo );
+#endif
+
+}
+
+void DmaSendComplete( DMA_INFO *pDmaInfo )
+{
+   // Update transmit queue ptr, accounting for wrap.
+   pDmaInfo->TxBuf.pOut += pDmaInfo->TransferCount;
+   if (pDmaInfo->TxBuf.pOut > pDmaInfo->TxBuf.pEnd)
+      pDmaInfo->TxBuf.pOut = pDmaInfo->TxBuf.pStart;
+
+#ifdef WIN3
+   Win3_ReleaseBuffer( pDmaInfo );
+#endif
+
+}
+
+void DmaSend( DMA_INFO *pDmaInfo )
+{
+   char     *pIn, *pOut; 
+   USHORT   bytesInQueue;
+   USHORT   roomInDevice;
+
+   // Calculate bytes in driver's transmit queue.        
+   pOut = pDmaInfo->TxBuf.pOut;
+   pIn = pDmaInfo->TxBuf.pIn;
+   if (pIn >= pOut)       
+   {
+      bytesInQueue = pIn - pOut;
+   }
+   else
+   {
+      // DMA transfer data must be contiguous, 
+      // so stop at end of buffer.
+      bytesInQueue = pDmaInfo->TxBuf.pEnd - pOut + 1;
+   }
+
+   // Ask device how much space it has available 
+   // for new data. Device may not have enough space for 
+   // all we have.
+   roomInDevice = Dev_QuerySpaceAvail();
+   if (roomInDevice < bytesInQueue)
+      pDmaInfo->TransferCount = roomInDevice;
+   else
+      pDmaInfo->TransferCount = bytesInQueue;
+
+   // Determine physical address of first byte in DMA 
+   // transfer. Since we're sending data _to_ device, 
+   // use the pOut pointer.
+   pDmaInfo->TransferPhys = 
+      GET_PHYS_ADDR( (char far *)pDmaInfo->TxBuf.pOut,
+                     pDmaInfo, &pDmaInfo->TxBuf );
+
+   pDmaInfo->TransferType = TRANSFER_READ_FROM_MEM;      
+   ProgramDmaController( pDmaInfo );
+}
+
+void DmaReceive( DMA_INFO *pDmaInfo )
+{
+   USHORT   spaceAvail;
+   USHORT   dataAvail;
+   char     *pOut, *pIn;
+
+   // Calculate space in driver's receive queue.
+   pIn = pDmaInfo->RxBuf.pIn;
+   pOut = pDmaInfo->RxBuf.pOut;
+   if (pOut > pIn)       
+   {
+      spaceAvail = pOut - pIn - 1; 
+   }
+   else
+   {
+      // DMA transfer data must be contiguous, 
+      // so stop at end of buffer.
+      spaceAvail = pDmaInfo->RxBuf.pEnd - pIn + 1;
+      if (pOut == pDmaInfo->RxBuf.pStart)
+         spaceAvail--;  // must leave last byte empty
+   }
+   if (spaceAvail)
+   {
+      dataAvail = Dev_QueryDataAvail();
+      if (dataAvail > spaceAvail)   
+         pDmaInfo->TransferCount = spaceAvail;
+      else 
+         pDmaInfo->TransferCount = dataAvail;
+
+      // Determine physical address of first byte in 
+      // DMA transfer. Since we're receiving data 
+      // _from_ device, use the pIn pointer.
+      pDmaInfo->TransferPhys = 
+            GET_PHYS_ADDR( (char far *)pDmaInfo->RxBuf.pIn,
+                           pDmaInfo, &pDmaInfo->RxBuf );
+      pDmaInfo->TransferType = TRANSFER_WRITE_TO_MEM;      
+      ProgramDmaController( pDmaInfo );
+   }
+}
+
+USHORT ReadTransferCount( DMA_INFO *pDmaInfo )
+{
+   USHORT   count;
+   BYTE     regTransferCount;
+   BYTE     channel = pDmaInfo->Channel;  
+
+   if (pDmaInfo->BusType != BUS_MICROCHANNEL)
+   {
+      if (channel <= 3)
+      {
+         regTransferCount = DMA_CONTROLLER_0_3 
+                           + DMA_OFFSET_COUNT;
+         outp( DMA_CONTROLLER_0_3 + DMA_OFFSET_CLEAR, 0 );
+      }
+      else
+      {
+         regTransferCount = DMA_CONTROLLER_4_7 
+                           + DMA_OFFSET_COUNT;
+         outp( DMA_CONTROLLER_4_7 + DMA_OFFSET_CLEAR, 0 );
+      }
+      regTransferCount += (channel << 1);
+      // First byte read is LSB of count.
+      count = inp( regTransferCount );    
+      // Second byte read is MSB of count. 
+      // Combine with LSB.
+      count = (count << 8) | (inp( regTransferCount ) ); 
+   }
+   else
+   {
+      outp( DMA_XFN, Get_Count + channel );
+      // First byte read is LSB of count.
+      count = inp( DMA_EXE );               
+      // Second byte read is MSB of count. 
+      // Combine with LSB.
+      count = (count >> 8) | inp( DMA_EXE );  
+   }  
+   return( count - 1 );
+}
+
+void ProgramDmaController( DMA_INFO * pDmaInfo )
+{
+   ULONG    physAddr = pDmaInfo->TransferPhys;
+   USHORT   count = pDmaInfo->TransferCount;
+   BYTE     channel = pDmaInfo->Channel;
+   BYTE     baseReg;
+   BYTE     tempReg;   
+
+   // Controller chips on MicroChannel are 
+   // different than XT or AT.
+   if (pDmaInfo->BusType != BUS_MICROCHANNEL)
+   {
+      if (channel <= 3)
+      {
+         baseReg = DMA_CONTROLLER_0_3;
+         outp( DMA_CONTROLLER_0_3 + DMA_OFFSET_CLEAR, 0 );
+      }
+      else
+      {
+         baseReg = DMA_CONTROLLER_4_7;
+         outp( DMA_CONTROLLER_4_7 + DMA_OFFSET_CLEAR, 0 );
+      }
+      // Set channel's mask bit to disable channel 
+      outp( baseReg + DMA_OFFSET_MASK, channel | 0x04 );
+      // Set mode to read or write.   
+      if (pDmaInfo->TransferType == TRANSFER_READ_FROM_MEM)
+      {
+         outp( baseReg + DMA_OFFSET_MODE, channel 
+                                    | DMA_type_read );
+      }
+      else
+      {
+         outp( baseReg + DMA_OFFSET_MODE, channel 
+                                    | DMA_type_write );
+      }
+      // Set up address register. Remember to do 
+      // "shift magic" if transfer will be a 16-bit 
+      // transfer (channels 4-7).
+      if (channel >= 4)
+         physAddr >>= 1;
+      tempReg = baseReg + DMA_OFFSET_ADDRESS + (channel << 1);
+      outp( tempReg, LOBYTE((LUSHORT( physAddr ))) );  // bits 7-0  go first
+      outp( tempReg, HIBYTE((LUSHORT( physAddr ))) );  // bits 15-8 go next
+      // Set up transfer count, which is always I/O address 
+      // after address register. 
+      tempReg++;     
+      count = pDmaInfo->TransferCount - 1;
+      if (channel >= 4)
+         count >>= 1;
+      outp( tempReg, LOBYTE( count ) );   // bits 7-0
+      outp( tempReg, HIBYTE( count ) );   // bits 15-8
+      // Set up page table register.
+      tempReg = PageRegister[ channel ];
+      outp( tempReg, LOBYTE(HIUSHORT( physAddr )) );  // bits 23-16
+      // Clear channel's mask bit to enable channel 
+      outp( baseReg + DMA_OFFSET_MASK, channel );
+   }
+   else
+   {
+      // Disable transfers on this channel.            
+      outp( DMA_XFN, Set_Chn_Mask + channel );
+      // Set channel mode to read or write.
+      outp( DMA_XFN, Set_Mode + channel );
+      if (pDmaInfo->TransferType == 
+                              TRANSFER_READ_FROM_MEM)
+      {
+         outp( DMA_EXE, Transfer_Data );
+      }
+      else
+      {
+         outp( DMA_EXE, Transfer_Data | Write_Mem );
+      }
+      // Set up address register
+      outp( DMA_XFN, channel + Set_Mem_Adr );
+      outp( DMA_EXE, LOBYTE((LUSHORT( physAddr ))) );  
+      outp( DMA_EXE, HIBYTE((LUSHORT( physAddr ))) );  
+      outp( DMA_EXE, LOBYTE((HUSHORT( physAddr ))) );  
+      // Set up transfer count.
+      count = pDmaInfo->TransferCount - 1;
+      outp( DMA_XFN, Set_Count + channel );
+      outp( DMA_EXE, LOBYTE( count ) ); // bits 7-0
+      outp( DMA_EXE, HIBYTE( count ) ); // bits 15-8
+      // Enable transfers on this channel.          
+      outp( DMA_XFN, Reset_Chn_Mask + channel );
+   }
+}
+
+#ifdef DOS
+ULONG Dos_GetPhysAddr( char far *pBuffer, DMA_INFO *pDmaInfo )
+{
+   ULONG       physAddr;
+
+   physAddr = (ULONG)FP_SEG( pBuffer );
+   physAddr <<= 4;
+   physAddr += (ULONG)FP_OFF( pBuffer );
+   // If transfer will cross over 64K page boundary, 
+   // shorten transfer by updating count. 
+   CheckForPageWrap( &(pDmaInfo->TransferCount), physAddr );
+   return( physAddr );
+}
+#endif
+
+#ifdef WIN3
+ULONG Win3_GetPhysAddr( char far * pBuffer, DMA_INFO *pDmaInfo )
+{
+   DMA_DESCRIPTOR *pDmaDescriptor;
+   char  far      *pVdsCheckByte;
+   BYTE           channel = pDmaInfo->Channel;
+
+   // Can't usually point directly to physical 
+   // memory in Windows, but Windows guarantees 
+   // selector 0x40 points to physical 0x0400.
+   FP_SEG( pVdsCheckByte ) = 0x40;
+   FP_OFF( pVdsCheckByte ) = 0x7B;
+   if (!(*pVdsCheckByte & 0x20))
+   {
+      // VDS is not available, do 
+      // real mode calculation.
+      Dos_GetPhysAddr( pBuffer, pDmaInfo );
+   }
+   else
+   {
+      // Disable Translation
+      _asm
+      {
+         mov   ah, VDS_SERVICES
+         mov   al, VDS_DISABLE_TRANSLATION
+         mov   bl, channel
+         int   0x4B
+      }   
+
+      // Lock buffer region 
+      DmaDescriptor.Selector = FP_SEG( pBuffer );
+      DmaDescriptor.Linear = FP_OFF( pBuffer );
+      DmaDescriptor.Size = pDmaInfo->TransferCount;
+      pDmaDescriptor = &DmaDescriptor;
+      _asm
+      {
+         mov   ah, VDS_SERVICES
+         mov   al, VDS_LOCK
+         mov   dx, VDS_FLAGS_COPY+VDS_FLAGS_ALIGN64K+VDS_FLAGS_ALIGN128K
+         mov   di, pDmaDescriptor
+         push  es
+         push  ds
+         pop   es       
+         int   0x4B
+         pop   es
+      }   
+      
+      return( DmaDescriptor.Physical );   
+   }
+   
+}     
+
+void Win3_ReleaseBuffer( DMA_INFO *pDmaInfo )
+{
+   BYTE     channel = pDmaInfo->Channel;
+   DMA_DESCRIPTOR *pDmaDescriptor;
+
+   // Enable Translation
+   _asm
+   {
+      mov   ah, VDS_SERVICES
+      mov   al, VDS_ENABLE_TRANSLATION
+      mov   bl, channel
+      int   0x4B
+   }   
+   // Unlock buffer region 
+   pDmaDescriptor = &DmaDescriptor;
+   _asm
+   {
+      mov   ah, VDS_SERVICES
+      mov   al, VDS_UNLOCK
+      mov   dx, VDS_FLAGS_COPY
+      mov   di, pDmaDescriptor
+      push  es
+      push  ds
+      pop   es       
+      int   0x4B
+      pop   es
+   }   
+}
+#endif
+
+#ifdef OS2
+ULONG OS2_GetPhysAddr( char *pBuffer, 
+               DMA_INFO *pDmaInfo, BUF_INFO *pBufStruc )
+{
+   char  *pDistanceFromStart;
+   ULONG physAddr;
+
+   pDistanceFromStart = pBuffer - pBufStruc->pStart;
+   physAddr = pBufStruc->PhysAddr + 
+            (ULONG)pDistanceFromStart;
+   CheckForPageWrap( &(pDmaInfo->TransferCount), physAddr );
+   return( physAddr );   
+}
+#endif
+
+void CheckForPageWrap( USHORT *pCount, ULONG physAddr )
+{
+   ULONG       endPhysAddr;
+
+   endPhysAddr = physAddr + (ULONG)*pCount - 1;
+   if ( (endPhysAddr & 0xFFFF0000) != 
+         (physAddr & 0xFFFF0000) )
+      *pCount = 0x0000 - (USHORT)physAddr;
+}
+
+

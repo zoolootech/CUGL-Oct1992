@@ -1,0 +1,71 @@
+/* argument() function for device driver
+
+SYNOPSIS
+
+     #include "dd.h"
+
+     s = argument(n);
+
+     int n;             number of argument desired
+     char *s;           n-th argument
+
+DESCRIPTION
+
+This function, when called from the init() function, returns the text of the
+n-th argument in the line in the CONFIG.SYS file used to install the driver.
+The 0-th argument is the file specification for the driver.  If there is no
+n-th argument, the function returns NULL.  If the argument is more than 64
+characters long, it is truncated to that length.  For example, if the driver
+is installed by the following line
+
+     DEVICE=RAMDISK.SYS 200 64
+
+then
+
+     argument(0)  is  "RAMDISK.SYS"
+     argument(1)  is  "200"
+     argument(2)  is  "64"
+     argument(3)  is  NULL
+
+CAUTION
+
+The function uses a single internal buffer, so the returned string is
+destroyed by the next call.  If it is called from outside the init()
+function, it will return nonsense.  It uses the pointer 
+
+     request_header->x.init.pointer.command_line
+
+which overlays the pointer
+
+     request_header->x.init.pointer.bpb_table
+
+Therefore, it cannot be successfully called after the latter pointer has been
+initialized by a block device driver.
+
+*/
+
+#include "dd.h"
+
+#define MAXIMUM_ARGUMENT_LENGTH 64
+
+char *argument(n) int n; {
+static char buffer[MAXIMUM_ARGUMENT_LENGTH+1];
+char *p;
+int c;
+p = request_header->x.init.pointer.command_line;
+c = *p++;
+while (n>=0) {
+  int i;
+  while (c==' ' || c=='\t' || c==0) c = *p++;
+  if (c=='\r' || c=='\n') return NULL;
+  i = 0;
+  while (c!=' ' && c!='\t' && c!=0 && c!='\r' && c!='\n') {
+    if (i<MAXIMUM_ARGUMENT_LENGTH) buffer[i++] = c;
+    c = *p++;
+    }
+  buffer[i] = 0;
+  n--;
+  }
+return buffer;
+}
+

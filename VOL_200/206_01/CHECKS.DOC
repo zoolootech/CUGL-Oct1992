@@ -1,0 +1,1818 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                               CHECK REGISTER PROGRAM
+
+                                CP/M-80 Version 1.0
+
+                                     June 1986
+
+
+
+
+
+                         Copyright (c) 1986 by WoolleyWare
+                                All Rights Reserved
+
+                                                             v.1.0, Page i
+
+
+
+                              USER-SUPPORTED SOFTWARE
+
+      This program is distributed as User-Supported Software.  You are
+      encouraged to copy and share this program and related files with the
+      following conditions:
+
+       1.  Except for a nominal handling fee (perhaps $5 or $10), no financial
+           or other consideration may be charged for distribution.
+
+       2.  All original files must be distributed together in unmodified form.
+           If appropriate, you may include additional files, so long as they
+           are identified separately from the originals.
+
+       3.  The copyright notice must not be altered, bypassed, or removed from
+           the original files.  As described in this document, you may delete
+           the copyright notice from your private version of the program.
+
+      If you find this program useful, your contribution in proportion to its
+      value (perhaps $25) will be appreciated.  Note that whatever amount you
+      send may be tax deductible as an expense toward improved management of
+      your financial records.  When you correspond, please identify which
+      operating system (CP/M-80) and version of the Check Register Program you
+      are using.  The version number is indicated in the default title line at
+      the top of the screen before your personalized title has been read from
+      the INF file; your copy may be more recent than the version available
+      when this document was prepared (1.0).  If you expect a response,
+      include a self-addressed stamped envelope.  Absolutely no phone calls,
+      please.
+
+                                    Jim Woolley
+                                    WoolleyWare
+                                  5825 Pilar Court
+                                San Jose, CA  95120
+
+
+
+                                     DISCLAIMER
+
+      WoolleyWare makes no representations or warranties with respect to the
+      contents hereof and specifically disclaims any implied warranties of
+      merchantability or fitness for any particular purpose.  WoolleyWare
+      reserves the right to revise this publication and to make changes from
+      time to time in the content hereof without obligation to notify any
+      person or organization of such revisions or changes.
+
+
+
+                                     TRADEMARKS
+
+      WordStar is a trademark of MicroPro International Corp.  SuperCalc is a
+      trademark of Sorcim Corp.  dBASE II is a trademark of Ashton-Tate.
+      MBASIC is a trademark of Microsoft.  CBASIC is a trademark of Compiler
+      Systems, Inc.  CP/M is a trademark of Digital Research Inc.
+
+                                                             v.1.0, Page ii
+
+
+
+                                      ABSTRACT
+
+      The Check Register Program simplifies the task of maintaining one or
+      more checking accounts.  Three separate programs are included:
+
+           CHECKS    The primary application, manages the current check
+                     register, including reconciliation of transactions which
+                     have cleared the bank.
+
+           CLEARS    Maintains and summarizes transactions after they have
+                     cleared the bank, for historical review.
+
+           CHECKSIN  Installs the CHECKS.SCR file, adapting CHECKS and CLEARS
+                     to your particular video display terminal or computer
+                     console.
+
+      Sample data files are included for tutorial and demonstration purposes.
+      Commented C language source files are provided in lieu of further
+      support.
+
+                                                             v.1.0, Page iii
+
+
+
+                                 TABLE of CONTENTS
+
+                                                             Page
+
+                  TITLE PAGE
+                  USER-SUPPORTED SOFTWARE                      i
+                  DISCLAIMER                                   i
+                  TRADEMARKS                                   i
+                  ABSTRACT                                    ii
+                  TABLE of CONTENTS                          iii
+                  FEATURES                                     1
+                  REQUIREMENTS                                 2
+                  GENESIS and BIOGRAPHY                        2
+                  INSTALLATION                                 5
+                     LBR Distribution Library                  5
+                     CHECKS.SCR File and CHECKSIN Program      5
+                  DEMONSTRATION and TUTORIAL                   9
+                     CHECKS Program                            9
+                     Current Date and Yes/No Queries           9
+                     Cursor Movement                          10
+                     Save, Quit, and Done Commands            11
+                     New Entry and Date Field                 11
+                     Payee Field and Abreviations             12
+                     Category Field                           13
+                     Amount Field and Calculator              13
+                     Deposit Field                            15
+                     Clear Field                              15
+                     Balance Field                            16
+                     Insert/Delete Entry and Undo Commands    16
+                     Ordering Entries                         16
+                     Check Number                             17
+                     Print Command                            17
+                     Reconciliation                           18
+                     Done Command                             18
+                     Balance Brought Forward                  19
+                     CLEARS Program                           19
+                  EXECUTING the PROGRAM                       20
+                  INFORMATION FILE                            22
+                  GETTING STARTED                             24
+                     Beginning a New Register                 24
+                     Insufficient Disk Space                  25
+                  COMMANDS                                    25
+                     Cursor Movement Commands                 25
+                     Editing Commands                         26
+                     Calculator Commands                      27
+                     Save, Quit, and Done Commands            27
+                     Miscellaneous Commands                   28
+                  FUTURE PLANS                                28
+
+                                                             v.1.0, Page 1
+
+
+
+                                      FEATURES
+
+      As you will surely admit, managing a checkbook by hand is fairly simple;
+      therefore, one of the primary design goals for this program was to make
+      using it at least as easy as the manual method.  This has been
+      accomplished by implementing the following features:
+
+        o  The user interface is modeled after WordStar.  If you use WordStar,
+           you already know how to move the cursor, scroll pages, and edit
+           text.  If you are not familiar with WordStar, a convenient "help"
+           screen is readily available.
+
+        o  Transaction date (month, day, and year) will default to that of the
+           previous entry.  Only changes need to be typed.  If you are
+           entering several transactions for the same month and year, only the
+           day might require revision.
+
+        o  You may define abreviations for accounts that are paid repeatedly,
+           such as gas, electric, water, and telephone utilities, revolving
+           charge accounts, and supermarkets.  When an abreviation is entered,
+           the payee description will automatically expand to the full name
+           you have linked to the abreviation.
+
+        o  Each entry may be assigned a category.  You may define your own
+           categories by use of a single character.  For example, you may use
+           H for household transactions and T for tax deductible entries.
+           Also, categories may be conveniently utilized to manage two or more
+           checkbooks within one account.
+
+        o  Extended integer arithmetic is used to keep track of amounts
+           ranging from -3,276,899.99 thru +3,276,799.99 without losing any
+           pennies.
+
+        o  A simple calculator may be used to add to or subtract from the
+           amount field of each entry.  A memory register is included, which
+           is retained each time the program is executed.
+
+        o  Automatic transactions may be defined.  Examples include a monthly
+           loan payment which is automatically withdrawn from your account on
+           a certain day, or your salary which is automatically transferred
+           from your employer's bank to your account.
+
+        o  Entries may be conveniently sorted to primary and secondary levels,
+           including date and payee, payee and date, category and date, or
+           amount and date.
+
+        o  A reconciliation report itemizes checks, deposits, and current
+           balance for entries which have cleared the bank and for all entries
+           by category, including a total over all categories.
+
+        o  Cleared entries are removed to a separate file, retaining only
+           active transactions in the check register.  An independent program
+           is provided to manage cleared entries.
+
+      Features                                               v.1.0, Page 2
+
+
+
+        o  The current check register, the reconciliation report, and an audit
+           trail of cleared entries may be printed for filing and backup.
+
+        o  An installation program will quickly adapt the program to work with
+           your video display terminal or computer console.
+
+      Commented C language source files are included.  If you require
+      additional features, feel free to add them.
+
+
+
+                                    REQUIREMENTS
+
+      The Check Register Program requires an 80 column x 24 row video display
+      with addressable cursor.  Various terminals and computer consoles are
+      supported.  The CP/M-80 operating system and one disk drive are
+      necessary.  An 80 column printer with FORM FEED control is desirable.
+
+      For a single check register, the database of transactions is maintained
+      in two separate files, one for those which have not cleared the bank and
+      another for those which have.  The maximum number of active (uncleared)
+      entries is 128, which is generally sufficient for a very large family or
+      a very small business, assuming bank statements are received monthly.
+      Up to 384 cleared entries are kept in the database; for an average
+      family, this should be sufficient for about six months.  When the 384
+      limit is approached, older records may be marked for summary and
+      removal; each summary is retained in the database.  The program may be
+      used to manage more than one check register by defining separate sets of
+      database files.
+
+      It is assumed that the CP/M Basic Input/Output System (BIOS) console
+      display function treats BACKSPACE as non-destructive; that is, the
+      cursor is moved to the previous character position on the same line
+      without changing the character.  Similarly, it is assumed that a LF
+      (line feed) character sent to the console from any location above the
+      24th line will move the cursor down one line without altering the
+      display.  Finally, it is assumed that a CR (carriage return) character
+      sent to the screen from any location will move the cursor to the
+      beginning of the same line (without line feed).  These assumptions are
+      not expected to be restricting.
+
+      The Check Register Program was developed using WordStar, BDS C, and an
+      Osborne 1 59K CP/M 2.2 system with 52.5K transient program area (TPA).
+
+
+
+                               GENESIS and BIOGRAPHY
+
+      You might wish to skip this section until you have had a chance to see a
+      demonstration of the Check Register Program.  To do that, follow
+      instructions given in the Installation and the Demonstration and
+      Tutorial section.  You can return to this section after determining that
+      the Check Register Program is worth further consideration.  On the other
+      hand, you may already be convinced; in that case, the following
+      background information should be useful.
+
+      Genesis and Biography                                  v.1.0, Page 3
+
+
+
+
+      When I bought my Osborne 1 computer in the Fall of '81, I had no
+      specific plans for its use.  I had been a nuclear engineer with General
+      Electric Company for 16 years; much of that time was spent developing
+      engineering computer programs for nuclear power reactors.  I had
+      experience with BASIC, FORTRAN, and assembly language.  My wife was
+      running a small business teaching microwave cooking.  My sons were
+      teenagers.  I thought the computer would help organize my wife's books
+      and the kids might learn something about technology.  The kids thought
+      they could play games with it.  I was especially interested in using the
+      computer to simplify managing our family checkbook.
+
+      The Osborne 1 came bundled with CP/M, WordStar, SuperCalc, MBASIC, and
+      CBASIC.  I thought WordStar would get little use.  SuperCalc looked
+      handy for financial analysis.  But I knew I could write my own BASIC
+      programs whenever necessary.
+
+      As it turned out, WordStar proved to be the most useful application by
+      far; I used it for correspondence, the kids used it for school, and my
+      wife used it to print recipes and shopping lists.  I set up SuperCalc
+      spreadsheets to keep track of utility bills and to help reconcile my
+      checkbook at the end of the month, but found it a little cumbersome.  I
+      discovered a public domain general ledger program to help with my wife's
+      business.  It was written in CBASIC, and I was able to adapt it to the
+      Osborne 1.
+
+      But the thought of committing our check register to a BASIC program was
+      not appealing.  Maintaining the register by hand is fairly easy;
+      whatever is done by computer should be at least as simple, or it would
+      not be worth booting the disk.  I felt the performance of BASIC in terms
+      of memory capacity and speed would be insufficient to justify the effort
+      of struggling with BASIC's syntax and development environment.
+
+      In the meantime, I decided to redirect my career from nuclear
+      engineering into computer engineering.  I joined a consulting firm and
+      began to develop small computer systems and software.  Currently I am
+      specializing in refrigeration control systems for huge cold storage
+      facilities servicing the food processing industry.
+
+      Experience with the public domain (PD) general ledger program led to my
+      heavy involvement with the First Osborne Group (FOG).  For two years, I
+      served as Disk Librarian for FOG's rapidly growing collection of PD
+      programs.  It was very educational, leading to my interest in the C
+      programming language, but most of my spare time was consumed by
+      responsibilities to FOG.
+
+      I was still interested in a program to aid with check register
+      management.  I found some PD SuperCalc templates, but they suffered from
+      SuperCalc's shortcomings.  Another PD dBASE II application looked
+      interesting, but I did not own a copy of dBASE.  I thought about
+      purchasing a commercial program, but they usually offered more features
+      than I required, such as budgeting or tax preparation.  I was concerned
+      that after buying a package, I would find that keeping the checkbook
+      manually remained simpler than using the computer.
+
+      Genesis and Biography                                  v.1.0, Page 4
+
+
+
+      When I found myself with some spare time during the Christmas season of
+      1985, I finally decided to write a program in C to address the
+      requirements I had in mind when I bought the computer four years
+      earlier.  Since my wife and I keep separate checkbooks with only one
+      joint account, I wanted to categorize transactions, so that our separate
+      balances could be easily maintained.  Since I am not a good typist, I
+      wanted to abreviate those accounts that were paid repeatedly, such as
+      telephone, water, and credit cards.  I wanted reasonable default dates,
+      eliminating the need to reenter the same values for each check or
+      deposit.  Since I sometimes forgot to record automatic transactions,
+      like a monthly loan payment to the bank, I wanted a feature that would
+      remember such things.  I decided to make the user interface similar to
+      WordStar, avoiding the need to learn another.  I thought it would be
+      useful to incorporate a simple calculator for the amount portion of each
+      entry.  I wanted to be able to sort entries in a variety of ways.  Above
+      all, I wanted to reduce the effort of reconciling the checkbook against
+      the monthly statement.
+
+      As development progressed and I could see how useful the program was to
+      me, I began to think that others might be interested, too.  Since my
+      oldest son had just started college, the thought of another source of
+      income was attractive.  I decided to try the concept of User-Supported
+      Software distribution.  This seems to be a winner for both the user and
+      the developer.  Anyone can try the program without making a commitment.
+      If the program proves useful, they may contribute toward its development
+      in proportion to its worth.  The developer avoids the expense of
+      packaging and advertising, yet receives a just reward if the program has
+      any real value to others.
+
+      I decided to go one step farther.  Many User-Supported Software programs
+      are distributed without the source files;  that is, only executable
+      files and a document file are usually provided.  As a user of such
+      programs, I've always wanted to have the source files, so that I could
+      better understand how the program worked.  That way, I knew that I could
+      add features, write separate interface programs, or correct any latent
+      bugs myself.  Also, I believe that the developer should be proud to
+      display his work.
+
+      I decided to include the commented C language files in lieu of further
+      support.  After using the Check Register Program myself for several
+      months, I believe that it functions correctly.  If there are detailed
+      questions about how the program works, you or a friend familiar with C
+      are invited to investigate the source files.  If you require additional
+      features, feel free to add them.
+
+      I will be interested in your written questions or comments, but do not
+      expect a response unless you include a self-addressed, stamped envelope.
+      Naturally, I cannot help you diagnose problems in your own modified
+      version of the program.  On the other hand, if you discover a genuine
+      bug in the original version, I will be indebted to you for identifying
+      it to me.  But absolutely no phone calls, please.
+
+      One final request.  Feel free to distribute the Check Register Program
+      to your friends, but be sure to include all of the original files
+
+      Genesis and Biography                                  v.1.0, Page 5
+
+
+
+      unmodified.  You may add your revisions, so long as they are identified
+      separately from the originals.
+
+
+
+                                    INSTALLATION
+
+      LBR Distribution Library
+
+      The Check Register Program is normally distributed as an LBR library
+      file containing several executable COM files, a squeezed (reduced in
+      size) document DQC file, several squeezed C language CQ and HQ files,
+      and other files which may or may not be squeezed.
+
+      Because of size limitations, the DQC file may be supplied separate from
+      the LBR file which contains executable programs.  For the same reason,
+      the CQ and HQ files may be concatenated and provided as a single CQ file
+      separate from the program LBR file.  Alternatively, the DQC, CQ, and HQ
+      files may be distributed together, but in a separate documentation LBR
+      file.
+
+      An appropriate public domain (PD) program such as LU, NULU, or LSWEEP
+      may be used to extract files from the LBR distribution library.  If your
+      disk will hold approximately 180 KB, you may wish to extract all except
+      the CQ, HQ, and DQC files onto one disk.  After extracting such files,
+      any which are squeezed (have a Q as the second letter of the file type,
+      as in FILENAME.TQP) should be unsqueezed using a PD program like USQ or
+      NSWEEP.
+
+      C language source files of type CQ or HQ may be left within the original
+      LBR distribution library until needed.  The CHECKS.DQC file should be
+      extracted, unsqueezed to make CHECKS.DOC, and printed for your use.  To
+      print the file, do not use a formatting print routine such as WordStar's
+      Print function.  CHECKS.DOC has already been formatted, so that page
+      numbers will be consistent with the Table of Contents.  It may be
+      conveniently printed using the CP/M PIP utility.  Place PIP.COM and
+      CHECKS.DOC in drive A.  At the A> prompt, type
+
+           PIP LST:=CHECKS.DOC
+
+      after first making sure that your printer is set for 66 lines per page
+      (11 inch page at 6 lines per inch) and 80 columns per line, loaded with
+      continuous fan-fold paper, and positioned with the print-head at top-of-
+      page.
+
+      Once all necessary files have been extracted and unsqueezed, store the
+      original LBR distribution disk in a safe place as a backup.  That disk
+      should be used if you wish to make a copy for a friend.
+
+      CHECKS.SCR File and CHECKSIN Program
+
+      The Check Register Program utilizes the screen parameter file CHECKS.SCR
+      to identify cursor controls which are compatible with your video display
+      terminal or computer console.  CHECKS.SCR also contains a "help" display
+      as well as the initial copyright message.
+
+      Installation                                           v.1.0, Page 6
+
+
+
+
+      An uninstalled copy of CHECKS.SCR is included in the distribution
+      package.  That file may be modified to add the necessary screen controls
+      by one of three methods:
+
+       1.  Extract the screen controls from a copy of the WordStar file
+           WS.COM, which has already been installed for your computer console.
+
+       2.  Select your terminal or one similar to yours from among the limited
+           number available within the CHECKSIN.DAT file.
+
+       3.  Directly edit the CHECKS.SCR file using a text editor such as
+           WordStar or ED to describe your terminal's screen controls.
+
+      The CHECKSIN program will automatically adapt the uninstalled CHECKS.SCR
+      file to work properly with your equipment by using either method 1 or
+      method 2.  If you have a copy of WS.COM which works with your computer
+      screen, method 1 is perhaps the easiest.  If you choose method 2, the
+      CHECKSIN program will display the list of terminals found in
+      CHECKSIN.DAT; since CHECKSIN.DAT is a standard ASCII file, it may be
+      reviewed using the CP/M TYPE command, also.  Instructions for performing
+      each of the three installation methods are provided in this section.
+
+      To execute the CHECKSIN installation program, place CHECKSIN.COM,
+      CHECKSIN.DAT, and CHECKS.SCR on a single disk in drive A.  (If you plan
+      to use installation method 1 and have only one disk drive, it will also
+      be necessary to put a copy of WS.COM on the same disk.)  You should
+      leave about 2 KB free space on the disk.  Do not remove this disk until
+      the installation process is complete.  At the A> prompt, type
+
+           CHECKSIN
+
+      You will be asked to select one of the three installation methods.
+
+      If you choose method 1, you will be prompted to insert an installed copy
+      of the WordStar file WS.COM into one of your disk drives; you should not
+      remove it until the CHECKSIN process is complete.  Although the WS.COM
+      file will only be read from and will not be altered in any way, it is
+      always best to have a backup copy available.  You will be asked to
+      identify which drive contains WS.COM; type the drive letter (A or B or
+      whatever), then press RETURN.
+
+      If you select method 2, you must indicate which drive includes a copy of
+      the CHECKSIN.DAT file.  Assuming you have followed these directions, you
+      may respond by typing A, followed by RETURN.  As with WS.COM above,
+      CHECKSIN.DAT will not be altered, but it is best to use a backup copy.
+
+      When requested to identify which drive contains an uninstalled copy of
+      the screen parameter file CHECKS.SCR, you may type A and RETURN, as
+      indicated above.  This file will be modified, but a backup of the
+      original will be created on the same disk and named CHECKS.BAK.  Your
+      disk must have enough free space to store this backup file (about 2 KB).
+
+      Whether or not CHECKSIN is used to adapt CHECKS.SCR to your console
+      screen, you may wish to customize the installation by directly editing
+
+      Installation                                           v.1.0, Page 7
+
+
+
+      this standard ASCII file using ED, WordStar, or some other text editor.
+      When using WordStar, it is MANDATORY to edit CHECKS.SCR as a Non-
+      document mode file (select N from the main menu).
+
+      The CHECKS.SCR file consists of three sections:
+
+       1.  The first six lines contain a "help" screen, which is shown
+           whenever the ^J command (CONTROL and J simultaneously) is given
+           within the Check Register Program.  This section should not be
+           edited.
+
+       2.  The next eleven lines identify screen controls, which are detailed
+           below.  This section may be customized using your text editor.
+
+       3.  The last section contains a coded copyright message, which is
+           displayed whenever the Check Register Program is started.  The
+           coded message is preceded by a single blank line.  After seeing the
+           copyright message a number of times, you may wish to eliminate it,
+           thus speeding the startup process.  This is possible by deleting
+           the blank line and everything following it.  If using WordStar,
+           position the cursor on the blank line preceding the coded message
+           and press ^Y (CONTROL and Y simultaneously) until all following
+           text is deleted.
+
+      The second section contains eleven lines identifying screen controls
+      required by the Check Register Program.  An example is given in Figure
+      1 below.
+
+                     2 27 61     Clead1  ESC =
+                     0           Clead2  Not Applicable
+                     0           Ctrail  Not Applicable
+                     0 32 32 0   Cb4flg Linoff Coloff Ascur
+                     2 27 84     Eraeol  ESC T
+                     2 27 82     Lindel  ESC R
+                     2 27 69     Linins  ESC E
+                     2 27 41     Ivon    ESC )
+                     2 27 40     Ivoff   ESC (
+                     1 26        Trmini  CTRL-Z
+                     100 1       Dloop Inserton
+
+                  Figure 1:  Example of Section 2 of CHECKS.SCR
+
+      Each line consists of decimal integers separated by one or more space or
+      tab character (called white space).  There may be white space before the
+      first integer on a line; anything may follow white space after the last
+      integer on a line.  Except for the fourth and eleventh lines, the format
+      of each line consists of a count of the number of values contained in
+      the screen control string, then the decimal equivalents of the string of
+      ASCII characters which define each screen control; a count of zero
+      indicates that the string is not applicable.  Screen controls identified
+      on each of the eleven lines are defined by line number below.
+
+      The first four lines describe how to position the cursor at a specific
+      (row,column) coordinate on the screen, where (0,0) represents the upper-
+
+      Installation                                           v.1.0, Page 8
+
+
+
+      left corner.  The cursor positioning control sequence must obey the
+      following model (spaces are for presentation only):
+
+           Clead1 P1 Clead2 P2 Ctrail
+
+      When Cb4flg is zero, P1 = row + Linoff and P2 = column + Coloff.  When
+      Cb4flg is non-zero, P1 and P2 are reversed.  All parameters are detailed
+      below.
+
+       1.  Count     From 1 thru 8, or 0 if not applicable
+           Clead1    Cursor positioning string preceding row and column
+
+       2.  Count     From 1 thru 4, or 0 if not applicable
+           Clead2    Cursor positioning string between row and column
+
+       3.  Count     From 1 thru 4, or 0 if not applicable
+           Ctrail    Cursor positioning string following row and column
+
+       4.  Cb4flg    Zero if row precedes column in cursor positioning
+                     sequence; else, non-zero
+           Linoff    Cursor positioning value recognized as top row
+           Coloff    Cursor positioning value recognized as left column
+           Ascur     Zero if cursor positioning P1 and P2 are to be expressed
+                     as binary values, 2 if expressed as two ASCII digits, or
+                     3 if expressed as three ASCII digits
+
+       5.  Count     From 1 thru 6, or 0 if not applicable
+           Eraeol    Control string to erase from cursor to end of line
+
+       6.  Count     From 1 thru 6, or 0 if not applicable, or -1 to indicate
+                     VT100 compatible horizontal scroll region specified by
+                     ESC [ Pt r
+           Lindel    Control string to delete line containing cursor and move
+                     all lower lines up one line each, making last line blank;
+                     not used if Count = -1
+
+       7.  Count     From 1 thru 8, or 0 if not applicable, or -1 to indicate
+                     VT100 compatible horizontal scroll region specified by
+                     ESC [ Pt r
+           Linins    Control string to insert a blank line and move line
+                     containing cursor and all lower lines down one line each,
+                     pushing last line off screen; not used if Count = -1
+
+       8.  Count     From 1 thru 6, or 0 if not applicable
+           Ivon      Control string to activate highlighting (dim prefered;
+                     else, inverse, underline, or other)
+
+       9.  Count     From 1 thru 6, or 0 if not applicable
+           Ivoff     Control string to deactivate highlighting (return to
+                     normal)
+
+      10.  Count     From 1 thru 8, or 0 if not applicable
+           Trmini    Control string to clear the screen; it may be necessary
+                     to include the home cursor control string first
+
+      Installation                                           v.1.0, Page 9
+
+
+
+      11.  Dloop     Approximate speed of your CPU relative to 4 MHz Z80,
+                     expressed as percent; 200 indicates your CPU is twice as
+                     fast; reducing Dloop reduces the number of loops required
+                     for a given delay time, indicating that your CPU is
+                     slower or that you wish shorter delay
+           Inserton  Zero to startup in overtype (replace) mode when editing
+                     Payee field; non-zero to startup in insert mode
+
+      By carefully following instructions described in this section, you
+      should be able to properly initialize CHECKS.SCR to describe screen
+      controls compatible with your computer console.
+
+
+
+                             DEMONSTRATION and TUTORIAL
+
+      The distribution library contains data files which may be used with the
+      Check Register Program for demonstration and tutorial purposes.  After
+      CHECKS.SCR has been properly initialized, place that file along with
+      CHECKS.COM, CLEARS.COM (optional), DEMO.DAT, and DEMO.INF on a disk in
+      drive A.  Be sure to retain a copy of DEMO.DAT, since that file will be
+      modified during the following exercises.
+
+      CHECKS Program
+
+      The CHECKS program may be used to manage the check register database.
+      To start it, type
+
+           CHECKS DEMO
+
+      at the A> prompt.  Once the program reads cursor controls from the
+      CHECKS.SCR file and clears the screen, a copyright notice should appear.
+      Press any key except ^C (CONTROL and C simultaneously, which causes the
+      program to stop).
+
+      Check register entries will be read from the DEMO.DAT database and
+      displayed on your console screen.  The default title line, which
+      identifies the CHECKS version number, will appear centered at the top.
+      To the right of that will be the current filename, including disk drive.
+      If your console supports it, the top line should appear highlighted (dim
+      or inverse).  After one blank line, a prompt line will be seen; all
+      program prompts will appear on that line.  After another blank line, a
+      header (highlighted) displays field names applicable to all records
+      (entries); these are Date (with subfields month, date, and year
+      displayed as MM/DD/YY), Payee, Category, Amount, Deposit, Clear, and
+      Balance (a calculated field).  If anything looks wrong, verify that your
+      CHECKS.SCR file was properly initialized as described in the
+      Installation section.
+
+      Current Date and Yes/No Queries
+
+      You will be prompted to enter the current date.  This is requested
+      because the DEMO.INF file contains information defining automatic
+      transactions.  In order to determine if an automatic entry should be
+      generated, it is necessary to compare the current date against the most
+
+      Demonstration and Tutorial                             v.1.0, Page 10
+
+
+
+      recent date found in the database.  For demonstration purposes, make the
+      current month one greater than the most recent month, which is the
+      default (e.g., if the default month is 6, simply press 7 and RETURN to
+      change it).  Then press RETURN twice to skip past date and year
+      subfields.  You will be asked if you wish to change the current date and
+      prompted for a Y/N (Yes/No) response.
+
+      Queries which may be answered Yes or No normally show a default
+      response.  If you simply press RETURN (or any other control command),
+      the default response will be assumed.  Pressing ESCAPE will toggle the
+      default reponse, but you will still have to press RETURN if you wish to
+      accept the new default.  Press Y or N (without RETURN) to respond Yes or
+      No regardless of the indicated default.
+
+      There is a shortcut way to specify the current date.  After making the
+      minimum number of changes to convert the default date into the current
+      date (e.g., after changing the month), simply press ESCAPE.  This will
+      cause the new date to be accepted immediately.  Notice that no changes
+      will be necessary if the default date is satisfactory; ESCAPE will be
+      sufficient.
+
+      Assuming you have made the current month one greater than the most
+      recent previous month, tell the program that you do not wish to change
+      it.  You should then see several automatic transactions entered near the
+      bottom of the screen.  You will be asked if you wish to accept each.
+
+      After appropriate automatic transactions have been completed,
+      abreviation information will be read from DEMO.INF and installed into
+      memory.  Finally, the personalized title line found in DEMO.INF will be
+      read and displayed on the top line.  At this point, you will be prompted
+      to either start a new entry or press ^J for help.  Take a look at the
+      "help" screen by pressing ^J (CONTROL and J simultaneously).
+
+      Throughout the balance of this document, a carat symbol (^) indicates
+      use of the CONTROL key in conjunction with another key, which is similar
+      to the use of SHIFT to type an upper case letter.
+
+      Cursor Movement
+
+      Now roam around the check register.  Move the cursor using ^D, ^S, ^E,
+      and ^X, which form a diamond pattern on the keyboard.  Notice that the
+      cursor jumps left and right by field except within the Payee field,
+      where it moves one character at a time.  Try ^F and ^A, which jump from
+      word to word within the Payee field but work like ^D and ^S outside of
+      Payee.  Within Payee, ^F and ^A always stop at the first non-space
+      character following one or more spaces, or at the start or end of text,
+      without regard to punctuation.  Notice that TAB and ^I do the same thing
+      as ^F; also, BACKSPACE and ^H work like ^S.  Scroll up and down one
+      "page" at a time with ^R and ^C, or one line at a time with ^W and ^Z.
+      Use ^QW and ^QZ for continuous scrolling, or ^QR and ^QC for a quick
+      jump to the extremities.  Find screen edges with ^QD, ^QS, ^QE, and ^QX.
+
+      Notice that ^Q appears at the top left whenever you have entered only
+      the first half of a quick cursor movement command; this command display
+      changes to show the cursor line number after completing the command.
+
+      Demonstration and Tutorial                             v.1.0, Page 11
+
+
+
+      Also notice that the second half of a two key command may be entered by
+      pressing either the lower case, upper case, or CONTROLed form; for
+      example, ^Qc, ^QC, and ^Q^C all move to the bottom of the check
+      register.
+
+      Save, Quit, and Done Commands
+
+      You may wish to interrupt the demonstration and return to it at a later
+      time.  To record all changes made to the check register without quitting
+      the program, use the ^KS command.  This will save a complete copy of the
+      current register after first making a backup copy of the original
+      register.  The filename specified on the command line when the program
+      was initiated, which also appears at the right edge of the top display
+      line, will be used for each file.  For the demonstration, the filename
+      is DEMO.  Therefore, the original database file DEMO.DAT will be renamed
+      DEMO.BAK, and the current check register will be saved as DEMO.DAT.  All
+      entries including any cleared entries (see Clear Field later in this
+      section) will be saved.
+
+      There are two ways to stop the program.  ^KQ will quit without saving
+      any revisions you may have made to the check register.  If there have
+      not been any changes since you first started the program or since the
+      last time you saved the register using ^KS, then the program will quit
+      immediately.  If the register was modified, you will be queried to
+      verify that you wish to abandon the current register without first
+      saving it.  You may respond Yes or No (see Yes/No Queries earlier in
+      this section).  If the response is Yes, then the program will quit; if
+      No, it will resume.
+
+      The other way to exit the program is by use of the Done command ^KD (or
+      ^KX, which is a synonym for ^KD).  In this case, any cleared entries
+      (marked CLR in the Clear field) will first be appended to the CLR file
+      (DEMO.CLR for the demonstration), the DAT file will be renamed BAK
+      (DEMO.BAK), and all active entries (those which have not cleared the
+      bank) will be saved in a new DAT file (DEMO.DAT).  Notice that if there
+      are any cleared entries, ^KD is not the same as ^KS followed by ^KQ,
+      since ^KS saves all entries, both cleared and active.  The Done command
+      is described in more detail later in this section.
+
+      New Entry and Date Field
+
+      When at the end of the check register, you may start a new entry by
+      pressing RETURN.  The first time a new entry is initiated, the Date
+      field will default to whatever you entered for current date during
+      program startup.  After that, the preceding entry's date will be used as
+      the default.  You may change the date by entering a new value when the
+      cursor is in an appropriate subfield; only two digits are permitted.
+      RETURN or any other control command (except ^G, DEL, or ^U, which are
+      discussed below) will cause whatever appears on the display to be
+      accepted as the value for the subfield.  For the Date field only, the
+      slash character (/) will produce the same result as RETURN, and the
+      cursor will advance.  The value is not checked to be sure that a valid
+      date has been entered, allowing flexibility in your definition of dates;
+      however, the automatic transaction processor and the sorting routine
+
+      Demonstration and Tutorial                             v.1.0, Page 12
+
+
+
+      assume that dates are calendar values displayed as MM/DD/YY
+      (month/day/year).
+
+      Notice that the prompt line changes each time the cursor enters a new
+      field or subfield.  Also, pressing RETURN always causes the cursor to
+      advance to the next field or subfield.  Date subfields may be edited by
+      pressing ^G or DEL; further information on editing numeric values is
+      postponed until description of the Amount field.  When you are satisfied
+      with the date for your new entry, move to the Payee field.
+
+      Payee Field and Abreviations
+
+      Before entering text into the Payee field, check which abreviations are
+      available by using the ^KA command.  Abreviations defined in DEMO.INF
+      and installed during startup will be shown in alphabetical order.  If
+      there are too many to display on one screen, scroll up or down with ^W
+      or ^Z.  Press ESCAPE to restore the check register display.
+
+      Pick one of the abreviations to define the payee for your new entry.
+      Type the three character abreviation using either upper or lower case
+      (or both), then pause briefly.  The abreviation will be automatically
+      expanded, leaving the cursor at the end where additional text may be
+      inserted.
+
+      The program checks for an abreviation whenever only three characters
+      have been entered for the payee, regardless of case, but only if there
+      has been a brief delay after the third character was typed.  Therefore,
+      the same three characters may be used to enter a complete payee
+      description without abreviation expansion, if typed continuously at
+      normal speed.  The necessary delay will be shorter (longer) if the value
+      of Dloop found in CHECKS.SCR is reduced (increased) as described in the
+      Installation section.  The normal delay is one-half second.
+
+      Characters may be inserted into the middle of a payee description by
+      moving the cursor to the appropriate position, then typing additional
+      text.  If INSERT mode is ON, then previous text will be pushed to the
+      right to make room for the new characters; if INSERT mode is OFF, new
+      characters will overtype (replace) previous ones.  Whenever the cursor
+      is within the Payee field, the current mode will be displayed on the
+      prompt line.  Pressing ^V will toggle between INSERT ON and INSERT OFF.
+      As described in the Installation section, the value of Inserton in
+      CHECKS.SCR defines the initial mode.
+
+      The Payee field may be edited using ^G (delete cursor character), DEL
+      (delete previous character), ^T (delete balance of word), ^QY (delete
+      from cursor to end of field), and ^QDEL (delete to beginning of field
+      except cursor).  Each deletion may be restored (undeleted) by pressing
+      ^U before additional editing (insert or delete) has been performed.
+      Notice that after the cursor has been moved out of the Payee field, ^U
+      will still be effective once the cursor is returned anywhere within the
+      Payee field; the entire contents of Payee are restored whenever ^U is
+      used.  The editing commands ^T, ^QY, and ^QDEL are meaningful only
+      within the Payee field and have no effect outside of that field.
+
+      Demonstration and Tutorial                             v.1.0, Page 13
+
+
+
+      DEL has been used in the previous paragraph to signify the DELETE key.
+      The combination represented by ^_ (CONTROL and UNDERLINE simultaneously)
+      is always a synonym for DEL, so ^Q^_ will function the same as ^QDEL.
+      When reading this document, DEL should be understood to indicate either
+      the DELETE key or the ^_ combination.
+
+      Notice that a check for abreviation expansion will not occur when the
+      payee description has been edited until only three characters are left.
+      Instead, the check is performed only after the third character is typed.
+      Therefore, to insure that a valid abreviation will be expanded, it is
+      necessary to edit until only two characters are left, then type one
+      more.
+
+      Category Field
+
+      When contents of the Payee field are satisfactory, press RETURN or an
+      appropriate control command to move to the Category field.  The default
+      category is blank or SPACE.  You may enter any single character which
+      will display on the screen, such as a letter, digit, or punctuation
+      mark.  Letters will always be converted to upper case.  Therefore, the
+      most useful categories are represented by 26 letters and 10 digits.  For
+      example, you might use H for household expenses, U for utilities, etc.
+      Or if keeping two separate check registers with one account, you might
+      let 1 represent the first register and 2 the second.  It is often
+      satisfactory to accept the default and leave the category blank.
+
+      The effect of pressing ^G or DEL while in the Category field is to
+      delete the existing character and leave a blank, which is the same
+      result as pressing SPACE.  The undo command ^U has no effect upon
+      category (although it may restore an entry which was previously deleted
+      using ^Y).
+
+      Amount Field and Calculator
+
+      Next move to the Amount field and enter a value for your new entry.  The
+      default amount for new entries is zero.  When another value is started,
+      it will replace any previous value.  Amounts are always positive, so a
+      plus or minus sign is not required.  If plus or minus is pressed, it
+      will be assumed the start of a calculation, which is described below.
+      Amounts should be entered using digits and decimal (or period); a
+      numeric keypad is particularly useful.  RETURN or any other control
+      command except ^G, DEL, or ^U, completes the value.
+
+      It is not always necessary to enter a decimal followed by two digits.
+      If a value is completed before or immediately after pressing decimal,
+      then the value is assumed to be whole dollars; it will be displayed with
+      zeroes following the decimal.  If the value is completed after entering
+      a decimal and one digit, then the digit is assumed to be tens of cents
+      and zero is shown in the units place.  No more than two digits are
+      permitted after typing a decimal.  For example, typing
+
+           123 RETURN        results in     123.00
+           123. RETURN       results in     123.00
+           123.4 RETURN      results in     123.40
+           123.45 RETURN     results in     123.45
+
+      Demonstration and Tutorial                             v.1.0, Page 14
+
+
+
+
+      Numeric fields (Date and Amount) may be edited by pressing ^G or DEL.
+      The effect of either is to delete digits from the right, so that new
+      low-order digits may be substituted.  If ^U is pressed before completing
+      a new value, an edited numeric field will be restored to its original
+      value; this is true even if the only editing has been substitution of
+      another value, rather than use of ^G or DEL.
+
+      Another way to complete a new value is to enter a calculator command.
+      The calculator may be used to add to or subtract from the Amount field.
+      Also, the current amount may be added to or subtracted from calculator
+      Memory, which is displayed on the prompt line whenever the cursor is in
+      the Amount field.  Finally, Memory may be cleared, or it may be recalled
+      to the Amount field.  Note that calculator Memory will be saved with
+      check register entries, so that it will be available the next time the
+      program is executed.
+
+      The available calculator commands are listed below:
+
+           +    Add Value to Amount
+           -    Subtract Value from Amount
+           =    Display Result as Amount
+           m+   Add Amount to Memory
+           m-   Subtract Amount from Memory
+           mc   Clear Memory to Zero
+           mr   Recall from Memory to Amount
+
+      To add to (or subtract from) the current amount, press + (or -) followed
+      by the value to be added (or subtracted).  Press = to complete the
+      addend (or subtrahend) and display the result.  Any other calculator or
+      control command except ^G, DEL, or ^U will also complete the result.
+
+      Adding and/or subtracting several values may be done in series.  For
+      example, if the Amount field contains 1.23, then entering
+
+           + 4.56 - 7.89 + 10.11 =
+
+      will result in 8.01 for Amount.  Notice that aftering entering 7.89 +,
+      the Deposit field changes to show that the sign of Amount has changed;
+      this will be discussed in more detail below.
+
+      When using the + or - command, the value entered after the command may
+      be used as a constant in a series calculation.  Before making use of
+      this constant feature, it is best to press = to make sure the current
+      value is complete.  For example, if Amount is 12.00, then entering
+
+           = + 6 + + + =
+
+      results in 36.00 for Amount, which is 12.00 + ( 6.00 x 4 ).  Or when
+      Amount is 36.00, then
+
+           = - 5 - - - =
+
+      yields 16.00, as in 36.00 - ( 5.00 x 4 ).  Finally, with Amount at
+      16.00, then
+
+      Demonstration and Tutorial                             v.1.0, Page 15
+
+
+
+
+           = + 4 - + - =
+
+      produces no change in Amount.  If there is no value entered after the
+      first + or - command, then the original value of Amount will be used as
+      the constant.  For example, if Amount is 16.00, then entering
+
+           = + + + =
+
+      yields 16.00 + 16.00 + 16.00 + 16.00 = 4 x 16.00 = 64.00.
+
+      Calculator Memory may be used in calculations.  Assuming that Amount is
+      64.00 and Memory is 12.34, typing
+
+           + mr - 9.87 mc m- + 3.45 m+ - 1.23 =
+
+      produces 69.92 for Amount and 2.22 for Memory.  Notice that m commands
+      may be entered using upper or lower case, but are always displayed in
+      lower case.
+
+      Deposit Field
+
+      As previously mentioned, amounts are always positive.  When the cursor
+      is within the Deposit field, a query on the prompt line asks whether the
+      amount represents a deposit.  The response may be Yes or No; the default
+      response will be equal to the current value of the Deposit field, which
+      will be No for a new entry.  A Yes response will cause DEP to display in
+      the Deposit field, indicating that the amount is a deposit.  If the
+      amount is a withdrawal, then the response should be No, and the Deposit
+      field will be blank.
+
+      As described near the beginning of this section, the default response
+      for a Yes/No query will be toggled each time ESCAPE is pressed.  To
+      accept the default, press RETURN or any other control command.  Press Y
+      or N (without RETURN) to respond Yes or No regardless of the indicated
+      default.  Editing commands including ^G and DEL have no effect within
+      the Deposit field.  Similarly, ^U will not restore the previous value of
+      Deposit (although it may restore an entry which was previously deleted
+      using ^Y).
+
+      If the amount becomes negative as a result of calculator commands, then
+      the Deposit field will automatically be reversed to restore the amount
+      to a positive value.  For example, if Amount is 12.34 and Deposit is
+      blank (No), then entering
+
+           - 23.45 =
+
+      will cause Amount to become 11.11 and DEP (Yes) to display in the
+      Deposit field.
+
+      Clear Field
+
+      When a transaction is recorded by the bank, it should be marked by
+      positioning the cursor in the Clear field and responding Yes to the
+      query.  This will cause CLR to display in the Clear field, signifying
+
+      Demonstration and Tutorial                             v.1.0, Page 16
+
+
+
+      that the check has cleared the bank.  The default for a new entry will
+      be No, which is indicated by a blank Clear field.
+
+      As described for the Deposit field, the default response will be toggled
+      between Yes and No each time ESCAPE is pressed.  Press RETURN or any
+      other control command to accept the default.  Press the single character
+      Y or N to respond Yes or No directly.  Editing commands including ^G and
+      DEL have no effect, and ^U will not restore the previous value.
+
+      Balance Field
+
+      Notice that it is not possible to position the cursor within the Balance
+      field; therefore, this field may not be directly altered.  Instead, the
+      cumulative balance is automatically calculated and updated whenever
+      necessary.
+
+      The balance will display within parentheses whenever it is negative
+      (i.e., overdrawn or deficit).  In this unfortunate case, it will display
+      with two digits following a decimal over the range (   0.01) thru
+      (9999.99); beyond that, cents will be rounded off to display (  10000)
+      thru (3276899).  A positive balance will display from 0.00 thru
+      99999.99, then round off cents to show 100000 thru 3276799, which would
+      be a clear indication of affluence.
+
+      Insert/Delete Entry and Undo Commands
+
+      As we have discussed, it is possible to start a new entry by pressing
+      RETURN whenever the cursor is at the end of the check register.  To
+      insert a new entry in the middle of the check register, position the
+      cursor on the line where the entry is desired (any field will do), and
+      press ^N.  The previous entry on that line will move down to make room.
+
+      It should be noted that the program will permit up to 128 active
+      entries.  If this limit would be exceeded, you will not be permitted to
+      create a new entry.  Normally, cleared entries are transferred from the
+      active database file to a separate file, freeing space for new entries.
+
+      To delete an entry, place the cursor within any field and press ^Y.
+      After an entry has been deleted, it may be restored by positioning the
+      cursor on any line of the check register and within any field, then
+      pressing the Undo command ^U.  This feature may be used to move an entry
+      from one line to another by first deleting it, then restoring it at the
+      new location.  It is also possible to make several copies of an entry by
+      first deleting it, then pressing ^U repeatedly.
+
+      Each time ^U is pressed, the entry last deleted by ^Y will be restored
+      at whichever line the cursor is positioned.  If a character insert or
+      delete (such as ^G) has intervened since the last ^Y, then the affected
+      Payee field or numeric value may be restored by the first ^U command,
+      but the deleted entry will be restored by the second ^U.
+
+      Ordering Entries
+
+      Check register entries may be conveniently ordered (sorted) according to
+      several criteria.  Press ^KO to order all entries.  You will be prompted
+
+      Demonstration and Tutorial                             v.1.0, Page 17
+
+
+
+      to select the primary field, which implies a specific secondary field as
+      follows:
+
+           Primary Field            Secondary Field
+
+              Date                       Payee
+              Payee                      Date
+              Category                   Date
+              Amount                     Date
+
+      All entries will be ordered by ascending value of the primary field.
+      Entries having the same primary field contents are ordered according to
+      their secondary field.  The Payee field will be sorted by ascending
+      ASCII value, which means that upper case letters will come before lower
+      case.  Category will be sorted by ASCII value, also, but lower case
+      letters are not allowed in the Category field.
+
+      It is possible to order a subset of the entire check register.  Position
+      the cursor anywhere within the first entry of the subset and press ^O
+      (or ^B, which is a synonym for ^O).  As for the ^KO command, you will be
+      prompted to choose the primary field; however, only the remainder of the
+      register will be sorted.  That is, all entries above the current entry
+      will be disregarded when ordering is commanded with ^O (or ^B).
+
+      For example, suppose you wish to sort entries since January 1st (or any
+      other date) by category.  First order all entries chronologically by
+      using ^KO and identifying Date as the primary field.  Then position the
+      cursor at the entry with the earliest date of interest and press ^O to
+      order remaining entries by the Category field.
+
+      Check Number
+
+      You may have noticed the absence of any field to identify the number
+      which is usually printed on a check by the bank.  The reason for this is
+      personal; I have never found any particular value in trying to keep
+      track of a check's number.  Therefore, I preferred to make the Payee
+      field as long as possible, rather than reserve space for a number field.
+
+      For those who must record the number, the easiest way may be to add it
+      at the end of the Payee field.  Unfortunately, there will not be any
+      convenient way to sort by number if this method is used.  Alternatively,
+      you may add the number at the start of the Payee field, so that ASCII
+      ordering by payee will provide some kind of sequence.  If you wish to
+      use the latter approach, it is suggested that you first type the payee's
+      description, taking advantage of the abreviation feature, then return to
+      the start of the Payee field to insert the check number, using INSERT ON
+      mode.
+
+      Print Command
+
+      The entire check register may be printed by using the ^KP command (or
+      ^P, which is a synonym for ^KP) regardless of the cursor location.  You
+      will be prompted to prepare the printer, then press RETURN when ready.
+      The paper should be positioned at the top of a clean page and the
+      printer should be on line before pressing RETURN.  The prompt line will
+
+      Demonstration and Tutorial                             v.1.0, Page 18
+
+
+
+      display an appropriate message while printing continues.  When complete,
+      a form feed will cause the paper to roll to a new page.
+
+      Reconciliation
+
+      In most cases, the bank sends a statement each month indicating which
+      deposits and withdrawals have been recorded for your account.  At that
+      time, it is convenient to reconcile your check register against the bank
+      statement.  Each transaction recorded by the bank should be marked CLR
+      in your register's Clear field.  A convenient way to reconcile is to
+      first order all entries by amount using the ^KO command.  Then each
+      statement transaction may be easily located in the register by scanning
+      for the correct amount.  Moving the cursor up and down in the Clear
+      field (with ^E and ^X) permits appropriate entries to be directly marked
+      (with ESCAPE or Y) when found.  If the statement indicates bank fees
+      have been withdrawn, you should create a debit entry and mark it CLR.
+      Similarly, any interest paid by the bank should be noted as a deposit
+      and cleared.  For demonstration purposes, you should mark about a dozen
+      entries CLR.
+
+      A special reconciliation display is produced by use of the ^KR command.
+      This report itemizes beginning balance, checks (debits), deposits
+      (credits), and current balance summed for each category, including a
+      total over all categories.  Checks, deposits, and current balance are
+      listed for cleared entries first, then for all entries (cleared plus
+      uncleared).  For each category and for the bottom line, date of the most
+      recent entry will be displayed.  If the report is too long to fit on the
+      screen, it may be scrolled up or down using ^Z or ^W.  The ^P command
+      will cause the report to be printed.  To return to the complete check
+      register, press ESCAPE.
+
+      By comparing checks, deposits, and current balance totaled over all
+      cleared entries relative to the bank statement, correct reconciliation
+      may be confirmed.
+
+      Done Command
+
+      As described earlier in this section, the Done command ^KD (or ^KX,
+      which is a synonym for ^KD) is the most convient way to save the current
+      check register and exit the program.  Any cleared entries (marked CLR in
+      the Clear field) will first be appended to the CLR file (DEMO.CLR for
+      the demonstration), the DAT file will be renamed BAK (DEMO.BAK), and all
+      active entries (those which have not cleared the bank) will be saved in
+      a new DAT file (DEMO.DAT).
+
+      The CLR file is able to hold up to 384 cleared entries, which are stored
+      chronologically.  In order to maintain the proper order, the check
+      register will be sorted by date before transferring cleared entries to
+      the CLR file.  If the number of new cleared entries to be appended will
+      cause the CLR file to exceed its limit, you will first be asked to
+      authorize eliminating enough of the oldest entries from the CLR file to
+      avoid the problem.  If you answer No, you may use ^KS to save all
+      current entries including cleared entries, followed by ^KQ to quit the
+      CHECKS program, then use the CLEARS program (described later in this
+      section) to review, edit, summarize, and delete CLR file entries.  If
+
+      Demonstration and Tutorial                             v.1.0, Page 19
+
+
+
+      you answer Yes, then the oldest entries will be automatically discarded.
+      Notice that a backup of the previous CLR file is not made.
+
+      Before separating them from the active check register, you will be
+      prompted to print an audit trail of cleared entries for your permanent
+      records.  You may respond Yes or No.
+
+      The same disk drive accessed for the original register database file
+      will be used to save the final files.  Before writing, all drives will
+      automatically be reset; therefore, it will be possible to change the
+      disk without causing an operating system error.  If there is a problem,
+      such as insufficient space on the disk, then you will be prompted to
+      replace the disk and try again; all data should be recovered.  For your
+      information, the DAT file will require no more than 7 KB, and the CLR
+      file, 20 KB maximum.
+
+      Balance Brought Forward
+
+      Entries which have been marked CLR are transferred from the active
+      database DAT file to a separate CLR file when the ^KD command (or ^KX,
+      as described earlier in this section) is used to save the register and
+      stop the program.  Before a cleared entry is transferred, its amount
+      will be added to a special BALANCE BROUGHT FORWARD entry, which is
+      retained in the active database.  This insures that the cumulative
+      balance based upon active entries will be accurate.  For a
+      demonstration, you should use the Done command (^KD or ^KX), then
+      restart the CHECKS program using the procedure indicated at the
+      beginning of this section.
+
+      A separate BALANCE BROUGHT FORWARD is determined for each unique
+      category (see Category field); all cleared entries with the same
+      category will be summarized by a single BALANCE BROUGHT FORWARD.  The
+      date of the BALANCE BROUGHT FORWARD will be made equal to that of the
+      most recent cleared entry added to the summary.  All BALANCE BROUGHT
+      FORWARD entries will be sorted to the top of the check register in order
+      of their date.
+
+      Because of the special significance of a BALANCE BROUGHT FORWARD entry,
+      it may not be directly modified.  Whenever the cursor is within such an
+      entry, the prompt line will query whether its BALANCE BROUGHT FORWARD
+      status should be canceled.  If the response is Yes, verification will be
+      requested, since this action removes the entry's special protection.  If
+      verified, the change will be denoted by converting all characters in the
+      Payee field to lower case.  Once BALANCE BROUGHT FORWARD status is
+      removed, the entry may be edited or deleted; however, this may have a
+      significant impact upon the check register's cumulative balance, so it
+      should be carefully considered.  If you simply wish to revise the
+      entry's category, for example, then you may wish to mark it CLR, so that
+      it will subsequently be summarized into another BALANCE BROUGHT FORWARD
+      entry.
+
+      CLEARS Program
+
+      The CLEARS program may be used to manage cleared entries stored in the
+      CLR file.  Make sure that CLEARS.COM, CHECKS.SCR, DEMO.INF, and DEMO.CLR
+
+      Demonstration and Tutorial                             v.1.0, Page 20
+
+
+
+      are in drive A.  At the A> prompt, type
+
+           CLEARS DEMO
+
+      Once the program reads cursor controls from the CHECKS.SCR file and
+      clears the screen, a copyright notice should appear.  Press any key
+      except ^C to continue.
+
+      Cleared entries will be read from the DEMO.CLR file (created earlier
+      during this demonstration) and displayed on your screen.  The default
+      title line, which identifies the CLEARS version number, will appear
+      centered at the top.  To the right of that will be the current filename,
+      including disk drive.  A customized title will be read from the DEMO.INF
+      file and displayed in place of the default title.  Other information in
+      DEMO.INF, including abreviations and automatic transactions, will be
+      ignored.
+
+      As you will see, CLEARS operates in a manner which is very similar to
+      the CHECKS program.  The Clear field is replaced by the <M>ark field.
+      If an entry is <M>arked, it will be added into a SUMMARY BROUGHT FORWARD
+      entry and deleted from the database of cleared entries (CLR file) when
+      the Done command (^KD or ^KX) is executed.  The SUMMARY BROUGHT FORWARD
+      is analogous to BALANCE BROUGHT FORWARD; all <M>arked entries with the
+      same category will be added to a single SUMMARY BROUGHT FORWARD.  The
+      Done command and the Save command (^KS) will replace the CLR file
+      without altering the active database DAT file.
+
+      The cursor will enter only the Category and <M>ark fields, since those
+      are the only ones which may be changed.  The other fields cannot be
+      modified, to preserve integrity of the original entries.  Changing
+      category permits you to redefine which SUMMARY BROUGHT FORWARD will be
+      used for a <M>arked entry.
+
+      The ^KR command produces a report analogous to the reconciliation
+      report, with beginning summary, checks, deposits, and current summary
+      for <M>arked entries and for all cleared entries itemized by category,
+      including a total over all categories.
+
+      CHECKS commands which are not meaningful for the CLEARS program include
+      ^V (insert mode), ^N (insert line), ^T (delete word), ^QY (delete to
+      EOL), ^QDEL (delete to BOL), and ^KA (display abreviations).  Delete
+      character commands ^G and DEL are applicable only while the cursor is
+      within the Category field.  Other commands function as expected.  In
+      particular, ^Y may be used to delete entries from the CLR database, ^U
+      will restore the last entry deleted by ^Y, ^KO (and ^O) may be used to
+      order entries, and ^KP (or ^P) will print them.
+
+
+
+                               EXECUTING the PROGRAM
+
+      The Check Register Program requires that CHECKS.SCR, which has been
+      installed with your console's screen controls, reside in the default
+      disk drive (indicated as part of the > prompt).  When the program is
+      started, it will look for an information file of type INF (described in
+
+      Executing the Program                                  v.1.0, Page 21
+
+
+
+      a following section) and a database file of type DAT, which need not be
+      on the same disk as the COM or SCR files.  When the program is stopped
+      using ^KD (or ^KX), it will add any cleared entries to a file of type
+      CLR, rename the original DAT file to be of type BAK, and write the
+      current active register to a new DAT file.  The INF, DAT, CLR, and BAK
+      files will all be on the same disk and will all have the same filename;
+      the default filename is CHECKS, but you may choose another name.  In
+      this way, you may manage more than one check register by giving each a
+      different name.
+
+      On the command line, you may indicate which check register to use.  For
+      example, if you wish to work with a register named FAMILY located on a
+      disk in drive B, place CHECKS.COM and CHECKS.SCR in drive A and at the
+      A> prompt type
+
+           CHECKS B:FAMILY
+
+      The program will look for FAMILY.INF on drive B.  If it is not found,
+      you will be given an opportunity to stop or proceed (the information
+      file is optional).  Next the database file FAMILY.DAT will be located on
+      drive B.  If it does not exist, which will be the case when you start a
+      new register (described in a later section), you may again choose to
+      quit or continue; in this case, the check register will be empty, and
+      you may begin filling it with entries.  When you are done, enter the ^KD
+      command.  The program will append any cleared entries to FAMILY.CLR on
+      drive B or, if there were no previous CLR file, it will create one.
+      Finally, FAMILY.DAT (if it existed) will be renamed FAMILY.BAK, and the
+      active check register will be written to a new FAMILY.DAT file on the B
+      drive.
+
+      In general, the command line may be typed as
+
+           u>v:CHECKS w:filename
+
+      where u represents the default disk drive containing CHECKS.SCR, v
+      indicates the drive where CHECKS.COM is located, and the register files
+      may be found on drive w with the name "filename".  If v: is not
+      specified, the COM and SCR files will be assumed on default drive u.
+      Similarly, if w: is not included, register files will be read and
+      written on the default drive.  Finally, if "filename" is blank, the
+      default name CHECKS will be assumed.  Therefore,
+
+           A>CHECKS
+
+      will use CHECKS.COM, CHECKS.SCR, CHECKS.INF, CHECKS.DAT, CHECKS.BAK, and
+      CHECKS.CLR all on drive A.  Also,
+
+           A>CHECKS B:
+
+      will look for CHECKS.COM and CHECKS.SCR on drive A, while CHECKS.INF,
+      CHECKS.DAT, CHECKS.BAK, and CHECKS.CLR will each be on drive B.  Other
+      valid commands include
+
+      Executing the Program                                  v.1.0, Page 22
+
+
+
+           A>B:CHECKS               with CHECKS.SCR in drive A
+           A>CHECKS MYBOOK          with CHECKS.SCR in drive A
+           B>A:CHECKS SPOUSE        with CHECKS.SCR in drive B
+           B>CHECKS A:CHECKS        with CHECKS.SCR in drive B
+           B>CHECKS A:              with CHECKS.SCR in drive B
+
+      The CLEARS program is initiated in a similar manner.  CHECKS.SCR must be
+      on the default disk.  CLEARS will read the filename.INF and filename.CLR
+      files and write a new filename.CLR file; DAT and BAK files are not
+      involved with the CLEARS program.  The general command line is
+
+           u>v:CLEARS w:filename
+
+      where the default "filename" is CHECKS.  Therefore, the procedure for
+      running CLEARS is the same as that for CHECKS; simply substitute CLEARS
+      in place of CHECKS.
+
+
+
+                                  INFORMATION FILE
+
+      The information file is a standard ASCII file which may be created using
+      any text editor, such as ED or WordStar.  If WordStar is used, the file
+      must be edited in Non-document mode (select N from the main menu).  You
+      may give the file any name of type INF, such as FAMILY.INF.  The default
+      name is CHECKS.INF.
+
+      The INF file may contain three sets of information, which are automatic
+      transactions, abreviation definitions, and customized title.  Each set
+      is identified by a keyword.  Only the first five characters of each
+      keyword are significant; they may be in upper or lower case.  The
+      keywords are
+
+           AUTOMatic transactions
+           ABREViations
+           TITLE
+
+      Each keyword must begin in the first column of a line.  When the first
+      five characters are determined to be a keyword, remaining characters on
+      the same line are ignored.  Each line of text following a keyword will
+      be interpreted as a definition of the type indicated by the keyword,
+      until another keyword is recognized.  If the first lines of the file do
+      not contain a keyword, they will be ignored.  No line may contain more
+      than 148 characters.
+
+      Each automatic transaction definition must appear on a separate line and
+      must contain the following five fields:
+
+           Date  Category  Amount  Deposit  Payee
+
+      The fields must be separated by one or more space or tab (white space).
+      Each of the first four fields may not contain any embedded white space.
+      Examples are
+
+      Information File                                       v.1.0, Page 23
+
+
+
+           Automatic Transactions
+            1  -  1234.56  D  Salary
+           15  h   765.43  w  First National Bank, mortage payment
+            5  H    88.00  -  United Power & Light, utilities
+
+      Date is a single number representing the date of the month when the
+      automatic transaction should occur.  Category will be converted to upper
+      case; a hyphen (-) will be interpreted as a blank (default) category.
+      Amount should always be positive; any leading minus sign(s) will be
+      ignored.  If the deposit field is D or d, a deposit transaction will be
+      indicated; any other non-space character will define a withdrawal.
+      After skipping any white space following the Deposit field, remaining
+      characters on the line will be considered part of the Payee field.  Note
+      that abreviations will not be expanded for automatic transactions.
+
+      Each abreviation definition must appear on a separate line and must
+      contain two fields separated by white space.  The first three characters
+      on each line (including white space) will be converted to upper case and
+      interpreted as an abreviation.  Any white space following the first
+      three characters will be ignored.  Up to 42 remaining characters on the
+      line (including white space) will replace the abreviation whenever it is
+      recognized in the Payee field.  Examples include
+
+           ABREVIATIONS
+           FNB  First National Bank
+           sal  Salary
+           Uni  United Power & Light
+
+      The title line displayed by CHECKS and CLEARS may be customized by
+      including the desired text on a separate line following the TITLE
+      keyword in the information file.  The first 62 characters will be
+      interpreted as the new title and displayed on the title line.  If more
+      than one line of text appears after the TITLE keyword and before the
+      next keyword, only the last will be retained as the new title.  An
+      example is
+
+           Title
+           Jones Family Check Register
+
+      Each of the three sets of information recognized in an INF file may
+      appear in any order and may be included more than once.  That is, you
+      may define abreviations, then a title, then more abreviations, then
+      automatic transactions, then another title, etc.  The recommended order
+      is automatic transactions, followed by abreviations, and finally a
+      title.
+
+      A special character will be recognized whenever it appears in the
+      information file.  If a vertical bar (|, which is ASCII 7C hex or 124
+      decimal) appears on any line, then that character and all following
+      characters on the same line will be ignored.  This permits you to
+      include comments in the INF file, which will not be included in the
+      definitions.  A complete INF file example follows:
+
+      Information File                                       v.1.0, Page 24
+
+
+
+           | Information File for Check Register Program
+           AUTOMATIC TRANSACTIONS
+            1  -  1234.56  D  Salary|    1st of each month
+           15  h   765.43  w  First National Bank, mortage payment
+            5  H    88.00  -  United Power & Light, utilities
+           ABREVIATIONS
+           FNB  First National Bank|     use for deposits or cash withdrawals
+           sal  Salary
+           Uni  United Power & Light|    gas and electric company
+           TITLE
+           Jones Family Check Register
+           | End of Information File   
+
+      The INF file must carry the same filename as the check register database
+      DAT file; for example, FAMILY.INF goes with FAMILY.DAT.
+
+
+
+                                  GETTING STARTED
+
+      Beginning a New Register
+
+      The simplest way to begin a new register is to create an information
+      file with the default name CHECKS.INF.  Use a familiar ASCII text editor
+      such as ED or WordStar (Non-document mode) as described in the preceding
+      section.  Define any automatic transactions, which might include salary
+      deposits, mortgage payments, or checking account fees.  Add abreviations
+      for utility companies, loan companies, credit cards, supermarkets, etc.
+      Then compose a title for your personalized register.
+
+      Place CHECKS.COM, CLEARS.COM, and CHECKS.SCR (installed for your screen)
+      on one disk in drive A and CHECKS.INF on another disk in drive B.  At
+      the A> prompt, type
+
+           CHECKS B:
+
+      The program will indicate that CHECKS.DAT is not available, but you
+      should choose to continue.  You will then be presented with an empty
+      register.
+
+      Find the oldest uncleared entry in your previous paper check register.
+      Determine the account balance which existed prior to that transaction,
+      and enter the balance amount into the new register as a deposit (DEP).
+      Call that entry something like "Current Balance", and mark it cleared
+      (CLR).  Then proceed to transfer all remaining transactions from your
+      previous register to your new register, marking them CLR if appropriate.
+      When completed, you may wish to order (^KO) and/or print (^KP) the
+      result.  Finally, use ^KD to quit the program.
+
+      You should observe that CHECKS.DAT and CHECKS.CLR have been added to
+      drive B.  You may wish to investigate these files by restarting CHECKS
+      or by executing CLEARS (in the same manner as CHECKS).
+
+      Getting Started                                        v.1.0, Page 25
+
+
+
+      Insufficient Disk Space
+
+      It is usually more convient to have CHECKS.INF, CHECKS.DAT, and
+      CHECKS.CLR on the same disk as CHECKS.COM, CLEARS.COM, and CHECKS.SCR.
+      That way, the program may be started simply by inserting the disk in
+      drive A and typing at the A> prompt
+
+           CHECKS
+
+      However, you must remember that the DAT file may grow to be 7 KB, there
+      will probably be a BAK file of the same size, the CLR file can be up to
+      20 KB, and there must be sufficient space for a copy of the CLR file
+      while appending cleared entries.  Therefore, you should verify that the
+      disk can hold about 54 KB in addition to the INF, SCR, and two COM
+      files.  If you wish, CLEARS.COM need not be on the same disk.
+
+      If you run short of disk space while executing either Done (^KD) or Save
+      (^KS), the best way to recover is to remove the disk when prompted and
+      replace it with a formatted disk having about 7 KB free space; make sure
+      that the physical write protect tab is disabled, so that it is possible
+      to write on the disk.  Do this even if the removed disk contains the COM
+      and SCR files, since these are not required after the program has
+      started.  Then use ^KS followed by ^KQ (Quit).  Finally, put the INF and
+      CLR files from the old disk together with the DAT file from the new
+      disk, making sure that there is enough free space left over to match the
+      size of CLR and DAT combined.  Restart the Check Register Program to
+      verify that your data was recovered properly.
+
+
+
+                                      COMMANDS
+
+      This section describes each command recognized by the Check Register
+      Program.  The commands are shown on the left side of the page, along
+      with any applicable synonyms.  The description of each command appears
+      on the right side.  Commands are grouped according to logical function.
+
+      The carat symbol (^) indicates use of the CONTROL key in conjunction
+      with another key, in a manner which is analogous to the use of SHIFT to
+      type an upper case letter.  The second half of a two key command may be
+      entered by pressing either the lower case, upper case, or CONTROLed
+      form; for example, ^Qc, ^QC, and ^Q^C all move to the bottom of the
+      check register.
+
+      Cursor Movement Commands
+
+      ^D                  Move cursor right one character if in Payee field;
+                          otherwise, move right one field or subfield.
+
+      ^S or ^H            Move cursor left one character if in Payee field;
+         or BACKSPACE     otherwise, move left one field or subfield.
+
+      ^E                  Move cursor up one line if below the first line.
+
+      ^X                  Move cursor down one line if above the last line.
+
+      Commands                                               v.1.0, Page 26
+
+
+
+
+      ^F or TAB or ^I     Move cursor right one word if in Payee field;
+                          otherwise, move right one field or subfield.
+
+      ^A                  Move cursor left one word if in Payee field;
+                          otherwise, move left one field or subfield.
+
+      RETURN              Move cursor right one field or subfield.
+
+      /                   Only while in Date field, move cursor right one
+                          subfield.
+
+      ^R                  Scroll up one page.
+
+      ^C                  Scroll down one page.
+
+      ^W                  Scroll up one line, if below first line.
+
+      ^Z                  Scroll down one line, if above last line.
+
+      ^QW                 Continuously scroll up one line at a time.  Speed is
+                          adjustable by typing a single digit, 1 for fast thru
+                          9 for slow.  Press any non-digit key to stop
+                          scrolling.
+
+      ^QZ                 Continuously scroll down one line at a time.  Speed
+                          is adjustable by typing a single digit, 1 for fast
+                          thru 9 for slow.  Press any non-digit key to stop
+                          scrolling.
+
+      ^QR                 Jump to beginning of register.
+
+      ^QC                 Jump to end of the register.
+
+      ^QD                 Jump to last field on the line.
+
+      ^QS or ^QH          Jump to first field on the line.
+
+      ^QE                 Jump to top register line displayed on the screen,
+                          but stay within the same field.
+
+      ^QX                 Jump to bottom register line displayed on the
+                          screen, but stay within the same field.
+
+      Editing Commands
+
+      ^V                  Toggle INSERT mode if in Payee field; otherwise, not
+                          applicable.
+
+      ^G                  Delete the character at the cursor.  Not applicable
+                          if in Deposit or Clear field.
+
+      DEL (DELETE) or ^_  Delete the character preceding the cursor if in
+                          Payee field; otherwise, same as ^G.
+
+      Commands                                               v.1.0, Page 27
+
+
+
+      ^T                  Delete balance of word if in Payee field; otherwise,
+                          not applicable.
+
+      ^QY                 Delete from cursor to end of field if in Payee
+                          field; otherwise, not applicable.
+
+      ^QDEL or ^Q^_       Delete from beginning of field to but not including
+                          cursor if in Payee field; otherwise, not applicable.
+
+      ^N                  Insert a new entry at the line containing the
+                          cursor.  Move existing lines down.
+
+      ^Y                  Delete the line containing the cursor.
+
+      ^U                  Undo most recent deletion.  If in Date subfield or
+                          Amount field, restore previous value.  If in Payee
+                          field, restore last deleted character.  Otherwise,
+                          insert previously deleted line.
+
+      Calculator Commands (while in the Amount field)
+
+      +                   Add to current amount.
+
+      -                   Subtract from current amount.
+
+      =                   Display calculated result as new amount.
+
+      m+                  Add current amount to Memory.
+
+      m-                  Subtract current amount from Memory.
+
+      mc                  Clear Memory to zero.
+
+      mr                  Recall from Memory to Amount field.
+
+      Save, Quit, and Done Commands
+
+      ^KS                 Rename filename.DAT to be filename.BAK, then save
+                          all entries, cleared and uncleared, in a new DAT
+                          file.
+
+      ^KQ                 If there have been no changes, quit immediately;
+                          otherwise, verify that the current register is to be
+                          abandoned without saving changes.
+
+      ^KD or ^KX          Append all cleared entries to filename.CLR after
+                          adding to BALANCE BROUGHT FORWARD amount for each
+                          category.  Rename filename.DAT to be filename.BAK,
+                          then save all uncleared and BALANCE BROUGHT FORWARD
+                          entries in a new DAT file.  Quit the program.
+
+      Commands                                               v.1.0, Page 28
+
+
+
+      Miscellaneous Commands
+
+      ^KO                 Order all entries by Date and Payee, or Payee and
+                          Date, or Category and Date, or Amount and Date.
+
+      ^O or ^B            Order all entries from the current cursor line thru
+                          the remainder of the register, with the same options
+                          as ^KO.
+
+      ^KP or ^P           Print the complete check register.
+
+      ^KA                 Display all abreviations.
+
+      ^KR                 Display reconcilition report.
+
+      ^J or LINEFEED      Display help.
+
+      ESCAPE              Only when queried for a Yes/No response, toggle
+                          to opposite default.
+
+      All of the commands described in this section are applicable to the
+      CHECKS program.  All perform similar functions when used with the CLEARS
+      program, except for ^V, ^T, ^N, ^QY, ^QDEL, and ^KA.  Notice that ^L is
+      the only alphabetic control character which is not used as a command.
+
+
+
+                                    FUTURE PLANS
+
+      Future plans for the Check Register Program include:
+
+        o  Porting from CP/M-80 to MS/PC-DOS and to CP/M-86 and its
+           derivatives.
+
+        o  Relaxing memory constraints for 16-bit computers.
+
+        o  Addition of a program to print new checks which have been entered
+           into the check register.
+
+        o  Possible addition of a field for check number.
+
+        o  Possible extension of the Payee field, with horizontal scrolling
+           when the number of characters exceeds the display window.
+
+        o  Implementation of ideas submitted by you.
+
+      Let me know what you think.
+

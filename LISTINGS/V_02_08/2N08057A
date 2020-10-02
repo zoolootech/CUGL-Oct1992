@@ -1,0 +1,69 @@
+/*
+ * Minimal Standard Random Number Generator recommended
+ * by S.K. Park and K.W. Miller. (CACM October, 1988).
+ */
+
+static long seed;
+
+#define PRIME	2147483647L	/* 2^31 - 1 */
+#define ROOT	16807L
+#define QUOT	127773L		/* PRIME DIV ROOT */
+#define REMN	2836L		/* PRIME MOD ROOT */
+
+/*
+ * Define type ldiv_t, function ldiv() to match
+ * Microsoft C 5.1 library:
+ */
+
+typedef struct {
+	long quot;
+	long rem;
+} ldiv_t;
+
+ldiv_t ldiv(long int numer, long int denom)
+{
+	ldiv_t temp;
+	
+	temp.quot = numer / denom;
+	temp.rem = numer % denom;
+	return temp;
+}
+
+/*
+**	sets initial seed, ensuring that it is never 0
+*/
+
+void stdsrand(long lseed)
+{
+extern long time();
+
+	seed = lseed & 0x7FFFFFFF;
+	while (seed == 0L) {
+		seed = time((long *) 0) % PRIME;
+	}
+}
+
+/*
+**	returns uniformly distributed long integers
+**	in the range 1..2147483646
+*/
+
+long stdrand()
+{
+ldiv_t temp;
+long test;
+
+	if (seed == 0L)
+		stdsrand(0L);
+
+	temp = ldiv(seed, QUOT);
+	test = ROOT * temp.rem - REMN * temp.quot;
+
+	if (test > 0L) {
+		seed = test;
+	} else {
+		seed = test + PRIME;
+	}
+
+	return (seed);
+}

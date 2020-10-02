@@ -1,0 +1,186 @@
+
+
+/*************************************************
+* NBLIBC.C -- NETBIOS library routines
+*
+*     Copyright 1990 Tom Jensen
+*************************************************/
+
+#include <stddef.h>
+#include <string.h>
+#include <dos.h>
+#include "netbios.h"
+
+/************************************************
+* NbNcbInit -- Initialize Network Control Block.
+************************************************/
+
+void NbNcbInit (struct NcbData *ncb, unsigned char cmd,
+  char *lnam, char *fnam)
+{
+    memset (ncb, (char)0, sizeof (struct NcbData));
+    ncb->Command = cmd;
+    NbExpandName (ncb->Name, lnam);
+    NbExpandName (ncb->CallName, fnam);
+}
+
+/*****************************************************
+* NbExpandName -- Copy a name with trailing spaces to
+*                 a buffer.
+*****************************************************/
+
+void NbExpandName (char *buffer, char *name)
+{
+    int i;
+
+    /* Insure name pointer is valid */
+    if (name == NULL)
+        name = "";
+    strncpy (buffer, name, 16);
+    if ((i = strlen (name)) < 16)
+        memset (&buffer[i], ' ', 16 - i);
+}
+
+/****************************************
+* NbAddName -- Add a local network name.
+****************************************/
+
+unsigned NbAddName (struct NcbData *ncb, char *lnam)
+{
+    NbNcbInit (ncb, NET_ADD_NAME, lnam, NULL);
+    return NBCALL (ncb);
+}
+
+/*******************************************
+* NbDelName -- Delete a local network name.
+*******************************************/
+
+unsigned NbDelName (struct NcbData *ncb, char *lnam)
+{
+    NbNcbInit (ncb, NET_DEL_NAME, lnam, NULL);
+    return (NBCALL (ncb));
+}
+
+/*****************************************************
+* NbListen -- Allow a network session to be opened by
+*     another node.  See NbOpenSession().
+*
+*   *ses = session number if established
+*****************************************************/
+
+unsigned NbListen (struct NcbData *ncb, char *lnam,
+  char *fnam, unsigned char *ses)
+{
+    unsigned reterr;
+
+    NbNcbInit (ncb, NET_LISTEN, lnam, fnam);
+    reterr = NBCALL (ncb);
+
+    if (reterr == NB_OK)
+        *ses = ncb->LSN;
+
+    return reterr;
+}
+
+/*********************************************************
+* NbPostListen -- Allow a network session to be opened by
+*     another node with no-wait option.
+*
+* Note: session number must be retrieved from NCB after
+*       completion.
+*********************************************************/
+
+unsigned NbPostListen (struct NcbData *ncb, char *lnam,
+  char *fnam)
+{
+    NbNcbInit (ncb, NET_LISTEN | NET_NOWAIT, lnam, fnam);
+    SETPOSTADDR ((void far *)(&(ncb->Post.pfar)));
+    return (NBCALL (ncb));
+}
+
+/****************************************************
+* NbOpenSession -- Open a network session with fnam.
+*     fnam must be listening.
+*
+*   *ses = session number if established
+****************************************************/
+
+unsigned NbOpenSession (struct NcbData *ncb, char *lnam,
+  char *fnam, unsigned char *ses)
+{
+    unsigned reterr;
+
+    NbNcbInit (ncb, NET_CALL, lnam, fnam);
+    reterr = NBCALL (ncb);
+
+    if (reterr == NB_OK)
+        *ses = ncb->LSN;
+
+    return reterr;
+}
+
+/*******************************************************
+* NbCloseSession -- Close network session number "ses".
+*******************************************************/
+
+unsigned NbCloseSession (struct NcbData *ncb, char *lnam,
+  char *fnam, unsigned char ses)
+{
+    NbNcbInit (ncb, NET_HANGUP, lnam, fnam);
+    ncb->LSN = ses;
+    return (NBCALL (ncb));
+}
+
+/***********************************************************
+* NbCancel -- Cancel pending NCB command pointed to by ncb.
+***********************************************************/
+
+unsigned NbCancel (struct NcbData *ncb)
+{
+    NbNcbInit (ncb, NET_CANCEL, NULL, NULL);
+    ncb->Buffer.pfar = (struct NcbData far *) ncb;
+    return (NBCALL (ncb));
+}
+
+/*********************************************************
+* NbSessionStatus -- Get network session status for local
+*     name.
+*********************************************************/
+
+unsigned NbSessionStatus (struct NcbData *ncb, char *lnam,
+  char *fnam, char *buffer, int bufsiz)
+{
+    NbNcbInit (ncb, NET_SES_STAT, lnam, fnam);
+    ncb->Buffer.pfar = (struct NcbData far *) buffer;
+    ncb->Length = bufsiz;
+    return (NBCALL (ncb));
+}
+
+/*********************************************
+* NbSendData -- Send a data to a remote node.
+*********************************************/
+
+unsigned NbSendData (struct NcbData *ncb, char *lnam,
+  char *fnam, char *buffer, int bufsiz, unsigned char ses)
+{
+    NbNcbInit (ncb, NET_SEND, lnam, fnam);
+    ncb->LSN = ses;
+    ncb->Buffer.pfar = (char far *) buffer;
+    ncb->Length = bufsiz;
+    return (NBCALL (ncb));
+}
+
+/***************************************************
+* NbReceiveData -- Receive data from a remote node.
+***************************************************/
+
+unsigned NbReceiveData (struct NcbData *ncb, char *lnam,
+  char *fnam, char *buffer, int bufsiz, unsigned char ses)
+{
+    NbNcbInit (ncb, NET_RECV, lnam, fnam);
+    ncb->LSN = ses;
+    ncb->Buffer.pfar = (struct NcbData far *) buffer;
+    ncb->Length = bufsiz;
+    return (NBCALL (ncb));
+}
+

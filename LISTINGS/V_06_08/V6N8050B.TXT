@@ -1,0 +1,133 @@
+/* hr_pixel.c - Set the color of the pixel at column x, row y according
+ * to color c.  sop is the starting address of the display page. eop is the
+ * ending address.  Note:  If the color is not possible at the
+ * specified position, it is shifted left.  If the color is other than
+ * BLACK or WHITE, the adjacent bits are both turned off.  If the color
+ * is WHITE, the bit to the left is also turned on. This shifting is not
+ * performed when the adjacent pixel is in a different row.  Returns void.
+ *
+ * Environment:	Apple II, Aztec c65 V1.05B
+ * Programmer:	Don Strayer
+ * Date:		15-Jun-88
+ */
+
+#include <math.h,d1>
+#include <hr_apple2.h>
+
+hr_pixel( x, y, c, sop , eop )
+	int x;										/* column */
+	int y;										/* row */
+	int c;										/* color */
+	int sop;									/* start of page */
+	int eop;									/* end of page */
+
+{	static char *pa;							/* pixel address */
+
+	/* convert row number y to its equivalent blocking in display memory */
+
+	y = ( ( y / 8 ) * 3 ) + ( ( y % 8 ) * 24 ) - ( ( y / 64 ) * 24 )
+			+ ( y / 64 );
+
+	/* adjust offset for the 8 byte padding every 3rd row */
+
+	sop += ( y / 3 ) * 8;
+
+	/* set the pixel to the specified color, adjusting as necessary */
+
+	switch ( c )
+
+	{	case HR_BLACK:
+		{	pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );		/* pixel address */
+			*pa = *pa & ( ( 1 << ( x % HR_PPB ) ) ^ 255 );	/* set pixel off */
+			break;
+		}
+
+		case HR_PURPLE:
+		{	if ( x & 1 )					/* decrement column if odd */
+				--x;
+
+			pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );	/* pixel address */
+			*pa = *pa | ( 1 << ( x % HR_PPB ) );		/* set pixel on */
+			*pa = *pa & 127;							/* high order off */
+
+			break;
+		}
+		
+		case HR_BLUE:
+		{	if ( x & 1 )					/* decrement column if odd */
+				--x;
+
+			pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );	/* pixel address */
+			*pa = *pa | ( 1 << ( x % HR_PPB ) );		/* set pixel on */
+			*pa = *pa | 128;							/* high order on */
+
+			break;
+		}
+
+		case HR_GREEN:
+		{	if ( x == 0 )						/* exit if column zero */
+				break;							/* (can't decrment) */
+
+			if ( ! ( x & 1 ) )					/* decrement column if even */
+				--x;
+
+			pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );	/* pixel address */
+			*pa = *pa | ( 1 << ( x % HR_PPB ) );		/* set pixel on */
+			*pa = *pa & 127;							/* high order off */
+
+			break;
+		}
+
+		case HR_ORANGE:
+		{	if ( x == 0 )					/* exit if column zero */
+			break;							/* (can't decrement) */
+
+			if ( ! ( x & 1 ) )				/* decrement column if even */
+				--x;
+
+			pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );	/* pixel address */
+			*pa = *pa | ( 1 << ( x % HR_PPB ) );		/* set pixel on */
+			*pa = *pa | 128;							/* high order off */
+
+			break;
+		}
+
+		case HR_WHITE:
+		{	pa = sop + ( y * HR_BPR ) + ( x / HR_PPB );	/* pixel address */
+			*pa = *pa | ( 1 << ( x % HR_PPB ) );		/* set pixel on */
+
+			/* set pixel on left on if within current row */
+
+			if ( x )
+			{	pa = sop + ( y * HR_BPR ) + ( --x / HR_PPB );
+				*pa = *pa | ( 1 << ( x % HR_PPB ) );
+				++x;
+			}
+
+		break;
+		}
+
+		default:							/* invalid color */
+			break;
+	}
+
+	/* if the pixel is colored, set the adjacent positions off,
+	   provided within the current row */
+
+	if ( ( c != HR_BLACK ) && ( c != HR_WHITE ) )
+	{	if ( x )
+		{	pa = sop + ( y * HR_BPR ) + ( --x / HR_PPB );
+			*pa = *pa & ( ( 1 << ( x % HR_PPB ) ) ^ 255 );
+			++x;
+		}
+		if ( x < 278 )
+		{	pa = sop + ( y * HR_BPR ) + ( ++x / HR_PPB );
+			*pa = *pa & ( ( 1 << ( x % HR_PPB ) ) ^ 255 );
+			--x;
+		}
+	}
+
+	return();
+}
+
+

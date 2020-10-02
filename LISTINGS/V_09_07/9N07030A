@@ -1,0 +1,94 @@
+
+/*************************************************************
+*       phraseXcmd.c v1.0
+*       chunk words into phrases
+*       needs: ANSI-A4, MacTraps, HyperXCmd.h,
+*               XCmdGlue.inc.c, and phrase.c
+*       THINK C v4.0
+*       Richard Rathe 8/90
+*/
+
+extern int __GetA4(void);       /* prototype for #includes */
+
+#include <HyperXCmd.h>          /* for XCmdBlock struct */
+#include <MacTypes.h>           /* for Handle, etc. */
+#include <SetUpA4.h>            /* for register A4 functions */
+#include <string.h>             /* for strlen and strcpy */
+
+#include "phrase.h"             /* for #defines and prototypes */
+
+#define NO_ERROR        0       /* all is well */
+#define PARAM_ERR       1       /* wrong number of params error */
+#define SIZE_ERR        2       /* text too big error */
+
+#define SEGMENT         30000   /* max size for HyperCard containers */
+
+                                /* prototype */
+extern void     phraseXcmd(char *in,char *out,char *stop,XCmdBlockPtr paramPtr);
+
+pascal void main(paramPtr)      /* XFCN entry point */
+        XCmdBlockPtr paramPtr;
+{
+        int error;
+        char *text,*list,*stoplist;
+        
+        RememberA0();           /* so we can recover */
+        SetUpA4();              /* so we can find literals */
+        
+        error = NO_ERROR;       /* clear error flag */
+        
+        if (paramPtr->paramCount != 2)  /* need two parameters */
+                error = PARAM_ERR;
+        
+        HLock(paramPtr->params[0]);     /* lock handles */
+        HLock(paramPtr->params[1]);
+        
+        text = *(paramPtr->params[0]);          /* get first param */
+        stoplist = *(paramPtr->params[1]);      /* get second param */
+
+        
+        if(strlen(text) > SEGMENT / MAXWORD)    /* check size */
+                error = SIZE_ERR;
+
+        paramPtr->returnValue = NewHandle(SEGMENT);     /* get storage */
+        HLock(paramPtr->returnValue);
+        list = *(paramPtr->returnValue);
+        
+        if(error == NO_ERROR)                           /* if no error */
+                phraseXcmd(text,list,stoplist,paramPtr);/* call phrase */
+        else if(error == PARAM_ERR)                     /* else give message */
+                strcpy(list,"error: syntax is \"put phrase(<source>,<stoplist>)
+                        into destination\"");
+        else if(error == SIZE_ERR)
+                strcpy(list,"error: source text too large!");
+
+        HUnlock(paramPtr->params[0]);           /* unlock handles */
+        HUnlock(paramPtr->params[1]);
+        HUnlock(paramPtr->returnValue);
+
+        RestoreA4();                            /* restore A4 */
+}
+
+/* replacement for phrase() with wait cursor call added */
+
+void phraseXcmd(char *in,char *out,char *stop,XCmdBlockPtr paramPtr)
+{
+        char flag;
+        char buf[MAXCHAR];
+        char HCmessage[MAXCHAR / 2];
+        
+        strcpy(HCmessage,"set cursor to busy"); /* init message */
+        CtoPstr(HCmessage);                     /* convert to pascal string */
+
+        *out = EOS;                             /* just to be sure */
+
+        while(*(in = getword(in,buf,&flag)) != EOS)     /* get a word */
+        {
+                addword(out,buf,stop,flag);             /* add it */
+                        /* spin the beachball */
+                SendCardMessage(paramPtr,(StringPtr) HCmessage);
+        }
+
+        addword(out,buf,stop,flag);                     /* last word */
+}
+

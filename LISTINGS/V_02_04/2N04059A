@@ -1,0 +1,48 @@
+; RdKey to replace Turbo Pascal's ReadKey with a
+; function that (1) doesn't require clearing before
+; reuse after a call that yields ch = #0 and (2)
+; differentiates pairs such as BackSpace and Ctrl-h.
+;
+; Implemented as a Turbo Pascal external function
+; in assembly. (Assembled in TASM 1.0 & MASM 5.0.)
+
+                      page   56,132
+                      title  function RdKey (TP5.x)
+
+
+cseg     segment  public
+         assume cs:cseg, es:nothing
+
+RdKey    proc    far
+         public  RdKey
+
+         mov     bx,bp                  ; save bp
+         mov     bp,sp
+
+         ; get key, get pointer to "variable : KeyRec"
+         ; and test for ascii code = 0.
+         mov     ah, 0                  ; get key
+         int     16h
+         les     di,dword ptr [bp+4]
+         and     al, al                 ; test for ascii 0
+         jz      short SpecKey          ; yes, ascii 0
+
+         ; ascii code <> 0, put ascii code into .ch and
+         ; scan code into .sc. Fn result already in al.
+         mov     es:byte ptr [di], al   ; ascii into .ch
+         inc     di
+         mov     es:byte ptr [di], ah   ; scan into .sc
+         mov     bp, bx
+         retf    4
+
+SpecKey:
+         ; ascii code = 0, put scan code into .ch and 0 into
+         ; .sc. Function result already in al.
+         mov     es:byte ptr [di], ah   ; scan into .ch
+         inc     di
+         mov     es:byte ptr [di], 0    ; 0 into .sc
+         mov     bp,bx
+         retf    4
+RdKey    endp
+cseg     ends
+         end

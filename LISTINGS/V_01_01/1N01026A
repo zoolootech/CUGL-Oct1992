@@ -1,0 +1,295 @@
+* Tim Parker
+* 6075 Meadowhill Crescent, Gloucester, Ontario, K1C 3N3
+* (613) 830-7727 [h], (613) 238-2100 [w], (613) 830-2110 [fax]
+* Borland's Paradox Engine for C
+* March 20th, 1990 - Listing 1
+
+LISTING 1
+
+/* IMPORT.C: Converts ASCII to Paradox Table Format */
+/* Copyright (c) 1990 by Borland International, Inc. */
+/* Used by permission. */
+/* Comments modified or removed by Tech Specialist */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <math.h>
+#include "pxengine.h"
+
+/*  IMPORT.C
+ *  ASCII Files are expected to be in the following format
+ *    Customer Number:     8 characters
+ *    Part Number:         8 characters
+ *    Quantity:            Integer
+ *    Date:                10 characters, format MM/DD/YYYY
+ *  Each field within the ASCII record should be separated by
+ *  a space. Each record within the ASCII file should be
+ *  separated by a newline.
+ */
+
+/* If using a network, the following is uncommented
+#define NETWORK */
+#ifdef NETWORK
+#define NETUSERNAME    "username"    /* network username */
+#define NETPATH        ""            /* .net directory */
+#define NETTYPE        NOTONNET      /* network type */
+#endif
+
+/* Field numbers of Paradox Table Fields */
+#define FIELDPARTNBR       1            /* Part Number */
+#define FIELDCUSTNBR       2            /* Customer Number */
+#define FIELDQUANTITY      3            /* Quantity */
+#define FIELDDATE          4            /* Date */
+
+/* Sizes of ASCII table fields */
+#define ASCIISIZECUSTNBR   9            /* Customer Number Length */
+#define ASCIISIZEPARTNBR   9            /* Part Number Length */
+#define ASCIISIZEDATE      11           /* Date Length */
+
+/* Function Returns */
+#define SUCCESS        0            /* function succeeded */
+#define FAIL          -1            /* function failed */
+
+/* Structure for an ASCII fixed-length record */
+typedef struct 
+{
+    char CustNbr[ASCIISIZECUSTNBR];        /* customer number */
+    char PartNbr[ASCIISIZEPARTNBR];        /* part number */
+    int quantity;                  /* quantity */        
+    char date[ASCIISIZEDATE];              /* date */
+} AsciiRecord;
+
+/* Field names of Paradox Table */
+char *FieldNames[] = 
+{
+    "Part Number", 
+    "Cust Number",
+    "Quantity",
+    "Date"
+};
+
+/* Field Types of Paradox table */
+char *FieldTypes[] = 
+{
+    "A8",
+    "A8",
+    "N",
+    "D"
+};
+
+/* FIelds to be used in PRIMARY field of the Paradox table */
+FIELDHANDLE keys[] = 
+{
+    FIELDPARTNBR,
+    FIELDCUSTNBR
+};
+
+#define NBRFIELDS    (sizeof(FieldNames) / sizeof(char *))
+#define NBRKEYS    (sizeof(keys) / sizeof(FIELDHANDLE))
+
+/* Function Prototypes */
+int main(int, char**);
+int OpenFiles(char**,TABLEHANDLE *, FILE **);
+int OpenAsciiFile(char *,FILE **);
+int CreateParadoxFile(char *);
+int translate(TABLEHANDLE, FILE *);
+int TranslateBuffer(ASCIIRecord *, RECORDHANDLE);
+void CloseFiles(TABLEHANDLE, FILE *);
+int Error(int);
+
+int main(int argc, char **argv)
+{
+    FILE * fpAscii;                   /* file pointer to ASCII file */
+    TABLEHANDLE tblHandle;            /* table handle to paradox table */
+    if (argc != 3) 					  /* checks for three arguments */
+    {
+        printf("usage: IMPORT <ascii_file> <paradox_file>\n");
+        return(FAIL);
+    }
+
+    /* Initialize the engine - change comments if network */
+#ifndef NETWORK
+    if (Error(PXInit())) 
+#else    
+    if (Error(PXNetInit(NETPATH, NETTYPE, NETUSERNAME))) 
+#endif
+        exit(1);
+
+    if (CreateParadoxFile(argv[2]) == FAIL)
+        exit(1);
+
+    /* Open ASCII file and paradox file */
+    if (OpenFiles(argv,&tblHandle,&fpAscii) == SUCCESS)    
+    {
+        translate(tblHandle,fpAscii);
+        CloseFiles(tblHandle,fpAscii);
+    }
+
+    return(Error(PXExit()));
+}
+
+
+/*    Function:
+ *        OpenFiles
+ *    Arguments:
+ *        argv            Pointer to command line arguments containing 
+ *                        file names
+ *        tblHandlePtr    Pointer to a Paradox Table Handle
+ *        fpAscii         Pointer to a file pointer
+ *    Returns:
+ *        SUCCESS         Files opened
+ *        FAIL            Error has occurred
+ */
+int OpenFiles(char **argv,TABLEHANDLE *tblHandlePtr, FILE **fpAscii)
+{
+
+    if (OpenAsciiFile(argv[1],fpAscii) == FAIL)
+        return(FAIL);
+
+    /* Open the Paradox file */
+    if (Error(PXTblOpen(argv[2],tblHandlePtr,0,0)))
+        return(FAIL);
+    return(SUCCESS);
+}
+        
+/*    Function:
+ *        OpenAsciiFile
+ *    Arguments:
+ *        fileName            Pointer to ASCII input file
+ *        fpAscii             Pointer to a file pointer
+ *    Returns:
+ *        SUCCESS             File was opened
+ *        FAIL                Could not open file
+ */
+int OpenAsciiFile(char *fileName, FILE **fpAscii)
+{
+    if ((*fpAscii = fopen(fileName, "r")) == NULL)
+    {
+        perror(fileName);
+        return(FAIL);
+    } 
+    else
+        return(SUCCESS);
+}
+
+/*    Function:
+ *        CreateParadoxFile
+ *    Arguments:
+ *        fileName            Pointer to Paradox file names
+ *    Returns:
+ *        FAIL                Error has occurred
+ *        SUCCESS             File create successful
+ */
+int CreateParadoxFile(char *fileName)
+{
+    int exist;
+    /* Do not create if it already exists */
+    if (Error(PXTblExist(fileName, &exist))) 
+        return(FAIL);
+    if (exist) 
+    {
+        printf("IMPORT: Table %s already exists\n", fileName);
+        return(FAIL);
+    }
+
+    /* Now attempt to create the table */
+    if (Error(PXTblCreate(fileName, NBRFIELDS, FieldNames, FieldTypes))) 
+        return(FAIL);
+
+    /* Add first two fields as primary key */
+    if (Error(PXKeyAdd(fileName, NBRKEYS, keys, PRIMARY))) 
+        return(FAIL);
+    return(SUCCESS);
+}
+
+/*    Function:
+ *        translate
+ *    Arguments:
+ *        tblHandle       Handle to a Paradox table
+ *        fpAscii         File pointer to ASCII input file
+ *    Returns:
+ *        SUCCESS         Translation successful
+ *        FAIL            Error in translation
+ */
+int translate(TABLEHANDLE tblHandle, FILE *fpAscii)
+{
+    AsciiRecord asciiBuf;
+    RECORDHANDLE recHandle;
+
+    /* Setup a record handle */
+    if (Error(PXRecBufOpen(tblHandle, &recHandle))) 
+        return(FAIL);
+
+    /* Read records until end of ASCII file */
+    while (! feof(fpAscii)) 
+    {
+        /* Check for end of file while reading buffer */
+        if (fscanf(fpAscii, "%s %s %d %s", asciiBuf.PartNbr, asciiBuf.CustNbr,
+        &asciiBuf.quantity, asciiBuf.date) != NBRFIELDS) 
+            break;
+        if (TranslateBuffer(&asciiBuf, recHandle) == FAIL)
+            return(FAIL);
+        /* And write it to the Paradox table */
+        if (Error(PXRecAppend(tblHandle, recHandle))) 
+            return(FAIL);
+    }
+
+    /* File translated, close the record buffer */
+    if (Error(PXRecBufClose(recHandle))) 
+        return(FAIL);
+    return(SUCCESS);
+}
+
+/*    Function:
+ *      TranslateBuffer
+ *    Arguments:
+ *      buf        Pointer to an AsciiRecord buffer
+ *      recHandle  Paradox Record Handle
+ *    Returns:
+ *        SUCCESS                 Translation successful
+ *        FAIL                    Translation failed
+ */
+int TranslateBuffer(AsciiRecord * buf, RECORDHANDLE recHandle)
+{
+    long PXDate;
+    int month, day, year;
+
+    /* First the Customer Number */
+    if (Error(PXPutAlpha(recHandle, FIELDCUSTNBR, buf->CustNbr)))
+        return(FAIL);
+
+    /* Next the Part Number */
+    if (Error(PXPutAlpha(recHandle, FIELDPARTNBR, buf->PartNbr))) 
+        return(FAIL);
+
+    /* Quantity */
+    if (Error(PXPutDoub(recHandle, FIELDQUANTITY, (double) buf->quantity))) 
+        return(FAIL);
+
+    /* To translate the date, first get month, day, and year from buffer
+       then use PXEncode to translate into a Paradox date format. */
+    sscanf(buf->date, "%2d/%2d/%4d", &month, &day, &year);
+
+    if (Error(PXDateEncode(month, day, year, &PXDate)))
+        return(FAIL);
+
+    /* Now put the date into the record buffer */
+    if (Error(PXPutDate(recHandle, FIELDDATE, PXDate))) 
+        return(FAIL);
+
+    return(SUCCESS);
+}
+
+void CloseFiles(TABLEHANDLE tblHandle, FILE *fpAscii)
+{
+    if (fclose(fpAscii) == EOF)
+        fprintf(stderr, "cannot close ascii file\n");
+    Error(PXTblClose(tblHandle));
+}
+
+int Error(int rc)
+{
+    if (rc != PXSUCCESS)
+      printf("IMPORT: %s\n",PXErrMsg(rc));
+    return rc;
+}

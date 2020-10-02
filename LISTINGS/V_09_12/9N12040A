@@ -1,0 +1,70 @@
+#include "solid.h"
+
+void display_facet(struct solid_obj *obj_ptr, struct
+    facet *facet_ptr, int display_opt, int is_visible)
+/*  Projects facet onto 2-dimensional screen.  */
+{
+    struct vertex *vertex_ptr;
+    int x_first, y_first; /* screen coordinates for
+        first vertex of facet */
+    int vertex_ref_index;
+    float screen_x, screen_y; /* screen coords */
+    float x_normal, y_normal, z_normal; /* surface
+        normal vector */
+
+    if ((disp_hidden == LINE_NOSHOW  || render_opt) &&
+        !is_visible) return; /* nothing to do */
+    if (display_opt && render_opt) {
+        render_facet(obj_ptr, facet_ptr);
+        return;
+    }
+    if (!display_opt) { /* don't display; just compute
+        screen coordinates */
+        for (vertex_ref_index = 0; vertex_ref_index <
+            facet_ptr->vertex_count;
+            ++vertex_ref_index) { /* loop for each
+            vertex of this facet */
+            vertex_ptr = obj_ptr->vertex_first +
+                facet_ptr->vertex_index
+                [vertex_ref_index];
+            screen_x = proj_d * vertex_ptr->coord[0] /
+                proj_z;
+            screen_y = proj_d * vertex_ptr->coord[1] /
+                proj_z;
+            if (!init_screen) { /* first vertex;
+                initialize minimum and maximum */
+                screen_x_min = screen_x_max = screen_x;
+                screen_y_min = screen_y_max = screen_y;
+                init_screen = TRUE;
+            }
+            else { /* subsequent vertex; compare to
+                minimum and maximum */
+                if (screen_x < screen_x_min)
+                    screen_x_min = screen_x;
+                if (screen_x > screen_x_max)
+                    screen_x_max = screen_x;
+                if (screen_y < screen_y_min)
+                    screen_y_min = screen_y;
+                if (screen_y > screen_y_max)
+                    screen_y_max = screen_y;
+            }
+            continue;
+        }
+    }
+    else { /* display option is on */
+        if (!is_visible && (disp_hidden ==
+            LINE_BROKEN))
+            setlinestyle(DASHED_LINE, 0, NORM_WIDTH);
+        if (!is_visible && (color_visible !=
+            color_hidden))
+            setcolor(color_hidden);
+        draw_polygon(obj_ptr, facet_ptr);
+        if (!is_visible && (disp_hidden ==
+            LINE_BROKEN))
+            setlinestyle(SOLID_LINE, 0, NORM_WIDTH);
+        if (!is_visible && (color_visible !=
+            color_hidden))
+            setcolor(color_visible);
+    }
+    return;
+}

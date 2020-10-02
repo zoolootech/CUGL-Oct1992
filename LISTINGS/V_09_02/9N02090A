@@ -1,0 +1,279 @@
+
+/*
+ *    10-Oct-1990 - created
+ */
+
+/***********************************************************
+ *
+ *    Module:   test.c
+ *
+ *    Purpose:  Test code driver for olist.c
+ *
+ **********************************************************/
+
+
+#include "local.h"
+#include "olist.h"
+
+
+#define MAX_INSTRING    100
+#define TEST_TITLE  "\n Test Ordered Lists Using Skip Lists\n\n"
+
+
+static int      test_get_item ();
+static void     test_insert_many ();
+static bool     test_ok ();
+
+
+typedef struct menu_struct
+{
+    int         item_id;
+    char        *item_text;
+} MENU_ITEM;
+
+enum menu_item_id
+{
+    uint_item_id,
+    string_item_id,
+    show_uint_item_id,
+    show_string_item_id,
+    done_item_id,
+    num_menu_items
+};
+
+MENU_ITEM       *test_menu[num_menu_items];
+
+MENU_ITEM uint_item = 
+           { uint_item_id,   "Find a value" };
+MENU_ITEM string_item =
+           { string_item_id, "Find a string" };
+MENU_ITEM show_uint_item =
+          { show_uint_item_id,   "Show value data" };
+MENU_ITEM show_string_item =
+          { show_string_item_id, "Show string data" };
+MENU_ITEM done_item =
+          { done_item_id,    "Done" };
+
+char    instring[MAX_INSTRING + 1];
+
+OLIST   uint_o_list;
+OLIST   ptr_o_list;
+
+/***********************************************************
+ *                          main
+ **********************************************************/
+
+main (argc, argv, envp)
+    int   argc;
+    char  **argv;
+    char  **envp;
+{
+    int         item_id;
+    uint        u_key;
+    char        *p_key;
+    char        *client_data;
+                               /* fill menu items */
+    test_menu[uint_item.item_id] = &uint_item;
+    test_menu[string_item.item_id] = &string_item;
+    test_menu[show_uint_item.item_id] = &show_uint_item;
+    test_menu[show_string_item.item_id] = &show_string_item;
+    test_menu[done_item.item_id] = &done_item;
+                                /* make the skip lists */
+    uint_o_list = olistu_new();
+    ptr_o_list = olistp_new(strcmp);
+                                /* fill list initially */
+    test_insert_many();
+                                /* repeat until done */
+    do {
+                                /* get the next menu item */
+        item_id = test_get_item();
+        switch (item_id)
+        {
+          default:
+          case uint_item_id:
+            printf("Find Unsigned Integer key: ");
+            gets(instring);
+            u_key = (uint)atoi(instring);
+            client_data = olistu_find(uint_o_list, u_key);
+            if (test_ok())
+            {
+                printf("  Found uint Key: %6d", u_key);
+                printf("  data: \"%s\"", (char *)client_data);
+                printf("\n\n  Number of comparisons: %d\n",
+                       olistu_compares(uint_o_list, u_key));
+            }
+            break;
+
+          case string_item_id:
+            printf("Find String key: ");
+            gets(instring);
+            p_key = instring;
+            client_data = olistp_find(ptr_o_list, p_key);
+            if (test_ok())
+            {
+                printf("  Found ptr Key: \"%s\"", instring);
+                printf("  data: \"%s\"", (char *)client_data);
+                printf("\n\n  Number of comparisons: %d\n",
+                       olistp_compares(ptr_o_list, p_key));
+            }
+            break;
+
+          case show_uint_item_id:
+            printf("\nUnsigned int key:\n");
+            client_data = olistu_get_first(uint_o_list, u_key);
+            if (test_ok()) printf("  First key: %d\n", u_key);
+
+            client_data = olistu_get_last(uint_o_list, u_key);
+            if (test_ok()) printf("  Last key: %d\n", u_key);
+
+            client_data = olistu_get_current(uint_o_list, u_key);
+            if (test_ok()) printf("  Current key: %d\n", u_key);
+
+            client_data = olistu_get_next(uint_o_list, u_key);
+            if (test_ok()) printf("  Next key: %d\n", u_key);
+            break;
+
+          case show_string_item_id:
+            printf("\nString key:\n");
+            client_data = olistp_get_first(ptr_o_list, p_key);
+            if (test_ok()) printf("  First key: \"%s\"\n",
+                       p_key);
+
+            client_data = olistp_get_last(ptr_o_list, p_key);
+            if (test_ok()) printf("  Last key: \"%s\"\n", p_key);
+
+            client_data = olistp_get_current(ptr_o_list, p_key);
+            if (test_ok()) printf("  Current key: \"%s\"\n",
+                       p_key);
+
+            client_data = olistp_get_next(ptr_o_list, p_key);
+            if (test_ok()) printf("  Next key: \"%s\"\n", p_key);
+            break;
+
+          case done_item_id:
+            break;
+        }
+    } while (item_id != done_item_id);
+    printf("\nDone.\n");
+    exit(0);
+}
+
+/**********************************************************
+ *
+ *                     test_get_item
+ *
+ *  Get a menu item from the user and return its item
+ *  id number.
+ *
+ **********************************************************/
+
+static int test_get_item ()
+{
+    register int        ii;
+                                /* show the test menu */
+    printf(TEST_TITLE);
+    for (ii = 0; ii < num_menu_items; ++ii)
+    {
+        printf("  %-2d   %s\n",
+               test_menu[ii]->item_id + 1,
+               test_menu[ii]->item_text);
+    }
+                                /* get the menu item number */
+    printf("\nItem number: ");
+    gets(instring);
+                                /* return the item id */
+    return(atoi(instring) - 1);
+}
+
+/**********************************************************
+ *
+ *                   test_insert_many
+ *
+ *  Insert many (sequential) keys to each olist.
+ *
+ **********************************************************/
+
+static void test_insert_many ()
+{
+    register int ii;
+    int         num_items;
+    uint        u_key;
+    char        *p_key;
+    char        *client_data;
+                                /* get number of items */
+    printf("\nNumber of items to insert: ");
+    gets(instring);
+    num_items = atoi(instring);
+    printf("\nFilling the skip lists...");
+                                /* fill each data item */
+    for (ii = 1; ii <= num_items; ++ii)
+    {
+                                /* unsigned int key */
+        sprintf(instring, "data %d", ii);
+        u_key = (uint)ii;
+        client_data = strdup(instring);
+        if (client_data != NULL)
+        {
+            olistu_insert(uint_o_list, u_key, client_data);
+                                /* string key */
+            sprintf(instring, "key_%d", ii);
+            p_key = strdup(instring);
+            if (p_key != NULL)
+            {
+                olistp_insert(ptr_o_list, p_key, client_data);
+            }
+        }
+    }
+                                /* show list reports */
+    printf("\n\n -- Skip List with unsigned int keys --\n");
+    olist_report(uint_o_list);
+    printf("\n Please press Enter to continue...");
+    gets(instring);
+    printf("\n -- Skip List with string keys --\n");
+    olist_report(ptr_o_list);
+}
+
+/**********************************************************
+ *
+ *                       test_ok
+ *
+ **********************************************************/
+
+static bool test_ok ()
+{
+    bool        ok = FALSE;
+
+    switch (olist_errno)
+    {
+      default:
+      case OLIST_SUCCESS:
+        ok = TRUE;
+        printf("\n    *** Success ***");
+        break;
+      case OLIST_INVALID:
+        printf("\n *** %s ***\n", OLIST_INVALID_STR);
+        break;
+      case OLIST_NO_MEMORY:
+        printf("\n *** %s ***\n", OLIST_NO_MEMORY_STR);
+        break;
+      case OLIST_EMPTY:
+        printf("\n *** %s ***\n", OLIST_EMPTY_STR);
+        break;
+      case OLIST_INVALID_TYPE:
+        printf("\n *** %s ***\n", OLIST_INVALID_TYPE_STR);
+        break;
+      case OLIST_NOT_FOUND:
+        printf("\n *** %s ***\n", OLIST_NOT_FOUND_STR);
+        break;
+      case OLIST_KEY_EXISTS:
+        printf("\n *** %s ***\n", OLIST_KEY_EXISTS_STR);
+        break;
+      case OLIST_NO_CURRENT:
+        printf("\n *** %s ***\n", OLIST_NO_CURRENT_STR);
+        break;
+      case OLIST_END_OF_LIST:
+        printf("\n *** %s ***\n", OLIST_END_OF_LIST_STR);
+        break;
+    }
+    return (ok);
+}

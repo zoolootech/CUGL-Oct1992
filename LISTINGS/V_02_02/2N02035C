@@ -1,0 +1,133 @@
+
+    COMMENT     @
+
+        Character Case Conversion Tables:
+
+            Illustrates the use of REPT block to initialize data
+            Accessible to C program by function call or indirection
+            
+            C Function Prototypes:
+            
+                char *str2upper(char *dest, char *source);
+                
+                char *str2lower(char *dest, char *source);
+                
+                Note:
+                    To convert string in place, pass pointer to
+                    source in both parameters ( must be L Value )
+
+            C program considers tables to be char arrays:
+            
+                extern char up_case[256], low_case[256];
+                
+            Indirection Examples:
+            
+                unsigned c;
+                char uch, lch;
+
+                c = 'l';
+                uch = up_case[c];
+                c = 'L';
+                lch = low_case[c];
+
+        Version 1.0  --  Small Memory Model
+	    To assemble with Masm V. 5.0  --  masm /b60 /Ml chartab;
+            June 26, 1990
+            Michael Kelly  --  Author
+                May be used freely if authorship is acknowledged
+        @
+
+_DATA   SEGMENT WORD    PUBLIC  'DATA'
+_up_case    LABEL   BYTE
+temp_c      =   0
+            REPT    97              ;this part of table is unchanged
+            DB  temp_c
+temp_c      =   temp_c + 1
+            ENDM
+
+temp_c      =   'A'                 ;temp_c == 'a' so reset to upper case
+            REPT    26
+            DB  temp_c		    ;put 'A'-'Z' where 'a'-'z' would be
+temp_c      =   temp_c + 1
+            ENDM
+
+temp_c      =   '{'                 ;return to normal position in Ascii set
+            REPT    256 - '{'       ;and complete the upper case table
+            DB  temp_c
+temp_c      =   temp_c + 1
+            ENDM
+
+_low_case   LABEL   BYTE
+temp_c      =   0
+            REPT    65              ;first 65 chars unchanged
+            DB  temp_c
+temp_c      =   temp_c + 1
+            ENDM
+
+temp_c      =   'a'                 ;temp_c == 'A' so reset to lower case
+            REPT    26
+            DB  temp_c              ;put 'a'-'z' where 'A'-'Z' would be
+temp_c      =   temp_c + 1
+            ENDM
+
+temp_c      =   '['                 ;return to normal position in Ascii set
+            REPT    256 - '['       ;and complete the lower case table
+            DB  temp_c
+temp_c      =   temp_c + 1
+            ENDM
+
+            PUBLIC  _up_case, _low_case     ;make accessible to C program
+_DATA       ENDS
+
+STACK       SEGMENT STACK   'STACK'
+STACK       ENDS
+
+DGROUP      GROUP   _DATA, STACK
+
+_TEXT       SEGMENT WORD    PUBLIC  'CODE'
+            PUBLIC  _str2upper, _str2lower  ;make accessible to C program
+
+            ASSUME  CS:_TEXT, DS:DGROUP, SS:DGROUP, ES:NOTHING
+_str2upper  PROC    NEAR
+            MOV     BX,OFFSET DGROUP: _up_case      ;point BX to base of table
+            JMP     SHORT set_stack                 ;jump to common code
+_str2upper  ENDP
+
+    ;On Entry to either Procedure, DS is assumed to hold DGROUP segment
+
+set_stack:  PUSH    BP
+            MOV     BP,SP       ;save stack frame and Turbo C registers
+            PUSH    SI
+            PUSH    DI
+            PUSHF               ;preserve direction flag, just to be safe
+            CLD                 ;clear direction flag - SI and DI increment
+            MOV     AX,DS       ;this is faster than PUSH DS:POP ES sequence
+            MOV     ES,AX
+            MOV     DI,[BP+4]
+            MOV     SI,[BP+6]
+            MOV     DX,DI           ;save *dest for C function return value
+
+                        ;use EVEN directive to start loop on word boundary
+                        ;for instruction fetch speed on 8086+ processors
+            EVEN                    
+next_char:  LODSB                   ;AL = *source++
+            XLAT                    ;convert char with "Translate" instruction
+            STOSB                   ;*dest++ = AL
+            OR      AL,AL           
+            JNZ     next_char       ;loop until '\0' terminator processed
+
+            MOV     AX,DX           ;return *dest in AX
+            POPF
+            POP     DI              ;restore flags and registers
+            POP     SI
+            POP     BP
+            RETN                    ;"near return" instruction
+
+_str2lower  PROC    NEAR
+            MOV     BX,OFFSET DGROUP: _low_case     ;point BX to base of table
+            JMP     SHORT set_stack                 ;jump to common code
+_str2lower  ENDP
+
+_TEXT       ENDS
+	    END
+

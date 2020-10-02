@@ -1,0 +1,262 @@
+/* Screen editor:  configuration program utilities
+ *
+ * Source:  config2.bds
+ * Version: December 20, 1981.
+ */
+
+#include bdscio.h
+#include config.h
+
+/* print CR, LF and string to console */
+
+plc(s) char *s;
+{
+
+	putchar('\n');
+	puts(s);
+}
+
+/* print string to console */
+
+pc(s) char *s;
+{
+	puts(s);
+}
+
+/* print yes or no on the console */
+
+putyesno(n) int n;
+{
+	if (n==YES) {
+		pc("yes");
+	}
+	else if (n==NO) {
+		pc("no");
+	}
+	else {
+		pc("syserr");
+	}
+}
+
+/* put blank line to console */
+
+blank()
+{
+	plc("");
+}
+
+/* start a new line and indent it */
+
+indent()
+{
+	plc("    ");
+}
+
+/* get decimal value from user */
+
+getval(def) int def;	/* default */
+{
+int val;
+char buffer[81];	/* cp/m needs 81 chars */
+	while (1) {
+		plc("Enter decimal value or carriage return:  ");
+		gets(buffer);
+		if (buffer[0]==0) {
+			return(def);
+		}
+		else if (number(buffer,&val)==YES) {
+				return(val);
+		}
+	}
+}
+
+/* get a yes or no answer from the user */
+
+yesno()
+{
+char buffer[81];
+char c;
+	while (1) {
+		pc("  ");
+		gets(buffer);
+		c=tolower(buffer[0]);
+		if (c=='y') {
+			return(YES);
+		}
+		else if (c=='n') {
+			return(NO);
+		}
+		else {
+			plc("answer yes or no.");
+		}
+	}
+}
+
+/* get each byte of a control sequence */
+
+getbytes(index) int *index;
+{
+char buffer[81];
+char c;
+int k;
+int j;
+	*index=bytec;
+	/* do until user says all is well */
+	while (1) {
+		plc("");
+		k=0;
+		bytec=*index;
+		/* do until no more bytes */
+		while (1) {
+			pc("Enter byte ");
+			putdec(++k,3);
+			pc(":  ");
+			gets(buffer);
+			if (buffer[0]==0) {
+				bytes[bytec++]=0;
+				break;
+			}
+			/* put bytes into bytes[] */
+			j=0;
+			while (bytec<BYTEMAX) {
+				c=buffer[j++];
+				bytes[bytec++]=c;
+				if (c==0) {
+					break;
+				}
+			}
+			if (bytec>=BYTEMAX) {
+				plc("byte buffer overflow.");
+				return;
+			}
+		}
+		pc("Are all bytes correct ?");
+		if (yesno()==YES) {
+			return;
+		}
+	}
+}
+
+/* file utilities */
+
+/* write one byte to the current output file */
+
+putfile(c) char c;
+{
+	return (putc(c,outbuf));
+}
+
+/* write CR, LF and string to current output file */
+
+plf(s) char *s;
+{
+	putfile(CR);
+	putfile(LF);
+	pf(s);
+}
+
+/* write string to current output file */
+
+pf(s) char *s;
+{
+	while (*s!=0) {
+		putfile(*s++);
+	}
+}
+
+/* write start of comment to output file */
+
+comment()
+{
+	plf("/*");
+}
+
+/* write end of comment to output file */
+
+endcom()
+{
+	plf("*/");
+}
+
+/* write blank line to output file */
+
+blankf()
+{
+	plf("");
+}
+
+/* write 1 tab on new line to output file */
+
+tab1f()
+{
+	putfile(CR);
+	putfile(LF);
+	putfile(TAB);
+}
+
+/* write 2 tabs on new line to output file */
+
+tab2f()
+{
+	putfile(CR);
+	putfile(LF);
+	putfile(TAB);
+	putfile(TAB);
+}
+
+/* write start of procedure body to output file */
+
+beginf()
+{
+	plf("{");
+}
+
+/* write end of procedure body to output file */
+
+endf()
+{
+	plf("}");
+}
+
+/* write #define statement to output file */
+
+putdef(s,n) char *s; int n;
+{
+char buffer[10];
+	plf("#define ");
+	pf(s);
+	pf(" ");
+	itoc(n,buffer,10);
+	pf(buffer);
+}
+
+/* generate code to do special screen functions.
+ * index points into bytes[].
+ */
+
+putbytes(index) int index;
+{
+	while (bytes[index]!=0) {
+		if (index>BYTEMAX) {
+			plf("syserr: putbytes");
+			return;
+		}
+		tab1f();
+		pf("syscout(");
+		while (bytes[index]!=0) {
+			putfile(bytes[index++]);
+		}
+		index++;
+		pf(");");
+	}
+}
+ndcom()
+{
+	plf("*/");
+}
+
+/* write blank line to output file */
+
+blankf()
+{
+	p

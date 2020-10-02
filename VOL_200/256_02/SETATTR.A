@@ -1,0 +1,54 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     SETATTR.A     SET File Attributes
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int SETATTR(name, attr, &_carryf)
+;	-----           char *name;   (file pathname ASCIIZ string)
+;	                int attr;
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC SETATTR_
+
+SETATTR_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	dx,[bp+4]	; the pathname address
+	mov	al,1
+	mov	cx,[bp+6]	; the attributes to be set
+	mov	ah,43h	; the Function No.
+	int	21h
+	jc	SETATTR_ERROR
+	xor	ax,ax	; zero AX for return
+	jmp	SETATTR_QUIT
+SETATTR_ERROR:
+	mov	si,[bp+8]	; GET address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+SETATTR_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

@@ -1,0 +1,97 @@
+/* threads3.c -- An example of a print server thread */
+
+#define INCL_DOSQUEUES
+#define INCL_DOSFILEMGR
+#define INCL_DOSPROCESS
+#define INCL_DOSSEMAPHORES
+#include <os2.h>
+
+#include <stdio.h>
+#include <conio.h>
+#include <stdlib.h>
+#include <process.h>
+
+#define THREAD_SSIZE 3000
+void ServerThread( void *arg);
+void ClientThread( void *arg);
+
+USHORT ThreadID2;
+USHORT ThreadID3;
+USHORT ThreadID4;
+USHORT ThreadID5;
+
+int t2 = 2;
+int t3 = 3;
+int t4 = 4;
+int t5 = 5;
+long p_ready_sem = 1L;     /* hey, please note, pre-set to 1 */
+
+void main( void)
+{
+
+  ThreadID2 = _beginthread( ServerThread, NULL,
+      THREAD_SSIZE, &t2);  /* note, don't pass &ThreadID2,
+                        since it may not be valid yet */
+  DosSemRequest( &p_ready_sem, SEM_INDEFINITE_WAIT);
+  ThreadID3 = _beginthread( ClientThread, NULL,
+      THREAD_SSIZE, &t3);
+  ThreadID4 = _beginthread( ClientThread, NULL,
+      THREAD_SSIZE, &t4);
+  ThreadID5 = _beginthread( ClientThread, NULL,
+      THREAD_SSIZE, &t5);
+  puts("Press any key to exit");
+  getch();
+}
+
+
+HQUEUE pq;
+
+void ServerThread( void *arg)
+{
+  USHORT ec;
+  HFILE hp;
+  char buf[100];
+  USHORT n, nw;
+  USHORT openAction;
+  QUEUERESULT qr;
+  UCHAR pri;
+  char *msg;
+
+  ec = DosOpen( "LPT1", &hp, &openAction, 0L,
+    FILE_NORMAL,  FILE_OPEN,
+    OPEN_ACCESS_WRITEONLY | OPEN_SHARE_DENYWRITE |
+      OPEN_FLAGS_FAIL_ON_ERROR | OPEN_FLAGS_WRITE_THROUGH,
+    0L);
+  n = sprintf( buf, "Print Server Thread (%d) Started\r\n", *(int *)arg);
+  ec = DosWrite( hp, buf, n, &nw);
+  ec = DosCreateQueue( &pq, QUE_FIFO, "\\QUEUES\\PRINT.QUE");
+  ec = DosSemClear( &p_ready_sem);
+
+  while (1)
+    {
+    ec = DosReadQueue( pq, &qr, &n, &msg, 0, DCWW_WAIT, &pri, 0);
+    ec = DosWrite( hp, msg, n, &nw);
+    free( msg);
+    }
+}
+
+
+void ClientThread( void *arg)
+{
+  USHORT ec;
+  int i, t, n;
+  USHORT j;
+  char *txt;
+
+  t = * (int *) arg;
+  DosSetPrty( PRTYS_THREAD, PRTYC_NOCHANGE, t, 0);  /* change the priority */
+  for ( i=0; i < 16; i++)
+    {
+    for (j=0; j < 0xFFFF; j++)  /* waste some time, like a real program would */
+      n = j * i * j * i;
+    txt = malloc( 50);
+    n = sprintf( txt, "Thread %d, request %d.\r\n", t, i);
+    ec = DosWriteQueue( pq, 0, n, txt, (UCHAR) t );  /* could test priority queue */
+    }
+}
+

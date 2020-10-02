@@ -1,0 +1,103 @@
+LISTING 4
+
+#include <stdio.h>
+#include <stat.h>
+#include <string.h>
+#include <fcntl.h>
+#include <Mrm/MrmAppl.h>
+
+extern	char	*malloc();
+extern	void	set_window_title();
+
+#define	MAX_FILEN_LEN	128
+char	filename[MAX_FILEN_LEN];
+Widget	textwidget;
+
+void
+create_text_widget(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	caddr_t call_data;
+{
+	textwidget = w;
+}
+
+void
+load_file(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	XmFileSelectionBoxCallbackStruct *call_data;
+{
+	FILE	*fp;
+	char	*charptr;
+	char	*textbuf;
+	struct stat statbuf;
+
+	XmStringGetLtoR(call_data->value, XmSTRING_DEFAULT_CHARSET, &charptr);
+	XtDestroyWidget(w);
+	strcpy(filename, charptr);
+	fp = fopen(filename, "r");
+	fstat(fileno(fp), &statbuf);
+	textbuf = malloc(statbuf.st_size);
+	fread(textbuf, statbuf.st_size, 1, fp);
+	XmTextSetString(textwidget, textbuf);
+	free(textbuf);
+	fclose(fp);
+	set_window_title(filename);
+}
+
+void
+save_file(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	XmFileSelectionBoxCallbackStruct *call_data;
+{
+	FILE	*fp;
+	char	*textbuf;
+
+	textbuf = XmTextGetString(textwidget);
+	fp = fopen(filename, "w");
+	fwrite(textbuf, strlen(textbuf), 1, fp);
+	fclose(fp);
+	XtFree(textbuf);
+}
+
+void
+saveas_file(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	XmSelectionBoxCallbackStruct *call_data;
+{
+	FILE	*fp;
+	char	*textbuf;
+	char	*charptr;
+
+	textbuf = XmTextGetString(textwidget);
+	XmStringGetLtoR(call_data->value, XmSTRING_DEFAULT_CHARSET, &charptr);
+	strcpy(filename, charptr);
+	fp = fopen(filename, "w");
+	fwrite(textbuf, strlen(textbuf), 1, fp);
+	fclose(fp);
+	XtFree(textbuf);
+	set_window_title(filename);
+}
+
+void
+new_buffer(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	caddr_t	call_data;
+{
+	strcpy(filename, "");
+	XmTextSetString(textwidget, "");
+	set_window_title("Untitled");
+}
+
+void
+exit_editor(w, client_data, call_data)
+	Widget	w;
+	caddr_t client_data;
+	caddr_t	call_data;
+{
+	exit(0);
+}

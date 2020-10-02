@@ -1,0 +1,139 @@
+*****Listing 1*****
+
+/* I/O subsystem simulation */
+
+#include <stdio.h>
+#include <csimdefs.h>
+#include <stdlib.h>
+#include <assert.h>
+
+/* Simulation clock scaling times */
+#define SEC(x)  ((TIME) ((x) * 1000) * 10)
+#define MS(x)   ((TIME) ((x) * 10))
+
+/* model configuration constants */
+#define NO_CU           2L      /* the number of control units */
+#define NO_DRIVES       8       /* the number of disk drives */
+#define NO_SKEWED       2       /* skew the load toward 2 drives */
+#define SKEW_PERCENT    80      /* skew the load by 80% */
+#define HIT_PERCENT     90      /* 90% cache hit rate */
+
+/* Max seek time is 12 MS case 3 - 24 MS. */
+#define MAXSEEK_TM      (MS(((Case == DOUBSEEK) ? 2 : 1) * 12))
+
+/* case study types */
+enum    {
+        UNINIT,                 /* uninitialized */
+        BTREE,                  /* binary B-tree */
+        TRACKBUF,               /* track buffer */
+        DOUBSEEK                /* doubled seek time */
+}       Case = UNINIT;
+
+/* check for a free data path in the control unit */
+int     path_avail(MS_PTR cu) {
+long    cu_avail;
+
+        MAvail(cu,&cu_avail);
+        return(cu_avail != 0);
+}
+
+/* perform a control unit level I/O */
+void cu_io(long arm, MS_PTR cu, SAS_PTR drives) {
+TIME    t;
+
+        MSeize(cu,1L); /* Seize one of the data paths */
+        /* determine if this is a cache hit */
+        if (Percent() < HIT_PERCENT) { /* cache hit */
+                /* calculate the hit lookup time based on scenario */
+                t = (TIME) (Case == BTREE)? 2: 1;
+                /* simulate time passing for cache lookup */
+                XacAdvance(MS(t));
+                /* simulate the data transfer time       *
+                 * transfer at buffer speeds not device  */
+                XacAdvance(MS(1.2));
+        } else {  /* cache miss (with device access) */
+                /* simulate the cache miss overhead processing */
+                XacAdvance(MS(2));
+                /* release the data path during the device access */
+                MRelease(cu,1L);
+                /* get exclusive access to the physical device */
+                SASeize(drives,arm);
+                /* simulate the drive seek time */
+                XacAdvUniform((TIME)0,MAXSEEK_TM);
+                /* simulate the wait for the data (latency) */
+                XacAdvUniform((TIME)0,MS(16.7));
+                /* if the device has a track buffer, */
+                if (Case == TRACKBUF) {
+                        /* get one of the data pathes */
+                        MSeize(cu,1L);
+                } else { /* without a track buffer */
+			/* synchronize the availability of the     *
+                	 * data path with the rotation of the disk */
+                        while (!path_avail(cu)) {
+                                /* wait one full rotation for the data */
+                                XacAdvance(MS(16.7));
+                        }
+                        /* get one of the data pathes with no waiting */
+                        MSeize(cu,1L);
+                }
+                /* simulate the data transfer at device speeds */
+                XacAdvance(MS(2.4));
+                /* release the physical device */
+                SARelease(drives,arm);
+        }
+        /* release the data path */
+        MRelease(cu,1L);
+}       
+
+/* I/O subsystem model entry point */
+sim_main(int argc, char *argv[]) {
+Q_PTR   io_resp_time;   /* response time for the IO */
+MS_PTR  cu;             /* control unit resources */
+SAS_PTR drives;         /* physical drive servers */
+SAS_PTR vdrives;        /* virtual drive servers */
+TIME    warm_time;      /* model warm up time */
+TIME    run_time;       /* model run time */
+TIME    siorate;        /* start I/O rate */
+long    arm;            /* drive number */
+
+        /* read in the command line parameters */
+        assert(argc == 5);
+        warm_time = (TIME) atol(argv[1]);
+        run_time = (TIME) atol(argv[2]);
+        siorate = SEC(1) / (TIME) atol(argv[3]);
+        Case = atoi(argv[4]);
+
+        /* setup warm up and run time for model. */
+        SimWarmUp((TIME) SEC(warm_time),1);
+        SimRun((TIME) SEC(run_time),1);
+
+        /* create the model resources */
+        Queue(&io_resp_time,"I/O Responce Time");
+        MServer(&cu,NO_CU,"Control Unit Data Pathes");
+        SArray(&drives,NO_DRIVES,"Physical Subsystem Disk Drive");
+        SArray(&vdrives,NO_DRIVES,"Virtual Subsystem Disk Drive");
+
+        /* generate I/O requests at the specified start I/O rate */
+        XacGenExponen(siorate, GENFOREVER);
+        /* skew the I/O load toward fewer drives */
+        if (Percent() < SKEW_PERCENT) {
+                /* select one of the heavily loaded drives */
+                arm = rand() % NO_SKEWED;
+        } else {
+                /* select one of the lightly loaded drives */
+                arm = (rand() % (NO_DRIVES - NO_SKEWED)) + NO_SKEWED;
+        }
+        
+        /* capture response times */
+        QEnter(io_resp_time);
+        /* allow only one I/O in subsystem per drive */
+        SASeize(vdrives,arm);
+        /* perform the I/O */
+        cu_io(arm,cu,drives);
+        /* finish taking statistics */
+        QLeave(io_resp_time);
+        /* release the virtual drive for the next I/O */
+        SARelease(vdrives,arm);
+        /* kill off this I/O */
+        XacTerminate();
+}

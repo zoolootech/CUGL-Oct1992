@@ -1,0 +1,24 @@
+/* receiver.c - Receiver task for synchronous communication */
+
+#define SYNC 0
+
+static handler Sync(msg_t *msg_ptr) {
+    register task_t caller = msg_ptr->srcTid;
+    register task_t self   = msg_ptr->dstTid;
+
+    /* interrupt caller.Reply */
+    msg_ptr->srcTid = self;
+    msg_ptr->dstTid = caller;
+    msg_ptr->dstHid = 0; /* caller's REPLY handler id = 0 */
+    msg_ptr->type   = msg_type_SYNC;
+    task_interrupt(&msg);
+}
+
+task Receiver(void) {
+    task_setHandler(1, Sync); /* this task has one handler called Sync */
+
+    loop {
+        /* wait on Sync */
+        task_enableWait(1, SYNC);
+    }
+}

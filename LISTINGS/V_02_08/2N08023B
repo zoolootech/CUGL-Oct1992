@@ -1,0 +1,98 @@
+     'Listing 3 - DIR.BAS
+     'Reads specified directory into string array.
+
+     DEFINT A-Z
+     '$INCLUDE: 'qb.bi'
+
+     DECLARE SUB GetDir (FileSpec$, Array$())
+     DECLARE FUNCTION FileCount (FileSpec$)
+
+     CLS
+     INPUT "Enter desired path & file spec: ", Temp$
+     PRINT
+
+     Elements = FileCount(Temp$)
+     IF Elements THEN
+        REDIM Directory$(1 TO Elements)
+        CALL GetDir(Temp$, Directory$())
+        FOR I = 1 TO Elements
+            PRINT Directory$(I)
+        NEXT
+     ELSE
+        PRINT "File spec not found."
+     END IF
+     END
+
+FUNCTION FileCount (FileSpec$)
+
+     DIM Regs AS RegTypeX
+
+     Temp$ = FileSpec$ + CHR$(0)
+     Regs.ax = &H4E00                       'Find first matching file
+     Regs.cx = 0
+     Regs.ds = VARSEG(Temp$)
+     Regs.dx = SADD(Temp$)
+     CALL InterruptX(&H21, Regs, Regs)
+
+     Count = 0
+     IF Regs.Flags AND 1 THEN               'File not found
+        EXIT FUNCTION
+     END IF
+
+     DO
+       Count = Count + 1
+       Regs.ax = &H4F00                     'Find next until there
+       CALL InterruptX(&H21, Regs, Regs)    'ain't no more
+       IF Regs.ax = 18 THEN EXIT DO
+     LOOP
+
+     FileCount = Count                      'Return number of files found
+
+END FUNCTION
+
+SUB GetDir (FileSpec$, Array$())
+
+    DIM Regs AS RegTypeX
+
+    Regs.ax = &H2F00                        'Get DTA
+    CALL InterruptX(&H21, Regs, Regs)
+    OldDTASeg = Regs.es                     'Save original address
+    OldDTAOfs = Regs.bx                     'so we can restore it later.
+
+    DTA$ = STRING$(45, 0)                   'Initialize a DTA
+    Regs.ax = &H1A00                        'Set new DTA
+    Regs.ds = VARSEG(DTA$)
+    Regs.dx = SADD(DTA$)
+    CALL InterruptX(&H21, Regs, Regs)
+
+    Temp$ = FileSpec$ + CHR$(0)
+    Regs.ax = &H4E00                        'Find first matching file
+    Regs.cx = 0
+    Regs.ds = VARSEG(Temp$)
+    Regs.dx = SADD(Temp$)
+    CALL InterruptX(&H21, Regs, Regs)
+
+    IF (Regs.Flags AND 1) THEN              'Error
+       EXIT SUB
+    ELSE
+       Element = LBOUND(Array$)
+       Array$(Element) = MID$(DTA$, 31, INSTR(32, DTA$, CHR$(0)) - 31)
+    END IF
+
+    DO
+       Element = Element + 1
+       Regs.ax = &H4F00                     'Find next until there
+       CALL InterruptX(&H21, Regs, Regs)    'ain't no more
+       IF Regs.ax = 18 THEN EXIT DO
+       IF Element <= UBOUND(Array$) THEN
+       Array$(Element) = MID$(DTA$, 31, INSTR(32, DTA$, CHR$(0)) - 31)
+       END IF
+    LOOP
+
+    Regs.ax = &H1A00                        'Restore original DTA
+    Regs.ds = OldDTASeg
+    Regs.dx = OldDTAOfs
+    CALL InterruptX(&H21, Regs, Regs)
+
+END SUB
+

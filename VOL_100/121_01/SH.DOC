@@ -1,0 +1,200 @@
+
+     SH (1)                    BDS C Users' Group                    SH (1)
+
+
+
+     NAME        NAME 
+          sh - a 'little shell' command interpreter 
+
+     SYNOPSIS        SYNOPSIS 
+          sh             sh 
+
+     DESCRIPTION        DESCRIPTION 
+          The Little Shell is designed to cover the uglier part of 
+          CP/M with a somewhat more pleasant interface.  This is 
+          accomplished at a cost.  The shell is written in BDS C and 
+          is five times the size of the CP/M CCP.  Hence it takes 
+          somewhat longer to load into memory at warm boots.  Also, 
+          since the shell clobbers the CCP, submit does not work when 
+          the shell is invoked.  Nevertheless, the shell provides 
+          features not otherwise available to CP/M users.  
+
+          CP/M offers no mechanism for chaining except for the kludgey 
+          and inconvenient submit mechanism.  The shell offers two 
+          more desirable techniques.  Multiple commands may be typed 
+          on a single command line as follows: 
+
+               $ command [args...] ; command [args...] ; ...
+
+          The commands are executed in sequential order from left to 
+          right as on Unix.  The amount of stuff on the command line 
+          is limited to the command buffer size which is defined in 
+          the CBIOS and in the shell source.  
+
+          Alternatively, files of commands called Shell Scripts may be 
+          used.  These files contain multiple command lines to be 
+          executed.  The present version of the Shell limits the 
+          length of command files to the size of the command line 
+          buffer.  
+
+          The CP/M operating environment does not lend itself to the 
+          use of frequently invoked commands in the form of executable 
+          files.  Consequently, the shell has an assortment of 
+          built-in commands.  The current list is as follows: 
+
+               cat file file...     - print named files on console
+               ccp                  - invoke the CP/M command processor
+               cd disk              - select named CP/M disk
+               clr                  - clear the screen
+               echo [args...]       - echo command line arguments
+               exit                 - exit from the shell (warm boot)
+               lock file file...    - set named files to readonly
+               logout               - (also ^D) invoke a login program
+               ls disk              - list dir (default is current disk)
+               pwd                  - print current CP/M disk
+               ren file1 file2      - rename file1 to file2
+               rm file file...      - remove named files
+               sleep n              - suspend execution for n seconds
+               unlock file file...  - set named files to readwrite
+               #                    - comment (ignore command line)
+               ^\                   - quit, like exit for now
+
+
+
+
+                                      -1-
+
+
+     SH (1)                    BDS C Users' Group                    SH (1)
+
+
+     CAVEATS        CAVEATS 
+          This program has not been tested by the librarian, due to 
+          lack of time.  No bug reports have been received.  
+
+     EXAMPLES        EXAMPLES 
+          A sample shell script follows: 
+
+               c1 $1.c
+               l2 $1
+               if -r $1.crl rm $1.crl
+               if $2 == -o ren $1.com a.out
+               exit
+
+          Command line argument substitutions occur exactly as on the 
+          V6 Unix shell.  
+
+     SEE ALSO        SEE ALSO 
+          The Unix Programmers Manual Sixth Edition, 
+          Software Tools Programmers Manual, 
+          BD Software C Compiler Manual v1.50 
+
+     BUGS        BUGS 
+          Shell Scripts must be limited to size of the Command line 
+          buffer.  Programs cannot return a status.  There are not yet 
+          any Shell Variables.  
+
+     NOTES        NOTES 
+          The following hackers' guide was written by the author, 
+          Steve Blasingame.  
+
+
+          Getting the shell running...  
+
+          (This thing runs only on CP/M 2.2) 
+
+          First hack your CBIOS to include storage for the structure 
+          the shell calls iop.  The address in the CBIOS listing of 
+          this structure is the SHBUF define in the Shell source.  
+          This kluge allows us to save data for the shell between warm 
+          boots.  The structure of the buffer in the CBIOS is as 
+          follows: 
+
+               bufsiz:     equ     1030     ;default in bdscio.h
+
+               iop:
+               shdsk:      db      0
+               shsav:      dw      0
+               nocli:      db      0
+               shbuf:      ds      BUFSIZ
+
+          The CBIOS MUST also be modified to check the entry 
+          iop->_nocli at warm boots and zero it at cold boots.  When 
+          this flag is low the CCP should be modified at the following 
+          addresses: 
+
+               CCP+7 = 02h
+               CCP+8 = 'S'
+               CCP+9 = 'H'
+
+
+                                      -2-
+
+
+     SH (1)                    BDS C Users' Group                    SH (1)
+
+
+          This modification should occur AFTER the CCP has been loaded 
+          at warmboot.  To make matters more complicated, there are 
+          two entrypoints (undocumented) to the CCP.  One, CCP+0, 
+          checks the buffer we have just munged and if it contains a 
+          filename, runs the .com file of the same name.  Entrypoint 
+          two, CCP+3, zeros the buffer.  Hence, if we save a CP/M 
+          image with the buffer modified and our CBIOS uses the first 
+          entrypoint CP/M will attempt to run SH.COM at every bootup 
+          (I have taken advantage of this on my own system, you may 
+          wish to do the same).  Whichever method one uses to chain 
+          the shell, the CBIOS must check the iop->_nocli flag before 
+          warmboots and act on the CCP accordingly if the 
+          shell-builtin, CCP is to work.  
+
+          If you are not an experienced CP/M hacker you should either 
+          get help in installing the shell or not attempt it at all.  
+          Likewise, if your CBIOS is not accessible at source level, 
+          forget it.  Be sure to send useful mods and repair jobs 
+          (there are certainly some bugs) to the librarian or to me 
+          directly.  
+
+               Addresses:
+               USPS    Steve Blasingame
+                       4121 Hidden Hill
+                       Norman, OK 73069
+
+               Usenet  duke!uok!bsteve
+
+
+          As a last resort you can call me at (405) 360-2336 after 
+          hours and BEFORE MIDNIGHT.  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                      -3-
+
+ystem, you may 
+          wish to do the sa

@@ -1,0 +1,162 @@
+/*
+ *  browse.c - Very simple file browser.
+ *
+ *  Syntax:
+ *      browse file1 file2 ...
+ */
+
+#include <stdio.h>
+#ifdef  __ZTC__     /* if MS-DOS/Zortech C */
+#include <disp.h>
+#else
+#include <curses.h>
+#define disp_printf printw
+#define	disp_move   move
+#endif
+
+#define MAX_LINE    (80)
+#define PAGE_SIZE   (20)
+
+
+    main(argc, argv)
+char    **argv;
+{
+int     i, c;
+FILE    *fin;
+
+#ifdef  __ZTC__
+    disp_open();    /* Initialize display package */
+    disp_move(0,0);
+    disp_eeop();
+    disp_flush();
+#else
+    initscr();
+    noecho();
+    scrollok(stdscr, TRUE);
+    raw();          /* unbuffered character input  */
+#endif
+
+    for(i = 1; i < argc; ++i)
+        if((fin=fopen(argv[i], "r")) == NULL)
+            {
+            c   = toupper(
+                pause( "Can't open file for input. Continue (Y/n)? ", "yYnN" )
+                         );
+            if(c == 'N')
+                break;
+            }
+        else if(!browse(fin))
+            break;
+
+#ifdef  __ZTC__
+    disp_close();   /* wrap up display package  */
+#else
+    endwin();   /* set terminal to initial state    */
+#endif
+}
+
+int     browse(fin)
+FILE    *fin;
+{
+char    line[MAX_LINE];
+int     c, nlines = 1, eof = 0, addlines = PAGE_SIZE;
+
+#if __ZTC__
+    disp_move(0, 0);
+    disp_eeop();
+    disp_move(1, 0);
+#else
+    clear();
+    move(1, 0);    
+#endif
+    for(;;)
+        {
+        if(addlines)    /* wants to see more    */
+            if(eof)
+                putchar( 7 );   /* beep */
+            else
+                {
+                while(fgets(line, MAX_LINE, fin))
+                    {
+                    if(nlines > PAGE_SIZE)
+#ifdef __ZTC__
+                        disp_scroll(1,0,0,PAGE_SIZE,79,DISP_NORMAL);
+#else
+                        scroll(stdscr);
+#endif
+                    else
+                        ++nlines;
+                    disp_move(nlines-1, 0);
+                    disp_printf("%s", line);
+                    if(--addlines <= 0)
+                        break;
+                    }
+                if(addlines)    /* hit end of file  */
+                    {
+                    eof = 1, addlines = 0;
+#if __ZTC__
+                    disp_setattr(DISP_REVERSEVIDEO);
+                    disp_printf( "End-of-File" );
+                    disp_setattr(DISP_NORMAL);
+#else
+                    standout(); printw( "End-of-File" ); standend();
+#endif
+                    }
+                }
+
+        c   = pause("BROWSE: next File, Page, Line, or Quit (F,P,L,Q)? ",
+                    "fFpPlLqQ");
+        c   = toupper(c);
+        if(c == 'F')
+            {
+            fclose(fin);
+            return( 1 );
+            }
+        else if(c == 'P')
+            addlines    = PAGE_SIZE;
+        else if(c == 'L')
+            addlines    = 1;
+        else if(c == 'Q')
+            {
+            fclose(fin);
+            return( 0 );
+            }
+        else
+            putchar( 7 );   /* beep */
+        }
+}
+
+int     pause(prompt, chars)
+char    *prompt, *chars;
+{
+#if __ZTC__
+extern  int disp_cursorrow, disp_cursorcol;
+#endif
+int     c, row, col;
+
+#if __ZTC__
+    row = disp_cursorrow, col = disp_cursorcol;
+#endif
+
+#if __ZTC__
+    disp_move(0, 0);
+    disp_setattr(DISP_REVERSEVIDEO);
+    disp_printf( "%s", prompt );
+    disp_flush();
+#else
+    getyx(stdscr, row, col);
+    move(0, 0); standout();
+    printw( "%s", prompt );
+    refresh();
+#endif
+    while( !strchr(chars, (c=getch())) )
+        putchar(7); /* beep */
+#if __ZTC__
+    disp_setattr(DISP_NORMAL);
+    disp_move(row, col);
+#else
+    standend();
+    move(row, col);
+#endif
+    return( c );
+}

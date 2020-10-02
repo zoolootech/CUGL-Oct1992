@@ -1,0 +1,793 @@
+
+/*                              JustSayYes.c
+
+   An example of Intuition use. Presenting: a generic color control window,
+   a very simple menu, and lots of odds and ends. 4/25/88 JMFiore dissidents.
+   This program is in the public domain. Use it as you see fit (with the
+   exception of distribution for a profit).
+
+   compiled and linked with Manx Aztec C v3.6 under AmigaDOS 1.2
+
+   cc +L JustSayYes.c
+   ln +cdb JustSayYes.o -lc32
+
+*/
+
+#include "functions.h"
+#include "intuition/intuition.h"
+
+/*---------------------------------defines---------------------------------*/
+
+  /* MyText(*RastPort, Xposition, Yposition, char *buffer) */
+
+#define MyText(r,x,y,b) Move((r),(x),(y)); Text((r),(b),strlen(b))
+
+#define INTUITION_REV 33L
+#define GRAPHICS_REV  33L
+#define DEPTH         3
+#define MAX_COLORS    8     /* 2 raised to the DEPTH power */
+
+/* #define COLLECT_RODENT_GYRATIONS */
+/* uncomment the line above if you would like a less processor intensive
+   color slider update, vs. responding to every single mouse move. */
+
+
+/* color requester gagdets.
+   These defines are used as ID numbers in order to keep track of which
+   color gadget is selected. CG0 - CG7 are the color select boxes, CGR, CGG
+   CGB are the RGB sliders, and CGSAVE, CGCANCEL are the Save/Cancel buttons. */
+
+#define CGLOWEST      1
+#define CG0           2
+#define CG1           3
+#define CG2           4
+#define CG3           5
+#define CG4           6
+#define CG5           7
+#define CG6           8
+#define CG7           9
+#define CGR          10
+#define CGG          11
+#define CGB          12
+#define CGSAVE       13
+#define CGCANCEL     14
+#define CGHIGHEST    15
+
+struct IntuitionBase *IntuitionBase=0L;
+struct GfxBase       *GfxBase=0L;
+struct Window        *back_wind=0L;
+struct Window        *color_wind=0L;
+struct Screen        *main_scrn=0L;
+struct ViewPort      *color_w_v_port=0L;
+
+
+/* use the 80 character topaz font for the screen lettering */
+
+struct TextAttr my_font_attr={(UBYTE *)"topaz.font",TOPAZ_EIGHTY,\
+                              FS_NORMAL, FPF_ROMFONT};
+
+struct NewScreen ns={0,0,640,200, DEPTH, 0,1, HIRES,\
+                     SCREENBEHIND | CUSTOMSCREEN, &my_font_attr, \
+                     (UBYTE *)"|| Color Window Example || ", NULL, NULL };
+
+struct NewWindow b_nw={0,0,640,200, -1,-1, GADGETUP | GADGETDOWN | \
+                       MENUPICK , SMART_REFRESH | ACTIVATE | BACKDROP | \
+                       BORDERLESS, NULL, NULL, \
+                       (UBYTE *)" Backdrop Window ",\
+                       NULL, NULL, 640, 200, 640, 200, CUSTOMSCREEN};
+
+
+USHORT sys_color_table[MAX_COLORS]={0xcbb,0x530,0xf00,0xf40,0xbf0,\
+                                    0x84f,0xbfd,0x48b};
+
+/* Quit requester Auto() */
+
+struct IntuiText qr_txt[]={\
+ {0,1,JAM1,20,10,NULL,(UBYTE *)"Quit for sure?"},\
+ {0,1,JAM1,5,3,NULL,(UBYTE *)"Okay"},\
+ {0,1,JAM1,5,3,NULL,(UBYTE *)"Naaahh"},};
+
+
+
+/* Menu set-up */
+
+struct IntuiText itxt[]={\
+ {0,1,JAM1,0,0,NULL,(UBYTE *)"-Quit-"},\
+ {0,1,JAM1,0,0,NULL,(UBYTE *)" Color"},};
+
+
+struct MenuItem mi[]={\
+ {NULL,0,(0*10+1),(104+COMMSEQ),8,\
+  (ITEMTEXT | COMMSEQ | ITEMENABLED | HIGHBOX),\
+  NULL,(APTR)&itxt[0],NULL,'Q'},\
+
+  /* Color */
+
+ {NULL,0,(0*10+1),(52),8,\
+  (ITEMTEXT | ITEMENABLED | HIGHBOX),\
+  NULL,(APTR)&itxt[1],NULL},};
+
+
+struct Menu main_menu[]={\
+ {&main_menu[1],0,0,72,0,MENUENABLED,\
+  "Project  ",&mi[0]},\
+
+ {NULL,280,0,56,0,MENUENABLED,\
+  "Color  ",&mi[1]},};
+
+
+
+/* shapes for push buttons */
+
+SHORT button50_pts[]={0,0, 50,0, 50,12, 0,12, 0,0};
+
+SHORT button80_pts[]={0,0, 80,0, 80,12, 0,12, 0,0};
+
+
+struct Border button50= {0,0,2,0,JAM1,5,&button50_pts[0],NULL};
+
+struct Border button80= {0,0,3,0,JAM1,5,&button80_pts[0],NULL};
+
+
+/* data chunk for color window, hi/un light, etc */
+
+#define CGHSIZE      20 /* size of gadgets */
+#define CGVSIZE       7
+#define CGHOFF       30 /* offsets for successive gadgets */
+#define CGVOFF       10
+#define CGHPOS      170 /* initial position for starting gadget, CG0 */
+#define CGVPOS       20
+
+
+
+SHORT color_hi_pts[]={-4,-2, CGHSIZE+2,-2, CGHSIZE+2,CGVSIZE+1,
+                      -4,CGVSIZE+1, -4,-2};
+
+struct Border color_hi_light=\
+       {0,0,1,0,JAM1,5,&color_hi_pts[0],NULL};
+
+struct Border color_un_light=\
+       {0,0,0,0,JAM1,5,&color_hi_pts[0],NULL};
+
+
+
+struct IntuiText color_txt[]={\
+ {4,0,JAM1,15,3,NULL,(UBYTE *)"Cancel"},\
+ {5,0,JAM1,10,3,NULL,(UBYTE *)"Save"},\
+ {1,0,JAM1,-30,1,NULL,(UBYTE *)"R"},\
+ {1,0,JAM1,-30,1,NULL,(UBYTE *)"G"},\
+ {1,0,JAM1,-30,1,NULL,(UBYTE *)"B"},};
+
+
+struct Image color_box[]={\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,0,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,1,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,2,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,3,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,4,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,5,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,6,NULL},\
+ {0,0,CGHSIZE,CGVSIZE,0,NULL,0,7,NULL},};
+
+struct Image color_img[3];
+
+struct PropInfo color_prop[]={\
+ {AUTOKNOB | FREEHORIZ, 0x0, 0, 0xffff/16+1, 0},\
+ {AUTOKNOB | FREEHORIZ, 0x0, 0, 0xffff/16+1, 0},\
+ {AUTOKNOB | FREEHORIZ, 0x0, 0, 0xffff/16+1, 0},};
+
+struct Gadget color_gadg[]={\
+ {&color_gadg[1],25,72,50,12,GADGHCOMP, RELVERIFY,\
+  BOOLGADGET, (APTR)&button50,NULL,\
+  &color_txt[1],NULL,NULL,CGSAVE,NULL},\
+
+ {&color_gadg[2],40,20,110,9,GADGHCOMP,GADGIMMEDIATE |\
+  RELVERIFY | FOLLOWMOUSE,\
+  PROPGADGET ,(APTR)&color_img[0],NULL,\
+  &color_txt[2],NULL,(APTR)&color_prop[0],CGR,NULL},\
+
+ {&color_gadg[3],40,32,110,9,GADGHCOMP,GADGIMMEDIATE |\
+  RELVERIFY | FOLLOWMOUSE,\
+  PROPGADGET ,(APTR)&color_img[1],NULL,\
+  &color_txt[3],NULL,(APTR)&color_prop[1],CGG,NULL},\
+
+ {&color_gadg[4],40,44,110,9,GADGHCOMP,GADGIMMEDIATE |\
+  RELVERIFY | FOLLOWMOUSE,\
+  PROPGADGET ,(APTR)&color_img[2],NULL,\
+  &color_txt[4],NULL,(APTR)&color_prop[2],CGB,NULL},\
+
+ {&color_gadg[5], CGHPOS, CGVPOS, CGHSIZE, CGVSIZE,\
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[0],NULL,\
+  NULL,NULL,NULL,CG0,NULL},\
+
+ {&color_gadg[6], CGHPOS, CGVPOS+CGVOFF, CGHSIZE, CGVSIZE,\
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[1],NULL,\
+  NULL,NULL,NULL,CG1,NULL},\
+
+ {&color_gadg[7], CGHPOS, CGVPOS+2*CGVOFF, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[2],NULL,\
+  NULL,NULL,NULL,CG2,NULL},\
+
+ {&color_gadg[8], CGHPOS, CGVPOS+3*CGVOFF, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[3],NULL,\
+  NULL,NULL,NULL,CG3,NULL},\
+
+ {&color_gadg[9], CGHPOS+CGHOFF, CGVPOS, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[4],NULL,\
+  NULL,NULL,NULL,CG4,NULL},\
+
+ {&color_gadg[10], CGHPOS+CGHOFF, CGVPOS+CGVOFF, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[5],NULL,\
+  NULL,NULL,NULL,CG5,NULL},\
+
+ {&color_gadg[11], CGHPOS+CGHOFF, CGVPOS+2*CGVOFF, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[6],NULL,\
+  NULL,NULL,NULL,CG6,NULL},\
+
+ {&color_gadg[12], CGHPOS+CGHOFF, CGVPOS+3*CGVOFF, CGHSIZE, CGVSIZE, \
+  GADGHNONE | GADGIMAGE, GADGIMMEDIATE,\
+  BOOLGADGET ,(APTR)&color_box[7],NULL,\
+  NULL,NULL,NULL,CG7,NULL},\
+
+ {NULL,170,72,80,12,GADGHCOMP, RELVERIFY,\
+  BOOLGADGET ,(APTR)&button80,NULL,\
+  &color_txt[0],NULL,NULL,CGCANCEL,NULL},};
+
+
+struct NewWindow c_nw={100,20,270,100, -1,-1, GADGETDOWN | GADGETUP | \
+                     MOUSEMOVE, SMART_REFRESH | ACTIVATE | WINDOWDRAG |\
+                     WINDOWDEPTH | REPORTMOUSE, &color_gadg[0], NULL, \
+                     (UBYTE *) " -Color Control- ", NULL, NULL,\
+                     0,0,0,0, CUSTOMSCREEN};
+
+/* color_box_ptr will indicate which pen color (image) needs to be
+   highlighted. Initialized to color 3 (pen #2) */
+
+struct Gadget        *color_box_ptr = &color_gadg[6];
+
+
+VOID open_all(), damp_mop(), handle_main_messages(), handle_color_messages(),\
+     handle_main_menu(), setup_color(), handle_color_gadg(), hi_color(), \
+     update_color_pots();
+
+
+
+
+/*------------------------------start of main()----------------------------*/
+
+main()
+
+{
+ LONG main_wait_bit, color_wait_bit, wait_mask;
+
+
+/*-------------------------open Intuition and graphics--------------------*/
+
+ open_all();
+
+
+ if ((main_scrn=(struct Screen *)OpenScreen(&ns))\
+    ==NULL) damp_mop();
+
+ b_nw.Screen=main_scrn;
+
+ if ((back_wind=(struct Window *)OpenWindow(&b_nw))\
+    ==NULL) damp_mop();
+
+ color_w_v_port=ViewPortAddress(back_wind);
+  /* ^ only 1 viewport into screen! */
+
+ LoadRGB4(color_w_v_port, sys_color_table, MAX_COLORS);
+
+ SetMenuStrip(back_wind,&main_menu[0]);
+
+ ScreenToFront(main_scrn);
+
+/*-------------------------set up IDCMP read loop-------------------------*/
+
+ FOREVER
+   {
+    main_wait_bit= 1<<back_wind->UserPort->mp_SigBit;
+
+    if (color_wind)
+     color_wait_bit= 1<<color_wind->UserPort->mp_SigBit;
+
+    wait_mask=Wait(main_wait_bit | color_wait_bit);
+
+    if (wait_mask & main_wait_bit)
+     handle_main_messages();
+
+    if (color_wind && (wait_mask & color_wait_bit))
+     handle_color_messages();
+
+   }
+
+}          /* end of main() */
+
+
+
+
+
+/*--------------------opens Intuition and graphics-------------------------*/
+
+VOID open_all()
+
+{
+
+ IntuitionBase=(struct IntuitionBase *)OpenLibrary\
+    ("intuition.library", INTUITION_REV);
+
+ if (IntuitionBase==NULL) {damp_mop();}
+
+
+ GfxBase=(struct GfxBase *)OpenLibrary("graphics.library", GRAPHICS_REV);
+
+ if (GfxBase==NULL) { damp_mop(); }
+
+}
+
+
+
+
+
+
+/*---------------closes windows, screen, graphics, Intuition---------------*/
+
+VOID damp_mop()
+
+{
+ struct IntuiMessage *mes;
+
+ if (color_wind)
+  {                /* drain the IDCMP
+    actually this isn't really required as this memory will be reclaimed,
+    but I sleep better if I do it */
+
+   while( mes=(struct IntuiMessage *)\
+          GetMsg(back_wind->UserPort))
+     ReplyMsg(mes);
+   CloseWindow(color_wind);
+  }
+
+ if (back_wind)
+  {                /* drain the IDCMP, ditto above */
+   while( mes=(struct IntuiMessage *)\
+          GetMsg(back_wind->UserPort))
+     ReplyMsg(mes);
+   if (&main_menu[0])     ClearMenuStrip(back_wind);
+   CloseWindow(back_wind);
+  }
+
+ if (main_scrn)     CloseScreen(main_scrn);
+ if (GfxBase)       CloseLibrary(GfxBase);
+ if (IntuitionBase) CloseLibrary(IntuitionBase);
+ exit(FALSE);
+
+}
+
+
+
+
+
+
+VOID handle_main_menu(number)
+
+USHORT number;
+
+{
+  while (number!=MENUNULL)
+   {
+     switch(MENUNUM(number))
+       {
+         case 0:      /* Project */
+           switch(ITEMNUM(number))
+             {
+               case 0:
+                 if( AutoRequest(back_wind,&qr_txt[0],\
+                  &qr_txt[1],&qr_txt[2],NULL,NULL,200,60) )
+                  damp_mop();
+                 break;
+
+             } /* end of switch(ITEMNUM(number)) */
+           break;
+
+         case 1:            /* Color */
+           setup_color();
+           break;
+
+         default:
+           break;
+
+       } /* end of switch(MENUNUM(number)) */
+
+     number=ItemAddress(&main_menu[0],number)->NextSelect;
+
+   }  /* end of while(number!=MENUNULL) */
+
+}
+
+
+
+/* color control functions starting */
+
+
+
+
+
+VOID handle_color_gadg(gadg_ptr) /* checks gadget id to see which gadget was
+                                   activated, then performs the appropriate
+                                   action (detailed within) */
+struct Gadget *gadg_ptr;
+{
+
+  SHORT           id=gadg_ptr->GadgetID;
+  char            text_buf[5];
+  static USHORT   red, green, blue, entry, old_entry;
+  SHORT           c_count;
+  struct RastPort *rast=color_wind->RPort;
+
+  SetAPen(rast,1);
+  SetBPen(rast,0);
+
+  if(id==CGSAVE)    /* colors are good, just clean up */
+    {
+     CloseWindow(color_wind);
+     color_wind = NULL;
+     return;
+    }
+
+  if(id==CGCANCEL)  /* dump the present colors and use the ones that
+                       existed when this window first opened */
+    {
+     LoadRGB4(color_w_v_port, sys_color_table, MAX_COLORS);
+     CloseWindow(color_wind);
+     color_wind = NULL;
+     return;
+    }
+
+
+  if((id>=CG0) && (id<=CG7)) /* hilight box and update slider positioning */
+    {
+     color_box_ptr = gadg_ptr;
+     entry = id-(CGLOWEST+1);
+     /* ^ find absolute color map entry */
+
+     hi_color(entry, old_entry, rast);
+
+     old_entry = entry;
+     update_color_pots(entry, &red, &green, &blue);
+
+     return;
+    }
+
+
+  if(id==CGR)  /* read Red slider, set, and print value next to it */
+    {
+     red=(((struct PropInfo *)(color_gadg[1].SpecialInfo))->\
+      HorizPot)/(0xffff/15);
+     SetRGB4(color_w_v_port, entry, red, green, blue);
+
+     sprintf(text_buf, "%2d", red);
+     MyText(rast,20,27,text_buf);
+     return;
+    }
+
+  if(id==CGG)   /* read Green slider, set, and print value next to it */
+    {
+     green=(((struct PropInfo *)(color_gadg[2].SpecialInfo))->\
+      HorizPot)/(0xffff/15);
+     SetRGB4(color_w_v_port, entry, red, green, blue);
+
+     sprintf(text_buf, "%2d", green);
+     MyText(rast,20,39,text_buf);
+     return;
+    }
+
+  if(id==CGB)   /* read Blue slider, set, and print value next to it */
+    {
+     blue=(((struct PropInfo *)(color_gadg[3].SpecialInfo))->\
+      HorizPot)/(0xffff/15);
+     SetRGB4(color_w_v_port, entry, red, green, blue);
+
+     sprintf(text_buf, "%2d", blue);
+     MyText(rast,20,51,text_buf);
+     return;
+    }
+
+  /* Note: a case statement can be used in place of the ifs. We use ifs
+     at dissidents because it's a little easier for us to optimize the
+     assembly code. */
+
+}       /* end of handle_color_gadg() */
+
+
+
+
+
+
+
+VOID setup_color()  /* open the color window, copy present color_table */
+{
+ /* Did the user select the color menu item, even though the color
+    window already exists? If so, call him a ninny (flash screen), and
+    return. If we don't, we're going to have two windows and only one
+    pointer (BIG problems!). The color_wind pointer will be NULL unless
+    the color window exists. Note that color_wind is NULLed in the
+    handle_color_gadg routine if SAVE or CANCEL are selected. */
+
+ if(color_wind) {DisplayBeep(main_scrn); return;}
+   
+ /* The color window doesn't exist now, so open it ! */
+
+ c_nw.Screen=main_scrn;
+
+ if ((color_wind=(struct Window *)OpenWindow(&c_nw))\
+    ==NULL) {DisplayBeep(main_scrn); return;}
+
+
+ /* Get the present color table and copy to sys_color. This table will be
+    copied back in if the user decides to cancel his color changes. */
+ {
+  SHORT count;
+  for(count=0;count<MAX_COLORS;++count)
+    sys_color_table[count]=\
+                  GetRGB4( (color_w_v_port->ColorMap), count );
+ }
+
+ handle_color_gadg(color_box_ptr); /* can only be 1 of 8 boxes */
+                    /* since ptr is set in (if (id >= CG0...)) */
+}
+
+
+
+
+
+VOID update_color_pots(entry,r,g,b)  /* figures out the present RGB values
+                                       for a given entry, moves the sliders
+                                       for correct display, and prints the
+                                       RGB values next to the sliders */
+SHORT  entry, *r, *g, *b;
+{
+  char            text_buf[5];
+  struct RastPort *rast= color_wind->RPort;
+
+     /*bits0-3blue,4-7green,8-11red*/
+
+  *b=(0x000f &  GetRGB4( color_w_v_port->ColorMap, entry) );
+  *g=(0x000f & (GetRGB4( color_w_v_port->ColorMap, entry) >> 4) );
+  *r=(0x000f & (GetRGB4( color_w_v_port->ColorMap, entry) >> 8) );
+
+  /* color_gadg[1]=red, [2]=green, [3]=blue */
+
+  ((struct PropInfo *)(color_gadg[1].SpecialInfo))->HorizPot=*r*(0xffff/15);
+  ((struct PropInfo *)(color_gadg[2].SpecialInfo))->HorizPot=*g*(0xffff/15);
+  ((struct PropInfo *)(color_gadg[3].SpecialInfo))->HorizPot=*b*(0xffff/15);
+
+  sprintf(text_buf, "%2d", *r);
+  MyText(rast, 20, 27, text_buf);
+
+  sprintf(text_buf, "%2d", *g);
+  MyText(rast, 20, 39, text_buf);
+
+  sprintf(text_buf, "%2d", *b);
+  MyText(rast, 20, 51, text_buf);
+
+  RefreshGList(&color_gadg[1],color_wind,NULL,3);
+}
+
+
+
+
+
+VOID hi_color(id,old,rp)  /* highlights and un-highlights the color boxes */
+
+USHORT id, old;
+struct RastPort *rp;
+{
+  /* change id and old from absolute to relative gadget id's */
+
+ id  = id+CGLOWEST+1;
+ old = old+CGLOWEST+1;
+
+ /* kill old highlight by drawing over it in the background color */
+ switch (old)
+  {
+    case CG0:
+      DrawBorder(rp,&color_un_light,CGHPOS,CGVPOS);
+      break;
+
+    case CG1:
+      DrawBorder(rp,&color_un_light,CGHPOS,CGVPOS+CGVOFF);
+      break;
+
+    case CG2:
+      DrawBorder(rp,&color_un_light,CGHPOS,CGVPOS+2*CGVOFF);
+      break;
+
+    case CG3:
+      DrawBorder(rp,&color_un_light,CGHPOS,CGVPOS+3*CGVOFF);
+      break;
+
+    case CG4:
+      DrawBorder(rp,&color_un_light,CGHPOS+CGHOFF,CGVPOS);
+      break;
+
+    case CG5:
+      DrawBorder(rp,&color_un_light,CGHPOS+CGHOFF,CGVPOS+CGVOFF);
+      break;
+
+    case CG6:
+      DrawBorder(rp,&color_un_light,CGHPOS+CGHOFF,CGVPOS+2*CGVOFF);
+      break;
+
+    case CG7:
+      DrawBorder(rp,&color_un_light,CGHPOS+CGHOFF,CGVPOS+3*CGVOFF);
+      break;
+
+  }
+
+ /* highlight the new guy */
+ switch (id)
+  {
+    case CG0:
+      DrawBorder(rp,&color_hi_light,CGHPOS,CGVPOS);
+      break;
+
+    case CG1:
+      DrawBorder(rp,&color_hi_light,CGHPOS,CGVPOS+CGVOFF);
+      break;
+
+    case CG2:
+      DrawBorder(rp,&color_hi_light,CGHPOS,CGVPOS+2*CGVOFF);
+      break;
+
+    case CG3:
+      DrawBorder(rp,&color_hi_light,CGHPOS,CGVPOS+3*CGVOFF);
+      break;
+
+    case CG4:
+      DrawBorder(rp,&color_hi_light,CGHPOS+CGHOFF,CGVPOS);
+      break;
+
+    case CG5:
+      DrawBorder(rp,&color_hi_light,CGHPOS+CGHOFF,CGVPOS+CGVOFF);
+      break;
+
+    case CG6:
+      DrawBorder(rp,&color_hi_light,CGHPOS+CGHOFF,CGVPOS+2*CGVOFF);
+      break;
+
+    case CG7:
+      DrawBorder(rp,&color_hi_light,CGHPOS+CGHOFF,CGVPOS+3*CGVOFF);
+      break;
+
+  }
+}
+
+/* end of color control functions */
+
+
+
+
+/*--------------------------- IDCMP routines -----------------------------*/
+
+VOID handle_main_messages()  /* A bare bones IDCMP routine for the background
+                                window. Looks for menu stuff only. */
+{
+  struct IntuiMessage *message;
+
+
+  while (message=(struct IntuiMessage *)\
+        GetMsg(back_wind->UserPort))
+   {
+     ULONG  class=message->Class;
+     USHORT code=message->Code;
+
+     ReplyMsg(message);
+
+     switch(class)
+       {
+         case MENUPICK:
+           handle_main_menu(code);
+           break;
+
+       }
+   }         /* end of while(message..) */
+
+
+} /* end of handle_main_messages() */
+
+
+
+
+
+VOID handle_color_messages()
+{
+  struct IntuiMessage  *message;
+  static SHORT         color_slider_ok;
+  static APTR          slider_ptr;
+  static USHORT        g_id;
+
+#ifdef COLLECT_RODENT_GYRATIONS
+
+  static SHORT         mouse_moved;
+#endif
+
+  if (color_wind == NULL) return;
+
+#ifdef COLLECT_RODENT_GYRATIONS
+
+  mouse_moved = FALSE;
+#endif
+
+  while (message=(struct IntuiMessage *)\
+        GetMsg(color_wind->UserPort))
+   {
+     ULONG  class=message->Class;
+     USHORT code=message->Code;
+     APTR   address=message->IAddress;
+
+     ReplyMsg(message);
+     switch(class)
+       {
+         case MOUSEMOVE:
+
+#ifdef COLLECT_RODENT_GYRATIONS
+
+           mouse_moved = TRUE;
+#else
+           if (color_slider_ok)
+            handle_color_gadg((struct Gadget *)slider_ptr);
+#endif
+           break;
+
+         case GADGETDOWN:
+           g_id = ((struct Gadget *)address)->GadgetID;
+           color_slider_ok = FALSE;
+
+           if(g_id>CGLOWEST && g_id<CGHIGHEST)
+            {
+             slider_ptr = address;
+             if ( (g_id==CGR) || (g_id==CGG) || (g_id==CGB) )
+               color_slider_ok = TRUE;
+             handle_color_gadg((struct Gadget *)address);
+             break;
+            }
+           break;
+
+         case GADGETUP:
+           g_id = ((struct Gadget *)address)->GadgetID;
+           color_slider_ok = FALSE;
+
+           if(g_id>CGLOWEST && g_id<CGHIGHEST)
+            {
+             handle_color_gadg((struct Gadget *)address);
+             break;
+            }
+
+           break;
+
+       }
+
+    if (color_wind == NULL) return; /* a rather ugly (but effective)
+                      break when this window is killed by CGSAVE, CGCANCEL */
+   }         /* end of while(message..) */
+
+#ifdef COLLECT_RODENT_GYRATIONS
+
+    if (mouse_moved && color_slider_ok)
+      handle_color_gadg((struct Gadget *)slider_ptr);
+
+#endif
+
+} /* end of handle_color_messages() */
+
+
+/********************** Dat's all folks.... ******************************/

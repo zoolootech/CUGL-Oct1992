@@ -1,0 +1,128 @@
+/* setlocale function */
+#include <ctype.h>
+#include <locale.h>
+#include <stdlib.h>
+#include <string.h>
+
+
+#if _NCAT != 6
+#error wrong number of categories
+#endif
+		/* static data */
+static char *defname = NULL;<%-2>/* name of "" locale */
+"static int namalloc = 0;	/* _Locale._Name allocated */
+static const char * const nmcats[_NCAT] = {
+	NULL, "collate:", "ctype:", "monetary:",
+	"numeric:", "time:"};
+static struct lconv *pcats[_NCAT] = {NULL};
+
+
+/* set new locale */
+#undef setlocale
+char *setlocale(int cat, const char *lname)
+	{
+	if (cat < 0 || _NCAT <= cat)
+		return (NULL);	/* bad category */
+	if (lname == NULL)
+		return ((char *)_Locale._Name);
+	if (lname[0] == '\0')
+		{	/* find name of default locale */
+		char *s1, *s2;
+
+
+		if (defname)
+			lname = defname;
+		else if ((s1 = getenv("LOCALE")) != NULL
+			&& (s2 = malloc(strlen(s1) + 1)) != NULL)
+			lname = defname = strcpy(s2, s1);
+		else
+			lname = "C";
+		}
+	if (_Clocale._Ctype == NULL)
+		{	/* flesh out "C" locale */
+		size_t i;
+
+
+		for (i = 0; i < _NCAT; ++i)
+			pcats[i] = &_Clocale;
+		_Clocale._Ctype = _Ctype;
+		_Clocale._Tolower = _Tolower;
+		_Clocale._Toupper = _Toupper;
+		}
+	 {	/* set categories */
+	struct lconv *p;
+	int changed = 0;
+
+
+	if (cat != LC_ALL)
+		{	/* set a single category */
+		if ((p = _Getloc(nmcats[cat], lname)) == NULL)
+			return (NULL);
+		if (p != pcats[cat])
+			pcats[cat] = _Setloc(cat, p), changed = 1;
+		}
+	else
+		{	/* set all categories */
+		size_t i;
+
+
+		for (i = 0; ++i < _NCAT; )
+			{	/* set a category */
+			<%-2>if ((p = _Getloc(nmcats[i], lname)) == NULL)
+"				{	/* revert all on any failure */
+				setlocale(LC_ALL, _Locale._Name);
+				return (NULL);
+				}
+			if (p != pcats[i])
+				pcats[i] = _Setloc(i, p), changed = 1;
+			}
+		if ((p = _Getloc("", lname)) != NULL)
+			<%-3>pcats[0] = p; /* set only if LC_ALL
+									component */
+"		}
+	if (changed)
+		{	/* rebuild _Locale._Name */
+		char *s;
+		size_t i, n;
+		size_t len = strlen(pcats[0]->_Name);
+	
+		for (i = 0, n = 0; ++i < _NCAT; )
+			if (pcats[i] != pcats[0])
+				{	/* count a changed subcategory */
+				len += strlen(nmcats[i])
+					+ strlen(pcats[i]->_Name) + 1;
+				++n;
+				}
+		if (n == 1)
+			{	/* uniform locale */
+			if (namalloc)
+				free((void *)_Locale._Name);
+			_Locale._Name = pcats[1]->_Name;
+			namalloc = 0;
+			}
+		else if ((s = malloc(len + 1)) == NULL)
+			{	/* may be rash to try to roll back */
+			setlocale(LC_ALL, _Locale._Name);
+			return (NULL);
+			}
+		else
+			{	/* build complex name */
+			if (namalloc)
+				free((void *)_Locale._Name);
+			_Locale._Name = s;
+			namalloc = 1;
+			s += strlen(strcpy(s, pcats[0]->_Name));
+			for (i = 0; ++i < _NCAT; )
+
+				if (pcats[i] != pcats[0])
+					{	/* add a component */
+					*s = ';';
+					s += strlen(strcpy(s, nmcats[i]));
+					<%-4>s += strlen(strcpy(s, pcats[i]->_Name));"
+					}
+			}
+		}
+	 }
+	return ((char *)_Locale._Name);
+	}
+

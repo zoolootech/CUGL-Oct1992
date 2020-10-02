@@ -1,0 +1,345 @@
+
+#include <stdio.h>
+#include <ctype.h>
+
+#define MAX_LINE 32
+#define MAXCP MAX_LINE - 1
+
+#define SKIP 1
+#define ECHO 2
+
+#define YES 1
+#define NO 0
+
+#define PREAMBLE 1
+#define CODE 2
+#define MACHINE 3
+#define SEMI 4
+#define SCANNER 5
+#define NAME 6
+#define RTN_TOK 7
+#define TRANS 8
+#define END 9
+#define TYPE 10
+#define BRACE 11
+
+#define ACCEPT(n,word) if ((ltok=ntok()) != word) report(n, "word")
+
+/* functions declared in this file*/
+int ntok();
+void gen_tab_hd(), gen_tab_end();
+void gen_fsm_def(char *, char *, char *);
+void semi_cd(int);
+void echo_code();
+void report(int, char *);
+
+/* globally available data structures */
+char lexval[MAX_LINE];
+int line_no, char_no;
+
+int main()
+{
+int ltok;
+int count;
+int tabsize;
+long filemark;
+
+
+char scan_name[MAX_LINE];
+char rtn_name[MAX_LINE];
+char fsm_name[MAX_LINE];
+
+line_no = 1; /* initialize globals */
+char_no = 1;
+tabsize = 0;
+lexval[0] = '\0';
+
+ACCEPT(10,PREAMBLE);   /* accept PREAMBLE keyword      */
+     /* get table def*/
+   printf("#include \"fsm.h\"\n\n"); 
+   printf("\n/* Preamble */\n");
+   echo_code();   /* and following code block */
+
+ACCEPT(40,SCANNER);/* accept SCANNER keyword   */
+ACCEPT(45,NAME);   /* collect and save name    */
+   strncpy(scan_name, lexval, MAXCP);
+ACCEPT(47,SEMI);
+
+ACCEPT(30,MACHINE);/* accept MACHINE keyword   */
+ACCEPT(35,NAME);   /* and save fsm name        */
+   strcpy(fsm_name,lexval,MAXCP);
+ACCEPT(37,SEMI);   /* accept statement term.   */
+
+ACCEPT(50,RTN_TOK); /* accept RETURN keyword    */
+ACCEPT(55,NAME);    /* collect and save name    */
+   strncpy(rtn_name, lexval, MAXCP);
+ACCEPT(57,SEMI);
+
+ACCEPT(90,TYPE);    /* accept TYPE keyword      */
+printf("\ntypedef ");
+semi_cd(ECHO);      /* copy through type def    */
+printf(";\n");
+ACCEPT(97,SEMI);
+
+ACCEPT(60,TRANS);   /* accept TRANSITIONS keyword */
+   count = 0;  /* used to enumerate defines   */
+
+printf("\n\n/*Defines for Symbol names*/\n");
+while ((ltok=ntok()) == NAME) { 
+   printf("#define %s %d\n",lexval,count++);
+   }
+if (ltok != SEMI) report(65,"SEMI");
+tabsize = count; /* save symbol count */
+
+filemark = ftell(stdin);   /* so we can make a second pass */
+count = 0;
+printf("\n\n/* Defines for State Names */\n");
+while ((ltok = ntok()) == NAME){
+   printf("#define %s %d\n",lexval,count++);
+   semi_cd(SKIP);
+   ACCEPT(75,SEMI);
+   }
+if (count == 0) report(70,"STATE NAME"); 
+else if (ltok != CODE) report(80,"CODE");
+
+/* now rewind and process table definition */
+fseek(stdin,filemark,0);
+gen_tab_hd(tabsize);
+while ((ltok = ntok()) == NAME){
+   printf("\n  { /*%s*/",lexval);
+   semi_cd(ECHO);
+   ACCEPT(77,SEMI);
+   --count;
+   if (count !=0)
+      printf("},\n",lexval);
+   else
+      printf("}\n",lexval);
+   }
+if (count != 0) report(78,"STATE NAME 2ND SCAN");
+if (ltok != CODE) report(82,"CODE, 2ND SCAN");
+printf("\n  };\n"); /* close table */
+gen_fsm_def(fsm_name, scan_name, rtn_name);
+
+/* now process CODE -- keyword already scanned */
+   printf("\n/* Code Section */\n");
+   echo_code();   /* and following code block */
+ACCEPT(90,END);
+
+
+exit(0);
+}
+
+/* error handler -- print error message and exit 
+   Input is error number and expected token
+   Reads globals line_no and char_no for position
+   information, and lexval for bad input token.
+*/
+
+void report(num, msg)
+   int num;
+   char *msg;
+{
+printf("fsmgen:\n");
+printf("  Error %d at character %d on line %d\n",
+          num,char_no,line_no);
+printf("  Expected %s, found %s\n",msg,lexval);
+exit(num);
+}
+
+
+void gen_tab_hd(wid)
+int wid;
+{
+printf("\n\n/*Transition Table*/\n");
+printf("struct trans s_table[][%d] = {\n",wid);
+}
+
+void gen_fsm_def(name, scan, rtn)
+   char *name;
+   char *scan; 
+   char *rtn;
+   
+{
+printf("\nstatic int state, token;");
+printf("\n\n/* Code for main()*/\n");
+printf("FSMTYPE %s()\n",name);
+printf("{\n");
+printf("state = start;\n");
+printf("token = EMPTY;\n\n");
+printf("while (state != stop){\n");
+printf("  TRACE;\n");
+printf("  token = %s();\n",scan);
+printf("  (*s_table[state][token].act)();\n");
+printf("  state = s_table[state][token].nextstate;\n");
+printf("  }\n");
+printf("return %s;\n",rtn);
+printf("}\n\n");
+}
+
+/* scans everything up to the next semicolon. 
+   If mode is ECHO, all scanned text is copied to 
+   standard output. Otherwise it is just consumed.
+*/
+void semi_cd(mode)
+   int mode;
+{
+int ch;
+
+while((ch = getchar())!=';'){
+   if (ch == EOF) return;
+   if (ch == '\n'){
+      line_no++;
+      char_no = 1;
+      }
+   else char_no++;
+   if (mode == ECHO) putchar(ch);
+   }
+ungetc(ch,stdin); /*save the semi */
+}
+
+/*
+  scan the next token. A token is an arbitrary string of characters
+  terminated by a semi-colon or whitespace. If the terminator is
+  whitespace it is consumed. If it is a semi-colon, it is not
+  consumed!
+
+  Returns: the type of the token.
+  Side Effects:
+     the token text is captured in lexval.
+
+*/
+
+int ntok()
+{
+char *ptr = lexval;
+char ch;
+
+/* skip leading whitespace */
+while (isspace(ch = getchar()));
+if (ch == EOF) return EOF;
+ungetc(ch,stdin); /* position for while */
+/* collect token text */
+while (is_term(ch = getchar()) == NO){
+/*   printf("in ntok while read %c\n",ch);*/
+   if (ch == '\n'){
+      line_no++;
+      char_no = 1;
+      }
+   else char_no++;
+   *ptr++ = ch;          
+   }
+
+*ptr = '\0';   
+  /* consume the semi if it's the next token */
+  /*else fix-up special cases */
+if ((ch == ';') && (lexval[0] == '\0')) {
+  strncpy(lexval,";",2);
+  return SEMI;
+  }
+if ((ch == '{') && (lexval[0] == '\0')) {
+  strncpy(lexval,"{",2);
+  return BRACE;
+  }
+  /* leave the semi or brace if  they
+    just terminates something else*/
+else if ((ch == ';')||(ch== '{')) ungetc(ch,stdin);  
+
+
+if (!strncmp("PREAMBLE",lexval,8)) return PREAMBLE;
+if (!strncmp("CODE",lexval,4)) return CODE;
+if (!strncmp("MACHINE",lexval,7)) return MACHINE;
+if (!strncmp("SCANNER",lexval,7)) return SCANNER;
+if (!strncmp("RETURNS",lexval,7)) return RTN_TOK;
+if (!strncmp("TRANSITIONS",lexval,11)) return TRANS;
+if (!strncmp("END",lexval,3)) return END;
+if (!strncmp("TYPE",lexval,4)) return TYPE;
+return NAME;
+}
+
+int is_term(c)
+   char c;
+{
+if (isspace(c) || (c == ';') || (c=='{')) return YES;
+else return NO;
+}
+
+
+/* accept a curly brace enclosed block of C code.
+   Doesn't check code syntax, just relies on properties
+   to find closing curly brace. Consumes all input up
+   to and including the closing curly brace.
+   Echoes all accepted text to standard output.
+   No provision for trigraphs.
+*/
+void echo_code()
+{
+int state;
+int ch;
+int depth;
+
+depth = 0;
+if ((ch = getchar()) != '{'){
+    lexval[0] = ch;
+    lexval[1] = '\0';
+    report(101,"{ code");
+    }
+
+plain: 
+   switch(ch=getchar()){
+      case '\'': putchar(ch);
+                 goto squote;
+      case '\"': putchar(ch);
+                 goto dquote;
+      case '/':  putchar(ch);
+                 goto cmnt1;
+      case EOF : strncpy(lexval,"EOF",4);
+                 return;
+      case '{' : depth += 1;
+                 putchar(ch);
+                 goto plain;
+      case '}' : if (depth == 0) return;
+                 depth -= 1;
+      default:   putchar(ch);
+                 goto plain;
+      }
+squote:
+   putchar(ch=getchar());
+   switch(ch){
+      case '\\': ch = getchar();
+                 putchar(ch);
+                 goto squote;
+      case '\'': goto plain;
+      default:   goto squote;
+      }
+dquote:
+   ch = getchar();
+   putchar(ch);
+   switch(ch){
+      case '\"': goto plain;
+      case '\\': ch=getchar();
+                 putchar(ch);
+      default:   goto dquote;
+      }
+/* found opening slash of possible comment */
+cmnt1:
+   ch = getchar();
+   putchar(ch);
+   if (ch == '/') goto cmnt1;
+   else if (ch != '*') goto plain;
+
+/* inside comment */
+cmnt2:
+   ch = getchar();
+   putchar(ch);
+   if (ch != '*') goto cmnt2;
+
+/* found opening * of comment terminator */
+cmnt3:
+   ch = getchar();
+   putchar(ch);
+   if (ch == '*') goto cmnt3;
+   else if (ch != '/') goto cmnt2;
+   else goto plain;
+
+}
+

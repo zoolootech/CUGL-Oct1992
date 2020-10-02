@@ -1,0 +1,101 @@
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=Begin Listing2-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+/*****************************************************/
+/* mlefix.c                                          */
+/* -- Program to fix the leaky MLE bug.              */
+/*****************************************************/
+
+#define NOCOMM
+#include <windows.h>
+#include "win.h"
+
+typedef LONG (FAR PASCAL * LPFN_WNDPROC)
+    (HWND, WORD, WORD, DWORD);
+
+HANDLE          hmemUser;
+LPFN_WNDPROC    lpfnMLEFilter;
+
+LONG    FAR PASCAL  MLEFilter(WORD, WORD, WORD, DWORD);
+LONG	FAR PASCAL  MLEStub(WORD, WORD, WORD, DWORD);
+int     FAR PASCAL  LibMain(HANDLE, WORD, WORD, LPSTR);
+int     FAR PASCAL  WEP(short);
+
+int FAR PASCAL
+LibMain(HANDLE hins, WORD ds, WORD cbHeap, LPSTR lsz)
+/*****************************************************/
+/* -- hins      : This library's instance.           */
+/* -- ds        : The library's default data segment */
+/* -- cbHeap    : Size of out local heap.            */
+/* -- lsz       : Command line invoked with.         */
+/*****************************************************/
+    {
+    WORD        wVersion    = GetVersion();
+    WNDCLASS    wcs;
+
+    /* Only need to fix this bug for version 3.0. */
+    if (LOBYTE(wVersion) != 3 || HIBYTE(wVersion) != 0)
+        return FALSE;
+
+    /* Get USER's default data segment. */
+    if ((hmemUser = LoadLibrary("user.exe")) == 0)
+        return FALSE;
+
+    /* Superclass the edit class. */
+    GetClassInfo(NULL, "edit", &wcs);
+    lpfnMLEFilter = (LPFN_WNDPROC)wcs.lpfnWndProc;
+    UnregisterClass("edit", NULL);
+    wcs.lpfnWndProc = MLEStub;
+    RegisterClass(&wcs);
+
+    return TRUE;
+    }
+
+int FAR PASCAL
+WEP(short wCode)
+/*****************************************************/
+/* -- The usual do-nothing stub.                     */
+/*****************************************************/
+    {
+    return FALSE;
+    }
+
+LONG FAR PASCAL
+MLEFilter(WORD hwnd, WORD wm, WORD wParam,
+  DWORD lParam)
+/*****************************************************/
+/* -- Superclasser for MLE's.                        */
+/* -- hwnd             : Main window.                */
+/* -- wm               : Message type.               */
+/* -- wParam, lParam   : Message parameters.         */
+/*****************************************************/
+    {
+    LONG    lVal;
+
+    _asm    mov ax,dx;
+    lVal = (*lpfnMLEFilter)(hwnd, wm, wParam, lParam);
+
+    if (wm == WM_NCCREATE &&
+        (GetWindowLong(hwnd, GWL_STYLE) &
+            (WS_VSCROLL | WS_HSCROLL)))
+        {
+        WORD    dsUser  = HIWORD(GlobalLock(hmemUser));
+        WORD    dsLocal;
+
+        _asm    mov dsLocal, ds;    /* Save ds. */
+        _asm    mov ds, dsUser;     /* Get USER ds. */
+
+        /* Free dangling USER heap memory. */
+        if (((WND *)hwnd)->unknown4 != 0)
+	    {
+            LocalFree(((WND *)hwnd)->unknown4);
+            ((WND *)hwnd)->unknown4 = 0;
+	    }
+
+        _asm    mov ds, dsLocal;    /* Restore ds. */
+
+        /* In case of REAL mode. */
+        GlobalUnlock(hmemUser);
+        }
+
+    return lVal;
+    }
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=End Listing2-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

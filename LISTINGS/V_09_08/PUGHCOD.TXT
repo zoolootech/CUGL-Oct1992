@@ -1,0 +1,308 @@
+
+
+TIMING PROGRAM EXECUTION FROM WITHIN MAIN()!
+     Originally by:  A. Shipman, rewritten By:  Chris Meyer
+
+
+    In this example, the size of the data pointer is 2,
+
+The data to be accessed is as follows:
+
+The structure contains the following...
+    This is field one
+    Here is the second field
+    Field Three at your service
+    Chris was here
+The array provides access to...
+    This is field one
+    Here is the second field
+    Field Three at your service
+    Chris was here
+
+Each function returns the count of clock ticks.The lower the better.
+
+accessing using Object: result = 2
+accessing using Structure: result = 4
+accessing using Array: result = 3
+accessing using Both Structure and Array: result = 4
+accessing using NULL statement empty loop: result = 2
+Two loops Source to destination Arrays: result = 16
+accessing one Array Loop: result = 13
+
+1. Sum of time for (UsingStructure + UsingArray) = 7
+
+2. Sum less time for both in one loop = 3
+
+3. time to do an empty loop = 2
+
+4. Error  (item 3 less item 2 should be near zero) = 1
+
+
+Listing 5 (Shipman's )
+
+The  measured  times,  for all the  various  Structure  and  Array  Accesses
+using this program, as it was written by Art Shipman, remain almost the same
+no  matter  which  compiler  optimization  switches  are  on  or  off.   The
+program simply gives an excessive timing count for each  activity  measured.
+
+
+The data to be accessed is as follows:
+
+The structure contains the following...
+    This is field one
+    Here is the second field
+    Field Three at your service
+    Chris was here
+The array provides access to...
+    This is field one
+    Here is the second field
+    Field Three at your service
+    Chris was here
+
+Each function returns the count of clock ticks.The lower the better.
+
+accessing usings_object(): result = 4
+accessing usingstructure(): result = 4
+accessing usingarray(): result = 4
+accessing usingstrucandarrayboth(): result = 7
+accessing emptyloop(): result = 2
+accessing looptoloop(): result = 14
+accessing oneloop(): result = 13
+
+1. Sum of time for (UsingStructure + UsingArray) = 8
+
+2. Sum less time for both in one loop = 1
+
+3. time to do an empty loop = 2
+
+4. Error  (item 3 less item 2 should be near zero) = 1
+
+
+Listing5
+
+/* #include <stdio.h> */
+/* #include <bios.h> */
+/* #include <string.h> */
+
+#define LIMIT 70000L
+
+/* Get current BIOS time. (t below)       */
+/* Return to fn. LIMIT times to do read   */
+/* Then get biostime - t (earlier time)   */
+
+#define INIT long i; long t = biostime(0,0)
+
+/*
+#define access(y,x)             \
+  printf("accessing %s(): result = %d\n", #x, elapsed[y]=x() )
+*/
+
+#define TEST(x)          \
+INIT;                    \
+for(i=0; i<LIMIT; i++)  {       \
+      x;             \
+  }      \
+  return(int)    \
+  (biostime(0,0)-t)
+
+/* #x holds the name of the function that was just run ie. usings_object */
+/* y will hold the time that has elapsed. */
+
+#define access(x,y)             \
+  printf("accessing %s(): result = %d\n", #x, elapsed[y]=x() )
+
+
+typedef struct anything
+     {
+     char field1[50],
+     field2[50],
+     field3[50],
+     field4[50];
+     } anything;
+
+anything s_object;
+anything *s_pointer = &s_object;
+
+char *destarray[4];
+char *sourcearray[4];
+char *access;
+int j=0;
+
+/* Global Variables of type enum, end up as numbers, not names! */
+enum list
+    {
+    S_OBJECT,
+    STRUCTURE,
+    ARRAY,
+    BOTH,
+    EMPTY,
+    ONELOOP,
+    TWOLOOPS
+    };
+
+void main(void)
+{
+clrscr();
+
+       /* Initialize Structure */
+
+strcpy(s_pointer->field1,"This is field one");
+strcpy(s_pointer->field2,"Here is the second field");
+strcpy(s_pointer->field3,"Field Three at your service");
+strcpy(s_pointer->field4,"Chris was here");
+
+
+       /* Initialize the purportedly slower array */
+
+sourcearray[0] = s_pointer->field1;
+sourcearray[1] = s_pointer->field2;
+sourcearray[2] = s_pointer->field3;
+sourcearray[3] = s_pointer->field4;
+
+VerifyContents();
+
+compareaccesstimes();
+
+}
+
+
+/* Each of the TEST functions calls the TEST prototyped in the preprocessor */
+/* And the arrays are accessed LIMIT amount of times before being printed.  */
+
+int usings_object(void)
+{
+
+
+TEST(   access = (char *)&s_object.field1;
+    access = (char *)&s_object.field2;
+    access = (char *)&s_object.field3;
+    access = (char *)&s_object.field4;
+     );
+}
+
+int usingstructure(void)
+{
+TEST(   access = s_pointer->field1;
+    access = s_pointer->field2;
+    access = s_pointer->field3;
+    access = s_pointer->field4;
+     );
+}
+
+
+int usingarray(void)
+{
+TEST(   access = sourcearray[0];
+    access = sourcearray[1];
+    access = sourcearray[2];
+    access = sourcearray[3];
+
+    );
+}
+
+
+int usingstrucandarrayboth(void)
+{
+TEST(   access = s_pointer->field1;
+    access = s_pointer->field2;
+    access = s_pointer->field3;
+    access = s_pointer->field4;
+
+    access = sourcearray[0];
+    access = sourcearray[1];
+    access = sourcearray[2];
+    access = sourcearray[3];
+     );
+}
+
+
+/* These are called toward the end of compareaccesstimes and TEST in turn, */
+/* Is done and results printed out behind the scene! Not viewable in DEBUG!*/
+
+int emptyloop(void)
+{
+TEST( ; );
+}
+
+int looptoloop(void)
+{
+TEST(  for(j=0; j<4; j++)
+       {
+       destarray[j] = sourcearray[j];
+       }
+    );
+}
+
+
+
+int oneloop(void)
+{
+TEST(   for(j=0; j<4; j++)
+    {
+    access = sourcearray[j];
+    }
+     );
+}
+
+
+
+void analyze(int *times)
+{
+int total = times[STRUCTURE] + times[ARRAY];
+int difference = total - times[BOTH];
+
+printf("\n1. Sum of time for (UsingStructure + \
+UsingArray) = %d\n", total );
+
+printf("\n2. Sum less time for both in one loop = %d\n", difference );
+
+printf("\n3. time to do an empty loop = %d\n", times[EMPTY] );
+
+printf("\n4. Error  (item 3 less item 2 should be near \
+zero) = %d\n",times[EMPTY]-difference );
+
+
+}
+
+
+compareaccesstimes()
+{
+int elapsed[10];                  /* Array of 10 integers */
+int chris = 0;
+access (usings_object,S_OBJECT);
+access (usingstructure,STRUCTURE);
+access (usingarray,ARRAY);
+access (usingstrucandarrayboth,BOTH);
+access (emptyloop,EMPTY);
+access (looptoloop,TWOLOOPS);
+access (oneloop,ONELOOP);
+
+analyze(elapsed);
+}
+
+
+
+
+VerifyContents()
+{
+int i;
+puts("The data to be accessed is as follows:\n");
+
+
+printf("The structure contains the following...\n");
+printf("\t%s\n\t%s\n\t%s\n\t%s\n",
+      s_pointer->field1,
+      s_pointer->field2,
+      s_pointer->field3,
+      s_pointer->field4);
+
+printf("The array provides access to...\n");
+for(i=0; i<4; i++)
+    {
+    printf("\t%s\n", sourcearray[i] );
+    }
+
+puts("\nEach function returns the count of clock ticks."\
+    "The lower the better.\n");
+
+}

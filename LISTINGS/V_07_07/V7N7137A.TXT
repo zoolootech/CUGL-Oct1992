@@ -1,0 +1,159 @@
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+      Available Memory Calculating Functions - memlargest() and memleft()
+   
+   By:    Modified by Greg Kraus from listing in C Users Journal,
+          Vol 7, Number 5, page 24, author Leonard Zerman
+   
+   Date:  25 June 1989
+
+   Compiled and Tested under QuickC 2.0 and TurboC 1.5 on an IBM-AT clone
+   with all models except Huge.
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+#include <stdlib.h>                  /* malloc() and free() prototypes */
+#include <stdio.h>                   /* printf() prototype */
+
+#define LARGEST-ALLOC   0xffef       /* 64K - 1 - 1 paragraph (16) */
+#define SMALLEST-ALLOC  0x000f       /* paragraph (16) - 1 */
+#define MAX-VECTORS     64           /* maximum number of calls to malloc() */
+
+long memleft(void);
+unsigned int memlargest(void);
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+    Syntax and 
+    Prototype:     long memleft();
+    Parameters:    None
+    Example Call:  mem_avail = memleft();
+    Return Value:  size of available memory from heap in bytes.
+    Operation: memleft() repeatedly calls malloc() for the largest
+           amount of memory possible, starting with the value returned
+           from memlargest(). Repeated requests are made with this value
+           until a request fails. When this happens, the allocation
+           request size is cut in half, and tried repeatedly until it
+           fails. This process is repeated until the request size is
+           less than SMALLEST_ALLOC. Each successful request is assigned
+           a vector which is placed in vptrarray() so that it can be
+           free()d up when finished. A safety net is included so that
+           if we run out of vector storage, we do not crash.
+
+    Additional Source Notes:
+           Depending upon application, memory model, and desired accuracy,
+           the user may wish to adjust LARGEST_ALLOC, SMALLEST_ALLOC,
+           and/or MAX_VECTORS.  
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+long 
+memleft(void)
+{   
+    int i = 0;
+    unsigned allocsize;
+    long totalmem = OL;
+    void *vptr;
+    void *vptrarray[MAX_VECTORS];
+
+    allocsize = memlargest();
+    while (allocsize > SMALLEST_ALLOC {
+        if ((vptr = malloc(allocsize)) != NULL {
+           vptrarray[i++] = vptr;     /* request successful */
+           totalmem += allocsize;     /* update total */
+        }
+        else
+            allocsize >>= 1;          /* request failed */
+
+        if (i == MAX_VECTORS) {
+            printf("Memory too fragmented to completely ");
+            printf("calculate total free space.\n");
+            allocsize = SMALLEST_ALLOC; /* do this to exit */
+                             /* while loop */
+        }
+    }
+    while (i)
+        free(vptrarray[--i]);    /* release all of the memory */
+    return(totalmem);
+}
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+   
+
+
+
+
+    Syntax and
+    Prototype:    unsigned int memlargest(void);
+    Parameters:   None
+    Example call: largest_block = memlargest();
+    Returns:      Size of largest allocatable block from the heap in bytes
+    Operation: memlargest() calls malloc() initially with a request for
+           LARGEST_ALLOC bytes of heap memory. If this fails, a request to
+           malloc() is again made, but for SMALLEST_ALLOC bytes less. This
+           process is repeated until a successful result is returned from
+           malloc(). Then, if the initial call was not successful, the same
+           procedure as before is used to determine where the maximum size
+           of allocation is by searching between the last failure to the
+           first success by 1 byte decrements until a success is again
+           achieved. This gives a result accurate to the byte.
+    Source Notes: Heap fragmentation during run-time may cause memlargest()
+           to return different values.
+    Anomoly:   When Using the Small Model, memleft() returns a smaller value
+           than memlargest(). Both are correct, and differ for this
+           reason. Each time we call malloc(), we get the amount of memory
+           we requested, and the heap management gets a few bytes for
+           management of the heap. The more calls to malloc(), the more bytes
+           are used, unknowingly to us, by the heap management. So, in
+           memlargest(), only 1 call to malloc() is made, as compared to
+           memleft(), where several calls to malloc() are made. Thus, the
+           between these two results is due to this management overhead.
+           Both results are correct, but are telling us different things.
+           memlargest() says we can have 1 allocation of x bytes, where
+           memleft() says we can have several allocations totalling x minus
+           a few bytes.
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+unsigned int
+memlargest(void)
+{
+    unsigned allocsize = LARGEST_ALLOC;
+    void *vptr;
+
+    while ((vptr = malloc(allocsize)) == NULL) {
+        allocsize -= SMALLEST_ALLOC;
+        if (allocsize < SMALLEST_ALLOC)
+            return(0);
+    }
+    free(vptr);
+    if (allocsize != LARGEST_ALLOC) {
+        allocsize += SMALLEST_ALLOC;
+        while((vptr = malloc(allocsize)) == NULL)
+           allocsize--;
+        free(vptr);
+    }
+    return(allocsize);
+}
+
+
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+
+
+void
+main(void)           /* test driver routine */
+{
+    printf("Memory Available from Heap = %lu\n", memleft());
+    printf("Largest Memory Allocation Block = %u\n", memlargest());
+}

@@ -1,0 +1,395 @@
+		title	Net_CD
+		page	59, 132
+;
+; File:		Net_CD.ASM
+; Purpose:	Workstation client device driver for
+;		remote CDROM access
+; Description:	This file contains the device driver 
+;		header and the standard strategy and
+;		interrupt routines, as well as some
+;		of the initialization code and 
+;		interfaces to BIOS, DOS, and NetBIOS
+;		functions.
+;
+
+		subttl	Structure definitions
+		page	+
+;
+; Standard device driver header
+;
+rh		struc
+
+rh_length	db	?	; header size, bytes
+rh_unit		db	?	; block dev. unit #
+rh_command	db	?	; device command code
+rh_status	dw	?	; device command status
+rh_reserved	db 	8 dup (?)
+rh		ends
+
+;
+; INIT command header extensions
+;
+rh0		struc
+
+rh0_rh		db	size rh dup (?)
+rh0_numUnits	db	?	; number block units
+rh0_brkAddress	dd	?	; end of driver address
+rh0_bpb		dd	?	; BIOS parameter block
+rh0_devNumber	db	?	; block device number 
+rh0		ends
+
+		subttl 	'C' Driver Functions
+		page	+
+;
+; Externally linked 'C' function declarations
+;
+extrn		_UnknownCommand:near
+extrn		_Initialize:near
+extrn		_DevOpen:near
+extrn		_DevClose:near
+extrn		_IOInput:near
+extrn		_IOOutput:near
+
+extrn		_ReadLong:near
+extrn		_ReadPrefetch:near
+extrn		_Seek:near
+
+
+		subttl 	Segment Declarations
+		page	+
+;
+; Segments are declared with _DATA first to allow the
+; device driver header to appear at offset 0 within the
+; driver at load time.  _BSS and CONST are present to
+; handle normal MS-C code emissions.  _TEXT and INIT are
+; declared last to allow for easy discarding of the
+; driver Initialize routine.
+;
+DGROUP	group	_DATA, _BSS, CONST, _TEXT, INIT
+
+_DATA		segment word PUBLIC 'DATA'
+		assume ds:DGROUP
+_DATA		ends
+
+_BSS		segment word PUBLIC 'BSS'
+		assume ds:DGROUP
+_BSS		ends
+
+CONST		segment word PUBLIC 'CONST'
+		assume ds:DGROUP
+CONST		ends
+
+_TEXT		segment word PUBLIC 'CODE'
+		assume cs:DGROUP, ds:DGROUP
+_TEXT		ends
+
+INIT		segment word PUBLIC 'INIT'
+		assume cs:DGROUP, ds:DGROUP
+INIT		ends
+
+		subttl	Net_CD Data Segment
+		page	+ 
+
+_DATA		segment
+
+Net_CD:
+
+; 
+; Public declarations for initialization code 
+; 
+		PUBLIC	_DevHeader 
+; 
+; Device driver header with CDROM extension fields 
+; 
+_DevHeader	label	word
+		dd	-1	; next driver
+		dw	0c800h	; device attributes
+		dw	DGROUP:DevStrategy
+		dw	DGROUP:DevInterrupt
+		db	'NET-CD  '
+		dw	0	; CDROM reserved
+		db	0	; CDROM drive letter
+		db	1	; number of units
+
+;
+; Local data for function dispatcher
+;
+rh_offset	dw	?	; Req Hdr pointer
+rh_segment	dw	?
+
+save_sp		dw	?	; old stack save
+save_ss		dw	?	;   area
+
+local_stack	dw	256 dup ('s')	; local stack
+top_stack	dw	DGROUP:$	;   me and 'C'
+
+;
+; Driver standard commands jump table
+;
+DevCmdTbl	label	word
+		dw	DGROUP:_Initialize
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_IOInput
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_IOOutput
+		dw	DGROUP:_DevOpen
+		dw	DGROUP:_DevClose
+		dw	DGROUP:_UnknownCommand
+
+;
+; CDROM extended commands jump table
+;
+DevExtCmdTbl	label 	word
+		dw	DGROUP:_ReadLong
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_ReadPrefetch
+		dw	DGROUP:_Seek
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+		dw	DGROUP:_UnknownCommand
+ 
+
+_DATA		ends
+
+		subttl 	Net_CD Text Segment
+		page	+
+
+;
+; Assembly language portion of the Text segment contains
+; the standard driver Strategy and Interrupt routines as
+; well an interface routine to NetBIOS
+;
+
+_TEXT		segment
+
+;
+; Device Strategy routine
+;   Save request header pointer for subsequent call to
+;   Interrupt routine.
+;
+
+DevStrategy	proc	far
+
+		mov	cs:rh_offset, bx
+		mov	cs:rh_segment, es
+		ret
+
+DevStrategy	endp
+
+;
+; Device Interrupt routine
+;   DevInterrupt sets up a stack for the 'C' routines
+;   and validates the command before dispatching it to
+;   an appropriate handler.
+;
+
+DevInterrupt	proc	far
+
+		; save calling context
+		pushf	
+		push	ax
+		push	bx
+		push	cx
+		push	dx
+		push	si
+		push	di
+		push	ds
+		push	es
+
+		; setup addressing for local and 'C'
+		mov	ax, cs
+		mov	ds, ax
+
+		; switch to local stack
+		mov	save_sp, sp
+		mov	save_ss, ss
+		mov	ss, ax
+		mov	sp, top_stack
+
+		; reload request header pointer
+		mov	ax, rh_segment
+		mov	es, ax
+		mov	bx, rh_offset
+
+		; prepare for call to handlers
+		push	es
+		push	bx
+
+		; process command
+		mov	al, es:[bx].rh_command
+		xor	ah, ah
+		cmp	al, 128		; CDROM cmd?
+		jae	IntCDROMCmd
+
+		cmp	al, 15		; valid cmd?
+		jb	IntStdCmd
+
+IntInvalid:	mov	ax, 8013h	; set unknown
+		jmp	IntExit
+
+IntCDROMCmd:	sub	al, 128
+		cmp	al, 8		; valid CDROM?
+		ja	IntInvalid
+
+		shl	ax, 1		; dispatch to
+		mov	si, ax		;   handler
+		call	DevExtCmdTbl[si]
+		jmp	IntExit
+
+IntStdCmd:	shl	ax, 1		; dispatch to
+		mov	si, ax		;   handler
+		call	DevCmdTbl[si]
+
+		; set up exit status
+IntExit:	pop	bx
+		pop	es
+		mov	es:[bx].rh_status, ax
+
+		; reset calling context
+		mov	ss, save_ss
+		mov	sp, save_sp
+
+		pop	es
+		pop	ds
+		pop	di
+		pop	si
+		pop	dx
+		pop	cx
+		pop	bx
+		pop	ax
+		popf
+
+		ret
+		even
+DevInterrupt	endp
+
+;
+; _NetBIOS : void NetBIOS (NCB far *)
+;   Call NetBIOS at INT 5C.  This function assumes
+;   NetBIOS has been loaded and makes no checks to
+;   verify that.
+;
+
+		PUBLIC	_NetBIOS
+_NetBIOS	proc	near
+		push	bp
+		mov	bp, sp
+
+		; set es:bx to point to NCB and go
+		push	bx
+		push	es
+		mov	bx, [bp+4]
+		mov	ax, [bp+6]
+		mov	es, ax
+		int	5ch
+
+		pop	bx
+		pop	es
+		pop	bp
+		ret
+_NetBIOS	endp
+
+
+_TEXT		ends
+
+		subttl	Net_CD INIT Segment
+		page	+
+
+;
+; Driver INIT segment
+;   Having the Initialize function linked last guarantees
+;   that it appears last in the _TEXT segment.  Since this
+;   segment comes after the _TEXT segment when Initializes
+;   tells DOS to discard the data from _Initialize on all
+;   of this segment will disappear also.
+;
+
+INIT		segment
+
+;
+; _DisplayString : void DisplayString (char *)
+;   Displays a string using DOS function 9.  This function
+;   may only be used during device driver initialization.
+;
+
+		PUBLIC	_DisplayString
+_DisplayString	proc	near
+		
+		push	bp
+		mov	bp, sp
+
+		push	di
+		push	si
+
+		mov	ah, 9		; display str$
+		mov	dx, [bp+4]	; string ptr.
+		int	21h
+
+		pop	si
+		pop	di
+		pop	bp
+		ret
+_DisplayString	endp
+
+;
+; _SetEndAddress : void SetEndAddress (struc rh0 far *)
+;   Set the ending address of the device driver in the 
+;   Initialize request header.  The location of
+;   _Initialize is taken to be the location at which
+;   discardable data begins, which will effectively
+;   eliminate the INIT segment also.
+;
+		
+		PUBLIC	_SetEndAddress
+_SetEndAddress	proc	near
+
+		push	bp
+		mov	bp, sp
+
+		; get request header in es:di
+		push	di
+		mov	di, [bp+4]
+		mov	ax, [bp+6]
+		mov	es, ax
+
+		; set address in rh0_brkAddress
+	mov	word ptr es:[di].rh0_brkAddress, offset DGROUP:_Initialize
+	mov	word ptr es:[di].rh0_brkAddress+2, cs
+
+		pop	di
+		pop	bp
+		ret
+_SetEndAddress	endp
+
+
+;
+; Discardable initialization data
+;
+		PUBLIC	_banner, __acrtused
+;
+; Device Driver loading banner
+;
+_banner		db 	0dh, 0ah
+		db	'Net_CD.SYS:  Workstation Client'
+		db	' Software Loaded'
+		db	0dh, 0ah, '$', 0
+
+;
+; So MSC doesn't complain - set a CRT being used
+;
+__acrtused	dw	1
+
+INIT		ends
+
+
+		end 	Net_CD

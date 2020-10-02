@@ -1,0 +1,3403 @@
+
+
+
+
+       Introduction						     1
+
+
+       1.  IIIInnnnttttrrrroooodddduuuuccccttttiiiioooonnnn
+
+       SCI is a	C language interpreter that supports a very  usable
+       subset  of  C.	It  is a fully interactive interpreter that
+       includes	a powerful full	screen editor and a  program  trace
+       facility.   SCI	was  meant  to	be a stepping stone for	the
+       experienced BASIC programmer who	is ready  to  venture  into
+       the exciting world of C!
+
+       SCI will	run on any MS-DOS or PC-DOS  computer  that  has  a
+       minimum	 of   64Kbytes	 of   RAM,  although  128Kbytes	 is
+       recommended.  The available free	 memory	 (that	portion	 of
+       memory  not used	by the interpreter's code and data storage)
+       is automatically	divided	among "user progam code", "variable
+       table",	"function  table"  and "stack" memory segments.	 If
+       necessary, the sizes of these segments  may  be	changed	 at
+       program	 startup,   however  their  total  may	not  exceed
+       64Kbytes.
+
+       The integrated full-screen  editor  does	 require  that	the
+       terminal	 emulation  firmware in	your computer be capable of
+       recognizing certain  terminal  control  character  sequences
+       (also  known  as	 "escape  sequences")  that  perform cursor
+       positioning and erasing of portions of the screen.  See	the
+       installation  instructions  in  the "Editor" section of this
+       manual.
+
+       The SCI interpreter is very  similar  to	 BASIC	internally.
+       Each  line  of  input  is  first	 scanned and "tokenized", a
+       process in  which  language  elements  (numbers,	 variables,
+       keywords, etc.) are converted to	"tokens".  These tokens	are
+       easier  to  handle  by  a  computer  than  arbitrarily  long
+       character  sequences.  Unlike BASIC however, SCI	programs do
+       not require line	numbers	- the program flow is  directed	 by
+       SCI  purely  through  the  structured programming constructs
+       inherent	in  the	 C  language.	This  tokenization  process
+       allows  SCI  to run much	faster than other interpreters that
+       deal with the raw program text.	However, the C language	was
+       never  designed	to  be	an interpreted programming language
+       like BASIC was, and the price that must	be  paid  for  this
+       advantage  is in	the form of incompatibilities with standard
+
+
+       __________
+
+	0. "The	C Programming Language"	by Brian W. Kernighan &
+	   Dennis M. Ritchie, published	by Prentice-Hall, Inc.
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       2						  Introduction
+
+
+       C as defined by Kernighan and Ritchie[0].
+
+       1.1  SSSSttttaaaarrrrttttiiiinnnngggg OOOOuuuutttt
+
+       The files contained on the distribution diskette	are:
+
+	       SCI.EXE	       the interpreter program
+	       SHELL.SCI       the command shell, written in SCI's
+			       dialect of C
+	       CALC.SCI	       a sample	calculator program, also
+			       written in "SCI C"
+	       USER.MAN	       User's Manual
+	       PROG.MAN	       Programmer's Manual
+
+       As always, it is	a good idea to make  a	working	 copy,	and
+       then store your distribution diskette in	a safe place.
+
+       To start	up SCI,	make sure that the file	 SHELL.SCI  resides
+       on   the	 current  drive	 and  then  execute  SCI.EXE.	The
+       interpreter will	then read and  execute	the  C	program	 it
+       finds  in  SHELL.SCI.   The program provided for	you in this
+       file contains several items of  information  needed  by	the
+       built  in  editor,  as  well as some other useful functions.
+       The  program  in	 SHELL.SCI  that  gets	executed   by	the
+       interpreter is simply an	endless	loop that prompts you for a
+       line of input from the console  and  hands  it  off  to	the
+       interpreter  for	 execution.   Actually	this function could
+       have been performed  by	the  SCI  program  itself,  but	 by
+       placing	this routine outside of	the executable program,	you
+       have the	option of customizing the interpreter to suit  your
+       tastes.	The shell will be discussed in more detail later.
+
+       You may also specify a different	program	 file  for  SCI	 to
+       execute	on  startup.   By  typing  the	following operating
+       system command line, for	example:
+
+	       A>SCI B:STARTUP
+
+       the interpreter will  search  disk  B:  for  a  file  called
+       STARTUP	and  execute  it  in  lieu of the default SHELL.SCI
+       file.  Be aware,	however, that the standard  SHELL.SCI  file
+       contains	  many	 often-used   operating	  system  interface
+       functions that  must  be	 copied	 over  to  your	 customized
+       startup	program	 if  they  are	going  to  be  used by that
+       program.	 See the section on Library Functions for a list of
+       these functions.
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Introduction						     3
+
+
+       1.2  MMMMeeeemmmmoooorrrryyyy AAAAllllllllooooccccaaaattttiiiioooonnnn
+
+       The  interpreter	 automatically	divides	 up  whatever  free
+       memory  is  available  (after  SCI  is  loaded)	among  four
+       segments	for use	by your	programs and data.  These  segments
+       are:  the  Program  Code, Variable Table, Function Table	and
+       Stack.  The Program  Code  segment  contains  the  tokenized
+       version	of  your program code.	The Variable Table contains
+       information about all  "active"	variables.   Each  function
+       takes  up exactly one entry in the Function Table.  Finally,
+       memory requirement for  the  Stack  segment  will  grow	and
+       shrink as your program executes.	 The stack is used only	for
+       temporary storage when expressions are evaluated.
+
+       If the interpreter complains about  "out	 of  memory",  "too
+       many  variables",  "too many functions" or "stack overflow",
+       you may be able to circumvent the problem by telling SCI	how
+       much  memory  to	assign to each of these	four segments using
+       the following MS-DOS command line options:
+
+	       -P nnnn - assign	"nnnn" decimal bytes for program storage.
+	       -V nn   - allow space for a maximum of "nn" variables.
+	       -F nn   - allow space for a maximum of "nn" functions.
+	       -S nn   - set the stack size to "nn".
+
+
+       For example the command line:
+
+	       A>SCI -P	8000 -V	30 -F 80 -S 40
+
+       will reserve 8000 bytes for program storage, allow a maximum
+       of 30 variables to be active at one time, allow a maximum of
+       80 function declarations	and leave 40 stack entries.  Please
+       be aware	that each stack	entry requires 5 bytes of RAM, each
+       variable	table entry 14 bytes and each function table  entry
+       8  bytes	 of  RAM.   Thus,  in  the example above, the total
+       amount of RAM required by SCI's tables are 8000	+  14x30  +
+       8x80  +	4x40  =	9260 bytes; The	total amount of	RAM for	all
+       SCI tables may not exceed 65,535	(64K) bytes.
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       4						     The Shell
+
+
+       2.  TTTThhhheeee SSSShhhheeeellllllll
+
+       The stock version of the	shell program in  SHELL.SCI  simply
+       displays	a prompt on the	console, reads a line of input,	and
+       attempts	to execute the input line.  When SCI is	started	up,
+       it  reads  the  shell  file and executes	it.  The shell file
+       will then print an identification banner, like so:
+
+	       SCI V1.5	20Oct86	Copyright (C) 1986 Bob Brodt
+	       SCI shell V1.5 20Oct86 Copyright	(C) 1986 Bob Brodt
+	       sci>
+
+       The prompt "sci>" tells you  that  the  shell  is  ready	 to
+       accept commands.
+
+       The shell maintains your	program	in its "program	buffer"	 in
+       memory.	 Initially, this buffer	is empty so you	must either
+       create a	program	using SCI's editor or retrieve a previously
+       created	program	from disk.  Before you exit from the shell,
+       be sure to save your program on disk or the contents of	the
+       program buffer will be lost.
+
+       The standard shell recognizes four commands: "edit", "list",
+       "load",	"save",	 "dir"	and "exit".  These are functionally
+       similar to  the	BASIC  commands:  "EDIT",  "LIST",  "LOAD",
+       "SAVE",	"FILES"	 and  "SYSTEM"	respectively.  Later as	you
+       become more familiar with the C language, you  may  wish	 to
+       modify the shell	program	and add	your own commands.
+
+       Anything	else typed at the shell	prompt is assumed to  be  a
+       valid C statement and is	handed off to the interpreter to be
+       executed.
+
+       2.1  SSSShhhheeeellllllll CCCCoooommmmmmmmaaaannnnddddssss
+
+       Listed here are the shell  commands.   In  the  descriptions
+       below,  anything	 enclosed  in  square brackets ([ and ]) is
+       optional	and anything enclosed in angle brackets	(<  and	 >)
+       is  a  verbose  description  of	the  item  required  by	the
+       command.
+
+       _e_d_i_t [<_l_i_n_e#>]
+
+       The "edit" command invokes SCI's	built-in screen	editor (see
+       the "Editor" section in the User's Manual for more details).
+       If the word "edit" is  followed	with  a	 line  number,	the
+       editor  will  start up by displaying the	page of	the program
+       that contains the line number, and move the cursor  to  that
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Shell						     5
+
+
+       line.   If  the	requested  line	 number	is greater than	the
+       number of lines in the program buffer, the last page of	the
+       program is displayed.
+
+       list [<from_line#>] [<to_line#>]
+
+       This command lists the  program	currently  in  the  program
+       buffer  on  the	screen in its entirety.	 The listing may be
+       stoped by pressing any key.  If the word	"list" is  followed
+       by one number, the listing starts at that line number in	the
+       program.	 If two	numbers	separated by  one  or  more  spaces
+       follow "list", the program listing will start with the first
+       and end with the	second line number in the program.
+
+       _l_o_a_d <_f_i_l_e_n_a_m_e>
+
+       The "load" command will load the	 program  buffer  from	the
+       given disk file name.  This command will	destroy	the current
+       contents	of the program buffer.	If the file name is omitted
+       or  the	file  is not found, SCI	will display a "file error"
+       message and erase the program buffer.  This command  can	 be
+       used  to	 intentionally	erase  the program buffer by simply
+       omitting	the <filename>.
+
+       _s_a_v_e <_f_i_l_e_n_a_m_e>
+
+       This will write the contents of the program  buffer  out	 to
+       the  named  disk	 file.	 If the	file name is omitted or	the
+       file  can't  be	created,  SCI  displays	 the  "file  error"
+       message.	  This command does not	alter the program buffer in
+       memory.
+
+       NOTE: Programs that are "save"d by  SCI	are  ordinary  text
+       files, suitable for editing with	your favourite text editor.
+
+       _d_i_r [<_f_i_l_e_s_p_e_c>]
+
+       The "dir" command is exactly the	same as	in MS-DOS with	the
+       exception that no file attribute	information (size, creation
+       date, etc) is displayed,	only the file name.
+
+       _e_x_i_t
+
+       This command returns you	to the MS-DOS  command	level.	 If
+       anything	 was left in the shell's program buffer, it will be
+       lost unless you have previously "save"ed	it in a	disk file.
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       6						     The Shell
+
+
+       2.2  RRRRuuuunnnnnnnniiiinnnngggg YYYYoooouuuurrrr PPPPrrrrooooggggrrrraaaammmm
+
+       A C program is simply  a	 collection  of	 "functions"  which
+       (hopefully) all participate to successfully perform a single
+       task.  In "standard" C, every program must have one and only
+       one  function called "main".  This is where the program will
+       start executing from.  In SCI's	C,  you	 need  not  have  a
+       "main"  function	 because SCI allows you	to run any function
+       in the program buffer by	simply typing its name at  the	SCI
+       input  prompt.	Suppose	for example that our program buffer
+       contained only the following two	functions:
+
+	       hex(n)
+	       {
+		       printf("%d = %x Hexadecimal\n",n,n);
+	       }
+
+	       oct(n)
+	       {
+		       printf("%d = %o Octal\n",n,n);
+	       }
+
+       We could	execute	any of these functions from  the  shell	 by
+       simply typing, for example:
+
+	       sci> hex(256)
+	       256 = 100 Hexadecimal
+	       sci>
+
+       Note that we showed the	shell's	 prompt	 (sci>)	 above	for
+       demonstration purposes only; don't type "sci>"!
+
+       From the	above example, you can see that	an SCI	program	 is
+       simply  a  collection  of  not necessarily related functions
+       that can	be run and debuged individually	or  in	combination
+       with  other  functions  in  the program buffer.	Thus if	you
+       plan to transport your program to a standard C compiler,	 be
+       sure to include a "main"	function in the	final product.
+
+       2.3  PPPPrrrrooooggggrrrraaaammmm VVVVaaaarrrriiiiaaaabbbblllleeeessss
+
+       The interpreter always clears to	zero all program  variables
+       before	each  shell  statement	is  executed.	So  if	you
+       initialize a variable from the shell, the same variable will
+       be  set	to  zero  again	 before	the very next "c" statement
+       entered from the	shell.
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Shell						     7
+
+
+       To illustrate, assume we	have the following program  in	the
+       program buffer:
+
+	       int total;
+
+	       sum(n)
+	       {
+		       total = total + n;
+	       }
+
+       This program uses the variable "total"  to  keep	 a  running
+       total  of  numbers.  However, repeated calls to "sum()" from
+       the shell would be futile since the interpreter would always
+       set "total" to zero before each call.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       8						    The	Editor
+
+
+       3.  TTTThhhheeee EEEEddddiiiittttoooorrrr
+
+       SCI's built in editor is	screen oriented	and is	similar	 to
+       the  "standard"	set by the popular WORDSTAR word processor.
+       The editor can be modified to work with almost any  personal
+       computer,  by  simply  changing	some variables in the shell
+       file  (SHELL.SCI).    This   section   will   describe	the
+       installation  procedure and give	needed information for some
+       of the more common personal computers.
+
+       3.1  KKKKeeeeyyyyssss
+
+       The alphabetic character	keys  on  your	PC's  keyboard	are
+       probably	 arranged in a typewriter keyboard pattern as shown
+       below.	All  editing  commands	(cursor	 motion,  deleting,
+       inserting,  etc.)  are  control-key combinations	(i.e. press
+       and hold	the CONTROL key	and then press a letter	 key).	 In
+       this  manual,  we  will	use  an	up arrow, or circumflex	(^)
+       followed	by a letter to indicate	that  the  keystroke  is  a
+       control-key  combination.   In  the  keyboard diagram below,
+       only the	letter keys marked  with  a  circumflex	 are  valid
+       editing	command	 control-keys.	What each of these control-
+       keys does will be explained in detail later.
+
+       ----------------------------------------------
+       |					    |
+       | -----------------------------------------  |
+       | | ^Q| ^W| ^E| ^R| T | ^Y| U | I | O | P |  |
+       | -----------------------------------------  |
+       |   | ^A| ^S| ^D| ^F| ^G| ^H| J | ^K| ^L|    |
+       |   -------------------------------------    |
+       |      |	^Z| ^X|	^C| ^V|	^B| N |	M |	    |
+       |      -----------------------------	    |
+       |					    |
+       ----------------------------------------------
+
+       3.2  SSSSccccrrrreeeeeeeennnn LLLLaaaayyyyoooouuuutttt
+
+       The editor uses all of the screen, except for the last line,
+       as  a  window  into  your  program.  The	last screen line is
+       reserved	for status and prompts.	 The status line is divided
+       into several fields as shown below.  The	 current  line	and
+       column numbers are updated only if you haven't pressed a	key
+       within the last two seconds or so.  This	lets you enter text
+       or commands at typamatic	speeds without slowing you down.
+
+       If an error should occur	while you are editing your program,
+       the  status  line  will	be  erased  and	 the  error message
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Editor						     9
+
+
+	       L:nnnn C:nn  Insert  Mark:nnnn:nnnn
+		 |	|     |		 |
+		 |	|     |	    line numbers of start and
+		 |	|     |	    end	of a marked block
+		 |	|     |
+		 |	|   insert/replace mode	indicator
+		 |	|
+		 |    current column number
+		 |
+	       current line number
+
+       displayed in its	place.	You must then hit the <ESCAPE>	key
+       to  acknowledge	that you have seen the error message before
+       you  may	 continue  editing.   Also,  if	 the  editor  needs
+       information  from  you  (such  as  search strings, etc.)	the
+       appropriate prompts will	appear in the status line.
+
+       3.3  SSSSccccrrrreeeeeeeennnn CCCCuuuussssttttoooommmmiiiizzzzaaaattttiiiioooonnnn
+
+       Modern computer terminals allow a programmer  to	 manipulate
+       the  cursor  and	 text  displayed  on the screen	by means of
+       specific	character sequences sent to  the  terminal.   These
+       character  sequences  are  known	 interchangably	as "control
+       codes" or "escape sequences".
+
+       Most personal computers have a program in ROM that  emulates
+       a  specific terminal's control codes. In	the case of the	IBM
+       PC, this	emulation program is a "device driver"	program	 on
+       disk,  known as "ANSI.SYS", and must be loaded into RAM when
+       PC-DOS is first booted up.  See your IBM	PC-DOS	manual	for
+       installation procedures of this device driver.
+
+       Your personal computer must have	as a minimum, control codes
+       to  directly position the cursor	anywhere on the	screen,	and
+       either an "erase	to end of line"	or "erase to end of screen"
+       control code.  The "erase to end	of line" code must clear to
+       spaces all character locations to the right of and including
+       the  cursor  postion.  The  "erase to end of screen" control
+       code performs an	"erase to end of line"	function  and  then
+       erases  all lines below the current line	to spaces.  If your
+       terminal	recognizes both	of these erase control	codes,	use
+       "erase  to  end of screen" instead of "erase to end of line"
+       because it is slightly faster.
+
+       If your computer	does  not  provide  these  minimal  control
+       codes, SCI's built in editor can	not be used.  In this case,
+       you must	resort to using	your own text editor to	 write	and
+       modify your programs.
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       10						     The Editor
+
+
+       Your PC may  also  have	control	 codes	that  perform  more
+       complicated   functions	 such  as  inserting  and  deleting
+       characters and  lines.	These  are  not	 really	 necessary,
+       however	the editor is designed to take advantage of them if
+       they exist.  You	may need  to  do  some	experimenting  with
+       different combinations of escape	sequence to achieve optimum
+       speed performance from the editor.
+
+       A Terminal's control codes are made known to the	SCI  editor
+       by  way	of  system global program variables.  These program
+       variables must  be  declared  in	 your  shell  program  file
+       (normally  SHELL.SCI) before the	"entry"	keyword	and must be
+       assigned	values in the mainline shell program (the  function
+       "main"  in  SHELL.SCI).	 There	is  one	 variable  for each
+       control code. If	your PC	does not have a	particular  control
+       code,  that  corresponding  variable should not be declared.
+       All variables must be declared as character  pointers  (i.e.
+       "char  *")  with	the exception of "_nr",	"_nc", "_ro", "_co"
+       and _mhz, which are all "char's".  The  variable	 names	and
+       their corresponding control code	function are listed below:
+
+       _cp     cursor postion.
+
+       _el     erase to	end of line.
+
+       _es     erase to	end of screen.
+
+       _dc     delete the character under the cursor and move  left
+	       all characters to the right of the cursor.
+
+       _dl     delete the line the cursor is on	 and  move  up	all
+	       lines below it.
+
+       _ic     insert a	character before the one under	the  cursor
+	       and  move  all  characters  to the right. The cursor
+	       must remain  at	the  same  position  (i.e.  at	the
+	       inserted	character).
+
+       _il     insert a	line before the	one the	cursor	is  on	and
+	       move all	lines below it down. The cursor	must remain
+	       at the same position  (i.e.  on	the  newly  created
+	       blank line).
+
+       _bl     rings  the  console  bell.   If	this  variable	 is
+	       omitted,	 the  standard	ASCII BEL character will be
+	       used (octal 007).  You may also wish  to	 flash	the
+	       screen  momentarily  to a different color if your PC
+	       has color or reverse video capabilities.
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Editor						     11
+
+
+       _nr     number of rows (lines)  on  the	screen.	 Typically,
+	       this is set to 24 (use 25 for the IBM PC).
+
+       _nc     number of columns, usually 80 but may be	set  to	 40
+	       on the IBM PC if	you are	in 40 column mode.
+
+       _ro     row offset. The cursor position control code assumes
+	       that  the  screen  "home" position (top left corner)
+	       starts at 0,0.  If this is not the case for your	 PC
+	       you   can  add  this  offset,  otherwise	 omit  this
+	       variable.
+
+       _co     column offset, same as above.
+
+       _mhz    CPU speed (in Megahertz)	of your	PC.  This  variable
+	       controls	 the frequency at which	the editor's status
+	       line is updated.
+
+       As mentioned earlier, the above variables  are  pointers	 to
+       characters  which  should be assigned in	your shell mainline
+       program.	 The assigned character	strings	may contain any	 of
+       the data	conversion codes recognized by the Library Function
+       "printf()".  See	the section on Sample Configurations  below
+       for examples.
+
+       3.4  KKKKeeeeyyyybbbbooooaaaarrrrdddd CCCCuuuussssttttoooommmmiiiizzzzaaaattttiiiioooonnnn
+
+       In addition, if	any  of	 the  character	 pointer  variables
+       "_ka",  "_kb", ... "_kz"	are declared, the string pointed at
+       by these	variables is assumed to	be the	character  sequence
+       sent  by	 a  function  key  on  your  keyboard  and  will be
+       recognized as an	alias of the  corresponding  control-letter
+       key combination.
+
+       For  example,  The  VT-100  terminals  send  the	  character
+       sequence:  "ESCAPE  [  A",  "ESCAPE  [  B", "ESCAPE [ C"	and
+       "ESCAPE [ D" for	the up,	down  right  and  left	arrow  keys
+       respectively.  So,  instead  of	typing ^E, ^X, ^D and ^S to
+       move the	cursor	around,	 we  could  declare  the  following
+       variables:
+
+       char *_ke, *_kx,	*_kd, *_ks;
+
+       _ke="\033[A";  #	alias for ^E
+       _kx="\033[B";  #	alias for ^X
+       _kd="\033[C";  #	alias for ^D
+       _ks="\033[D";  #	alias for ^S
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       12						     The Editor
+
+
+       and then	use the	VT-100's arrow	keys  instead.	 Similarly,
+       other   keyboard	  function   keys  that	 transmit  multiple
+       characters or single  control  characters  can  be  used	 to
+       perform other editor functions.
+
+       3.5  SSSSaaaammmmpppplllleeee CCCCoooonnnnffffiiiigggguuuurrrraaaattttiiiioooonnnnssss
+
+       This section contains the data declarations and	assignments
+       required	by some	of the more common personal computers.	The
+       data declarations must be made before the "entry" keyword in
+       SHELL.SCI,  and the variable assignments	must be	done within
+       the function immediately	following the "entry" keyword.	For
+       example,	 the  figure  below shows the configuration for	the
+       IBM PC in the distribution version of the SHELL.SCI file.
+
+       char _nr,_nc,_ro,_co,*_cp,*_el;	<--editor variable declarations
+	       .
+	       .
+       <Library	Function declarations>
+	       .
+	       .
+       entry		       <--Note the "entry" keyword here!
+       main()
+       {
+	       .
+	       .
+	       _nr=25;	       <--editor variable assignments
+	       _nc=80;
+	       _ro=1;
+	       _co=1;
+	       _cp="\033[%d;%dH";
+	       _el="\033[0K";
+
+	       for (;;)	{
+		       .
+		       .
+	       <main program loop>
+		       .
+		       .
+	       }
+       }
+
+       Only a skeleton of the file is shown here so  that  you	can
+       see   the   relative  locations	of  the	 editor	 variables'
+       declarations and	assignments.  Note  that  the  declarations
+       must  appear  somewhere	before the "entry" keyword, and	the
+       control	character  strings  must  be  assignmed	 to   these
+       variables  somewhere  before  the  start	of the main program
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Editor						     13
+
+
+       loop.
+
+       In the sample configuration listings that follow,  only	the
+       control character string	assignments are	shown for brevity.
+
+       3.5.1  _I_B_M__P_C
+
+       The IBM PC is  probably	the  most  common.  Note  that	the
+       ANSI.SYS	 device	driver must be installed for the SCI editor
+       to work.
+
+       _nr=25;		  # the	PC has 25 lines
+       _nc=80;		  # of 80 columns each
+       _ro=_co=1;	  # row/column numbering starts	at 1
+       _cp="\033[%d;%dH"; # esc. seq. to position cursor
+       _el="\033[0K";	  # esc. seq. to erase to end of line
+
+       3.5.2  _D_E_C__R_a_i_n_b_o_w__1_0_0
+
+       Digital Equipment Corp.s' Rainbow 100 recognizes	a subset of
+       the  American  National	Standards  Institute (ANSI) Control
+       Sequences for Video Terminals (X3.64).
+
+       _nr=24;
+       _nc=80;
+       _ro=1;
+       _co=1;
+       _cp="\033[%d;%dH"; # position cursor
+       _es="\033[J";   # erase to end of screen
+       _il="\033[M";   # insert	a line
+       _ic="\033[4h%c\033[4l"; # insert	a character
+       _dc="\033[P";   # delete	a character
+       _bl="\033[?5h\033[?5l"; # bell flashes screen momentarily
+       _ke="\033[A";   # up-arrow key
+       _kx="\033[B";   # down-arrow key
+       _kd="\033[C";   # right-arrow key
+       _ks="\033[D";   # left-arrow key
+
+       3.5.3  _H_e_a_t_h__H_1_9
+
+       _nr=24;
+       _nc=80;
+       _ro=' ';
+       _co=' ';
+       _cp="\033Y%c%c";	# position cursor
+       _es="\033E";	# erase	to end of screen
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       14						     The Editor
+
+
+       3.5.4  _Z_e_n_i_t_h__P_C
+
+       _nr=24;
+       _nc=80;
+       _ro=' ';
+       _co=' ';
+       _cp="\033Y%c%c";	# position cursor
+       _es="\033E";	# erase	to end of screen
+       _il="\033L";	# insert line
+       _dl="\033M";	# delete line
+
+       3.5.5  _T_e_l_e_v_i_d_e_o__9_1_0
+
+       _nr=24;
+       _nc=80;
+       _ro=' ';
+       _co=' ';
+       _cp="\033=%c%c";	# position cursor
+       _el="\033T";	# erase	to end of line
+
+       3.6  EEEEddddiiiittttoooorrrr CCCCoooommmmmmmmaaaannnnddddssss
+
+       Now that	you have  modified  the	 file  SHELL.SCI  for  your
+       particular  terminal,  you are ready to use the editor. This
+       section describes all of	the editor's commands in detail.
+
+       All of the  editor  commands  are  control-key  combinations
+       (press  and  hold  the  CONTROL	key while pressing a letter
+       key).  We will use an up	arrow, or circumflex  (^)  followed
+       by  a letter to indicate	that the keystroke is a	control-key
+       combination.  All  other	 non-printing  keys,  such  as	the
+       <RETURN>	and <BACKSPACE>	keys, will be in UPPERCASE.
+
+       3.6.1  _E_x_i_t_i_n_g__f_r_o_m__t_h_e__E_d_i_t_o_r
+
+       To exit the editor and return to	the SCI	shell, type a ^Z.
+
+       3.6.2  _C_u_r_s_o_r__M_o_v_e_m_e_n_t
+
+       ^E      move cursor up to previous line.	Screen scrolls down
+	       if cursor is at the top of the screen.
+
+       ^X      move cursor down	to next	line. Screen scrolls up	 if
+	       cursor is at the	bottom of the screen.
+
+       ^S      move cursor  left  one  character  position.  Cursor
+	       stops at	left margin.
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Editor						     15
+
+
+       ^D      move cursor right  one  character  position.  Cursor
+	       stops at	right margin.
+
+       ^A      move cursor  to	beginning  of  previous	 "word".  A
+	       "word"  is  defined  as	a  continuous  sequence	 of
+	       alphanumeric characters (i.e. letters and numbers  -
+	       no punctuation).
+
+       ^F      move cursor to beginning	of next	word.
+
+       ^R      move cursor one page (the height	of the display)	 up
+	       towards the beginning of	the program.
+
+       ^C      move cursor one page down, towards the  end  of	the
+	       program.
+
+       <RETURN>	or <LINEFEED> if the status  line  shows  "Replace"
+	       mode  instead  of "Insert", these keys will move	the
+	       cursor down to the beginning of the next	line.
+
+       3.6.3  _I_n_s_e_r_t_i_n_g__a_n_d__D_e_l_e_t_i_n_g
+
+       ^V      toggles Insert/Replace mode. The	status line at	the
+	       bottom of the screen will indicate the current mode.
+	       In Insert mode, any  characters	you  type  will	 be
+	       inserted	 before	 the  current  cursor position.	 In
+	       Replace mode, old characters on a  line	are  simply
+	       overwritten as you enter	text.
+
+       ^G      delete the character under the  cursor.	The  cursor
+	       stays in	the same position.
+
+       ^H or <BACKSPACE> delete	the character to the  left  of	the
+	       cursor and move the cursor left one character.
+
+       ^Y      delete the current line.	The  cursor  stays  at	the
+	       same  line.   Note that the <EOF> mark at the end of
+	       the program can not be deleted.
+
+       ^L      restore the original line if the	cursor has not been
+	       moved off the line.
+
+       <RETURN>	or <LINEFEED> if the  status  line  shows  "Insert"
+	       mode,  these  keys  will	 insert	a new blank line as
+	       follows:	 If the	cursor is at line one,	column	one
+	       (top,   left-most   column)   when   a  <RETURN>	 or
+	       <LINEFEED> is pressed, a	new blank line is  inserted
+	       above  the  current  line;  everywhere else, the	new
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       16						     The Editor
+
+
+	       line is inserted	below the current line.	 The cursor
+	       will  rest  on  the newly inserted line and directly
+	       below the first non-space character in the  previous
+	       line.
+
+       3.6.4  _E_x_t_e_n_d_e_d__M_o_v_e_m_e_n_t
+
+       The extended cursor motion commands require two	control-key
+       keystrokes.   The first is always a ^Q (mnemonic	for Quickly
+       move somewhere),	and the	second can be one of the following:
+
+       ^F      find a character	sequence.  The cursor will move	 to
+	       the status line's prompt/error message field and	you
+	       will be prompted	for the	character  sequence  to	 be
+	       searched	  for.	 The  search  starts  at  the  next
+	       character position to the right of the cursor on	the
+	       current line.  When the character sequence is found,
+	       the cursor will rest on the first character  of	the
+	       sequence.
+
+       ^A      find  and  replace  character  sequence.	  You	are
+	       prompted	 for  the character sequence to	be searched
+	       for,  as	 above.	 Next  you  are	 prompted  for	the
+	       character  sequence  that  will	replace	 the search
+	       string.	Finally, you have the option of	 performing
+	       the  search/replace  "globally"	that  is  for every
+	       occurance in the	program.
+
+       ^L      find  next   occurence	of   previously	  specified
+	       character  sequence.   You  will	not be prompted	for
+	       the sequence to be searched for.
+
+       ^G      go to a specified line.	You are	 prompted  for	the
+	       line  number  to	be displayed.  The cursor will rest
+	       on the requested	line usually in	the center  of	the
+	       screen.
+
+       ^S      move cursor to beginning	of current line.
+
+       ^D      move cursor to end of current line.
+
+       ^E      move cursor to top of screen.
+
+       ^X      move cursor to bottom of	screen.
+
+       ^R      move cursor to first line of program.
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Editor						     17
+
+
+       ^C      move cursor so that the last page of the	program	 is
+	       displayed.
+
+       ^B      move cursor to the beginning of a marked	block.
+
+       ^K      move cursor to the end of a marked block.
+
+       3.6.5  _B_l_o_c_k__a_n_d__M_i_s_c_e_l_l_a_n_e_o_u_s__C_o_m_m_a_n_d_s
+
+       These commands also require two control-key  keystrokes	and
+       include block marking, inserting/deleting and some "too late
+       to classify" commands.
+
+       Unlike the popular WORDSTAR  word  processor,  SCI's  editor
+       treats  blocks  as  groups  of  lines  instead  of groups of
+       characters.  That is, a block starts at the beginning  of  a
+       line and	includes all characters	up to the end of a line.
+
+       The first of these two-keystroke	block commands must be a ^K
+       (mnemonic for blocK (?))	and the	second may be one of:
+
+       ^B      mark beginning of a block. The status line will show
+	       the line	number of the beginning	of the block.
+
+       ^K      mark end	of a block. The	status line is	updated	 to
+	       show the	line number of the end of the block.
+
+       ^V      make a copy of a	marked block and insert	 it  before
+	       the  current  line.  You	 may  not  copy	 a block to
+	       itself: for example if the block	starts	at  line  3
+	       and  ends  at  line  10	and the	cursor is currently
+	       resting on line 5, you will be severely beeped at by
+	       the editor.
+
+       ^Y      delete the marked block.
+
+       ^U      "unmark"	the block. The block markers (if  any)	are
+	       removed from the	status line display.
+
+       ^R      read a file from	disk and insert	its contents before
+	       the  current  line  in  the  program.   You  will be
+	       prompted	for the	file name.
+
+       ^W      write the marked	block to a disk	file.  You will	 be
+	       prompted	for the	file name.
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       18						     The Editor
+
+
+       3.6.6  _T_a_b_s
+
+       Tabs are	set at every 3 columns.	A ^I (or the <TAB>  key	 on
+       your  keyboard if you have one) will either insert spaces or
+       replace with spaces, depending on the current Insert/Replace
+       mode parameter, up to the next tab stop.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Language	Summary						     19
+
+
+       4.  LLLLaaaannnngggguuuuaaaaggggeeee SSSSuuuummmmmmmmaaaarrrryyyy
+
+       Although	SCI implements only a subset of	the C language,	 it
+       is  powerful  enough to teach you the major principles of C.
+       This section is meant to	be used	in conjunction with a  good
+       C tutorial textbook to highlight	the differences	between	the
+       SCI C subset and	standard C.  It	also serves as a  reference
+       for  the	 experienced C programmer that wants to	get started
+       with SCI	quickly.
+
+       4.1  LLLLiiiinnnneeee TTTTeeeerrrrmmmmiiiinnnnaaaattttoooorrrrssss
+
+       In standard C, a	statement is terminated	 with  a  semicolon
+       (;).   In  SCI,	all statements are terminated by either	the
+       end of the line or by a semicolon, although the semicolon is
+       optional.   This	means that an expression MUST be completely
+       contained on one	line.
+
+       An SCI program line may be a maximum of 79 characters  long.
+       The  built-in  editor  will  not	 allow	you to create lines
+       longer than 79 columns.
+
+       4.2  CCCCoooommmmmmmmeeeennnnttttssss
+
+       Comments	start with a number symbol (#) and end at  the	end
+       of  the	current	 program  line.	  The  standard	 C  comment
+       delimiters, /* and */ are not recognized	and  will  cause  a
+       "syntax error" message.
+
+       4.3  IIIIddddeeeennnnttttiiiiffffiiiieeeerrrrssss
+
+       Identifiers are any sequence of	characters,  the  first	 of
+       which  must  be an uppercase or lowercase letter	("a-z",	"A-
+       Z") or an underscore ("_").  The	 remaining  characters	may
+       include digits ("0-9").
+
+       The following are all examples of valid identifiers:
+
+	       this_is_an_identifier
+	       _0123
+	       XYZ
+
+       Note that there is no limit to  the  number  of	significant
+       characters  in an identifier, except the	maximum	line length
+       limit of	79 characters.
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       20					       Language	Summary
+
+
+       4.4  KKKKeeeeyyyywwwwoooorrrrddddssss
+
+       The following words are reserved	by SCI and may not be  used
+       as variable names:
+
+	       break	       entry	       return
+	       char	       for	       switch
+	       case	       if	       sys
+	       else	       int	       while
+
+       Most of these keywords are the  standard	 language  elements
+       and are described in any	C text book.
+
+       The "entry" keyword is used to tell  the	 interpreter  which
+       function	 in  the  startup  program  (normally  in  the file
+       SHELL.SCI) is to	be executed first  after  the  program	has
+       been  loaded.   There  may  be  only  one  "entry"  within a
+       program.	 Any functions	or  variables  that  were  declared
+       before  the  "entry" keyword are	considered "system globals"
+       and are globally	known to all functions.	 Among	the  system
+       globals in the standard shell file are the Library Functions
+       and the editor's	control	variables.
+
+       Functions and variables declared	after the  "entry"  keyword
+       are  hidden  from user-written functions.  These	include	the
+       standard	shell's	control	program	(main) and  its	 associated
+       variables (the program and input	line buffer).
+
+       The keyword "sys" is an interface function  to  some  useful
+       interpreter  functions,	such  as the program editor.  These
+       are described in	the Library Functions section.
+
+       4.5  NNNNuuuummmmeeeerrrriiiicccc CCCCoooonnnnssssttttaaaannnnttttssss
+
+       SCI supports decimal integer constants in the  range  -32768
+       to  32767.   SCI	 also  supports	the standard C notation	for
+       integer hexadecimal and octal notation.
+
+       4.6  CCCChhhhaaaarrrraaaacccctttteeeerrrr CCCCoooonnnnssssttttaaaannnnttttssss
+
+       A character constant must be surrounded by  apostrophes	(')
+       and may be one of the following:
+
+       1. a  single  ASCII  alphanumeric   or	punctuation   (i.e.
+	  printable) character
+
+       2. a backslash (\) character  followed  by  3  octal  digits
+	  which	may be used to represent any one byte value
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Language	Summary						     21
+
+
+       3. a backslash followed by one of the characters	n, r, b	 or
+	  t  which  represent  the  <LINEFEED>	(a.k.a.	"newline"),
+	  <RETURN>  (carriage  return),	  <BACKSPACE>	and   <TAB>
+	  characters respectively
+
+       The following are examples of valid character constants:
+
+	       'A'     the ASCII character "A"
+	       '\177'  octal character
+	       '\n'    newline
+	       '\r'    carriage	return
+	       '\b'    backspace
+	       '\t'    horizontal tab
+	       '\\'    the backslash character
+	       '\''    the apostrophe character
+
+       4.7  SSSSttttrrrriiiinnnngggg CCCCoooonnnnssssttttaaaannnnttttssss
+
+       Strings may include any of the character	constants mentioned
+       above, as for example:
+
+	       "this is	a string\007\n"
+
+       Strings always include a	null (zero) byte, marking  the	end
+       of  the	string.	 A zero-length string may be written as	two
+       consecutive quotes, thus: "".  A	string is always terminated
+       by  either  the matching	right quote or end of line; strings
+       may not be continued on the next	line as	in standard C.
+
+       4.8  DDDDaaaattttaaaa TTTTyyyyppppeeeessss
+
+       Only  the  "char"  and  "int"  data  types  are	 supported.
+       Characters  (char's) are	1 byte and integers (int's) 2 bytes
+       in length.  Both	are treated as signed quantities. Chars	may
+       range  in value from -128 to +127, ints range from -32768 to
+       32767.
+
+       SCI also	supports pointers and single dimensioned arrays	 of
+       both char and int.  Pointers require 2 bytes of storage.
+
+	       char *cp;
+	       int ip[];
+	       int array[10];
+
+       Pointers	to pointers (to	pointers, to  pointers,	 etc.)	and
+       single  dimension arrays	of pointers (to	pointers, etc.)	are
+       also supported:
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       22					       Language	Summary
+
+
+	       char **argv;
+	       char ***etc;
+	       int *array_of_ptr_to_ints[20];
+	       char **vec[20];
+
+       4.9  OOOOppppeeeerrrraaaattttoooorrrrssss
+
+       The following operators are supported.	The  operators	are
+       listed from highest to lowest precedence.
+
+			       Operator	Summary	(Part 1)
+	       _______________________________________________________
+	       operator	       meaning	       examples
+	       _______________________________________________________
+	       []      subscripting	       pointer[expr]
+	       ()      function	call	       expr(expr_list)
+	       ()      resolve precedence      ( expr )
+	       associativity:  left to right
+	       ________________________________________________________
+	       !       not		       !expr
+	       ~       complement	       ~expr
+	       ++      pre/post	increment      ++lvalue	    lvalue++
+	       --      pre/post	decrement      --lvalue	    lvalue--
+	       *       pointer dereference     *expr
+	       &       address of	       &lvalue
+	       associativity:  right to	left
+	       _________________________________________________________
+	       *       multiplication	       expr * expr
+	       /       division		       expr / expr
+	       %       modulo (remainder)      expr % expr
+
+	       associativity:  left to right
+	       _________________________________________________________
+	       +       addition		       expr + expr
+	       -       subtraction	       expr - expr
+	       associativity:  left to right
+	       _______________________________________________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Language	Summary						     23
+
+
+			       Operator	Summary	(Part 2)
+	       _______________________________________________________
+	       operator	       meaning	       examples
+	       _________________________________________________________
+	       <<      shift left	       expr << expr
+	       >>      shift right	       expr >> expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       <       less than	       expr < expr
+	       <=      less than or equal      expr <= expr
+	       >       greater than	       expr > expr
+	       >=      greater than or equal   expr >= expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       ==      equal		       expr == expr
+	       !=      not equal	       expr != expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       &       bitwise AND	       expr & expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       ^       bitwise exclusive OR    expr ^ expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       |       bitwise inclusive OR    expr | expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       &&      logical AND	       expr && expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       ||      logical OR	       expr || expr
+	       associativity:  left to right
+	       _________________________________________________________
+	       =       assignment	       lvalue =	expr
+	       associativity:  right to	left
+	       _________________________________________________________
+
+       4.10  CCCCoooommmmmmmmaaaa OOOOppppeeeerrrraaaattttoooorrrr
+
+       The Comma Operator (,) as used by SCI is	not an operator	per
+       se,  but	 rather	a function argument and	variable seperator.
+       Trying to use a comma anywhere other than in function calls,
+       or data declarations will cause a "syntax error".
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       24					       Language	Summary
+
+
+       4.11  PPPPrrrrooooggggrrrraaaammmm CCCCoooonnnnttttrrrroooollll FFFFlllloooowwww CCCCoooonnnnssssttttrrrruuuuccccttttssss
+
+       SCI supports the	following programming constructs:
+
+	       if ( <expression> ) <statement>
+
+	       if ( <expression> ) <statement> else <statement>
+
+	       while ( <expression> ) <statement>
+
+	       for ( <expression> ; <expression> ; <expression>	) <statement>
+
+	       switch (	<expression> )
+	       {
+	       case <constant expression> : <statement>
+	       case <constant expression> : <statement>
+	       case <constant expression> : <statement>
+		       .
+		       .
+		       .
+	       default : <statement>
+	       }
+
+       All of these constructs	require	 that  the  keyword  ("if",
+       "while",	 etc.)	and  its  associated "(	<expression> )"	all
+       appear on the same line of text.	  The  <statement>  portion
+       may appear on the same or on a separate line of text.
+
+       SCI's "switch" statement	 works	slightly  differently  than
+       usual:  The <expression>	part following the "switch" keyword
+       is first	evaluated.  Then, reading from top to bottom,  each
+       of the <constant	expressions> are evaluated.  If	a "default"
+       is encountered before any <constant expressions>	 are  found
+       that  match  <expression>, then execution continues with	the
+       <statement> following the  "default"  keyword  and  all	the
+       other  "cases" are ignored.  This is in contrast	to standard
+       C that only  executes  the  "default"  statement	 after	all
+       <constant expressions> have been	tested.
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     25
+
+
+       5.  LLLLiiiibbbbrrrraaaarrrryyyy FFFFuuuunnnnccccttttiiiioooonnnnssss
+
+       The "sys" keyword has been reserved by SCI  as  a  means	 of
+       communicating  between a	user's program and the interpreter.
+       It is treated exactly as	a (pre-defined)	function  that	may
+       be referenced by	a user program.
+
+       A "sys" call may	have several arguments,	the number and type
+       of  which depends upon the integer value	of the last (right-
+       most) argument. This right-most argument	is called the  "sys
+       number" and defines the actual function performed by a "sys"
+       call.  To make life easier and to provide  a  more  or  less
+       "standard"  programming environment, higher- level functions
+       have been wrapped around	these "sys" calls - these are known
+       as  the "Library	Functions" and may be found in the standard
+       command shell included in the distribution disk.	  The  "sys
+       numbers"	 and  their  corresponding mnemonic name are listed
+       below.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       26					      Library Functions
+
+
+	       0       version
+	       1       fputc
+	       2       fgetc
+	       3       fputs
+	       4       fgets
+	       5       sprintf
+	       6       sscanf
+	       7       fopen
+	       8       fread
+	       9       fwrite
+	       10      fclose
+	       11      fseek
+	       12      ftell
+	       13      bdos
+	       14      system
+	       15      exit
+	       16      stmt
+	       17      totok
+	       18      untok
+	       19      edit
+	       20      strcmp and strncmp
+	       21      strcpy and strncpy
+	       22      strlen
+	       23      malloc
+	       24      free
+	       25      load
+	       26      save
+	       27      list
+	       28      debug
+	       29      dirscan
+	       30      int86
+	       31      memleft
+
+       The Library Functions are described below  in  more  detail.
+       Some  of	 the  "sys"  functions	do not have a corresponding
+       Library Function	interface in SHELL.SCI,	but  are  described
+       here anyway for completeness.
+
+       5.1  aaaattttooooiiii
+
+       atoi( str )
+       char *str;
+
+       Converts	  the	string	 "str"	 containing    the    ASCII
+       representation of a decimal number to an	integer. The string
+       consists	of optional leading spaces  or	tabs,  an  optional
+       plus  or	minus sign (+ or -) followed by	one or more decimal
+       digits.	Returns	the  integer  value  of	 the  ASCII  number
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     27
+
+
+       string.
+
+       This function does not have a "sys" call	 number	 equivalent
+       but rather it uses the "sscanf" Library Function.
+
+       5.2  bbbbddddoooossss
+
+       bdos( cx, dx )
+       int cx, dx;
+
+       Performs	 a  call  on  the  operating  system's	BDOS.	The
+       arguments  "cx"	and "dx" will be copied	to the machine's CX
+       and DX registers	respectively before  the  BDOS	call.	The
+       function	 returns  the  value of	the CPU's AX register after
+       the call.  See your  MS-DOS  programmer's  manual  for  more
+       details on BDOS calls.
+
+       5.3  ddddeeeebbbbuuuugggg
+
+       debug( level, check )
+       int level, check;
+
+       Allows a	program	to enable  or  disable	the  SCI  debugger.
+       There are three levels of debug mode:
+
+       0.  If "level" is zero the  debugger  is	 disabled  and	the
+	   program runs	normally.
+
+       1.  At level 1 a	running	program	may be halted at  any  time
+	   by  pressing	 the  <ESCAPE>	key.   At  this	 point	the
+	   debugger enters level 2 debug mode.
+
+       2.  In level 2  mode  every  statement  is  first  displayed
+	   before it is	executed, and the debugger is invoked.	See
+	   the "Debugger" section for more details.
+
+       The argument "check" is _o_p_t_i_o_n_a_l	and allows you to enable or
+       disable	memory	access	range  checks  and  language syntax
+       compatability checks:
+
+       1.  If "check" is one, SCI performs range checks	on all data
+	   fetch  and  store  operations to ensure that	the program
+	   boundaries are not being exceeded.  This is	useful	for
+	   finding  "bent  pointers".  However,	if you are going to
+	   intentionally peek and  poke	 around	 in  the  operating
+	   system,  you	 will  want  to	 disable this feature.	The
+	   default setting at program startup is "enabled".
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       28					      Library Functions
+
+
+       2.  If "check" is two, SCI  points  out	missing	 semicolons
+	   which,  if  you recall, are optional	in SCI's dialect of
+	   C.  Also, attempts to multiply or divide a pointer by  a
+	   constant  or	 another pointer, or to	add two	pointers is
+	   not allowed.
+
+       3.  If "check" is  three,  both	of  the	 above	checks	are
+	   enabled.
+
+       5.4  ddddiiiirrrrssssccccaaaannnn
+
+       dirscan(	afn, file )
+       char *afn, file[20];
+
+       This function will scan the disk	directory  for	file  names
+       that  match  the	 "ambiguous  file name"	given by the string
+       "afn".	Ambiguous  file	 names	may  contain  "*"  and	"?"
+       wildcard	characters as explained	in your	MS-DOS manual.	The
+       first file name found in	the directory that matches will	 be
+       copied into the buffer at "file".  To continue the directory
+       scan and	search for the next matching file name,	 set  "afn"
+       equal  to  zero.	 Dirscan will return a 1 if a matching file
+       name was	found, zero if not.
+
+       5.5  eeeeddddiiiitttt
+
+       edit( line_num, program )
+       int line_num
+       char *program
+
+       Invokes the built-in program editor, starting  at  the  line
+       given   by   "line_num"	on  the	 tokenized  program  buffer
+       "program".  Returns the new size	of the program buffer after
+       the  editing  session.	This  function	is  not	included in
+       SHELL.SCI
+
+       5.6  eeeexxxxiiiitttt
+
+       exit( value )
+       int value
+
+       Causes the currently executing program to return	control	 to
+       the operating system.  The number "value" is returned to	the
+       operating system	shell (usually COMMAND.COM in MS-DOS).
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     29
+
+
+       5.7  ffffcccclllloooosssseeee
+
+       fclose( channel )
+       int channel;
+
+       Closes a	disk file previously opened by the Library Function
+       "fopen".	 Returns zero if successful, -1	on error.
+
+       5.8  ffffggggeeeettttcccc
+
+       fgetc( channel )
+
+       Reads a single character	from the  given	 channel.   Returns
+       the character read, or a	-1 on error or end of file.
+
+       5.9  ffffggggeeeettttssss
+
+       fgets( buffer, length, channel )
+       char *buffer;
+       int length;
+       int channel;
+
+       Reads characters	from the file  associated  with	 "channel".
+       Characters  are read from the file until	either a newline is
+       encountered, length minus 1 characters have been	read, or an
+       end of file is found.  Returns the address of "buffer", or a
+       zero on end of file.
+
+       5.10  ffffooooppppeeeennnn
+
+       fopen( file_name, mode )
+       char *file_name,	*mode;
+
+       Opens a	disk  file  whose  name	 is  given  by	the  string
+       "file_name".  The string	"mode" determines how the file will
+       be opened:
+
+       r   open	for ASCII read.	  The  file  MUST  exist  or  fopen
+	   returns an error code.
+
+       rw  open	for ASCII read/write.  The file	MUST exist.
+
+       w   open	for ASCII write.  If the file exists, it  is  first
+	   deleted.
+
+       wr  open	for ASCII read/write. If the file  already  exists,
+	   it is first deleted.
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       30					      Library Functions
+
+
+       a   open	for ASCII write	 append.   If  the  file  does	not
+	   exist,  it  is  created.  If	 it  does  exist,  the file
+	   position pointer is positioned to the end of	the file.
+
+       ar  open	for ASCII read/write append.  If the file does	not
+	   exist  it is	created. If it DOES exist, it is opened	and
+	   the file pointer positioned to the end of the file.	The
+	   file	may then be read or written.
+
+       By appending a "b" to any of the	modes above,  the  file	 is
+       opened in BINARY	mode instead of	ASCII.
+
+       When a file is opened in	ASCII mode, all	<LINEFEED>s  ("\n")
+       are  converted  to  <RETURN> <LINEFEED> character pairs when
+       writing to the file.  Similarly,	<RETURN>  <LINEFEED>  pairs
+       are converted to	a single <LINEFEED> character on input from
+       the file.
+
+       In  BINARY  read/write  mode,  no   such	  conversions	are
+       performed.
+
+       Returns an integer value	known as a "channel".  The  special
+       channels	 1,  2	and 3 refer to the standard input, standard
+       output and standard error files,	and are	initially  set	for
+       I/O  on the console.  The channel number	must be	used in	all
+       Library calls that perform file I/O functions.  A  value	 of
+       zero is returned	if the file could not be opened.
+
+       5.11  ffffppppuuuuttttcccc
+
+       fputc( c, channel )
+       char c;
+       int channel;
+
+       Writes the character "c"	 to  the  specified  file  channel.
+       Returns the character written, or a -1 on error.
+
+       5.12  ffffppppuuuuttttssss
+
+       fputs( string, channel )
+       char *string;
+       int channel;
+
+       Writes the string to the	specified  file	 channel.   Returns
+       zero, or	a -1 on	error.
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     31
+
+
+       5.13  ffffrrrreeeeaaaadddd
+
+       fread( buffer, length, channel )
+       char *buffer;
+       int length;
+       int channel;
+
+       Reads a maximum of "length" bytes into memory at	the address
+       pointed	to  by	"buffer" from the open file, "channel".	 If
+       the file	was  opened  in	 ASCII	read  or  read/write  mode,
+       "fread"	only reads up to and including a newline character.
+       If the file was opened in binary	read mode, "length"  number
+       of  characters  are  read  if they are available.  Note that
+       "channel" must be the value returned from a previous "fopen"
+       Library	Function  call,	 and  the  file	must still be open.
+       Returns the number of characters	that were actually read, or
+       0 on EOF.
+
+       5.14  ffffrrrreeeeeeee
+
+       free( memory )
+       char *memory
+
+       Returns to the memory pool the block of memory pointed to by
+       "memory"	 that was previously gotten from a "malloc" Library
+       Function	call.
+
+       5.15  ffffsssseeeeeeeekkkk aaaannnndddd fffftttteeeellllllll
+
+       fseek( channel, offset, whence )
+       int channel, offset, whence;
+
+       ftell( channel )
+
+       These functions manipulate a file's position  pointer.	The
+       file  position pointer determines where in the file the next
+       byte of data will be read from or written to.  The  argument
+       "channel"  is  the  file	 channel number; "offset" is a byte
+       position	offset;	"whence" determines how	the  "offset"  will
+       be  applied  to	the  current  file  position  pointer.	 If
+       "whence"	is  zero,  "fseek"  will  move	the  file  position
+       pointer	to  "offset"  bytes from the _b_e_g_i_n_n_i_n_g of the file.
+       If "whence" is one, "fseek"  will  move	the  file  position
+       pointer	to "offset" bytes from its _c_u_r_r_e_n_t _l_o_c_a_t_i_o_n, either
+       forward ("offset" is  positive)	or  backward  ("offset"	 is
+       negative)  in the file If "whence" is two, "fseek" will move
+       the file	position pointer to "offset" bytes from	the _e_n_d	 of
+       the  file.   In this case, "offset" must	be negative to move
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       32					      Library Functions
+
+
+       the file	position pointer towards the beginning of the file.
+
+       Ftell simply returns the	current	file position.
+
+
+
+				   NOTE
+
+       Because SCI supports only integer variables, these functions
+       may  only  be  used  on	files  that  are smaller than 32767
+       characters.  Standard C allows you to manipulate	much larger
+       files.
+
+       5.16  ffffwwwwrrrriiiitttteeee
+
+       fwrite( buffer, length, channel )
+       char *buffer;
+       int length;
+       int channel;
+
+       Writes "length" number of  characters  from  memory  at	the
+       address	pointed	 to by "buffer"	to the file associated with
+       "channel".  Note	that "channel" must be the  value  returned
+       from  a previous	"fopen"	Library	Function call, and the file
+       must still  be  open.   Returns	the  number  of	 characters
+       actually	written	if successful, or a -1 on error.
+
+       5.17  iiiinnnntttt88886666
+
+       int86( interrupt_num, in_regs, out_regs ) int interrupt_num,
+       in_regs[8], out_regs[8]
+
+       Performs	an 8086	interrupt.  The	argument "interrupt_num" is
+       the  interrupt  number.	Before the interrupt is	issued,	the
+       machine registers AX, BX, CX, DX, SI,  DI,  DS  and  ES	are
+       loaded  with  the  8 integers pointed to	by "in_regs".  When
+       the interrupt routine returns to	the program, the values	 of
+       the  registers  will  be	 found at the address pointed to by
+       "out_regs" in the same order as "in_regs".
+
+       5.18  llllooooaaaadddd
+
+       load( file, program )
+       char *file, *program
+
+       Loads a program from the	file whose name	is  pointed  at	 by
+       "file",	tokenizes  the	statements  therein  and places	the
+       tokenized program at "program".	Returns	 the  size  of	the
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     33
+
+
+       resulting  tokenized  program.	If  the	 file  could not be
+       found, an error message is printed  on  the  console.   This
+       function	is not included	in SHELL.SCI
+
+       5.19  mmmmaaaalllllllloooocccc
+
+       malloc( size )
+       int size
+
+       Main memory allocator.  This  function  is  responsible	for
+       handing	out  (to programs) chunks of free memory to be used
+       by the program as it sees fit.
+
+
+				 WARNING
+
+       wreckless programs that write data beyond the  size  of	the
+       allocated  chunk	of memory will cause the allocator to loose
+       its mind	and dole out "rotten" chunks of	memory.	 This  will
+       almost  surely  cause  SCI  to  crash  and  burn.  Returns a
+       pointer to a block of memory "size" bytes long.	Be sure	 to
+       de-allocate the block using the Library Function	"free" when
+       you're done with	it, or it will be lost forever...  Also, do
+       not  use	 malloc	to allocate memory for SCI program buffers,
+       or you will surely crash	the system.
+
+       5.20  mmmmeeeemmmmlllleeeefffftttt
+
+       memleft()
+
+       Returns the  amount  of	memory	remaining  in  the  program
+       buffer.	 Note  that  the program buffer	is unrelated to	the
+       memory pool accessed by malloc()	and free().
+
+       5.21  pppprrrriiiinnnnttttffff
+
+       printf( format, arg1, arg2, ... arg8 )
+       char *format;
+       int arg1, arg2, ... arg8;
+
+       Prints a	formatted string to the	standard output	file.	The
+       characters in the string	"format" are copied to the standard
+       output file.  If	a percent character ("%") is encountered in
+       the  format  string,  it	 is  assumed  to  be  a	 conversion
+       specification.	Each  conversion   specification   converts
+       exactly one argument in the list	"arg1",	"arg2",	... "arg8".
+       Once an argument	 has  been  converted  and  output,  it	 is
+       skipped	over  the  next	 time a	conversion specification is
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       34					      Library Functions
+
+
+       encountered. Therefore, you need	just as	many  arguments	 as
+       you have	conversion specifications (%-somethings).
+
+       The character(s)	that follow a conversion specification	may
+       be one or more of the following:
+
+       minus  sign  (-)	Indicates  that	 output	 should	  be   left
+	       justified instead of right justified.
+
+       zero fill character (0) The field will be padded	on the left
+	       with zeros.
+
+       field width (number other than 0) This is the minimum  #	 of
+	       characters  output.  The	 field	will be	padded with
+	       zeros or	blanks	depending  on  the  fill  character
+	       (above).
+
+       precision (. followed by	a number) For numeric fields,  this
+	       is  the	#  of  decimal	places	to the right of	the
+	       decimal point. For string fields, at most that  many
+	       characters of the string	will be	output.
+
+       conversion code (the letter  d,	u,  x,	o,  b,	s  or  c) A
+	       conversion  code	 indicates  the	 type of conversion
+	       that is to be done on the argument as follows:
+
+		       d - convert to a	decimal	(base 10) number
+		       u - unsigned decimal number
+		       x - hexadecimal (base 16) number
+		       o - octal (base 8) number
+		       b - binary (base	2) number
+		       s - string constant
+		       c - single ASCII	character
+
+       5.22  ssssaaaavvvveeee
+
+       save( file, program )
+       char *file, *program
+
+       Saves a program in its tokenized	form at	 "program"  to	the
+       file whose name is in the string	"file".	 Returns the number
+       of bytes	written	to the file.  If  the  file  could  not	 be
+       created,	 an  error message is printed on the console.  This
+       function	is not included	in SHELL.SCI
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     35
+
+
+       5.23  ssssccccaaaannnnffff
+
+       scanf( format, arg1, arg2, ... arg8 )
+       char *format
+       int arg1, arg2, ... arg8
+
+       Reads characters	from the standard input	file  and  converts
+       them  using  the	 conversion  string  "format"  (same as	for
+       Library Function	"printf").  The	arguments  "arg1",  "arg2",
+       ... "arg8" must be pointers to the appropriate data types.
+
+       5.24  sssspppprrrriiiinnnnttttffff
+
+       sprintf(	buffer,	format,	arg1, arg2, ...	arg8 )
+       char *buffer, *format
+       int arg1, arg2, ... arg8
+
+       Performs	formated conversion of the arguments, exactly  like
+       the  Library  Function  "printf()", but writes its output to
+       the "buffer" instead of the standard output file.
+
+       5.25  ssssssssccccaaaannnnffff
+
+       sscanf( buffer, format, arg1, arg2, ... arg8 )
+       char *buffer, *format
+       int arg1, arg2, ... arg8
+
+       Performs	formated input conversion of the arguments, exactly
+       like the	Library	Function "scanf()" but reads its input from
+       the "buffer" instead of the standard input file.
+
+       5.26  ssssttttmmmmtttt
+
+       stmt( line, program )
+       char *line, *program
+
+       Hands a C statement off to the  interpreter  for	 execution.
+       The  statement  is  in  its untokenized form at "line".	The
+       program,	also in	tokenized form,	at "program" is	used by	the
+       interpreter  to	satisfy	 any  global  variable	or function
+       references made by the  statement.   This  function  is	not
+       included	in SHELL.SCI
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       36					      Library Functions
+
+
+       5.27  ssssttttrrrrccccmmmmpppp,,,, ssssttttrrrrnnnnccccmmmmpppp
+
+       strcmp( string_1, string_2 )
+       char *string_1, *string_2
+
+	       or
+
+       strncmp(	string_1, string_2, limit )
+       char *string_1, *string_2
+       int limit
+
+       Compares	 (character-by-character)  the	two  strings.	The
+       comparison stops	when a zero is encountered in either of	the
+       two strings.  "strncmp" does the	same  thing,  but  at  most
+       "limit"	number	of  bytes are compared.	 Returns a 0 if	the
+       two strings are identical, non- zero if they differ.
+
+       5.28  ssssttttrrrrccccppppyyyy,,,, ssssttttrrrrnnnnccccppppyyyy
+
+       strcpy( string_1, string_2 )
+       char *string_1, *string_2
+
+	       or
+
+       strncpy(	string_1, string_2, limit )
+       char *string_1, *string_2
+       int limit
+
+       Copies (character-by-character) "string_2" into	"string_1".
+       The  functions  stops  after  the  first	 null  character is
+       encountered in "string_2".  "strncpy" does the  same  thing,
+       but  at	most  "limit"  number of bytes are copied.  Returns
+       nothing interesting.
+
+       5.29  ssssttttrrrrlllleeeennnn
+
+       strlen( string )
+       char *string;
+
+       Returns the  number  of	characters  in	the  given  string,
+       excluding the string's trailing zero byte.
+
+       5.30  ssssyyyysssstttteeeemmmm
+
+       system( command_string )
+       char *command_string;
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       Library Functions					     37
+
+
+       Executes	the MS-DOS command interpreter (usually	the program
+       in  COMMAND.COM)	 and  passes it	the MS-DOS command found in
+       "command_string".  SCI remains suspended	in  memory  in	its
+       current	state  and will	continue execution when	the command
+       has completed.	The  return  value  from  "system"  is	the
+       completion  status  of the MS-DOS program, which	may be used
+       to test for success or failure.
+
+       5.31  ttttoooottttooookkkk
+
+       totok( sourcebuf, tokenbuf )
+       char *sourcebuf,	*tokenbuf
+
+       Converts	the C statement	at  "sourcebuf"	 to  its  tokenized
+       equivalent and places the result	at "tokenbuf".	Returns	the
+       length of "tokenbuf".  This  function  is  not  included	 in
+       SHELL.SCI
+
+       5.32  uuuunnnnttttooookkkk
+
+       untok( tokenbuf,	sourcebuf )
+       char *tokenbuf, *sourcebuf
+
+       Converts	 the  tokenized	 statement  at	"tokenbuf"  to	its
+       printable  form	at  "sourcebuf".   Returns  the	 length	 of
+       "tokenbuf"  (not	 "sourcebuf"!).	  This	function   is	the
+       opposite	 of  the  "totok"  function.   This function is	not
+       included	in SHELL.SCI
+
+       5.33  vvvveeeerrrrssssiiiioooonnnn
+
+       version()
+
+       Returns a  character  string  that  contains  SCI's  program
+       identification  and  copyright  notice,	and  the  program's
+       current version number, namely the string:
+       Small C Interpreter Vr.l	ddmmmyy	Copyright (C) 1986 Bob Brodt
+
+       where  "r.l"  is	 the  version  number  (release.level)	and
+       ddmmmyy	is  the	 date of the release.  This function is	not
+       included	in SHELL.SCI
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       38						    The	Debuger
+
+
+       6.  TTTThhhheeee DDDDeeeebbbbuuuuggggeeeerrrr
+
+       The Library Function  "debug()"	allows	you  to	 enable	 or
+       disable	the  SCI  debuger.   When the debuger is enabled in
+       mode 2, you can set  and	 remove	 breakpoints,  examine	and
+       modify  program	variables and control the execution of your
+       program.
+
+       When the	debuger	is enabled, it first displays each line	 of
+       the  program  on	the console before it is executed, followed
+       by its "debug>" prompt.	At this	point, you may either enter
+       another	valid  C  statement  (to  display the contents of a
+       variable	 for  example),	 or  enter  one	 of  the  following
+       commands	 (NOTE:	all of these commands must start with a	dot
+       (.) immediately following the "debug>" prompt to	distinguish
+       them from a valid C statement):
+
+       .b#     sets a breakpoint at a given line in  your  program.
+	       The  "#"	 symbol	represents the line number at which
+	       the program will	be halted.
+
+       .B      displays	all breakpoints	set in the program.
+
+       .c      continues   program   execution	 until	 the   next
+	       breakpoint is encountered.
+
+       .d#     deletes the breakpoint  at  line	 number	 "#".	The
+	       breakpoint must have been previously set	with a ".b"
+	       command.
+
+       .D      deletes all breakpoints.
+
+       .e#     lets  you  examine  the	program	 with  the  program
+	       editor.	 Editor	commands that would normally modify
+	       the program are disabled.  The editor's status  line
+	       indicates   "Readonly"	mode   where   "Insert"	 or
+	       "Replace" would normally	be displayed.
+
+       .g      displays	all of the program's global  variables	and
+	       their  values.	If  the	 variable  is an array,	its
+	       address is printed followed by the first	10 elements
+	       of the array.
+
+       .G      same as ".g" but	also displays  the  first  line	 of
+	       every  function	in  the	program	along with its line
+	       number.	This is	useful for locating a function in a
+	       long program.
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       The Debuger						     39
+
+
+       .q      quits program execution and  returns  to	 the  shell
+	       program.
+
+       .s#     steps through the program  without  displaying  each
+	       line  as	 it  is	executed.  The "#" is the number of
+	       lines to	be executed before control returns  to	the
+	       debuger.
+
+       .t      displays	the  list  of  active  functions  with	the
+	       current	one  at	the top	of the list.  This is handy
+	       for finding out "how did	I get here?".
+
+       .T      same as ".t" but	also displays each function's local
+	       variables and their values.
+
+       <RETURN>	same as	a ".s1".
+
+       <ESCAPE>	is used	to interrupt a program while it	is  running
+	       and  enable the debuger.	 This key is active only in
+	       debug mode 1 or 2.
+
+       If the SCI interpreter finds an error in	 your  program,	 it
+       will  automatically  enable the debuger and halt	the program
+       at the line where the error occurred.  This can be a  little
+       confusing  if  you are already in the debuger and you happen
+       to make a mistake while typing a	statement for  the  debuger
+       to  execute,  because  the  resulting  error message and	the
+       "debug>>" prompt	 will  refer  to  the  statement  you  just
+       entered.	  If this happens, just	hit a <RETURN> and you will
+       be returned to the program debug	session.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       40						       APPENDIX
+
+
+       A.  SSSSCCCCIIII LLLLaaaannnngggguuuuaaaaggggeeee	SSSSyyyynnnnttttaaaaxxxx
+
+       This appendix contains what is  known  as  the  "Backus-Naur
+       Form",  or  "BNF"  of  the  SCI	language.  Named  after	its
+       inventors, BNF is a very	precise	description of	a  language
+       and  is useful as a reference for proper	syntax.	 The BNF of
+       a language may at first be  a  little  confusing,  but  with
+       practice	 it  can  be  a	 very natural way of expressing	the
+       syntax structure	of any language.
+
+       The following rules  apply  to  the  BNF	 notation  in  this
+       appendix:
+
+       1.  words that appear in	UPPER CASE represent  key  elements
+	   of  the  language like the "if" and "while" keywords, or
+	   like	the symbol for multiplication (*). These  types	 of
+	   words  are known as "TERMINALS" and can be considered to
+	   be similar to atoms;	the  basic  building  blocks  of  a
+	   language.
+
+       2.  Words in "lower case" represent what	 are  called  "non-
+	   terminals".	 Just  as  a molecule may consist of one or
+	   more	atoms, non-terminals may consist  of  one  or  more
+	   TERMINALS.
+
+       3.  the word to be defined will appear on a line	by  itself,
+	   followed  by	 a  colon  (:)	followed by its	definitions
+	   indented below it.
+
+       4.  within a definition,	language elements are separated	 by
+	   a space.
+
+       5.  depending upon its context, a language element  may	not
+	   appear  at all and its definition is	the special "empty"
+	   definition.
+
+       6.  the SCI-style comment mark (#) is used only to clarify a
+	   definition and is not part of the definition
+
+       We have always been taught  never  to  use  a  word  we	are
+       defining	in its definition, that	"recursive definitions"	are
+       blasphemous!  However when defining language  syntax  it	 is
+       often   desirable,   indeed   necessary,	 to  use  recursive
+       definitions. Take for example the BNF description of a  word
+       in  the	english	language: a word may be	one or more letters
+       strung together.	More formally,
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     41
+
+
+       a "word"	may be either:
+	       1. a "letter", or
+	       2. a "word" followed by a "letter"
+
+       Here we can deduce definition number  2	because	 the  first
+       letter  of  a  word qualifies as	a word itself, according to
+       our definition 1.  Even more formally,
+
+       word:
+	       LETTER	    # for example the word "a"
+	       word LETTER  # for example the word "as"
+
+       We have written "LETTER"	in upper case to  indicate  that  a
+       letter  can  not	 be  broken down any further, i.e.  it is a
+       "TERMINAL". Similarly, "word" appears in	lower case  because
+       it  can	be  broken  down  into smaller parts; it is a "non-
+       terminal".
+
+       Here then, is the BNF of	the SCI	language. Assume  that	you
+       already	know  what the terminals LETTER	(one of: a b c...z,
+       or A B C...Z, or	_), NUMBER (one	of: 0 1	 2...9),  HEXDIGITS
+       (0 1 2...9 A B...F) and OCTALDIGITS (0 1	2...7) are.
+
+       id-list:		  # identifier (variable) list
+	       empty	     # may be non-existent
+	       id	     # or a single identifier
+	       id-list , id  # or two or more id's separated by	a comma
+
+       id:		  # an identifier (variable)
+	       LETTER
+	       id LETTER
+	       id NUMBER
+
+       hex-constant:	  # hexadecimal	constant
+	       0 X HEXDIGITS
+
+       oct-constant:	  # octal constant
+	       0 OCTALDIGITS
+
+       dec-constant:	  # decimal constant
+	       NUMBER
+	       dec-constant NUMBER
+
+       chr-constant:	  # character constant
+	       ' CHARACTER '
+
+       str-constant:	  # string constant
+	       " CHARACTER-LIST	"
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       42						       APPENDIX
+
+
+       constant:	  # constants are all of the above
+	       dec-constant
+	       hex-constant
+	       oct-constant
+	       chr-constant
+	       str-constant
+
+       expression-list:
+	       empty
+	       expression
+	       expression-list , expression
+
+       expression:
+	       primary
+	       * expression
+	       & lvalue
+	       ++ lvalue
+	       -- lvalue
+	       lvalue ++
+	       lvalue --
+	       - primary
+	       + primary
+	       ! expression
+	       ~ expression
+	       expression binop	expression
+	       lvalue =	expression
+
+       primary:
+	       id		       # a variable
+	       constant		       # a constant
+	       ( expression )	       # a parenthesized expression
+	       id ( expression-list )  # a function call
+	       id [ expression ]       # an array element
+
+       lvalue:
+	       id		       # a simple variable
+	       id [ expression ]       # an array element
+	       * expression	       # a pointer expression
+
+       binop:		  # the	binary operators:
+	       *	  # multiplication
+	       /	  # division
+	       %	  # modulo
+	       +	  # addition
+	       -	  # subtraction
+	       <<	  # aritmetic shift left
+	       >>	  # aritmetic shift right
+	       <	  # "is	less than"
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     43
+
+
+	       <=	  # "is	less than or equal to"
+	       >	  # "is	greater	than"
+	       >=	  # "is	greater	than or	equal to"
+	       ==	  # "is	equal to"
+	       !=	  # "is	not equal to"
+	       &	  # bit-wise AND
+	       ^	  # bit-wise XOR
+	       |	  # bit-wise OR
+	       &&	  # logical AND
+	       ||	  # logical OR
+
+       declaration-list:
+	       empty
+	       declaration
+	       declaration-list	declaration
+
+       declaration:
+	       type-spec declarator-list ;
+
+       type-spec:
+	       CHAR
+	       INT
+
+       declarator-list:
+	       declarator
+	       declarator-list , declarator
+
+       declarator:
+	       ptr id
+	       ptr id [	constant ]
+
+       ptr:		  # pointer operators
+	       empty	  # this just means that SCI supports
+	       *	  # simple pointers, or
+	       ptr *	  # pointers to	pointers (to pointers, etc.)
+
+       statement-list:
+	       statement
+	       statement-list statement
+
+       compound-statement:
+	       { declaration-list statement-list }
+
+       statement:
+	       ;		  # a no-op statement
+	       compound-statement
+	       expression ;
+	       IF ( expression ) statement
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       44						       APPENDIX
+
+
+	       IF ( expression ) statement ELSE	statement
+	       SWITCH (	expression ) statement
+	       CASE constant : statement
+	       DEFAULT : statement
+	       BREAK ;
+	       WHILE ( expression ) statement
+	       FOR ( expression	; expression ; expression ) statement ;
+	       RETURN ;
+	       RETURN expression ;
+
+       function:
+	       id ( id-list ) declaration-list statement
+
+       function-list:
+	       empty
+	       function
+	       function-list function
+
+       program:
+	       empty
+	       declaration-list
+	       function-list
+	       program declaration-list
+	       program function-list
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     45
+
+
+       B.  EEEEddddiiiittttoooorrrr CCCCoooommmmmmmmaaaannnndddd SSSSuuuummmmmmmmaaaarrrryyyy
+
+       This is a quick reference guide for the SCI screen editor.
+
+       ^Z      exit
+
+       ^E      cursor up
+
+       ^X      cursor down
+
+       ^S      cursor left
+
+       ^D      cursor right
+
+       ^A      cursor to end of	previous word
+
+       ^F      cursor to beginning of next word.
+
+       ^R      page up
+
+       ^C      page down
+
+       <RETURN>	or <LINEFEED> Replace Mode: cursor to beginning	 of
+	       next  line  Insert  Mode:  append  blank	 line after
+	       current line
+
+       ^V      toggle Insert/Replace Mode
+
+       ^G      delete character	under cursor
+
+       ^H or <BACKSPACE> delete	character to left of cursor
+
+       ^Y      delete line
+
+       ^L      restore line
+
+       ^Q^F    find string
+
+       ^Q^A    find and	replace	string
+
+       ^Q^L    find next occurance of string
+
+       ^Q^G    go to line
+
+       ^Q^S    cursor to beginning of line
+
+       ^Q^D    cursor to end of	line
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       46						       APPENDIX
+
+
+       ^Q^E    cursor to top of	screen
+
+       ^Q^X    cursor to bottom	of screen
+
+       ^Q^R    cursor to top of	program
+
+       ^Q^C    cursor to end of	program
+
+       ^Q^B    cursor to beginning of block
+
+       ^Q^K    cursor to end of	block
+
+       ^K^B    mark beginning of block
+
+       ^K^K    mark end	of block
+
+       ^K^V    insert block
+
+       ^K^Y    delete block
+
+       ^K^U    unmark block
+
+       ^K^R    read from disk file
+
+       ^K^W    write block to disk file
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     47
+
+
+       C.  DDDDeeeebbbbuuuuggggeeeerrrr CCCCoooommmmmmmmaaaannnndddd SSSSuuuummmmmmmmaaaarrrryyyy
+
+       This is a quick reference guide to  the	SCI  debuger.	All
+       debuger commands	start with a dot (.) as	the first character
+       in the command to distinguish them from valid C statements.
+
+       .b#     set a breakpoint	at line	number "#".
+
+       .B      display all breakpoints set.
+
+       .c      continue	program	execution to next breakpoint.
+
+       .d#     delete breakpoint at line number	"#".
+
+       .D      delete all breakpoints.
+
+       .e#     examine program with the	SCI editor.
+
+       .g      display global variables	and their contents.
+
+       .G      same as ".g" but	also  display  the  first  line	 of
+	       every function in the program.
+
+       .q      quit and	return to shell.
+
+       .s#     step "#"	lines without displaying each line.
+
+       .t      display function	call trace back.
+
+       .T      same as ".t" but	also displays each function's local
+	       variables and contents.
+
+       <RETURN>	same as	".s 1".
+
+       <ESCAPE>	interrupts  an	executing   program   and   enables
+	       debuger.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       48						       APPENDIX
+
+
+       D.  DDDDiiiiffffffffeeeerrrreeeennnncccceeeessss FFFFrrrroooommmm SSSSttttaaaannnnddddaaaarrrrdddd CCCC
+
+       SCI supports  a	subset	of  the	 C  language.	There  are,
+       however,	 some  minor differences that have been	dictated in
+       part by the fact	that this is an	interpreter. These are:
+
+       1.  Program source lines	are limited to 79 characters,  just
+	   to  keep things simple.  The	editor will complain if	you
+	   try to create a line	longer than 79 characters.
+
+       2.  There are no	 #define  or  #include	statements,  simply
+	   because there is no pre-processor!
+
+       3.  Comments are	introduced by the number symbol	(#) and	are
+	   terminated  by  the	end of the line.  The "/*" and "*/"
+	   combinations	will only be barfed at by SCI.
+
+       4.  Statements in general are terminated	by  the	 end  of  a
+	   line	 -  the	semicolon required by the C language at	the
+	   end of a  statement	is  superfluous.  This	restriction
+	   imposes  that  an  expression  be completely	on one line
+	   (boooo, hissss!), however you no  longer  get  penalized
+	   for	forgeting  a  semicolon	 (hurray, yay!).  This also
+	   implies  that  string  and	character   constants	are
+	   terminated  by  the	end  of	 the line.  In fact, if	you
+	   forget  to  add  the	 terminating  quote  or	 apostrophe
+	   delimiter, SCI will append one for you, whether you like
+	   it or not.
+
+       5.  Data	variable initialization	is not supported by SCI.
+
+       6.  Local  data	variables  declared   inside   a   compound
+	   statement  within  a	function may not have the same name
+	   as a	previously declared local  variable.   A  "variable
+	   already  declared"  error  will result.  All	other scope
+	   rules apply.
+
+       7.  The logical AND and OR operators (&&	 and  ||)  evaluate
+	   both	 of  their  operands, unlike standard C	which stops
+	   evaluation once the truth or	falsehood of an	 expression
+	   is  known.	Watch  out  for	 subtle	errors,	like in	the
+	   following example:
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     49
+
+
+		   var = 0;
+		   if (	var && func() )
+			   .
+			   .
+			   .
+
+	   here	the function "func()"  would  never  be	 called	 in
+	   standard C, but in SCI's dialect, it	is called.
+
+       8.  The comma operator  is  recognized  only  when  used	 in
+	   function  calls and data declarations.  For instance, it
+	   would be illegal to say:
+
+		   while ( argv++, argc-- );
+
+       9.  The "default" statement inside a "switch" is	executed as
+	   soon	as it is encountered (when scanning from the top to
+	   the bottom of the "switch").	 SCI is	too lazy to  do	 an
+	   exhaustive  test  of	 all  "case"s  before executing	the
+	   "default", so be sure to place  all	"default"s  as	the
+	   last	statement in the "switch".
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       50						       APPENDIX
+
+
+       E.  EEEErrrrrrrroooorrrr MMMMeeeessssssssaaaaggggeeeessss
+
+       When SCI	detects	an error in  your  program,  it	 will  stop
+       execution, display an error message and then the	line number
+       and program text	of the offending line.	The SCI	debuger	 is
+       then automatically enabled.  The	possible error messages	are
+       listed below:
+
+       no entry	point -	 You forgot to specify	an  entry  function
+	       with the	"entry"	keyword	in your	shell file.
+
+       out  of	memory	-   There  was	insufficient  free   memory
+	       available  for the shell	program, variable, function
+	       and stack segments.  Specify a smaller -P, -V, -F or
+	       -S value.
+
+       file error -   The  specified  program  file  could  not	 be
+	       loaded,	or  SHELL.SCI does not exist on	the default
+	       disk drive, or the specified file could not be  save
+	       on disk because of an operating system error.
+
+       missing '}' -  The interpreter wandered off the edge of your
+	       program because you forgot a closing brace.
+
+       missing operator	-  The interpreter  found  two	consecutive
+	       operands	as for example the statement:  var  3;
+
+       missing ')' or ']' -  Mismatched	left and right	parentheses
+	       or brackets were	detected.
+
+       not a pointer -	A simple "char"	 or  "int"  variable  or  a
+	       constant	expression was used as an array	or pointer.
+
+       syntax error -  An error	was detected in	the structure of  a
+	       statement or function.
+
+       lexical error  -	  An  illegal  character  was  found  in  a
+	       statement.
+
+       need an lvalue -	 An attempt was	made to	assign a value to a
+	       constant	or an array variable.
+
+       stack underflow -  Something is wrong! Contact the author.
+
+       stack overflow -	 The expression	is too complex or  function
+	       calls  are  nested  too	deeply.	  Try  specifying a
+	       larger -S value when starting up	SCI.
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       APPENDIX							     51
+
+
+       too many	functions -  The interpreter ran  out  of  Function
+	       Table  space.  Try specifying a larger -F value when
+	       starting	up SCI.
+
+       too many	variables -  The interpreter ran  out  of  Variable
+	       Table  space.  Try specifying a larger -V value when
+	       starting	up SCI.
+
+       stmt outside of function	-  There is  something	wrong  with
+	       the  structure  of  your	 program.   Typically  this
+	       results from a statement	appearing  outside  of	any
+	       function	body, or mismatched curly braces (}).
+
+       missing '{' -  The left brace  that  introduces	a  function
+	       body was	missing.
+
+       bad sys call -  The number of arguments passed  to  a  "sys"
+	       call is incorrect for the specified "sys" number, or
+	       an invalid "sys"	number was given.
+
+       undeclared variable -  A	variable has been used without ever
+	       having been declared.
+
+       variable	already	declared -  An	attempt	 was  made  to	re-
+	       declare	a  variable  name  within  the	program	 or
+	       function.
+
+       interrupt -  The	program	was  interrupted  by  pressing	the
+	       <ESCAPE>	key.
+
+       multidimension arrays not supported -  Just what	it says: we
+	       don't do	multi dimensional arrays.
+
+       illegal pointer operation -  A mathematical operation  other
+	       than  addition  or  subtraction was attempted on	two
+	       pointers	or a pointer and an integer.
+
+       invalid data address -	The  program  attempted	 to  access
+	       memory  outside	of  the	 program, variable or stack
+	       space and the debug level was 1 or greater.  If	you
+	       have  confidence	 that your program will	not corrupt
+	       the operating system by wanton POKEs  of	 data,	you
+	       may  set	 the  debug  level  to zero to disable this
+	       error checking.
+
+       not a structure or union	-  A variable that was not declared
+	       as  a  structure	or union was used in a structure or
+	       union reference.
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+       52						       APPENDIX
+
+
+       compatability error -  A	semicolon was omitted, or a similar
+	       type   of   error  was  detected	 that  would  cause
+	       compatability problems with standard C.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+       SCI Users Manual			 Copyright (C) 1986, Bob Brodt
+
+
+
+
+
+
+
+
+
+
+
+				 CONTENTS
+
+
+       1.  Introduction........................................	  1
+	   1.1	 Starting Out..................................	  2
+	   1.2	 Memory	Allocation.............................	  3
+
+       2.  The Shell...........................................	  4
+	   2.1	 Shell Commands................................	  4
+	   2.2	 Running Your Program..........................	  6
+	   2.3	 Program Variables.............................	  6
+
+       3.  The Editor..........................................	  8
+	   3.1	 Keys..........................................	  8
+	   3.2	 Screen	Layout.................................	  8
+	   3.3	 Screen	Customization..........................	  9
+	   3.4	 Keyboard Customization........................	 11
+	   3.5	 Sample	Configurations.........................	 12
+	   3.6	 Editor	Commands...............................	 14
+
+       4.  Language Summary....................................	 19
+	   4.1	 Line Terminators..............................	 19
+	   4.2	 Comments......................................	 19
+	   4.3	 Identifiers...................................	 19
+	   4.4	 Keywords......................................	 20
+	   4.5	 Numeric Constants.............................	 20
+	   4.6	 Character Constants...........................	 20
+	   4.7	 String	Constants..............................	 21
+	   4.8	 Data Types....................................	 21
+	   4.9	 Operators.....................................	 22
+	   4.10	 Comma Operator................................	 23
+	   4.11	 Program Control Flow Constructs...............	 24
+
+       5.  Library Functions...................................	 25
+	   5.1	 atoi..........................................	 26
+	   5.2	 bdos..........................................	 27
+	   5.3	 debug.........................................	 27
+	   5.4	 dirscan.......................................	 28
+	   5.5	 edit..........................................	 28
+	   5.6	 exit..........................................	 28
+	   5.7	 fclose........................................	 29
+	   5.8	 fgetc.........................................	 29
+	   5.9	 fgets.........................................	 29
+	   5.10	 fopen.........................................	 29
+	   5.11	 fputc.........................................	 30
+	   5.12	 fputs.........................................	 30
+	   5.13	 fread.........................................	 31
+	   5.14	 free..........................................	 31
+
+
+
+				  - i -
+
+
+
+
+
+
+
+
+
+
+
+	   5.15	 fseek and ftell...............................	 31
+	   5.16	 fwrite........................................	 32
+	   5.17	 int86.........................................	 32
+	   5.18	 load..........................................	 32
+	   5.19	 malloc........................................	 33
+	   5.20	 memleft.......................................	 33
+	   5.21	 printf........................................	 33
+	   5.22	 save..........................................	 34
+	   5.23	 scanf.........................................	 35
+	   5.24	 sprintf.......................................	 35
+	   5.25	 sscanf........................................	 35
+	   5.26	 stmt..........................................	 35
+	   5.27	 strcmp, strncmp...............................	 36
+	   5.28	 strcpy, strncpy...............................	 36
+	   5.29	 strlen........................................	 36
+	   5.30	 system........................................	 36
+	   5.31	 totok.........................................	 37
+	   5.32	 untok.........................................	 37
+	   5.33	 version.......................................	 37
+
+       6.  The Debuger.........................................	 38
+
+       A.  SCI Language	Syntax.................................	 40
+
+       B.  Editor Command Summary..............................	 45
+
+       C.  Debuger Command Summary.............................	 47
+
+       D.  Differences From Standard C.........................	 48
+
+       E.  Error Messages......................................	 50
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				  - ii -
+
+
+
+
+

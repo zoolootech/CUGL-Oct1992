@@ -1,0 +1,186 @@
+/********************************************************
+ *	j.c:	Personal Journal Management Program
+ *			Written by Leor Zolman, 1/91
+ *	Usage:
+ *		j [<subdir>]
+ *			
+ *	What it does:
+ *		Creates a journal entry and appends it to the
+ *		appropriate  monthly incremental journal file
+ *		in the JOURN_DIR (DOS) or $HOME/journ (Xenix)
+ *		directory.
+ *		If the <subdir> argument is given, then the
+ *		<subdir> subdirectory (of JOURN_DIR or 
+ *		$HOME/journ) is used instead.
+ *
+ *  Compile:
+ *		Turbo C[++]:
+ * 			 tcc j.c
+ *		Xenix C:
+ *			 cc j.c
+ *******************************************************/
+
+#include <stdio.h>
+#include <time.h>
+
+#define DOS		0		/* 1 for DOS, 0 for Xenix/Unix	*/
+#define DEBUG	0		/* 1 to debug system() calls	*/ 
+#define EPSILON	0		/* using DOS version of Epsilon	*/
+
+#if DOS
+	#include <sys\stat.h>
+	#define DIR_DELIM	"\\"		/* pathlist delimiter */
+	#define JOURN_DIR	"c:\\etc\\journ"	/* master dir */
+	#define ED_INVOKE	"e %s +3"	 /* editor invokation */
+#else
+	#include <sys/types.h>	/* stat.h need this */
+	#include <sys/stat.h>
+	#include <errno.h>
+	char *getenv();
+	#define DIR_DELIM	"/"
+	#define JOURN_DIR	"journ"
+	#define ED_INVOKE	"/usr/bin/e %s"
+#endif
+
+#if DEBUG					 /* expand DBSYS() to show text */	
+	#define DBSYS(string)	\
+		(printf("\nAbout to make sys call: %s\n", string),\
+		printf("press return..."), getchar(), system(string))
+#else
+	#define	DBSYS(string)	system(string)	/* no debugging */
+#endif
+
+#define JTMP		"journ.tmp"			/* temp file */
+
+int testdir(char *);
+void abortf(char *, char *);
+
+main(argc, argv, envp)
+int argc;
+char **argv, **envp;
+{
+	char j_dir[80];			/* Directory where entry will go  */
+	char j_tmp[80];			/* temporary file name buffer */
+	time_t timer;			/* For creating ASCII date string */
+	struct tm *tblock;
+
+	long nfsize, ofsize;	/* For saving file sizes       */
+	struct stat statbuf;	/* open file statistics buffer */
+	
+	char fname[50];			/* for constructing file names */
+	char cmd[100];			/* system command text         */
+	FILE *fp;
+	int i;
+	
+	printf("Electronic Journal Management System v1.0\n\n");
+
+#if EPSILON && DOS			/* If Epsilon running, abort   */
+	for (; *envp; envp++)
+	{
+		strcpy(j_dir, *envp);
+		if (!strcmp(j_dir, "EPSRUNS=Y"))
+			abortf("Epsilon is active. Please exit first.");
+	}
+#endif
+
+#if DOS
+	strcpy(j_dir, JOURN_DIR);	/* construct directory name */
+#else
+	sprintf(j_dir, "%s/%s", getenv("HOME"), JOURN_DIR);
+	#if DEBUG
+		printf("j_dir set to: %s\n", j_dir);
+	#endif
+#endif
+
+	testdir(j_dir);			/* check for/create master dir	*/
+
+	if (argc == 2)			/* subdir specified? */
+	{
+		strcat(j_dir, DIR_DELIM);	/* yes, append name		*/
+		strcat(j_dir,argv[1]);	/* to master directory name	*/
+		testdir(j_dir);		/* test for/create subdirectory */
+	}
+
+	printf("\nStarting up your text editor ");
+	printf("on a new journal entry...\n");
+
+	sprintf(j_tmp, "%s%s%s", j_dir, DIR_DELIM, JTMP);
+	
+	if ((fp = fopen(j_tmp, "w")) == NULL)
+		abortf("Can't create %s\n", j_tmp);
+
+	timer = time(NULL);		/* get ASCII time/date string	*/
+	tblock = localtime(&timer);
+	fprintf(fp, "\n\t\t\t\t\t\t%s", asctime(tblock));
+
+	fflush(fp);						/* so fstat works		*/
+	fstat(fileno(fp), &statbuf);	/* get file stats		*/
+	ofsize = statbuf.st_size;		/* save file length		*/
+	fclose(fp);
+	
+	sprintf(cmd, ED_INVOKE, j_tmp);	/* construct sys call	*/
+	if (DBSYS(cmd))					/* edit the temp file	*/
+		abortf("Error invoking editor.", NULL);
+	printf("\n");
+
+	if ((fp = fopen(j_tmp, "r")) == NULL) /* can't happen...	*/
+		abortf("Error: %s has disappeared! Aborting.\n", j_tmp);
+
+					/* Check if the temp file was modified:	*/
+	fstat(fileno(fp), &statbuf);   /* stat the updated file	*/
+	nfsize = statbuf.st_size;		/* get new file size	*/
+	fclose(fp);
+	if (nfsize == ofsize)			/* size unchanged?		*/
+	{
+		unlink(j_tmp);
+		abortf("You didn't make any changes. Ignored.\n", NULL);
+	}
+	
+	printf("\n");
+						/* construct name of journal file	*/
+	sprintf(fname, "%s%s%02d-%02d.txt", j_dir, DIR_DELIM,
+		tblock->tm_year % 100, tblock->tm_mon + 1);
+
+								 /* update journal file		*/
+	sprintf(cmd, "cat %s >> %s", j_tmp, fname);
+	DBSYS(cmd);
+	unlink(j_tmp);
+	printf("\nEntry appended onto journal file %s\n", fname);
+	exit(0);
+}
+
+/*
+ * Test for existence of the named directory, and create
+ * if necessary (pending user's approval):
+ */
+
+int testdir(dirname)
+char *dirname;
+{
+	char cmd[100];			/* system command text		*/
+	char str[80];
+	struct stat statbuf;	/* open file statistics buffer */
+
+	if (stat(dirname, &statbuf) != 0)	/* if doesn't exist */
+		;						/* then prompt for creation */
+	else if (statbuf.st_mode & S_IFDIR)
+		return;					/* if directory, no problem */
+	else				/* exists, but not a directory...	*/
+		abortf("%s exists, but isn't a directory!\n", dirname);
+
+				/* ask user if he wants to create the dir	*/
+	printf("Create new directory '%s' (y/n)? ", dirname);
+	if (tolower(*gets(str)) == 'n')
+		abortf("Program over.\n", NULL);
+
+	sprintf(cmd, "mkdir %s", dirname);
+	if (DBSYS(cmd))
+		abortf("Error creating directory.\n", NULL);
+}
+
+void abortf(fmt, arg)
+char *fmt, *arg;
+{
+	printf(fmt, arg);
+	exit(1);
+}

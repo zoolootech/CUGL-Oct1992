@@ -1,0 +1,255 @@
+/* Command line handling routines for Software Tools
+ * source:  args.bds
+ * version: August 23, 1981
+ */
+
+#include tools.h
+
+/* routines on this file:
+
+	initst		endst
+	getarg		delarg
+	$ insub		$ outsub	$ errsub
+*/
+	
+
+/* make BDS calls more visible */
+
+#define BDS_exit  _exit
+
+
+/* test routine for initst(), and command handlers */
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+	initst(argc, argv);
+	echo();
+	endst();
+}
+
+echo()
+{
+	int i;
+	int unit;
+	char *p;
+
+	printf("Test of initst()\n");
+	for (i = 1; (p = getarg(i)) != NULL; i++) {
+		unit = open(p,READ);
+		printf("file %s is unit = %d\n",p,unit);
+	}
+	for (i = 0; i < SYS_STD + MAXOFILES; i++) {
+	if ( sys_bufp [i] != ERR ||
+	     sys_spec [i] != ERR ||
+	     sys_bufn [i] != ERR
+	   ) {
+		printf("sys_bufp [%d] = %x ",i,sys_bufp [i]);
+		printf("sys_bufn [%d] = %3d ",i,sys_bufn [i]);
+		printf("sys_spec [%d] = %3d\n",i,sys_spec [i]);
+	}
+	}
+	printf("End of test\n");
+}
+
+/*	delarg - delete argument n from the command line */
+
+delarg (n)
+int n;
+{
+
+	/*  include common /args/ */
+	int i;
+
+	/* check for valid argument number */
+	if (n < 0 || n > sys_narg) {
+		return;
+	}
+
+	/* move pointers down */
+	for (i = n; i < sys_narg; i++) {
+		sys_args [i] = sys_args [i + 1];
+	}
+
+	sys_narg--;
+}
+
+/*	endst - close all files and terminate the program */
+
+endst()
+{
+	int i;
+
+	for (i = 0; i < MAXOFILES + SYS_STD; i++) {
+		close (i);
+	}
+	BDS_exit();
+}
+
+/*	errsub - see if argument is ERROUT substitution
+ *               abort if we can not open the file
+ */
+
+BOOL errsub (arg)
+char arg[];
+{
+
+	int access;
+
+	if ( arg [0] == '?' &&
+	     arg [1] != '?' &&
+	     arg [1] != EOS
+	   ) {
+		arg++;
+		access = WRITE;
+	}
+	else if ( arg [0] == '?' &&
+	          arg [1] == '?' &&
+	          arg [2] != EOS
+	        ) {
+		arg++;
+		arg++;
+		access = APPEND;
+	}
+	else {
+		return(NO);
+	}
+
+	if (_assign(ERROUT, arg, access) == NO) {
+		/* abort -- no place for error message */
+		endst();
+	}
+	return(YES);
+}
+
+/*	getarg - return pointer to n'th arg.
+ *		 this is a change from software tools.
+ */
+
+POINTER getarg (n)
+int n;
+{
+	if (n < 1 || n > sys_narg) {
+		return(EOS);
+	}
+	else {
+		return(sys_args [n]);
+	}
+}
+
+
+/*	initst - initialize software tools programs */
+
+initst(argc, argv)
+int argc;
+char **argv;
+{
+
+	int i;
+	POINTER arg;
+
+	/* initialize system date */
+
+	sys_date [0] = EOS;
+
+	/* initialize system storage management */
+
+	/* dsinit(); */
+	_allocp = NULL;
+
+	/* initialize system argument area */
+
+	sys_narg = argc - 1;
+
+	sys_args [0] = NULL;	
+	for (i = 1; i < argc; i++) {
+		sys_args [i] = argv [i];
+	}
+
+	/* close all disk files */
+
+	for (i = 0; i < SYS_STD + MAXOFILES; i++) {
+		sys_bufp [i] = ERR;
+		sys_bufn [i] = ERR;
+		sys_spec [i] = ERR;
+	}
+
+	/* open the standard units */
+
+	sys_spec [STDIN]    = SYS_TERM;
+	sys_spec [STDOUT]   = SYS_TERM;
+	sys_spec [ERROUT]   = SYS_TERM;
+	sys_spec [SYS_TERM] = SYS_TERM;
+	sys_spec [SYS_PRT]  = SYS_PRT;
+
+	/*  pick up file substitutions for standard files */
+	for (i = 1; (arg = getarg(i)) != NULL; ) {
+
+		if ( insub  (arg) == YES ||
+		     outsub (arg) == YES ||
+		     errsub (arg) == YES
+		   ) {
+			delarg(i);
+		}
+		else {
+			i++;
+		}
+	}
+}
+
+/*	insub - check for STDIN substitution */
+
+BOOL insub (arg)
+char arg [];
+{
+	if (arg [0] == '<' && arg [1] != EOS) {
+		arg++;
+	}
+	else {
+		return(NO);
+	}
+
+	if (_assign(STDIN, arg, READ) == NO) {
+		cant (arg);
+		return(NO);
+	}
+	return(YES);
+}
+
+/*	outsub - check for STDOUT substitution */
+
+BOOL outsub (arg)
+char arg[];
+{
+
+	int access;
+
+	if ( arg [0] == '>' &&
+	     arg [1] != '>' &&
+	     arg [1] != EOS
+	   ) {
+		arg++;
+		access = WRITE;
+	}
+
+	else if ( arg [0] == '>' &&
+	          arg [1] == '>' &&
+	          arg [2] != EOS
+	        ) {
+		arg++;
+		arg++;
+		access = APPEND;
+	}
+	else {
+		return(NO);
+	}
+
+	if (_assign(STDOUT, arg, access) == NO) {
+		cant (arg);
+		return(NO);
+	}
+	return(YES);
+}
+
+

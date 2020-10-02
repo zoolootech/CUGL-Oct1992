@@ -1,0 +1,65 @@
+#include <windows.h>
+
+LPVOID FAR PASCAL AllocMem(DWORD bytes);
+
+CATCHBUF CatchBuf; /* catch environment buffer */
+
+int PASCAL WinMain(HANDLE hInstance,
+   HANDLE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
+{
+   /* set initial block size to a value too large */
+   DWORD dwBlockSize = 100000000L;
+   LPWORD lpWord;
+
+   /* set up catch buffer; the Throw from AllocMem */
+   /* will result in a non-zero return from Catch below */
+   for (;;)
+   {
+      if (Catch((LPCATCHBUF)CatchBuf) == 0)
+         break;
+
+      /* this code is executed when AllocMem fails */
+      if (dwBlockSize == 0)
+         /* memory is totally exhausted */
+         return 0;
+      else
+         /* adjust block size after allocation fails */
+         dwBlockSize /= 10;
+   }
+
+   lpWord = (LPWORD)AllocMem(dwBlockSize);
+
+   /* the following dereference is always valid, since */
+   /* AllocMem never returns NULL. */
+   return *lpWord;
+}
+
+/* Wrapper for GlobalAlloc that handles out-of-memory */
+/* condition: this function never returns NULL. */
+LPVOID FAR PASCAL AllocMem(DWORD bytes)
+{
+   HANDLE hMem = NULL;
+   LPVOID lpResult;
+
+   while (!(hMem = GlobalAlloc(GMEM_MOVEABLE, bytes)))
+      if (GlobalCompact(bytes) < bytes)
+         if (MessageBox(GetFocus(), "Out of memory.  "\
+              "Close one or more applications, then "\
+              "select Retry, or select Cancel to exit.",
+              NULL, MB_RETRYCANCEL | MB_ICONHAND)
+                     != IDRETRY)
+            /* throw back to top-level (cancel) */
+            Throw((LPCATCHBUF)CatchBuf, 1);
+
+   lpResult = GlobalLock(hMem);
+
+   if (!lpResult)
+   {
+	  GlobalFree(hMem);
+
+	  /* throw back to top-level (cancel) */
+	  Throw((LPCATCHBUF)CatchBuf, 1);
+   }
+
+   return lpResult;
+}

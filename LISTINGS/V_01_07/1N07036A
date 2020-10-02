@@ -1,0 +1,23 @@
+
+LISTING 4
+
+/* Set up the C asynch event handler for incoming messages */
+
+void asynch_handler(int nd)
+{
+	struct	addr a;				/* Address & port for UDP connection */
+	struct	SREGS seg;			/* Save our segment values here */
+	char far *fool_msc;			/* Workaround for spurious conversion */
+
+	/* setupt network for getting global descriptors */
+	segread(&seg);		            	/* Get segments... */
+	FP_SEG(fool_msc) = seg.cs;              /* Get correct CS value */
+	FP_OFF(fool_msc) = (unsigned)respond_to_msg;
+	if ((long) net_asynch(nd, NET_AS_RCV, asynch_stub,
+			(unsigned long)fool_msc) < 0) {
+		pneterror("net_asynch");
+		puts("receive: error setting asynch handler");
+		net_release(nd);		/* Explicitly free global */
+		exit(1);
+	}
+}

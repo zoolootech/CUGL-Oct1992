@@ -1,0 +1,1024 @@
+/*
+HEADER:		MAIN documentation file for  'WTWG' windows system;
+TITLE:		Window Text/Window Graphics
+
+VERSION:	1.2
+DATE:		6/31/90
+
+DESCRIPTION:	This file contains an overview of the windows routines 
+	provided on these disks, installation instructions and use notes.
+
+KEYWORDS:	windows, keyboard, mouse, text, graphics, expanded memory, menus;
+SYSTEM:		MS-DOS v3.0, probably works with v2.0 but untested;
+FILENAME:	WINDOW.DOC
+
+SEE-ALSO:	files on this disk named *.doc, demo*.c
+
+				defines.doc - documentation of struct, typedef, #defines etc
+				funcs.doc   - documentation of specific function calls.
+				
+				demo*.c     - demo programs showing main features.
+				
+AUTHOR:	David Blum
+		
+		old address:
+		1710 Glyndon Ave
+		Venice, CA 90291
+		
+		new address:
+		
+		8039 North 1st Street
+		Phoenix, AZ  85020
+		
+COMPILERS:	Turbo C v2.0, Microsoft C v5.1
+*/
+
+
+
+                    INTRODUCTION to WT/WG ROUTINES
+
+The routines in these libraries provide screen, keyboard, and  
+mouse management in either text or graphics modes for Turbo C 
+version 2, TurboC++ and Microsoft C v5.
+
+This file is an introduction to the ideas behind WTWG, providing 
+definitions of basic terms (like window, MOUSE, and BUTTON), and 
+an overview of the available functions. More detailed 
+documentation is in the other .DOC files ( FUNCS.DOC, 
+DEFINES.DOC, etc ). There are several demo programs as well. 
+				
+				
+				
+                         DISK CONTENTS.
+
+NOTE: complete package actually spans several disks.
+
+HEADER.DSK - C Users group standard submission header
+						 
+.DOC files - Documentation is in this file and define.doc and funcs.doc
+
+.H files: #include "window.h" - used by all program
+	
+Demonstration programs are in demo*.*
+	Source for the demos is demo*.c. 
+	TurboC project files are demo*.prj
+		(Microsoft C - create similar *.mak for quick C)
+	On-line Help for the demonstration programs is in demo*.HLP and demo*.HX
+	The .BAT files Tdemo.BAT / Mdemo.BAT make and run the demos 
+		using the command line compilers 
+		for Turbo and Microsoft C respectively.
+
+Several utility programs are included:
+	makehx.exe - create help 'index' file from help text file
+							(used by online-help functions)
+							(input: filename.HLP output: filename.HX )
+	txt2mcr.exe - convert ASCII text file to key macro
+							(input: filename.TXT output: filename.MCR )
+							(see DEMOMACR.C for examples)
+	dir2bat.com - filter for directory listings.
+							(see TMAKE.BAT or WMAKE.BAT for example of use)
+	type the prog name without arguments for help.
+
+LIBRARIES:
+	The lib files provided are W*.LIB ( for TurboC ) and MW*.LIB ( MSC )
+
+	WTS.LIB, WGS.lIB -two small-model libraries for TurboC are on disk. 
+	WTS.LIB provides almost all of the routines in the larger library 
+		but is specific for text mode, and will run on CGA, EGA/VGA, 
+		or HERCULES monitors. If WTS.LIB is specified in a .PRJ or 
+		.MAK file, no graphics mode functions will be linked in, 
+		providing a smaller .EXE
+
+	WGS.LIB (TurboC) contains all the routines for both text and graphics 
+		modes. In almost all cases the use of the routines is transparent. 
+		This is accomplished by creating a 'text-mode' coordinate system 
+		and superimposing it on the grpahics-mode cordinates. The two 
+		cordinate systems may be referenced independently. 
+
+	WGL.LIB (TurboC) is the large model graphics and text library.
+
+	WGY.LIB and WGYO.LIB are large model VROOM-compatible libs 
+				for resident- and overlaid modules, respectively.
+	
+	MWGM.LIB is the microsoft medium model graphics and text library. 
+							 
+The source disk includes:
+	w*.c - source for all windows routines. The source code is HEAVILY 
+			commented, honest. 100% C no assembly code.
+	wsys.h and wscreen.h  - headers used only by the w*.c routines
+	whelp.h - used internally by help routines whelp.c and makehx.c
+	msc.h   - irons out some diferences between TurboC and Microsoft C
+	'utility' source code:  dir2bat.c, makehx.c, text2mcr.c
+	.BAT files for building the libraries from the source code
+		(Twmake.bat, Mwmake.bat, Mnewmake.bat, Mblank.bat)
+		
+	The source disk is archived, and includes the extraction utility.	
+							 
+							 
+                        INSTALLATION - TURBO C
+							 
+Make a subdirectory under \tc named windows, copy this disk into the 
+subdirectory.
+
+The graphics routines initialize the BGI assuming that the .BGI and 
+.CHR files are in a directory named "C:\\TC". A global variable, 
+wpath_BGI, points to the string "C:\\TC". If you keep the BGI files in a 
+different directory, you should change the global variable prior to 
+initializing with winit('G');
+
+
+Tell TurboC how to find these libraries:
+	command line compiler:
+			create a TURBOC.CFG file (or modify your current file)
+			(in the C:\TC directory)
+				with the lines: -IC:\TC\INCLUDE;C:\TC\WINDOWS
+								-LC:\TC\LIB;C:\TC\WINDOWS
+				and use the DOS command PATH C:\;C:\DOS;\C:\TC
+					(modified for your disk setup)
+	integrated environment:
+		slightly different for TurboC and TurboC++, essentially like this:
+			select OPTIONS/COMPILER/DIRECTORY, type in 
+								C:\TC\INCLUDE;C:\TC\WINDOWS
+			select OPTIONS/LINKER/DIRECTORY, type in 
+								C:\TC\LIB;C:\TC\WINDOWS
+			and then OPTIONS/SAVE
+
+
+Compile and run the demo programs either by:
+	Command line: run TDEMO.BAT
+	integrated environment: select project file demo*.prj, 
+							be sure 'use registers' is ON 
+							be sure 'link graphics lib' is ON
+							Run -> Run
+
+	If you have TurboC++, use PRJCNVT.EXE to make new-style .PRJ files.
+			See the TurboC documentation.
+
+                      INSTALLATION - Microsoft C ( "msc" )
+
+ 
+Make a subdirectory named windows under \msc ( or wherever msc is located ),
+	 copy the WTWG files into the subdirectory.
+
+Make sure that environment variables LIB and INCLUDE are defined as 
+done in the msc installation, and add the \msc\windows directory.
+
+These routines were ported to microsoft C from TurboC. Microsoft C 
+lacks some of the ammenities of TurboC. If you recompile the source 
+code in a model other than MEDIUM, be sure to define a symbol stating 
+the memory model, ie: __SMALL__ or __LARGE__. See the header file 
+wsys.h (on the source code disk) for details.
+
+Use MDEMO.BAT to compile, link and run the demos.
+
+                        INSTALLATION - QUICK C
+						
+Same as Microsoft C. The library provided, MWGM.LIB can be referenced 
+on the QCL command line (be sure to specify /AM and graphics.lib), or 
+you can use LIB to extract the medium-model object modules and then 
+QLIB to create a QUICK LIBRARY. Tell Quick C environment which directories
+too look in. 
+
+The quick C preprocessor has some unpleasant quirks and will not 
+compile the demo program demomenu.c. 
+
+                           OTHER COMPILERS
+
+This package was written using TurboC v2.0. In Turbo C, the 
+symbol __TURBOC__ is defined (unless STDC is selected). If the 
+preprocessor symbol __TURBOC__ is not defined, the programs assume 
+Microsoft C is the compiler, and will include msc.h. Differences 
+between msc and TC are spelled out in msc.h. 
+
+For the most part, the code is plain-ANSI compatible and should be 
+easy to port. A few noteworthy exceptions:
+	1) In-line interrupts and registers. See WSYS.H for explanation of 
+	methods used for in-line interrupts and register assignements. 
+	This method should be transparent in porting to any other compiler 
+	that uses a Microsoft-C like 'int86(intno, &regstruct, &regstruct)'
+	method of generating interrupts. Just redefine INTERRUPT(intno) macro. 
+	2) outport () in Microsoft C is outp(). 
+	3) file WBGI.C contains the code for interfacing these routines 
+	with the compiler-provided graphics package (in this case, BGI). 
+	The overall layout  of the file is:
+			...start of file
+			#ifdef __TURBOC__
+				...code for TC version
+			#else
+				...code for MSC version
+			#endif
+			...end of file
+	To port to some other C compiler, replace the MSC version and be 
+	sure __TURBOC__ is undefined
+
+	4) wdraw() contains some TurboC specific graphics calls and data 
+	types. These should be very easy to port if your graphics package 
+	supports XOR pixel drawing in graphics mode. MSC doesn't. I 
+	couldn't get them to work with Microsfoft C.
+	
+	5) wclockinstall() uses interrupts to install an onscreen clock
+	This doesn't work right in Microsoft C, because of 'stack' errors.
+	It should be easy to fix for someone who knows more microsoft C than
+	I do. The routine works, but is quirky, in EGA/VGA graphics modes
+	but works well in any text mode and hercules graphics. Also, wsysrq.c 
+	did not work in MSC, you may need to make changes there if 
+	you want this feature.
+	
+	6) Quick C - the QC preprocessor is non-standard and some of the 
+	routines will not compile correctly; at least they generate error 
+	messages. MSC 5 preprocessor works, though.
+	
+	
+	
+                      COMPILING AND LINKING - TurboC
+
+These routines were tested with the following TurboC options:
+	-r = register variables. MUST BE ON in all modules that call 
+			these routines. Your computer will lock up if not.
+	-K = default char is unsigned. Conform to ANSI standard.
+	-N- and -k- Use non-standard stack frame.
+	-1 = generates 80x86 code. older machines may not run these 
+		routines  as provided, they would need to be recompiled.
+		IF YOU HAVE AN OLD PC (ie, 8088 not 8086), buy the source 
+			code and recompile.	
+	alignment - the routines were compiled with alignment OFF.
+			However, all of the data structures are self-aligning,
+			so it shouldn't matter.
+			
+Specify either WTS.LIB or WG$.LIB where $=model (L/S)
+
+					VROOM overlays (TURBO C and C++)
+
+The batch file twmakey.bat makes two separate __LARGE__ libraries for 
+VROOM: 	wgy.lib contains portions that stay resident,
+		wgyo.lib contains overlay / swappable modules.
+		
+I arbitrarily made the choice that resident routines should be a 
+mininum support for basic input and output. This allows some 
+basic functions to be used in interrupt handlers and 
+time-critical code. You can open/close windows, save/restore, 
+clear, draw borders and titles, write chars and strings using 
+wputc/wputs (not wprintf), and get user input using wkbd_ 
+functions. No higher level kbd input is supported (mouse, wgetc, 
+buttons, wpromptc, wgets, wprompts, wpicklist, wscanform,...)
+
+The interrupt routines wSysRq, wclock, and winDOS are resident.
+
+Fancier routines for screen configuration (paging, 43/50 line 
+toggle, palette manipulation), and keyboard manipulation keyboard 
+pipes, traps, macros, online help, wungetc(), as well as all 
+mouse routines, are all overlaid.
+
+
+ 
+
+
+
+                     COMPILING AND LINKING - MSC 
+					 
+These routines are compiled with size optimization and byte alignment.
+They should work even if word alignment is selected. Specify /J for unsigned 
+characters. If you get the source code, and recompile in other memory models,
+you should #define a symbol specifying the model ( ie: __LARGE__ or __SMALL__ )
+ 
+
+
+		
+
+---------------------HOW TO USE THESE ROUTINES-----------------------------
+
+
+                   INITIALIZATION and SHUTDOWN
+
+At the start of your program winit('T') or winit('G').
+
+Be sure to use capital letters -- winit ('t') will  NOT work. 
+
+Special initializations:
+	* mulitple video pages: call winit_pages( mode ) instead of winit.
+							you may call one and then the other.
+	* DeskView programs: IMMEDIATELY after call to winit(mode), call wdvinit().
+							tested only with one video page, text mode.	
+	
+Shutdown is automatic. Never call _exit() or abort(). Use exit() 
+instead. On return from main() or on execution of an exit() 
+function, the video state will be restored, cursor turned on, 
+expanded memory returned to the system, and any disk storage 
+('virtual memory') used will be erased. 
+
+
+
+
+                         ERROR HANDLING
+
+The routine werror() assigns an exit code, restores the video 
+mode, and writes an error message, then shuts down the program.
+
+If you use perror(), or puts(), or even wputs() in a graphics 
+mode program, or on a high video page, then your error message 
+will be lost when the video mode is restored. Even worse, using 
+some other windows packages, if you call exit() from a bizarre 
+video mode, your PC screen will be unreadable (especially 
+hercules). The werror() routine solves all these problems.
+
+If you run out of memory, malloc() returns NULL. If you test for 
+this and then write an error message, and then exit, your message 
+might get lost (when the graphics mode changes back to text mode 
+the screen is erased). The shutdown routine requires some 
+available memory. Instead, use wmalloc() or wfarmalloc() or 
+wrealloc() to correctly handle the situation of running out of 
+memory. Testing is done for you, and error messages are dealt with 
+correctly.
+
+
+
+
+
+
+                   MEMORY USE and REQUIREMENTS
+				   
+Most windows packages for the IBM PC operate in text mode only. It 
+takes about 4k of ram to save a text-mode full screen image, so memory 
+isn't a big deal for text mode. For graphics mode, especially on color 
+monitors (depending on resolution, etc) it can take > 100 k to save a 
+screen. This is an impractical amount of ram to use for most serious 
+graphics programs. Most large graphics-oriented programs require 
+expanded memory, but not all PC's have this feature. The solution is a 
+'heap' composed of 'virtual' memory.
+   
+The libraries include a memory management routine that allocates 
+'heap' memory from expanded memory, the DOS far heap, or a disk file, as 
+needed. The actual location of the data is transparent to the calling 
+routines.  Memory use is ultimately limitted only by available disk space. 
+
+The routines that manage this service are named wheap..., and are 
+described in detail in funcs.doc. 
+
+Unfortunately, to achieve this the manager allocates a 64k buffer 
+for disk I/O. This means that you can't debug programs using the 
+TurboC integrated environment unless you have expanded memory 
+in your system. To allow for debugging, a separate version of the 
+memory management routine, heapdbg.c, is provided. Place this 
+module name in your .PRJ/.MAK file ahead of the WG$.LIB name. Ignore 
+the 'duplicate module' linker warnings. This module doesn't do disk 
+allocation or exp. mem. and so allocatable memory is limitted, but 
+with it you can run the integrated debugger, TD, or CodeView.
+
+Finally, for programs in the large memory model, the routines 
+wmalloc() and wrealloc() guarantee a return of a NORMALIZED 
+pointer. If you use these routines exclusively, and never call 
+malloc, calloc, realloc, or similar, you will avoid segmentation 
+errors (very difficult to debug, intermittant errors in large 
+pgms). The file WSYS.H (intended only for compiling the WTWG 
+source code) contains a NORMALIZE macro that adjusts the 
+segment/offset values of far *ptrs to help completely avoid these 
+problems. If you always use wmalloc() or wfarmalloc() you 
+shouldn't have to worry about it, as the pointers are NORMALIZED 
+for you.  NOTE added 6/31/91 for version 1.2: If you use C++ the 
+NORMALIZE macro has to be redefined to include a typecast. All 
+WTWG routines are written in C. Future releases will be in C++ 
+but will use a separate NORMALIZE macro. 
+
+					
+					
+					        NAMING CONVENTIONS
+							
+All the public symbols in this package begin with 'w...' and are declared 
+in window.h. You should have no problems with duplicate names. 
+
+x refers to horizontal co-ordinates. y refers to vertical 
+co-ordinates. Counting starts at 0.
+
+Members of structures all have names that imply their parentage.
+	(ie, member of structure WMOUSE giving x position is wms_x)
+Defined values for flags all have names that imply which flag they refer to
+	(ie, flag governing style for text output is winputsyle
+		 flag value setting wrapping to next line is WPUTWRAP)
+
+
+
+
+                       OPENNING AND CLOSING WINDOWS
+
+In some windows systems (especially Microsoft WINDOWS) your 
+windows are asked to 'redraw' themselves. This makes for complex 
+programs. Other window systems keep in-memory images of the 
+window and redraw the windows for you. This system does neither. 
+Programming effort and execution overhead (both speed and RAM) 
+are less than other systems. The disadvantage is you can't write 
+true multitasking programs using this package.
+				  
+After initialization, a full-screen window is automatically open. Full 
+screen operation using wputs() wprintf() wputc() can proceed 
+identically to ANSI stream output. Alternatively, smaller windows can 
+be openned and closed.
+
+The global variable w0 always points to the current open window.
+Members of the WINDOW structure can be accessed. For instance, 
+	w0-> winx gives the current x position (starts at 0). 
+	w0-> winxmax gives the highest valid x position.
+	w0-> winattr gives the current attribute.
+	etc. see WINDOW.H
+	
+Windows are kept on a LIFO stack. Calling wopen() creates a window, 
+wclose() closes the most recently created window. The most recently created 
+window is the active window. Be sure your sub-routines close any 
+windows they open, leaving the stack set up correctly for calling routines.
+
+The order of the stack can be changed by calling wreopen() to 
+place an older window on top of the stack, or wbury() to place 
+the current window on the bottom of the stack. This obviously 
+requires some caution. You can wreopen() the full screen window at any 
+time by calling wreopen (wfullscreen). Be sure to wbury() it when 
+done. 
+
+
+
+                            CO-ORDINATE SYSTEM
+
+A consistent co-ordinate system is used. Variable names 
+containing the three letters 'abs' refer to screen coordinates 
+(0,0 = top left). Position variables without 'abs' in them are 
+relative to the current window. In all function prototypes, 
+x=horizontal, y=vertical and the order is always x,y. Coordinate 
+numbering starts with 0 (NOT 1) and ends with winxmax/winymax  
+(or wxabsmax/wyabsmax). Variables with 'max' in the name specify 
+the largest valid value for that co-ord, ie: wxabsmax is the 
+largest valid x-value which is typically 79 for an 80-column 
+screen. Do not assume that wxabsmax is always 79: on Hercules 
+monitors in graphics modes it is 89 (720 pixels = 90 characters 
+accross). If you add Super VGA support (800*600 is easy), then 
+wpxabsmax =799 and wxabsmax=99. winxmax refers only to the 
+current window and is referenced as a member of the WINDOW 
+structure (ie: w0->winxmax). Variables with 'px' or 'py' refer to 
+pixels rather than text-mode character counts; ie, w0->wpxmax is 
+the largest valid horizontal pixel number in the current window 
+and wpxabsmax is the largest valid horizontal pixel on the 
+screen.  
+
+
+For all routines that refer to absolute positions (wxabs, wyabs), x 
+is horizontal and y is vertical. Counting begins at (0,0) in the 
+upper left corner of the screen. In graphics modes, wpxabs, wpyabs 
+values refer to absolute pixel count, (0,0) being top left corner of 
+screen.
+ 
+Within a window, a local co-ordinate system is used with (0,0) 
+being the upper left corner of the open window, wherever that is 
+on screen. For a window that has 10 columns, the value of w0->winxmax 
+would be 9. Text output would take place at the current position in 
+the window which is given by w0->winx and w0->winy. The same sort 
+of coordinates apply in graphics modes, counting pixels.
+ 
+Example:( w0->winxmax ) is the last valid x value in the current window.
+		( w0->winx )    is the current x co-ord in the current window.
+		
+		
+The first 2 parameters to wopen() specify x,y of left top postion 
+of first text byte in the window. Any borders are above and to 
+left of this spot. The next 2 parameters are the number of 
+columns ( xmax+1 ) and number of rows (ymax +1) in the window, 
+again not counting borders. Window co-ordinates are referenced 
+starting at 0, but the number of rows/columns desired is 
+referenced starting at 1. 
+
+wsetlocation() and wlocate() can be used to automatically place a 
+window using co-ordinates relative to screen top/left; screen 
+center, current window, or current cursor position. These 
+functions simplify coding self-centering windows or windows that 
+should be located at the current text location. Routines which 
+create self-adjusting windows include wgets() wpromptc() wform(). 
+
+
+
+
+
+
+                                TEXT OUPTUT
+
+Text can be sent to the screen via wputc() wputs() or wprintf(). The 
+'current location' is updated appropriately. You can discover the 
+current location by referencing w0->winx and w0->winy. The next byte 
+of text ouput will take place at that spot. You can change that spot 
+with wgoto(new_x, new_y). 
+
+The behavior of wputc/wputs/wprintf at line endings and at the bottom 
+of a window is called the 'put style' and is controlled by the 
+variable (w0->winputstyle). The 'put style' for the current window can be 
+changed. By default these behave exactly like their ANSI   
+counterparts putc/puts/printf, ie at the last column text wraps to 
+the beginning of the next line, and after the last line the window is 
+scrolled up one line. ANSI escape code are honored. Within each window, 
+different text behavoirs can be specified. Text wrapping at the end of 
+a line and window scrolling after the last line can be turned off. ANSI 
+escape sequences can be processed or ignored and printed. \n can generate 
+a CR/LF or just a LF. All these choices are set with the flag w0->winputstyle. 
+When the window is closed, the previous window's put style  is restored. 
+See defines.doc for more details.
+
+Window colors are specified as 'unsigned char.' The first 4 bits 
+specify the background, the low 4 bits set the foreground. See the 
+definitions in WINDOW.H. For example, 
+	wsetattr(  (RED<<4)+YELLOW  ) sets yellow letters on red bkgnd. 
+	wgetattr() returns the current attribute as 'unsigned char'
+	
+On hercules monitors, in text mode, the colors behave just like for 
+other programs ( GREEN = white, BLUE=underline, RED=invisible ). In 
+graphics mode, only colors that include GREEN or BLUE will be white, 
+all others will be black. So, (GREEN<<4)+YELLOW is a bad choice 
+becuase in Hercules graphics mode it will show up as solid 
+(unreadable). This is called 'dithering.' The HP laserjet driver 
+whplj_dump() uses the same dithering scheme so if you are 
+consistent in you choice of colors your programs will look OK on 
+HERCULES, PAPER and also VGA.
+
+The cursor is managed automatically: it is off by default and turned 
+on by wgets() when the user has to type something. On exit it is 
+turned on again. In graphics modes for user input (typing) a 
+pseudo-cursor is created. In text mode, if you really want a cursor,
+you can call wturn_cursor (ON) or wturn_cursor (OFF), but most of 
+the time it is handled for you. 
+
+							
+							KEYBOARD INPUT
+							
+The program detects the enhanced keyboard at startup. The 
+nonsense about character/scan code (see TurboC manual for 
+getch()) is handled automatically - a single call to wgetc() 
+always returns a single character. Becuase the number of 
+characters available on the enh. kbd is large, the return type of 
+wgetc() is an 'int'. The range is -32k to +32k. For actual keys 
+on the keyboard, only 1 thru about 300 are used. Value 128 is 
+reserved for the mouse. All routines that ask for or return 
+keyboard values expect 'int' data; if you use 'char' or 'unsigned 
+char' errors may occur.
+
+Wgetc() does several things: 
+	1) mouse and keyboard are 'merged' into one virtual device. 
+	2) hotkeys are searched for and specified routines called.
+		(examples are in demomenu, demomacr, demohkey)
+	3) keyboard input can be trapped and sent to a file, or 
+	redirection can be done to read a file as keyboard input.
+	4) If the user doesn't press a key after 3 minutes the screen is 
+	blanked. This happens in text or graphics, EGA/VGA/HERCULES.
+	
+Example:  	int keystroke;			/* 'char keystroke' would be wrong */ 
+			keystroke = wgetc();
+			if ( keystroke == FKEY(1) ) {...}
+			else
+			if ( keystroke == ESCAPE ) {...}
+			else
+			if ( keystroke == ALT_TAB ) {...} /* actual value is 293 */
+			else
+			if ( keystroke == WMOUSE )  {...} /* mouse used */
+			else
+			...etc...
+			
+	
+MOUSE use is automatic. 2- and 3-button mice are supported. The mouse is 
+turned off when not actually accepting user input to allow graphic-mode 
+screen drawing without garbage onscreen (try turning mouse ON and drawing 
+a circle with the mouse moving on a VGA/EGA screen). When the video display 
+is changed to a high page number the mouse is disabled if the monitor/
+mode combination requires that (not all monitors and mode support the 
+mouse on pages higher than page 0). If you want to display the mouse cursor 
+at other times, use wmouse_turn (ON) and wmouse_turn(OFF) but BE SURE to 
+use these calls in pairs or the poor little critter will get confused.
+
+If you add a  Super VGA 800*600 driver (available thru 3rd 
+parties for TurboC), you need to code a mouse driver. Most mouse 
+drivers do not work in 800*600 mode. My version was written by a 
+friend for me and I can't release it. I might rewrite using 
+different methods in the future and if I do I will release that 
+version.
+
+When the mouse is used, wgetc() returns the value MOUSE. If the right 
+button on the mouse is pressed, wgetc() returns ESCAPE (ie: right 
+button always performs ESCAPE key function) After testing for 
+(keystroke==MOUSE), you should check the global structure 'wmouse' to 
+see what was done with the mouse. The elements contained in wmouse are 
+documented in define.doc.
+
+			keystroke = wgetc();
+			if ( keystroke == MOUSE ) 
+				{
+				if ( wmouse.wms_inwindow )
+					...mouse is inside current window
+				if ( wmouse.wms_used & WMS_LEFT_RLS ) 
+					... released left button
+				if ( wmouse.wms_x == 3 )
+					...mouse is at x=3 in current window co-ords 
+				...etc...
+				}
+
+			See demomous for other examples.
+			
+
+wgets() allows typing of text into an area of screen, and places results in 
+a string that you specify. You set the maximum length of the input field. 
+Don't forget the string size MUST include the terminal \0. ie YES=4 bytes long.
+The original contents of the string are displayed before the user types 
+anything. Text input begins at the current location and 'wraps' around to 
+next line if needed. Simple editting includes 
+	insert/delete, 
+	CTRL-Y (delete to end), 
+	CTRL-O (replace with original version). 
+	ESCAPE quits text entry without changing the contents of the original data.
+This function works in either text- or graphics- modes. In graphics modes, 
+a pseudo-cursor is created. In text mode, the PC hardware cursor is 
+temporarily turned ON, then turned off at exit. 
+
+
+
+
+
+BUTTONS are areas onscreen that the mouse can point to and select. 
+Mouse selection of a BUTTON is translated to a key value that you 
+associated with the button. See demomous (or calls to wpromptc() in 
+any of the demos). Ex:
+
+			wbutton_add ( "Press Me", 3, 5, 9, 'P', WBTN_BOX );
+					/* The words Press Me are placed at x=3, y=5 in a 
+					   box of length 8+1. (1 is for terminal NULL) 
+					   The value 'P' is assigned to the button. 
+					 */
+			wbutton_add ( "F10 - QUIT", 3, 8, 11, FKEY(10), 0 );
+					/* The words F10 - QUIT are placed at x=3, y=8
+					   for length 10+1. No box is drawn.
+					   The value FKEY(10) is assigned to the button. 
+					 */
+			keystroke = wgetc ();
+					/* if the left button was released with the mouse in 
+					   ...the 1st button area defined above, keystroke='P'
+					   ...the 2nd button area, keystroke= FKEY(10) 
+					   NOTE also:
+					   if P was pressed on the keyboard, keystroke='P', not 'p'
+					   if F10 was pressed, keystroke = FKEY(10)
+					 */
+			if ( keystroke == 'P' )
+					... either mouse click in button or 'P' on 
+					keyboard...
+			else 
+			if ( keystroke == FKEY(10) )
+					...
+					
+SCROLLBARS are vertical bars that can be set to a 'value' by 
+positioning on them with the mouse. Scrollbars are created with 
+wscrollbar_add(), just like wbutton_add(). A unique keystorke code is 
+assigned to the scrollbar, which should not be a valid keyboard key (ie, -1 
+works, so does 600) You specify screen location and length of scrollbar, 
+and a 'virtual range'. The 'value' of the scrollbar will then be a 
+'long int' between 0 and the virtual range. The function wscrollbar_scroll() 
+tracks the mouse while the left button is down and returns the new value for 
+the scrollbar. You can redraw the pointer on the scrollbar to show a new 
+value by calling wscrollbar_reset().  See demomous.c for example.
+					
+					
+					
+					
+Higher level interaction with the user is done with: 
+	wpromptc() - prompt for a single keystroke.
+				 CAUTION: remember to give NULL as the lst argument!!!
+	wprompts() - prompt for a string of specified lenght.
+	wpicklist()- chose an item from a NULL terminated list of strings.
+	wscanform()- get multiple items of data, with validation.                          
+	wscrollbar_scroll() - mouse scrollbars.
+	wdraw ()   - TurboC graphics mode only - draw lines, rectangles, etc
+					
+					
+					
+
+                               HOTKEYS
+							   
+HOTKEYS are keys that activate a routine independent of the main 
+program. If you have TurboC, in the integrated environment, the 
+F-keys are all hotkeys. Similar for QuickC. 
+
+The easy way to install a hotkey handler is to call the 
+whotkey_install() function, specifying both the key value and the 
+function.
+		
+		void myfunc (void);		/* function that does something */
+
+
+		winit ( mode );
+		whotkey_install ( HOME, myfunc );
+		
+The function myfunc will be called whenever the HOME key is 
+pressed. If the function is already active at the time of the 
+keypress, it will not be called twice, and the keystroke will be 
+passed thru. See demohkey for examples. 
+
+A number of useful hotkey routines are provided in the WTWG 
+package including: context sensitive help ( whelp_install ), 
+pulldown menus ( wpulldown ), HP laserjet screen dump ( 
+whplj_install ), and ability to use the mouse center button to 
+act like a hotkey ( wmspopup & wpopfkey ) and a simple keyboard 
+macro recorder ( wmacro_install ).
+		
+Note that this allows you to write traditional programs (the 
+program controls when keyboard action takes place and what is 
+done with user actions) or 'event-driven' programs (the keyboard 
+manager gets a key and decides which routine should be given the 
+new input). If your program has one main routine that asks the 
+user a series of questions and then takes action, there is no 
+need for hotkeys, menus, etc... If the majority of your program 
+is reached by hotkeys (or pulldown menus, which are implemented 
+as a hotkey) then it is 'event-driven.' Such programs are made up 
+of many void funcs(void) that communicate with each other by way 
+of global-scope variables.  
+		
+A more complex, and more flexible, way to install hotkeys is to 
+point the global variable 'wkeytrap' to the function that scans 
+for the key and executes the sub-task. Be sure to hang on to the 
+addresses any previously installed hotkey routines and 'chain' to 
+them in your hotkey routine, otherwise the help and menu systems 
+won't work (or any other hotkeys you invent). If your hotkey is 
+pressed, the routine that handles it should return 0, indicating 
+that another keystroke is needed. If the key is not your hotkey, 
+return the key itself.  If you use the first method, you won't 
+have to worry about this stuff.
+				
+			static int (*prev)(int) =NULL;		
+					/* save previous hotkey routine for chaining */
+			static int installed    =0;			
+					/* prevent mult. installations */
+	
+	
+			int hotkey (int key)
+				{
+				if ( prev )
+					{
+					/* chain to previous hotkey routine.
+					   which may return '0' (ie, swallows the key.)	
+					 */
+					key = (*prev)(key);
+					}
+				
+				
+				/* routine handles hot key functions  */
+				if (key == HOTKEY_VALUE)
+					{
+					/* do something interesting */
+					return (0);			/* swallow hotkey, get another key */
+					}
+				else
+					return (key);		/* return key */
+				
+				}
+			
+			void install_hotkey (void)	
+				{
+				if ( installed ) return;
+				prev = wkeytrap;			/* save previous hotkey */
+				wkeytrap = hotkey;
+				installed =1;
+				}
+	
+	
+Within the source code of the library, example programs that use 
+the complex method of creating hotkeys may be found in wpulldn.c 
+(pulldn menus - checks for ALT_letter and for mouse click on menu 
+bar) and wmspopup.c (checks for mouse center button). 			
+     
+	 
+	                       POPUP MENUS
+
+Popup menus are lists of choices that the user can make. In WTWG, 
+popup menus are created by the function wpicklist(). You pass the 
+function a title for your menu, and a pointer to an array of 
+strings (one string for each choice), terminated by NULL. 
+wpicklist(title, list) displays the lsit, allows the user to 
+choose one element, and returns the element number (first element 
+is #0). If the user presses ESCAPE, the return value is equal to 
+the number of choices. You can use the return value as an index 
+to the list of choices. 
+
+
+Example:
+
+		int  choice;
+		char *my_list[] = {"ONE","TWO","THREE","FOUR",NULL};
+		
+		choice = wpicklist ( "Choose a number", my_list );
+						/* a box with the choices pops on the screen
+						 * and disappears after a choice is made
+						 */
+
+		
+		if ( my_list [choice] == NULL )
+			{
+			... user pressed ESCAPE...
+			}
+		else
+			{
+			... choice=0 means selection was "ONE", etc...
+			}	
+			
+If you have TurboC++ you can also use some WTWG-extension 
+functions released separately to C users group. These functions 
+will create file directory lists as pop-up menus, etc...
+
+ 			
+					
+                         PULLDOWN MENUS 
+
+Large programs are neatly organized by pulldown menus. Each 
+choice in a menu is either a sub-menu or a function. The 
+functions are declared as: void menu_func (void); The menu 
+manager then acts as an event-driven interface, so your functions 
+are called only when the user activates the menu.  
+
+Pulldown menus are created from a tree of tables, organized 
+hierarchically. Each table is an array of the type WMENU ( 
+a typedef defined in window.h). One table element produces one 
+menu choice. Nested menus are created by setting a pointer in the 
+WMENU structure to another table of WMENUs. Each table element 
+references a function of type void with no parameters (ie: void 
+menu-func(void) ), these functions do the indicated tasks. You 
+can place all the startup code and menu tables in one file, and 
+place the functions in other files, and so build complex programs 
+by a mix-and-match approach. At program startup, call 
+wpulldown_install() to setup the menu onscreen. This routine also 
+places a 'trap' in wgetc() so any 'hotkey' from the menu table is 
+recognized and control is passed to the menu. Menu items may also 
+be selected by mouse. F1 gives context-sensitive help for each 
+item in the menu tree. See the example in demomenu.c.
+
+
+
+                        DATA ENTRY FORMS
+							  
+Complex data-entry forms are supported using a table-driven 
+approach. Each element in a WFORM table is of type WFORM ( a 
+typedef defined in window.h ). The WFORM table also specifies the 
+size of the form onscreen. Many data types are supported, and 
+provision is made for custom data validation, allowing 
+arbitrarily complex data types. Some simple macros are provided 
+to allow WFORM tables to be created easily. These include string, 
+integer, float, date, and time. Data items can automatically 
+invoke a pop-up list of choices. Context-sensitive help is 
+integrated into the form manager; F1 provides help for each 
+individual item in the form. See the examples in demoform.c.
+						
+                                 HELP
+								
+Online context-sensitive help is supported.  Place the text of 
+your help in a file called helpfile.HLP. Help topics are 
+identified by starting with the character '@'in column 1. The 
+text for that topic follows. Text should be 50 columns by 5 
+lines, per topic. Examples of help files are demomenu.hlp.
+	
+The next step is to use the program MAKEHX.EXE to create a 'help 
+index' file which will be named helpfile.HX. From the DOS prompt 
+type: makehx helpfile<Entrer>. Then, in your 'C' program, install 
+the online help program with:  whelp_install ( "helpfile" ); The 
+help topic changes appropriately with different choices in 
+pulldown menus or with different input lines in FORMS. You can 
+also change the help index explicitly. See the sample files on 
+the disk (*.HLP) and the demo programs DEMOFORM.C and DEMOMENU.C
+
+                            COMMON ERRORS
+
+0) Starting counts incorrectly at 1, rather than 0. In this coordinate 
+	system, the upper left corner of a window is 0,0 and winxmax is 
+	the actual value of last valid x-byte not 1 higher, etc. 
+	Correctly coded loop:  for(n=0; n<= w0->winxmax; ++n) 
+
+1) forgetting to call winit() or using lower case letters in call to 
+	winit(). System hangs. Correct: winit('G') for graphics mode or 
+	winit('T') for text mode. Incorrect: winit('t'); 
+
+2) requesting 1 byte too few in call to wopen becuase wopen needs 
+	actual number of rows and columns. should be winxmax+1. Also, 
+	the border is not counted in the request for window size, but 
+	does affect window placement and whether window fits 
+	onscreen.
+	
+3) forgetting terminal NULL argument in call to wpromptc(). Program 
+	terminates with message 'window out of bounds' or junk onscreen.
+	Correct call:  
+		key= wpromptc("TITLE", "QUESTION?", "ANSWER 1", "2", NULL);
+	Incorrect call: 
+		key = wpromptc ( "QUESTION", "1", "2" );
+	
+	Similarly, don't forget terminal NULL on list of ptrs to wpicklist(),    
+	and don't forget NULL terminating entries for menus and forms.
+	
+4) creating a 'hotkey' routine by the complex method and 
+	forgetting to chain to previous hotkeys. Use whotkey_install() instead.
+	See wmsdrag.c for example of how to do it the complex way.
+				
+5) function called by pulldown menu program MUST quit if ESCAPE key is 
+	typed, but may require multiple ESCAPEs for confirmation. If you 	
+	forget this, and do not return after ESCAPE, program may go into 
+	infinite loop.
+
+6) Forgetting to wclose() a window - you eventually run out of memory, 
+	or subsequent calls to wclose() will close the wrong window, and 
+	then output will go the the wrong window, garbage will show up 
+	onscreen, etc... Some functions return ptrs to windows wopen()ed 
+	by that function call, so the window has to be wclose() 'd by you 
+	after return. ie, wdraw() returns a ptr to a structure it allocates 
+	(see demomous), and wfprintfm() returns a ptr to a window it openned 
+	that needs to be closed (see demoform()). Etc...
+	
+7) Using wreopen() to place an earlier window on top of the stack, and 
+	then returning. The window stack order is confused, and the wrong 
+	window gets wclose()'d.
+
+8) Forgetting the terminal NULL when specifying string sizes. The 
+	standard C function strlen() returns the number of bytes NOT 
+	COUNTING the terminal \0. You should add 1. This affects the 
+	following: wgets(), wbuttton_add(), data entry forms, many 
+	others
+
+9) WFORM - onscreen form abruptly scrolls out of view and program hangs.
+	3 possibilities: 	1) bug in wscanform() fixed in version 1.2
+						2) first or last item in WFORM table[] is a label
+							(ie: no data item). Move labels to center of table.
+						3) lengths of labels are too long 
+							Labels must fit on line to left of start of data.
+
+10) garbge onscreen when using wgets() or wprompts()  ( or wscanform )
+		You did not initialize the string storage area to blanks or \0.
+		
+11) compiler errors: unable to open file 'wtwg.h' or 'stdio.h'
+		You installed WTWG into its own directory (a good idea)
+		but didn't tell the compiler about it.
+		To fix this problem: 
+			Microsoft users: either switch to TurboC 
+							 or set environment variables LIB= and INCLUDE=
+			TurboC users: IDE: set OPTIONS/COMPILER/DIRECTORIES
+							   and OPTIONS/LINK/DIRECTORIES
+						  command line version: write a TURBOC.CFG file
+						  		with -L and -I options.
+								
+12) Linker errors:
+	-forgetting to specify the graphics libraries if you use wgs.lib, mwgm.lib
+		(even if your program doesn't do any graphics, in which case you 
+			should use wts.lib for text-only library)
+	-floating-point errors: 
+		you have a float-type data element in a data entry form
+		but your program doesn't do any floating point math. see demoform.c
+	-duplicate symbol: you are using heapdbg to create a simplified version
+		for testing, and the linker gives about ten thousand 'duplicate'
+		warning messages: ignore them all.
+	-symbol not found: _LXMUL and similar names.  
+		You are using a WTWG library compiled using Turbo C++
+		but you are still using the pre-C++ version of TURBO C. 
+		You should upgrade.	
+
+13) mysterious program crash, message "Memory Allocation Error, 
+Cannot load COMMAND.COM, System Halted" or onscreen garbage in 
+hercules graphics mode program and system hangs: Either your 
+program has exceeded the 4k default stack in TurboC (in which 
+case, add the line "unsigned _stklen=20000;" at the start of your 
+program) or your small model program has grown too large (rebuild 
+using large model), or you have a floating point math error or an 
+integer zero divide (see TurboC routine matherr()). 
+Alternatively, there is a memory overwrite in a large model 
+program somewhere, good luck finding it.
+
+14) garbage onscreen when you move the mouse (especially in VGA): 
+You turned ON the mouse cursor and left it on when doing screen 
+output. If you use wgetc() and higher-level input functions only, 
+you should never have to worry about this. If you need to 
+manipulate the mouse, make sure you turn it OFF immediately after 
+use and don't mix mouse routines with screen output.
+
+		
+                        ACKNOWLEDGEMENTS
+
+The overall plan of the routines is somewhat unique. The idea of 
+a mode-independent windows system is wholly my own. The 8-bit 
+character size and the simplifications and speed enhancements it 
+allows are my own idea and as far as I know are unduplicated 
+anywhere. The scheme of linked lists, with the current window on 
+top, is fairly common, but was developed independently by me. The 
+method of mouse and keyboard integration is, to my knowledge, 
+unique. The idea of BUTTONS and HOTKEYS comes from a simplified 
+understanding of the X-WINDOWS widget.
+						
+Most of the low-level video access methods come from TURBO C 
+PROGRAMMING ON THE IBM PC, by LAFORE. The EGA routines for write 
+mode 1 (used in wscroll() and wclear()) come from trial and 
+error. Other IBM PC hardware routines, especially cursor, 
+keyboard, mouse, and expanded memory calls, come from DOS 
+PROGRAMMERS GUIDE by Dettman. The basics of the 43/50 line EGA 
+mode logic comes from DOS POWER TOOLS by SOMERSON, but as far as 
+I know there is no resource for handling mouse and multiple 
+video pages in 43/50 line mode; that was trial and error. The 
+revised logic for using the enhanced keyboard in wkbd.c comes 
+from an article in the July 1990 C User's Journal by by STEVE 
+GRUEL. The printer driver commands for the laserjet comes from the 
+HP manual.
+
+The text of these routines was written using VEDIT, an excellent 
+editor. All the main development and debugging was done in 
+TurboC. 
+
+
+Contact me for any problems.
+Enjoy.
+

@@ -1,0 +1,847 @@
+
+
+
+
+
+/*
+	HEADER:		CUG308;
+	TITLE:		documentation for generic linked list module;
+	DATE:		5/6/90;
+	VERSION:	2.01;
+	FILENAME:	LIST.DOC;
+	SEE-ALSO:	LIST.H, LIST.C;
+	AUTHOR: 	Michael Kelly
+			254 Gold Street, Boston Ma. 02127;
+	COPYRIGHT:	May be used freely if authorship is acknowledged;
+
+*/
+
+
+				  - 2 -
+
+			   ***	CONTENTS  ***
+
+	OVERVIEW    ---------------------------------	PAGE 3
+
+	WARNINGS    ---------------------------------	PAGE 3
+
+	REQUIREMENTS	-------------------------	PAGE 3
+
+	COMMENTS    ---------------------------------	PAGE 4
+
+	NOTE	    ---------------------------------	PAGE 4
+
+	EXAMPLE DECLARATION	---------------------	PAGE 5
+
+	EXTERNAL LIST FUNCTION PROTOTYPES   ------	PAGE 5
+
+	EXTERNAL LIST FUNCTION DESCRIPTIONS ------	PAGE 6 to PAGE 8
+
+	LIST MEMBER FUNCTION CALLS  -----------------	PAGE 9
+
+	LIST MEMBER FUNCTION PROTOTYPES ----------	PAGE 9
+
+	LIST MEMBER FUNCTION DESCRIPTIONS   ------	PAGE 10 to PAGE 25
+
+
+				  - 3 -
+
+
+			   ***	OVERVIEW  ***
+
+     The List module provides generic doubly linked list management
+functions that can operate on data blocks of non-uniform size.	The List
+routines are accessed through List structure member function pointers to
+allow changes in the implementation while minimizing client module
+source changes.
+
+     Two external functions are also provided, initlist(), to initialize
+a List variable, and compact_list_table(), to free unused list table
+memory and move the remaining table entries to contiguous slots.  The
+latter is provided for applications that may use a large number of lists
+initially, and delete most of them during program execution.
+
+     One example that comes to mind would be a "merge sort" with each
+list containing a sorted "run".  If this were developed on say, an MsDos
+machine, using a version of the List code modified to include a
+disk-swapping scheme, it may be possible to simply recompile the
+application with the unmodified List code on a system that supports
+virtual memory.
+
+			   ***	WARNINGS  ***
+
+     The function listsfree() has been removed.  See COMMENTS.
+
+     An integer member variable, "id" was added to the List structure.
+See COMMENTS.  See LIST.H.
+
+     The enumeration definition for the Lerror (List error indicator)
+variable has been updated.  See LIST.H.
+
+			 ***  REQUIREMENTS  ***
+
+     Code written for prior versions will require minor modifications to
+work with Version 2.0.	See COMMENTS.
+
+     You MUST initialize your program List variables with the initlist()
+function before calling any member List functions or a hung program will
+be the most likely result.
+
+     If you have a problem, it may concern your C compiler, see
+"requirements" note in LIST.C concerning dereferencing of function
+pointers.
+
+
+				  - 4 -
+
+
+			   ***	COMMENTS  ***
+
+     In Versions prior to 2.0, static list tables were used, limiting
+the number of available lists, no matter how much memory was available
+in the system.	Since the number of possible active lists is no longer
+static, the function listsfree() has been removed.
+
+     Also, intermediary functions were used to pass a hidden list
+pointer to the function that actually operated on the list.  This was
+done as a kind of experiment in simulating the C++ "this" pointer.
+
+     Version 2.0 uses a dynamically allocated array of list pointers to
+make better use of system memory.  An integer member variable, "id" was
+added to the List structure.  This variable is set in the initlist()
+function and must be passed as the first parameter in list member
+function calls.  In Version 2.0 this "id" is used as an index into the
+List table but it could also be used as a "handle" to implement a
+disk-swapping scheme on systems without virtual memory.
+
+     Although this approach is not as much fun as the kludge in prior
+versions (the "include" files have been eliminated), the code is now
+smaller, faster and more flexible.  Some global search and replace
+should be able to update old client code.
+
+
+			     ***  NOTE	***
+
+     The destroy() member function in Versions prior to 2.0 set the List
+structure variable to all zeros.  If the program subsequently made a
+call through a destroyed List, it would use a NULL function pointer to
+unhappy results.  In Version 2.0, after freeing the memory owned by the
+List, the List member variable "id" is set to -1 and the function
+pointers left intact.  When List member functions are called they check
+the List id, and if it is not valid, set "lerror" and return 0 or NULL.
+This makes the module more robust, reducing system "lockup" during
+debugging in unprotected environments.
+
+
+				  - 5 -
+
+		     ***  EXAMPLE DECLARATION  ***
+
+    #include "list.h"
+
+    List *mylist1, mylist2;
+
+
+	      ***  EXTERNAL LIST FUNCTION PROTOTYPES  ***
+
+
+	 extern int initlist(List *newlist, int (*cmpfunc)());
+	 extern int compact_list_table(void);
+
+
+
+				  - 6 -
+
+	     ***  EXTERNAL LIST FUNCTION DESCRIPTIONS  ***
+
+	 extern int initlist(List *newlist, int (*cmpfunc)());
+
+    ACTION:
+		Initializes the List member variables and functions.
+		Stores the address of the List variable.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		newlist is a pointer to a variable of type List
+
+		cmpfunc is a pointer to a function to compare two List items
+		that returns a signed integer that is:
+
+			    == 0 if item1 == item2
+			     < 0 if item1 <  item2
+			     > 0 if item1 >  item2
+
+    WARNINGS:
+		A List variable MUST be initialized with this function
+		before any member functions for that List are called.
+
+		     (	see example on next page )
+
+
+				  - 7 -
+
+	     ***  EXTERNAL LIST FUNCTION DESCRIPTIONS  ***
+
+		      ***  initlist() EXAMPLE  ***
+
+		#include <stdio.h>
+		#include <string.h>
+		#include "list.h"
+
+		List *mylist1, mylist2;
+
+		char list_ptr_use[] = "using List pointer variable";
+		char list_var_use[] = "using List variable";
+
+		main()
+		{
+		    int status;
+
+		    mylist1 = (List *) malloc(sizeof(List));
+		    if(! mylist1)  {
+			printf("\nmalloc() Failure!\n");
+			exit(EXIT_FAILURE);
+		    }
+
+		    if(! initlist(mylist1, strcmp))  {
+			printf("\nInitialization failed\n");
+			exit(EXIT_FAILURE);
+		    }
+
+		    /*
+		     *	need "&" to point to static List structure
+		     */
+		    if(! initlist(&mylist2, strcmp))  {
+			printf("\nInitialization failed\n");
+			exit(EXIT_FAILURE);
+		    }
+
+		    status = mylist1->add(mylist1->id, list_ptr_use,
+				strlen(list_ptr_use) + 1, CURRENT);
+
+		    status += mylist2.add(mylist2.id, list_var_use,
+				strlen(list_var_use) + 1, CURRENT);
+
+		    if(status != 2)  {
+			printf("\nError adding items to Lists\n");
+			exit(EXIT_FAILURE);
+		    }
+		    ...
+		}
+
+
+				  - 8 -
+
+	     ***  EXTERNAL LIST FUNCTION DESCRIPTIONS  ***
+
+		  extern int compact_list_table(void);
+
+    ACTION:
+		Moves active List pointers to lowest position in List
+		table and frees unused table memory.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		None.
+
+    EXAMPLE:
+	    /*
+	     *	mylist is a dynamic array of List *
+	     *	purge 3 of every 4 Lists (for some purpose or other)
+	     *	and reclaim the memory
+	     */
+	    for(i = 0;i < TOTAL_LISTS;i++)
+		if(i % 4)
+		    mylist[i]->destroy(mylist[i]->id);
+
+		if(compact_list_table())  {
+		  List **tmplist;
+		    tmplist = realloc(mylist, (TOTAL_LISTS / 4));
+		    if(tmplist)
+			mylist = tmplist;
+		    else  {
+			printf("\nList compaction error\n");
+			exit(EXIT_FAILURE);
+		    }
+		}
+		...
+
+
+				  - 9 -
+
+
+		  ***  LIST MEMBER FUNCTION CALLS  ***
+
+     These are the List member functions that are bound to the List on
+which they operate by the initlist() function.	They are called as a
+member of the List variable ( e.g.  mylist.next(mylist.id) ).  All the
+examples in this section will assume a variable of type List named
+mylist.
+
+	       ***  LIST MEMBER FUNCTION PROTOTYPES  ***
+
+    /*
+     *	int add(int id, void *item, size_t itemsize, enum Place place);
+     *	int chgcompare(int id, int (int id, *newcompare)());
+     *	int cmpitem(int id, void *item1);
+     *	int delete(int id);
+     *	int destroy(int id);
+     *	int find(int id, void *item1);
+     *	int first(int id);
+     *	int getitem(int id, void *itembuf);
+     *	void *getptr(int id);
+     *	size_t getsize(int id);
+     *	int last(int id);
+     *	int next(int id);
+     *	int prev(int id);
+     *	int remitem(int id, void *itembuf);
+     *	int replitem(int id, void *newitem, size_t newsize);
+     *	int sort(int id);
+     */
+
+
+				  - 10 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+    int add(int id, void *item, size_t itemsize, enum Place place);
+
+    ACTION:
+		Adds an item to a particular List.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+		item is a void pointer to the item to store
+
+		itemsize is an unsigned integer that is the size in bytes
+		of the item ( must be > 0 )
+
+		place is one of FIRST, LAST or CURRENT (defined in list.h)
+		position in the List
+
+		FIRST stores the item at the head of the List
+
+		LAST stores the item at the tail end of the List
+
+		CURRENT stores the item immediately after the "current"
+			item in the List
+
+		in all three cases the stored item becomes the "current" item
+
+
+    EXAMPLE:
+	    main()
+	    {
+	    FILE *fp;
+	    List mylist;
+	    struct record {
+		char name[40];
+		char phone[20];
+		}rec;
+
+	    if(initlist(&mylist,strcmp))  {
+		fp = fopen("phone.dat","rb");
+		while(!feof(fp))
+		    if(fread(&rec,sizeof rec,1,fp) == 1)
+			if(!mylist.add(mylist.id, &rec, sizeof rec, LAST))
+			    break;
+	    }
+
+
+				  - 11 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+	      int chgcompare(int id, int (*newcompare)());
+
+    ACTION:
+		Binds a different compare function to the List variable.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+		newcompare() follows the description given for cmpfunc()
+		in initlist()
+
+    COMMENTS:
+
+    You may have called initlist() with a function that compares two
+    structures using the "last_name" field as the key, but now you wish to
+    sort the List by telephone number area code.  chgcompare() allows
+    the substitution of another compare function.
+
+    EXAMPLE:
+		if(! mylist.chgcompare(mylist.id, cmpnums))  {
+		    printf("\nError changing compare function\n");
+		    exit(EXIT_FAILURE);
+		}
+		...
+
+
+				  - 12 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+		   int cmpitem(int id, void *item1);
+
+    ACTION:
+		Compares item1 to the "current" item in the List.
+
+    RETURNS:
+		The integer result of a comparison between item1 and
+		the "current" item, using the compare function	that
+		was passed to initlist() or chgcompare().
+
+    ARGUMENTS:
+		id is the List member variable whose value is
+		assigned by initlist()
+
+		item1 is a void pointer to the item to compare.
+
+    EXAMPLE:	if(mylist.cmpitem(mylist.id, &rec1) == 0)
+		    mylist.replitem(mylist.id, &rec1, sizeof rec1);
+
+
+				  - 13 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			  int delete(int id);
+
+    ACTION:
+		Deletes the "current" item from the List.
+		Sets the "current" pointer to the first item in the List.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		if(! mylist.delete(mylist.id))
+		    if(lerror == EMPTY_LIST)
+			return;
+
+
+				  - 14 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			  int destroy(int id);
+
+    ACTION:
+		Returns dynamic memory allocated to the List.
+		Removes table entry for the List.
+		Sets id member variable to an "invalid" value.
+
+    RETURNS:
+		1  on success
+
+		0  on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		do  {
+		    printf("\n%s",mylist.getptr(mylist.id))
+		}
+		while(mylist.next(mylist.id));
+
+		mylist.destroy(mylist.id);
+		return;
+
+
+    COMMENTS:
+
+    Instead of setting the List member functions to NULL, V.  2.0
+    sets the id variable to -1 so that calls from Lists that have
+    been destroyed set lerror to an error code and return NULL or 0.
+
+
+				  - 15 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+		     int find(int id, void *item1);
+
+    ACTION:
+		Performs a linear search of the List for an item that
+		compares equal to item1, using the comparison function
+		that was passed to initlist() or chgcompare().
+
+    RETURNS:
+		0 if no match is found
+
+		1 if a match is found and the matching item in the List
+		  is now the "current" item
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+		item1 is a void pointer to the item to match
+
+    EXAMPLE:
+		if(! mylist.find(mylist.id, &employee_rec))
+		    mylist.add(mylist.id, &employee_rec,
+			sizeof employee_rec, LAST);
+
+
+				  - 16 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			   int first(int id);
+
+    ACTION:
+		Makes the first item in List the "current" item.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		if(! mylist.first(mylist.id))  /* quit if List empty */
+		    exit(0);
+		else
+		    do_something();
+
+
+
+				  - 17 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+		  int getitem(int id, void *itembuf);
+
+    ACTION:
+		Copies the "current" item in the List to itembuf.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+		itembuf is a void pointer to the memory destination
+		of the copy operation
+
+    WARNINGS:
+		Make sure itembuf is large enough to hold the "current"
+		item.  You can get the size in bytes of the "current"
+		item with the getsize() member function.
+
+    EXAMPLE:
+		mylist.first(mylist.id);
+		if(mylist.entries > 0)
+		do  {
+		    mylist.getitem(mylist.id, &record);
+		    fwrite(&record,sizeof record, 1, fp);
+		}
+		while(mylist.next(mylist.id));
+
+
+				  - 18 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			 void *getptr(int id);
+
+    ACTION:
+		Returns the address of the "current" item in the List.
+
+    RETURNS:
+		on success:
+
+		    void pointer to the "current" item in the List
+
+		on failure:
+
+		    NULL and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    WARNINGS:
+		Included for efficiency.  Beware of corrupting the
+		memory block if you write data to this address that
+		is larger than that allocated for the "current" item.
+		You can get the size in bytes of the "current" item in
+		the List with the getsize() member function.
+
+    EXAMPLE:
+		if(! mylist.first(mylist.id)) { /* List is empty */
+		    fclose(fp);
+		    exit(0);
+		}
+
+		do  {
+		    fwrite(mylist.getptr(mylist.id),
+			mylist.getsize(mylist.id), 1, fp);
+		}
+		while(mylist.next(mylist.id));
+
+		fclose(fp);
+
+
+				  - 19 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			size_t getsize(int id);
+
+    ACTION:
+		Returns the size in bytes of the "current" item in the List.
+
+    RETURNS:
+		on success:
+
+		    an unsigned integer equal to the size of the current
+		    item in bytes ( must be > 0 )
+
+		on failure:
+
+		    0 and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		if(mylist.getsize(mylist.id) > buffer_size)  {
+		  void *tmpbuf;
+		    buffer_size = mylist.getsize(mylist.id);
+		    tmpbuf = realloc(buffer, buffer_size);
+		    if(! tmpbuf)  {
+			printf("realloc failure!");
+			exit(EXIT_FAILURE);
+		    }
+		    buffer = tmpbuf;
+		}
+		mylist.remitem(mylist.id, buffer);
+
+
+				  - 20 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			   int last(int id);
+
+    ACTION:
+		Makes the last item in the List the "current" item.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		/* show sorted List in rev order */
+
+		mylist.sort(mylist.id);
+		if(mylist.last(mylist.id))
+		    do	{
+			printf("\n%s",mylist.getptr(mylist.id))
+		    }
+		    while(mylist.prev(mylist.id));
+
+
+				  - 21 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			   int next(int id);
+
+    ACTION:
+		Makes the next item in the List the "current" item.
+
+    RETURNS:
+		0  if next link is NULL ( does not move pointer ) or
+		   sets lerror to error code if id is invalid (see list.h)
+
+		1  on success
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		if(mylist.first(mylist.id))  {
+		    int i;
+
+		    i = 1;
+		    while(mylist.next(mylist.id))
+			++i;
+		    if(i != mylist.entries)  {
+			printf("List Module Error : Big Bug!");
+			exit(EXIT_FAILURE);
+		    }
+		}
+		else
+		    list_is_empty();
+
+
+				  - 22 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			   int prev(int id);
+
+    ACTION:
+		Makes the previous item in the List the "current" item.
+
+    RETURNS:
+		0  if previous link is NULL ( does not move pointer ) or
+		   sets lerror to error code if id is invalid (see list.h)
+
+		1  on success
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		mylist.last(mylist.id);
+		while((mylist.cmpitem(mylist.id, &newrecord) < 0)
+		    &&	mylist.prev(mylist.id))
+		;   /* empty loop -- insert in List in sorted order */
+
+		mylist.add(mylist.id, &newrecord,sizeof newrecord, CURRENT);
+
+
+				  - 23 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+		  int remitem(int id, void *itembuf);
+
+    ACTION:
+		Copies the "current" item in the List to itembuf,
+		then removes the "current" item from the List.
+		Makes the first item in the List the "current" item.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    WARNINGS:
+		Make sure itembuf is large enough to hold the "current"
+		item.  You can get the size in bytes of the "current"
+		item with the getsize() member function.
+
+    EXAMPLE:
+		if(sizeof buffer >= mylist.getsize(mylist.id))
+		    mylist.remitem(mylist.id, buffer);
+
+
+				  - 24 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+	  int replitem(int id, void *newitem, size_t newsize);
+
+    ACTION:
+		Replaces the "current" item in the List with the item
+		pointed to by newitem.	If the replacement is successful
+		the old "current" item is deleted from the List.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+		newitem is a void pointer to the item that is to take
+		the place of the "current" item in the List
+
+		newsize is the size in bytes of the new item
+
+    EXAMPLE:
+		if(mylist.find(mylist.id, &newrecord))
+		    mylist.replitem(mylist.id, &newrecord,
+			sizeof newrecord);
+
+
+				  - 25 -
+
+	      ***  LIST MEMBER FUNCTION DESCRIPTIONS  ***
+
+			   int sort(int id);
+
+    ACTION:
+		Sorts the List in ascending order according to the
+		comparison function installed with the initlist()
+		or chgcompare() functions, using the host qsort()
+		function. The first item in the sorted List becomes
+		the "current" item.
+
+    RETURNS:
+		1 on success
+
+		0 on failure and sets lerror to an error code (see list.h)
+
+    ARGUMENTS:
+		id is the List member variable whose value is assigned
+		by initlist()
+
+    EXAMPLE:
+		/* display in reverse order */
+
+		if(mylist.sort(mylist.id))  {
+		    mylist.last(mylist.id);
+
+		    do	{
+			printf("\n%s",mylist.getptr(mylist.id))
+		    }
+		    while(mylist.prev(mylist.id));
+		}
+
+

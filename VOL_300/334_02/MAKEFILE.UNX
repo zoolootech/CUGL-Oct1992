@@ -1,0 +1,199 @@
+#
+# GNUPLOT Makefile
+#
+
+# directory where to install executables on 'make install'
+DEST=/usr/local/bin
+# directory for installing man page on 'make man_install'
+MANDEST=/usr/man/manl
+# where to install help file gnuplot.gih
+#HELPDEST=/usr/local/lib/gnuplot.gih
+HELPDEST=docs/gnuplot.gih
+# Where to send email about bugs and comments (locally)
+EMAIL=\"pixar\!bug-gnuplot@sun.com\"
+
+# -DVFORK if you have vfork()
+# -DBCOPY if your memcpy() is called bcopy() (a Berkeleyism, right?)
+# -DBZERO if you need to use bzero() (another BSD feature) instead of memset() 
+# -DNOCOPY if you don't have a memcpy() by any name
+# -DGAMMA=gamma if you've got gamma(3)
+# -DNOCWDRC to inhibit check of ".gnuplot" in current directory
+#    (for security reasons)
+# -DGETCWD if your unix uses getcwd() instead of getcd()
+#    this is needed by HP-UX and Cray Unicos systems.
+# -Dunix is required to explicitly define "unix" for SCO 
+# -fswitch if you are compiling on a Sun3 (or even -f68881)
+#    (but -fswitch is buggy on some systems, so watch out)
+# -O if you trust your compiler's optimizer
+CFLAGS = -DVFORK -DBCOPY -DBZERO -DGAMMA=gamma #-gx #-O
+
+# -lplot if you have -DUNIXPLOT
+# -lsuntool -lsunwindow -lpixrect  if you have -DSUN
+# -lgl_s if IRIS4D
+# -lccgi if -DCGI
+LIBS = -lm -lplot
+
+# -D<terminal> in TERMFLAGS iff you wish to support <terminal>
+# see other terminal defines in term.h
+# -DCGI		SCO CGI
+# -DFIG         Fig graphics language (requires object.h from TransFig)
+# -DIRIS4D      IRIS4D series computer
+# -DSUN         Sun Microsystems Workstation
+# -DUNIXPLOT    unixplot
+
+TERMFLAGS =  -Iterm -DUNIXPLOT
+
+OBJS = bitmap.o command.o eval.o graphics.o help.o internal.o misc.o parse.o\
+    plot.o scanner.o setshow.o standard.o term.o util.o 
+
+DIRS = term demo bugtest docs docs/latextut translate
+CSOURCE1 = command.c setshow.c 
+CSOURCE2 = help.c graphics.c internal.c 
+CSOURCE3 = misc.c eval.c parse.c plot.c scanner.c standard.c 
+CSOURCE4 = bitmap.c term.c util.c version.c
+CSOURCE5 = term/aed.trm term/cgi.trm term/dxy.trm term/eepic.trm \
+	term/epson.trm term/fig.trm term/hp26.trm term/hp2648.trm \
+	term/hpgl.trm term/hpljii.trm 
+CSOURCE6 = term/imPcodes.h term/imagen.trm term/object.h \
+	term/iris4d.trm term/kyo.trm term/latex.trm term/pc.trm 
+CSOURCE7 = term/post.trm term/qms.trm term/regis.trm term/sun.trm \
+	term/t410x.trm term/tek.trm term/unixpc.trm term/unixplot.trm \
+	term/v384.trm term/x11.trm gnuplot_x11.c
+# not C code, but still needed
+ETC = Copyright README README.gnutex makefile.unx makefile.vms  \
+	README.x11 makefile.x11 \
+	makefile.3b1 plot.h help.h setshow.h bitmap.h term.h lasergnu \
+ 	demo/1.dat demo/2.dat demo/3.dat demo/controls.demo \
+	demo/simple.demo demo/polar.demo demo/electron.demo \
+	demo/param.demo demo/using.demo demo/using.dat \
+	bugtest/README bugtest/printf.c bugtest/scanf.c \
+	bugtest/mscbug.c term/README \
+	linkopt.vms buildvms.com
+# PC-specific files
+PC = corgraph.asm corplot.c header.mac hrcgraph.asm lineproc.mac \
+	linkopt.msc linkopt.tc makefile.msc makefile.tc pcgraph.asm 
+# Documentation and help files
+DOCS1 = docs/Makefile docs/README docs/checkdoc.c docs/doc2gih.c \
+	docs/doc2hlp.c docs/doc2hlp.com docs/doc2ms.c docs/doc2tex.c \
+	docs/gnuplot.1 docs/lasergnu.1 \
+	docs/titlepage.ms docs/titlepage.tex
+DOCS2 = docs/gnuplot.doc
+DOCS3 = docs/latextut/Makefile docs/latextut/eg1.plt \
+	docs/latextut/eg2.plt docs/latextut/eg3.dat docs/latextut/eg3.plt \
+	docs/latextut/eg4.plt docs/latextut/eg5.plt docs/latextut/eg6.plt \
+	docs/latextut/header.tex docs/latextut/tutorial.tex
+# gnutex->gnuplot translator
+TSOURCE1 = translate/Makefile translate/README translate/command.c \
+	translate/eval.c translate/gnut2p.1 translate/internal.c \
+	translate/misc.c translate/parse.c translate/plot.c
+TSOURCE2 = \
+	translate/plot.h translate/scanner.c translate/standard.c \
+	translate/test1 translate/test2 translate/util.c
+
+all:	gnuplot doc
+
+gnuplot: $(OBJS) version.o
+	$(CC) $(CFLAGS) $(OBJS) version.o $(LIBS) -o gnuplot
+
+doc:
+	( cd docs; make gnuplot.gih )
+
+translate:
+	(cd translate; make)
+
+install: gnuplot doc man_install
+	cp gnuplot lasergnu $(DEST)
+	strip $(DEST)/gnuplot
+	(cd docs; make install-unix HELPDEST=$(HELPDEST))
+
+man_install: docs/gnuplot.1 docs/lasergnu.1
+	cp docs/gnuplot.1 docs/lasergnu.1 $(MANDEST)
+
+term.o: term.h term.c $(CSOURCE5) $(CSOURCE6) $(CSOURCE7)
+	$(CC) $(CFLAGS) $(TERMFLAGS) -c term.c
+
+version.o:
+	$(CC) $(CFLAGS) -DCONTACT=$(EMAIL) -c version.c
+
+$(OBJS): plot.h
+
+command.o:
+	$(CC) $(CFLAGS) -c command.c -DHELPFILE=\"$(HELPDEST)\"
+
+command.o help.o misc.o: help.h
+
+command.o graphics.o misc.o plot.o setshow.o term.o: setshow.h
+
+bitmap.o term.o: bitmap.h
+
+SOURCES=plot.h help.h setshow.h bitmap.h term.h $(CSOURCE1) $(CSOURCE2) \
+	$(CSOURCE3) $(CSOURCE4) $(CSOURCE5) $(CSOURCE6) $(CSOURCE7)
+
+lint:
+	lint -hx $(SOURCES)
+
+clean:
+	rm -f *.o *~ term/*~
+	(cd docs; make clean)
+	(cd docs/latextut; make clean)
+	(cd translate; make clean)
+
+spotless:
+	rm -f *.o *~ term/*~ TAGS gnuplot
+	(cd docs; make clean)
+	(cd docs/latextut; make spotless)
+	(cd translate; make spotless)
+
+shar: gnuplot.sh00 gnuplot.sh01 gnuplot.sh02 gnuplot.sh03 gnuplot.sh04 \
+	gnuplot.sh05 gnuplot.sh06 gnuplot.sh07 gnuplot.sh08 \
+	gnuplot.sh09 gnuplot.sh10 gnuplot.sh11 gnuplot.sh12 \
+	gnuplot.sh13 gnuplot.sh14
+
+gnuplot.sh00:
+	echo '#!/bin/sh' > gnuplot.sh00
+	echo '# This is a shell file to make directories' >> gnuplot.sh00
+	echo mkdir $(DIRS) >> gnuplot.sh00
+
+gnuplot.sh01: $(ETC)
+	shar $(ETC) > gnuplot.sh01
+
+gnuplot.sh02: $(DOCS1)
+	shar $(DOCS1) > gnuplot.sh02
+
+gnuplot.sh03: $(DOCS2)
+	shar $(DOCS2) > gnuplot.sh03
+
+gnuplot.sh04: $(DOCS3)
+	shar $(DOCS3) > gnuplot.sh04
+
+gnuplot.sh05: $(CSOURCE1)
+	shar $(CSOURCE1) > gnuplot.sh05
+
+gnuplot.sh06: $(CSOURCE2)
+	shar $(CSOURCE2) > gnuplot.sh06
+
+gnuplot.sh07: $(CSOURCE3)
+	shar $(CSOURCE3) > gnuplot.sh07
+
+gnuplot.sh08: $(CSOURCE4)
+	shar $(CSOURCE4) > gnuplot.sh08
+
+gnuplot.sh09: $(CSOURCE5)
+	shar $(CSOURCE5) > gnuplot.sh09
+
+gnuplot.sh10: $(CSOURCE6)
+	shar $(CSOURCE6) > gnuplot.sh10
+
+gnuplot.sh11: $(CSOURCE7)
+	shar $(CSOURCE7) > gnuplot.sh11
+
+gnuplot.sh12: $(PC)
+	shar $(PC) > gnuplot.sh12
+
+gnuplot.sh13: $(TSOURCE1)
+	shar $(TSOURCE1) > gnuplot.sh13
+
+gnuplot.sh14: $(TSOURCE2)
+	shar $(TSOURCE2) > gnuplot.sh14
+
+

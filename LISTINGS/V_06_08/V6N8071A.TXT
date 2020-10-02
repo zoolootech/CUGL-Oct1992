@@ -1,0 +1,131 @@
+    1: /*
+    2:  * Listing 4:
+    3:  * 
+    4:  * sc_admin.c - a server task to run resident on a PC,
+    5:  * reading  the console and returning the data to a client
+    6:  * task such as  the CVIEW program in listing 3.
+    7:  */
+    8: 
+    9: #include <stdio.h>
+   10: #include <dev.h>
+   11: #include <task_msgs.h>
+   12: #include "sc_admin.h"  /* #defines for this application. */
+   13: 
+   14: extern char Cmd_flags;  /* Defined in <magic.h> */
+   15: 
+   16: my_seg()
+   17: {
+   18:   asm("  mov ax,ds");
+   19: }
+   20: 
+   21: main(argc,argv)
+   22: int argc;
+   23: char *argv[];
+   24: {
+   25:   register DISP_MSG *sbuffer;
+   26:   register unsigned msg_size;
+   27:   register int i;
+   28:   int bytes, j;
+   29:   unsigned rows, cols;
+   30:   unsigned row_size;
+   31:   unsigned max_size;
+   32:   int tid;
+   33: 
+   34:   /* Check for concurrent invocation. */
+   35:   if (!(Cmd_flags & RUN_CONCURRENT))
+   36:     error("This program cannot run by itself.\n");
+   37: 
+   38:   /* Get size of current display window */
+   39:   bytes = video_save_image(-1, 0, 0, 0, 0, 0);
+   40:   i = video_get_size(-1);
+   41:   rows = (i >> 8) & 0xff;
+   42:   cols = i & 0xff;
+   43:   row_size = cols * bytes;
+   44: 
+   45:   /* Allocate enough space for message plus screen buffer */
+   46:   max_size = sizeof(DISP_MSG) + ((rows + 1)* row_size);
+   47:   sbuffer = (DISP_MSG *)calloc(1, max_size);
+   48: 
+   49:   if (sbuffer == (DISP_MSG *)NULL)
+   50:     error("Not enough memory to run.\n");
+   51: 
+   52:   /* Loop forever */
+   53:   while (TRUE) {
+   54: 
+   55:     /*
+   56:      * Receive messages from any client task.
+   57:      * This task will block, consuming no CPU time
+   58:      * if no client task is requesting data.
+   59:      */
+   60:     tid = receive(0, sbuffer, max_size);
+   61: 
+   62:     /* Check for exception condition or failed receive */
+   63:     /* If OK, process and reply to tid */
+   64:     if (tid != -1 && tid != 0) {
+   65: 
+   66:       switch (sbuffer->dtype) {
+   67: 
+   68:         case GET_DSP_INFO :
+   69:           sbuffer->dtype = OK;
+   70:           sbuffer->drow = rows;
+   71:           sbuffer->dcol = cols;
+   72:           sbuffer->dbytes = bytes;
+   73:           msg_size = sizeof(DISP_MSG);
+   74:           break;
+   75: 
+   76:         case GET_NXT_CHGS :
+   77:           msg_size = sizeof(DISP_MSG) + row_size;
+   78:           sbuffer->dbytes = bytes;
+   79:           sbuffer->dtype = OK;
+   80:           i = sbuffer->drow;
+   81:           for (sbuffer->drow = -1; i < rows; i++) {
+   82:             video_save_image( -1, i, 0,
+   83:                               sbuffer->dbuffer, cols,
+   84:                               my_seg());
+   85:             if (memcmp( sbuffer->dbuffer,
+   86:                         sbuffer->dbuffer +
+   87:                         ((i + 1) * row_size),
+   88:                         row_size))
+   89:             {
+   90:               for (j = sbuffer->dcol; j < cols; j++) {
+   91:                 if (memcmp( sbuffer->dbuffer + (j * bytes),
+   92:                             sbuffer->dbuffer +
+   93:                             ((i + 1) * row_size)
+   94:                             + (j * bytes), bytes))
+   95:                   break;
+   96:               }
+   97:               memcpy( sbuffer->dbuffer +
+   98:                       ((i + 1) * row_size),
+   99:                       sbuffer->dbuffer, row_size);
+  100:               sbuffer->drow = i;
+  101:               sbuffer->dcol = j;
+  102:               break;
+  103:             }
+  104:           }
+  105:           break;
+  106: 
+  107:         case GET_ALL_DATA :
+  108:           for (i = 0; i < rows; i++)
+  109:             video_save_image( -1, i, 0,
+  110:                               sbuffer->dbuffer +
+  111:                               ((i + 1) * row_size),
+  112:                               cols, my_seg());
+  113:           sbuffer->drow = rows;
+  114:           sbuffer->dcol = cols;
+  115:           sbuffer->dbytes = bytes;
+  116:           sbuffer->dtype = OK;
+  117:           msg_size = max_size;
+  118:           break;
+  119: 
+  120:         default :
+  121:           sbuffer->dtype = NOT_OK;
+  122:           msg_size = sizeof(DISP_MSG);
+  123:           break;
+  124:       }
+  125: 
+  126:       /* Get video state (cursor position) of console */
+  127:       video_get_state(-1, &sbuffer->dstate);
+  128:       reply(tid, sbuffer, msg_size);
+  129:     }
+  130:   }
+  131: }

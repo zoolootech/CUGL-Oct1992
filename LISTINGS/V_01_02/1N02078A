@@ -1,0 +1,43 @@
+
+/* mouse_read() reads the current condition of the mouse, and returns -1 */
+/* if there is "nothing to report", the value is the keyboard equivalent */
+/* to the mouse reading significance otherwise. */
+
+static int mouse_read()
+{
+    int ret_val= -1;
+    mstruc m;
+    if(button_read().status == RIGHT_BUTTON)
+        ret_val=CARRIAGE_RETURN;
+    else
+    {
+        /* clear mouse position counter, pause to let user feel positive lock */
+        /* on selected position, like keyboard repeat delay */
+        pause(off_time);
+        mdpos_read();
+        pause(duty_time);
+        m=mdpos_read();
+        m.dx /=mouse_sensitivity;
+        m.dy /=mouse_sensitivity;
+    /* the mouse will only respond left/right or up/down on a given read */
+        if(m.dx || m.dy)
+        {
+            if(abs(m.dx) >= abs(m.dy))
+            {
+                 if(m.dx>0)
+                     ret_val=RIGHT_MOVE;
+                  else
+                     ret_val=LEFT_MOVE;
+            }
+            else
+            {
+                if(m.dy>0)
+                    ret_val=DOWN_MOVE;
+                else
+                    ret_val=UP_MOVE;
+            }
+        }
+    }
+
+    return ret_val;
+}

@@ -1,0 +1,88 @@
+
+/*
+ *  MULTTERM.C Copyright (C) 1990 by Mark R. Nelson
+ *
+ * This program uses a Stargate Technologies Plus 8 multiport board to set
+ * up four independent terminal sessions.  Four serial ports are logically
+ * connected to four windows.  The cursor will be in the active window,
+ * and any keyboard input will be directed out through the port connected
+ * with that window.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include "video.h"
+#include "keys.h"
+#include "com.h"
+
+WINDOW *windows[4];
+BOARD *board;
+
+void main()
+{
+    int key;
+    int window=0;
+    int c;
+    int i;
+/*
+ * The following four lines of code open up four windows on the screen.
+ */
+    windows[3] = window_open(13,41,37,10);
+    windows[2] = window_open(13,1,37,10);
+    windows[1] = window_open(1,41,37,10);
+    windows[0] = window_open(1,1,37,10);
+/*
+ * Next, the board is opened, followed by the four ports.
+ */
+    board = board_open( 0x580, 11 );
+    for ( i=0 ; i<4 ; i++ ) {
+   port_open( board, 0x180 + (i*8), (char) 1 << i );
+   port_set( board->ports[i], 19200L, 'N', 8, 1 );
+    }
+/*
+ * The program sits in this loop until the user hits the Escape key
+ * to exit.  Each port is polled for input characters.  All characters
+ * are dumped out to the appropriate window.  Finally, the keyboard is
+ * checked for keyboard input, and appropriate action is taken on
+ * keystrokes.
+ */
+    for ( ; ; ) {
+   for ( i = 0 ; i < 4 ; i ++ )
+       while ( (c = port_getc( board->ports[i] )) > 1 )
+           window_putc( windows[ i ], (char) c );
+/*
+ * A -1 from getkey means no key is ready.  A 27 is the escape key,
+ * which means exit the program.  The four function keys cause one of
+ * the four windows to be selected.  Finally, any other key is sent out
+ * through the port connected to the active window.
+ */
+   key = getkey();
+   switch ( key ) {
+       case -1 :
+           break;
+       case 27 :
+           board_close( board );
+           exit(0);
+       case F1 :
+           window_select( windows[0] );
+           window=0;
+           break;
+       case F2 :
+           window_select( windows[1] );
+           window=1;
+           break;
+       case F3 :
+           window_select( windows[2] );
+           window=2;
+           break;
+       case F4 :
+           window_select( windows[3] );
+           window=3;
+           break;
+       default :
+           port_putc( board->ports[window], (char) key );
+           break;
+   }
+    }
+}
+
+

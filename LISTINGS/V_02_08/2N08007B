@@ -1,0 +1,566 @@
+/*
+    A CUA compliant window class for data entry.
+    Uses dialog templates created with the resource compiler (rc),
+    or the OS/2 SDK screen painter (dlgbox).
+
+    NB: Unlike a dialog box, a form has a true client window which
+    owns the data entry control windows.
+*/
+
+#include <stdlib.h> /* for calloc() and free() */
+
+#define INCL_DOSRESOURCES /* For DosGetResource() */
+#define INCL_WIN
+#include <os2.h>
+
+#include "form.h"
+
+extern HAB hab; /* Under OS/2 1.2 you could use
+                   WinQueryAnchorBlock( HWND ) */
+
+static MRESULT EXPENTRY wpFormFrame( HWND, USHORT, MPARAM, MPARAM );
+
+HWND EXPENTRY FormLoad( HWND hwndParent, HWND hwndOwner, PFNWP pfnwp,
+                        HMODULE hmod, USHORT id, PVOID p )
+{
+    SEL sel;
+    HWND hwnd = NULL;
+
+    if (!DosGetResource( hmod, RT_DIALOG, id, &sel ))
+    {
+        hwnd = FormCreate( hwndParent, hwndOwner, pfnwp,
+                           MAKEP( sel, 0 ), hmod, id, p );
+        DosFreeSeg( sel );
+    }
+    return hwnd;
+}
+
+#define LINE_SIZE 8   /* Number of pels to move on scroll by line  */
+#define BORDER_SIZE 4 /* Whitespace to be left round edges of form */
+#define QWS_CXFORM  (2*sizeof(PVOID))
+#define QWS_CYFORM  (2*sizeof(PVOID)+sizeof(USHORT))
+
+static void set_scrollbars( HWND hwnd,
+                            SHORT cxClient, SHORT cyClient );
+
+HWND EXPENTRY FormCreate( HWND hwndParent, HWND hwndOwner,
+                          PFNWP pfnwp, PDLGTEMPLATE pDlgTemplate,
+                          HMODULE hmod, USHORT id, PVOID p )
+{
+    static BOOL fInitialized;
+    USHORT i;
+    HWND hwndFrame, hwnd;
+    HWND hctl=NULL; /* default control to start with focus */
+    FRAMECDATA fcdata; /* holds parameters used
+                          to create a frame window */
+    PSZ pszTitle;
+    HWND *pahwnd; /* pointer to array of control window handles */
+    POINTL aptl[2];
+    DLGTITEM *pDlgItem = &pDlgTemplate->adlgti[ 0 ];
+    USHORT cxClient, cyClient;
+    RECTL rclForm;
+
+    if (!fInitialized)
+    {
+        fInitialized = TRUE;
+        #define CLASS_NAME "FORM" /* any unique name will do */
+        WinRegisterClass( hab, CLASS_NAME, wpForm, 0,
+                          2*sizeof(PVOID)+2*sizeof(USHORT) );
+    }
+    fcdata.cb = sizeof fcdata; /* initialization required by PM */
+    fcdata.flCreateFlags = 
+        *(PULONG)((PBYTE)pDlgTemplate +
+                         pDlgTemplate->adlgti[0].offCtlData)|
+        FCF_TITLEBAR | FCF_SYSMENU | FCF_SIZEBORDER |
+        FCF_HORZSCROLL | FCF_VERTSCROLL;
+    fcdata.hmodResources = hmod;
+    fcdata.idResources = id;
+
+    pszTitle = (PSZ)pDlgTemplate + pDlgTemplate->adlgti[ 0 ].offText;
+    if (!*pszTitle)              /* if no text for title bar */
+        pszTitle = "(Untitled)"; /* provide something        */
+
+    aptl[0].x = pDlgItem->x;  /* read size and position of form */
+    aptl[0].y = pDlgItem->y;  /* from first DLGTITEM structure  */
+    aptl[1].x = pDlgItem->cx;
+    aptl[1].y = pDlgItem->cy;
+
+    /* convert from dialog units to pels */
+    WinMapDlgPoints( hwndParent, aptl, 2, TRUE );
+    cxClient = (USHORT)aptl[1].x;
+    cyClient = (USHORT)aptl[1].y;
+    
+    /* inflate the frame window to accomodate controls around the form */
+    aptl[0].x -= WinQuerySysValue( HWND_DESKTOP, SV_CXSIZEBORDER );
+    aptl[0].y -= WinQuerySysValue( HWND_DESKTOP, SV_CYSIZEBORDER );
+    aptl[0].y -= WinQuerySysValue( HWND_DESKTOP, SV_CYHSCROLL );
+
+    aptl[1].x += 2 * WinQuerySysValue( HWND_DESKTOP, SV_CXSIZEBORDER );
+    aptl[1].x += WinQuerySysValue( HWND_DESKTOP, SV_CXVSCROLL );
+
+    aptl[1].y += 2 * WinQuerySysValue( HWND_DESKTOP, SV_CYSIZEBORDER );
+    aptl[1].y += WinQuerySysValue( HWND_DESKTOP, SV_CYTITLEBAR );
+    aptl[1].y += WinQuerySysValue( HWND_DESKTOP, SV_CYHSCROLL );
+
+    if (fcdata.flCreateFlags & FCF_MENU)
+        aptl[1].y += WinQuerySysValue( HWND_DESKTOP, SV_CYMENU );
+    
+    hwndFrame = WinCreateWindow( hwndParent, WC_FRAME, pszTitle,
+                    0, 0, 0, 0, 0, hwndOwner, HWND_TOP, id,
+                    &fcdata, 0 );
+    if (!hwndFrame)
+    {
+        /* display PM error message */
+        ErrorInfoMessageBox( hab, hwndParent, "Form creation error" );
+        return NULL;
+    }
+    hwnd = WinCreateWindow( hwndFrame, CLASS_NAME, 0, 0, 0, 0, 0, 0, 0,
+                            HWND_TOP, FID_CLIENT, 0, 0 );
+
+    WinSetWindowPos( hwndFrame, HWND_TOP, 
+                     (SHORT)aptl[0].x, (SHORT)aptl[0].y, 
+                     (SHORT)aptl[1].x, (SHORT)aptl[1].y,
+                     SWP_SIZE | SWP_MOVE );
+
+    pahwnd = (HWND*)calloc( pDlgTemplate->adlgti[ 0 ].cChildren+1, 
+                            sizeof(HWND) );
+    WinSetWindowPtr( hwnd, QWL_USER+sizeof(PVOID), pahwnd );
+
+    rclForm.xLeft = rclForm.xRight =
+        rclForm.yBottom = rclForm.yTop = 0;
+
+    /* create the child control windows */
+    for (i = 1; i <= pDlgTemplate->adlgti[ 0 ].cChildren; i++)
+    {
+        pDlgItem = &pDlgTemplate->adlgti[ i ];
+
+        aptl[0].x = pDlgItem->x;
+        aptl[0].y = pDlgItem->y;
+        aptl[1].x = pDlgItem->cx;
+        aptl[1].y = pDlgItem->cy;
+
+        WinMapDlgPoints( hwnd, aptl, 2, TRUE/*Convert du to pels*/ );
+
+        pahwnd[ i-1 ] = WinCreateWindow( hwnd, 
+            pDlgItem->offClassName < 10 ?
+                /* Stock class or user defined? */
+                (PSZ)(0xFFFF0000 | (LONG)pDlgItem->offClassName):
+                (PSZ)pDlgTemplate + pDlgItem->offClassName,
+            (PSZ)pDlgTemplate + pDlgItem->offText,
+            pDlgItem->flStyle,
+            (SHORT)aptl[0].x, (SHORT)aptl[0].y, 
+            (SHORT)aptl[1].x, (SHORT)aptl[1].y, hwnd, HWND_TOP,
+            pDlgItem->id, 0, 0 );
+
+        /* record first tabstop item - will receive default focus */
+        if (!hctl && pDlgItem->flStyle & WS_TABSTOP)
+            hctl = pahwnd[ i-1 ];
+
+        rclForm.xLeft =   min( rclForm.xLeft,   aptl[0].x );
+        rclForm.yBottom = min( rclForm.yBottom, aptl[0].y );
+        rclForm.xRight =  max( rclForm.xRight,  aptl[0].x+aptl[1].x );
+        rclForm.yTop =    max( rclForm.yTop,    aptl[0].y+aptl[1].y );
+    }
+    WinSetWindowUShort( hwnd, QWS_CXFORM,
+                        (USHORT)(rclForm.xRight-rclForm.xLeft+
+                                                     2*BORDER_SIZE) );
+    WinSetWindowUShort( hwnd, QWS_CYFORM,
+                        (USHORT)(rclForm.yTop-rclForm.yBottom+
+                                                     2*BORDER_SIZE) );
+    WinSubclassWindow( hwndFrame, wpFormFrame );/* for scrollbars */
+    WinSubclassWindow( hwnd, pfnwp/*user defined window proc*/ );
+
+    set_scrollbars( hwnd, cxClient, cyClient );
+
+    if (!WinSendMsg( hwnd, WM_INITDLG, hctl, p ))
+        WinSetFocus( HWND_DESKTOP, hctl );
+
+    if (pDlgItem->flStyle & WS_VISIBLE)
+        WinShowWindow( hwndFrame, TRUE );
+
+    return hwnd;
+}
+
+static MRESULT EXPENTRY wpFormFrame( HWND hwnd, USHORT msg,
+                                     MPARAM mp1, MPARAM mp2 )
+{
+    USHORT usPos, usMin, usMax;
+    SHORT sMove;
+    HWND hctl;
+    MRESULT mr;
+    RECTL rclUpdate;
+
+    switch( msg )
+    {
+    case WM_HSCROLL:
+    case WM_VSCROLL:
+        hctl = WinWindowFromID( hwnd, SHORT1FROMMP(mp1) );
+        mr = WinSendMsg( hctl, SBM_QUERYRANGE, 0L, 0L );
+        usMin = SHORT1FROMMR( mr );
+        usMax = SHORT2FROMMR( mr );
+        usPos = SHORT1FROMMR( WinSendMsg( hctl, SBM_QUERYPOS, 0L, 0L ) );
+
+#if !defined(min)
+#define max(a,b)        (((a) > (b)) ? (a) : (b))
+#define min(a,b)        (((a) < (b)) ? (a) : (b))
+#endif
+        switch (SHORT2FROMMP(mp2))
+        {
+        case SB_LINELEFT: /* #defined same as SB_LINEUP */
+            sMove = -min( LINE_SIZE, usPos-usMin );
+            break;
+        case SB_PAGELEFT: /* #defined same as SB_PAGEUP */
+            sMove = -min( 8*LINE_SIZE, usPos-usMin );
+            break;
+        case SB_LINERIGHT:/* #defined same as SB_LINEDOWN */
+            sMove = +min( LINE_SIZE, usMax-usPos );
+            break;
+        case SB_PAGERIGHT:/* #defined same as SB_PAGEDOWN */
+            sMove = +min( 8*LINE_SIZE, usMax-usPos );
+            break;
+        case SB_SLIDERPOSITION:
+            sMove = SHORT1FROMMP(mp2) - usPos;
+            break;
+        default:
+            return 0L; /* Spurious commands occur under CodeView */
+        }
+        /* scroll the controls in the opposite direction to the scrollbar
+        */
+        if (SHORT1FROMMP(mp1)==FID_HORZSCROLL)
+            WinScrollWindow( WinWindowFromID( hwnd, FID_CLIENT ),
+                             -sMove, 0, NULL, NULL, NULL, &rclUpdate,
+                             SW_SCROLLCHILDREN | SW_INVALIDATERGN );
+        else
+            WinScrollWindow( WinWindowFromID( hwnd, FID_CLIENT ),
+                             0, +sMove, NULL, NULL, NULL, &rclUpdate,
+                             SW_SCROLLCHILDREN | SW_INVALIDATERGN );
+
+        WinSendMsg( hctl, SBM_SETPOS, MPFROMSHORT( usPos+sMove ), 0L );
+        return 0L;
+    }
+    return WinDefDlgProc( hwnd, msg, mp1, mp2 );
+}
+
+static void set_scrollbars( HWND hwnd,
+                            SHORT cxClient, SHORT cyClient );
+
+/* internal routine to interpret tabs and cursor keys in the form */
+static void FormNavigate( HWND hwnd, USHORT usVKey );
+
+/* Default window procedure for a form window */
+MRESULT EXPENTRY wpForm( HWND hwnd, USHORT msg, MPARAM mp1, MPARAM mp2 )
+{
+    HPS hps;
+    RECTL rcl;
+
+    switch( msg )
+    {
+    /* provides default action: no focus set */
+    case WM_INITDLG: return FALSE;
+
+    case WM_CALCVALIDRECTS:
+        /* keep child control windows in the top left of the form
+            if and when it is resized */
+        return MRFROMSHORT( CVR_ALIGNTOP | CVR_ALIGNLEFT );
+
+    case WM_CHAR:
+        {
+        USHORT usFlags = SHORT1FROMMP(mp1);
+
+        if ( usFlags & KC_VIRTUALKEY && !(usFlags & KC_KEYUP) )
+            FormNavigate( hwnd, SHORT2FROMMP(mp2) );
+        break;
+        }
+
+    case WM_COMMAND:
+        return 0L; /* unlike WinDefDlgProc() does not dismiss window */
+
+    case WM_ERASEBACKGROUND:
+        return MRFROMSHORT(TRUE);
+
+    case WM_FOCUSCHANGE:
+        /* control within form about to be given focus? */
+        if (!SHORT1FROMMP(mp2)
+            && WinQueryWindow( mp1, QW_PARENT, FALSE )==hwnd)
+        {
+            SHORT x=0, y=0;
+            SWP swp, swpCtl;
+            RECTL rclUpdate;
+            USHORT usPos;
+            HWND hctl;
+            HWND hwndFrame = WinQueryWindow( hwnd, QW_PARENT, FALSE );
+
+            WinQueryWindowPos( mp1, &swpCtl );
+            WinQueryWindowPos( hwnd, &swp );
+
+            if ( swpCtl.x < BORDER_SIZE )
+                x = BORDER_SIZE - swpCtl.x;
+            else
+            if ( swpCtl.x + swpCtl.cx > swp.cx - BORDER_SIZE )
+                x = swp.cx - BORDER_SIZE - swpCtl.x - swpCtl.cx;
+
+            if ( swpCtl.y < BORDER_SIZE )
+                y = BORDER_SIZE - swpCtl.y;
+            else
+            if ( swpCtl.y + swpCtl.cy > swp.cy - BORDER_SIZE )
+                y = swp.cy - BORDER_SIZE - swpCtl.y - swpCtl.cy;
+
+            if (x || y)
+                WinScrollWindow( hwnd, x, y, NULL, NULL, NULL,
+                    &rclUpdate, SW_SCROLLCHILDREN | SW_INVALIDATERGN );
+            if (x)
+            {
+                hctl = WinWindowFromID( hwndFrame, FID_HORZSCROLL );
+                usPos = SHORT1FROMMR(
+                            WinSendMsg( hctl, SBM_QUERYPOS, 0L, 0L ) );
+                WinSendMsg( hctl, SBM_SETPOS,
+                            MPFROMSHORT( usPos-x ), 0L );
+            }
+            if (y)
+            {
+                hctl = WinWindowFromID( hwndFrame, FID_VERTSCROLL );
+                usPos = SHORT1FROMMR(
+                            WinSendMsg( hctl, SBM_QUERYPOS, 0L, 0L ) );
+                WinSendMsg( hctl, SBM_SETPOS,
+                            MPFROMSHORT( usPos+y ), 0L );
+            }
+
+            /* Check the moved control fits in the form window.
+               If not, expand the form window.
+            */
+            WinQueryWindowPos( mp1, &swpCtl ); /* Find new location */
+
+            x = max( 0, swpCtl.x + swpCtl.cx - swp.cx + BORDER_SIZE );
+            y = max( 0, swpCtl.y + swpCtl.cy - swp.cy + BORDER_SIZE );
+
+            if (x || y)
+            {
+                SWP swp;
+                WinQueryWindowPos( hwndFrame, &swp );
+                swp.cx += x;
+                swp.cy += y;
+                WinSetWindowPos( hwndFrame, NULL, 0, 0,
+                                 swp.cx, swp.cy, SWP_SIZE );
+            }
+        }
+        break; /* leave for WinDefDlgProc() */
+
+    case WM_PAINT:
+        hps = WinBeginPaint( hwnd, NULL, NULL );
+        WinQueryWindowRect( hwnd, &rcl );
+        WinFillRect( hps, &rcl, SYSCLR_WINDOW );
+        WinEndPaint( hps );
+        return 0;
+
+    case WM_SIZE:
+        if (WinQueryWindowPtr( hwnd, QWL_USER+sizeof(PVOID) ))
+            set_scrollbars( hwnd, SHORT1FROMMP(mp2), SHORT2FROMMP(mp2) );
+        return 0;
+
+    case WM_DESTROY:
+        free( WinQueryWindowPtr( hwnd, QWL_USER+sizeof(PVOID) ) );
+        break;
+    }
+    return WinDefWindowProc( hwnd, msg, mp1, mp2 );
+}
+
+/* Update the scroll bars ranges so user will be able to scroll
+   to parts of the form that will be outside the client area.
+
+   The scroll bar range has two components:
+   the number of pels between the left of the form and the
+   left of the window, and the number of pels between the right
+   of the window and the right of the form.
+*/
+static void set_scrollbars( HWND hwnd, SHORT cxClient, SHORT cyClient )
+{
+    SHORT cxForm, cyForm;
+    SHORT sPos, sPosNew, sRange;
+    RECTL rclUpdate;
+    HWND hwndFrame = WinQueryWindow( hwnd, QW_PARENT, FALSE );
+    HWND hctl = WinWindowFromID( hwndFrame, FID_HORZSCROLL );
+
+    cxForm = WinQueryWindowUShort( hwnd, QWS_CXFORM );
+    cyForm = WinQueryWindowUShort( hwnd, QWS_CYFORM );
+
+    sPos = SHORT1FROMMR( WinSendMsg( hctl, SBM_QUERYPOS, 0L, 0L ) );
+
+    /* If the right of the window is beyond the right of the form
+       scroll to the left if possible.
+    */
+    if (sPos && sPos + cxClient > cxForm)
+    {
+        sPosNew = max( 0, cxForm - cxClient );
+        WinScrollWindow( hwnd, sPos-sPosNew, 0,
+                         NULL, NULL, NULL, &rclUpdate,
+                         SW_SCROLLCHILDREN );
+        WinInvalidateRegion( hwnd, NULL, TRUE );
+        sPos = sPosNew;
+        WinSendMsg( hctl, SBM_SETPOS, MPFROMSHORT( sPos ), 0L );
+    }
+    sRange = sPos + max( cxForm - cxClient - sPos, 0 );
+
+    if (sRange)
+    {
+        WinEnableWindow( hctl, TRUE );
+        WinSendMsg( hctl, SBM_SETSCROLLBAR, MPFROMSHORT( sPos ),
+                    MPFROM2SHORT( 0, sRange ) );
+    }
+    else
+        WinEnableWindow( hctl, FALSE );
+
+    hctl = WinWindowFromID( hwndFrame, FID_VERTSCROLL );
+    sPos = SHORT1FROMMR( WinSendMsg( hctl, SBM_QUERYPOS, 0L, 0L ) );
+    if (sPos && sPos + cyClient > cyForm)
+    {
+        sPosNew = max( 0, cyForm - cyClient );
+        WinScrollWindow( hwnd, 0, sPosNew-sPos,
+                         NULL, NULL, NULL, &rclUpdate,
+                         SW_SCROLLCHILDREN );
+        WinInvalidateRegion( hwnd, NULL, TRUE );
+        sPos = sPosNew;
+        WinSendMsg( hctl, SBM_SETPOS, MPFROMSHORT( sPos ), 0L );
+    }
+    sRange = sPos + max( cyForm - cyClient - sPos, 0 );
+    if (sRange)
+    {
+        WinEnableWindow( hctl, TRUE );
+        WinSendMsg( hctl, SBM_SETSCROLLBAR, MPFROMSHORT( sPos ),
+                    MPFROM2SHORT( 0, sRange ) );
+    }
+    else
+        WinEnableWindow( hctl, FALSE );
+    return;
+}
+
+#define STYLE( hwnd ) WinQueryWindowULong( hwnd, QWL_STYLE )
+
+static void FormNavigate( HWND hwnd, USHORT usVKey )
+{
+    HWND hctl = WinQueryFocus( HWND_DESKTOP, FALSE );
+
+    switch( usVKey )
+    {
+    case VK_TAB:
+        do
+            hctl = FormEnumItem( hwnd, hctl, EDI_NEXTTABITEM, FALSE );
+        while (STYLE( hctl )& WS_DISABLED);
+        break;
+
+    case VK_BACKTAB:
+        do
+            hctl = FormEnumItem( hwnd, hctl, EDI_PREVTABITEM, FALSE );
+        while (STYLE( hctl )& WS_DISABLED);
+        break;
+
+    case VK_RIGHT:  case VK_DOWN:
+        do
+            hctl = FormEnumItem( hwnd, hctl, EDI_NEXTGROUPITEM, FALSE );
+        while (SHORT1FROMMR(WinSendMsg( hctl, WM_QUERYDLGCODE, 0, 0 ))
+                                                            & DLGC_STATIC
+               || STYLE( hctl )& WS_DISABLED);
+        break;
+
+    case VK_LEFT:   case VK_UP:
+        do
+            hctl = FormEnumItem( hwnd, hctl, EDI_PREVGROUPITEM, FALSE );
+        while (SHORT1FROMMR(WinSendMsg( hctl, WM_QUERYDLGCODE, 0, 0 ))
+                                                            & DLGC_STATIC
+               || STYLE( hctl )& WS_DISABLED);
+        break;
+
+    default: return;
+    }
+    WinSetFocus( HWND_DESKTOP, hctl );
+    return;
+}
+
+HWND EXPENTRY FormEnumItem( HWND hwndForm, HWND hwnd,
+                            USHORT code, BOOL fLock )
+{
+    HWND *pahwnd = (HWND*)WinQueryWindowPtr( hwndForm,
+                                             QWL_USER+sizeof(PVOID) );
+    HWND *phwnd;
+
+    if (code != EDI_FIRSTTABITEM && code != EDI_LASTTABITEM)
+    {
+        for (phwnd = pahwnd; *phwnd && *phwnd != hwnd; phwnd++){}
+        if (!*phwnd)
+            return NULL;
+    }
+
+    switch( code )
+    {
+    case EDI_FIRSTTABITEM:
+        for (phwnd=pahwnd;
+            *phwnd && !(STYLE( *phwnd )& WS_TABSTOP);
+             phwnd++){}
+        break;
+
+    case EDI_LASTTABITEM:
+        for (phwnd=pahwnd; *phwnd; phwnd++){}
+        while (--phwnd != pahwnd && !(STYLE( *phwnd )& WS_TABSTOP))
+        { /* do nothing */ }
+        break;
+
+    case EDI_FIRSTGROUPITEM:
+        while (!(STYLE( *phwnd )& WS_GROUP) && --phwnd != pahwnd){}
+        break;
+
+    case EDI_LASTGROUPITEM:
+        while (*++phwnd && !(STYLE( *phwnd )& WS_GROUP)){}
+        phwnd--;
+        break;
+
+    case EDI_NEXTTABITEM:
+        do if (!*++phwnd)
+            phwnd = pahwnd;
+        while (!(STYLE( *phwnd )& WS_TABSTOP));
+        break;
+
+    case EDI_PREVTABITEM:
+        do if (phwnd==pahwnd)
+            while (*++phwnd){}
+        while (!(STYLE( *--phwnd )& WS_TABSTOP));
+        break;
+
+    case EDI_NEXTGROUPITEM:
+        if (!*++phwnd || STYLE( *phwnd )& WS_GROUP)
+            return FormEnumItem( hwndForm, *--phwnd,
+                                 EDI_FIRSTGROUPITEM, fLock );
+        break;
+
+    case EDI_PREVGROUPITEM:
+        if (phwnd==pahwnd || STYLE( *phwnd )& WS_GROUP)
+            return FormEnumItem( hwndForm, *phwnd,
+                                 EDI_LASTGROUPITEM, fLock );
+        phwnd--;
+        break;
+    }
+    if (fLock)
+        WinLockWindow( *phwnd, fLock );
+    return *phwnd;
+}
+
+/* Utility routine to fetch the latest PM error and
+   display it in a message box
+*/
+void EXPENTRY ErrorInfoMessageBox( HAB hab, HWND hwnd, PSZ pszTitle )
+{
+    PERRINFO perrinfo = WinGetErrorInfo( hab );
+    if (perrinfo)
+    {
+        SEL sel = SELECTOROF( perrinfo );
+        PUSHORT aoffszMsg = MAKEP( sel, perrinfo->offaoffszMsg );
+
+        WinAlarm( HWND_DESKTOP, WA_ERROR );
+        WinMessageBox( HWND_DESKTOP, hwnd, 
+                       MAKEP( sel, aoffszMsg[ 0 ] ),
+                       pszTitle, 0,
+                       MB_OK | MB_ICONEXCLAMATION | MB_MOVEABLE );
+        WinFreeErrorInfo( perrinfo );
+    }
+    return;
+}
+/*END*/
+

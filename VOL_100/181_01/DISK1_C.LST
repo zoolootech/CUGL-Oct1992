@@ -1,0 +1,416 @@
+Reprinted from: Micro/Systems Journal, Volume 1. No. 2. May/June 1985  
+Article Title: "C & Godbout Disk-1 Controller"
+Author: Edward Heyman
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Subscriptions are: $20/yr & $35/2yrs ; published bi-monthly
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+
+				LISTING	1
+
+/* reads the 8272 status port untill the chip is ready for a command	*/
+/* byte, must be done before each command byte is sent to the 8272	*/
+
+int	cmdstat()		
+{
+    char	c;
+    
+    while ( (c = inp(fdcstat)) < 0x80);
+    return(TRUE);
+}
+    
+
+
+
+
+				LISTING	2
+
+/*	 print value of 8272 status register 0's bits			*/
+
+st0(byte)
+char	byte;
+{
+char	drive,hd,nr,ec,se,ic;
+    
+    drive = byte & 3;			/* drive number			*/
+    hd   = (byte >> 2) & 1;		/* head address ie; 0 or 1	*/
+    nr   = (byte >> 3) & 1;		/* not ready if 1		*/
+    ec   = (byte >> 4) & 1;		/* equipment check		*/
+    se   = (byte >> 5) & 1;		/* seek end			*/
+    ic   = (byte >> 6) & 3;		/* interrupt code, does not	*/
+	/* work as per 8272 data sheet for read and write commands 	*/
+	/* since Godbout did not implement the terminal count line	*/
+    printf("\n ST0>  %s %u %s %u %s %u %s %u %s %u %s %u \n",
+	"drive = ",drive,
+	" head = ",hd," nr = ",nr," ec = ",ec," se = ",se," ic = ",ic);
+}/* st0 */
+
+
+
+
+
+				LISTING	3
+
+/* 		prompt for and return drive number			*/
+/*   drive may be entered as 'a','b','A','B','0' or '1'			*/
+
+char	getdrive()
+{
+    char	drive;
+
+    printf("\nEnter drive designation ");
+    do
+    {
+      drive = getchar();
+      if( (drive == 'A') || (drive == 'B') )
+	drive -= 'A';
+      else if( (drive == 'a') || (drive == 'b') )
+	     drive -= 'a';
+	   else if( (drive == '0') || (drive == '1') )
+	          drive -= '0';
+		else
+		{
+		  putchar('\b');
+		  putchar(' ');
+		  putchar('\b');
+		}
+    }
+    while(drive != 0 && drive != 1);
+    return(drive);
+} /*getdrive*/
+
+
+
+
+
+
+
+			   	LISTING 4
+
+/* 				RECAL.C                 		*/
+/*	program for testing routines recal() and senseintstat()		*/
+
+#include bdscio.h
+#include cdisk.h
+
+main()
+{   
+    char	drive;
+    int		temp;
+    
+    while(TRUE) {
+        drive = getdrive();
+        printf("\n drive = %u  \n",drive);
+        recal(drive);
+        }/*while*/
+}/*main*/
+
+senseintstat(bytes)
+char bytes[];
+/*		reads and returns the 8272 status register 0		*/
+/*		and the current cylinder number				*/
+{
+    cmdstat();    		/* wait till ready for command byte	*/
+    outp(fdcdata,c_rsts);	/* send command byte			*/
+    resultstat();		/* wait till ready for result byte	*/
+    bytes[0] = inp(fdcdata);	/* get status register 0 		*/
+    st0(bytes[0]);		/* print Status Register 0		*/
+    resultstat();		/* wait till ready for result byte	*/
+    bytes[1] = inp(fdcdata);	/* get cylinder number 			*/
+    printf("\ncylinder = %u\n",bytes[1]);
+}/* senseint stat */
+
+
+int	recal(drive)
+char	drive;
+/*	move the head to cylinder zero, return TRUE if successful	*/
+/*	print error message if unsuccessful				*/
+{
+int	k;			/* try counter				*/
+char	bytes[8];		/* array to hold results		*/
+
+for(k=0; k < 3; K++)
+{
+    cmdstat();  	  	/* wait till ready for command byte	*/
+    outp(fdcdata,c_reca);	/* send command byte			*/
+    cmdstat();    		/* wait till ready for command byte	*/
+    outp(fdcdata,drive);	/* end of 8272 recalibrate command phase*/
+    intstat();			/* wait till execution phase complete	*/
+    senseintstat(bytes);	/* check if recal ok 			*/
+    /* 	check for satisfactory completion and at cylinder 0	*/
+    if( ((bytes[0] & no_err) == 0x00 ) && (bytes[1] == 0)) return(TRUE);
+}/* or */
+printf("\nRecal error drive %c ",drive+'A');
+if ( (bytes[0] & ds_err) != drive ) printf("incorrect drive select\n");
+if ( (bytes[0] & nr_err) != 0 ) printf("not ready\n");
+if ( (bytes[0] & eq_err) != 0 ) printf("equipment error\n");
+return(FALSE);
+}/* recal */
+
+
+
+
+
+				LISTING 5
+
+/*				 CDISK.H 				*/
+
+#define TRUE	1
+#define FALSE	0
+
+/* the following sets the conditional compile in setdma() so that the	*/
+/* tpa(transient program area is in page 0 for CPM 2.2 and page 1 for	*/
+/* CPM 3. If you are using with CPM 2.2 or a non-banked CPM 3 set to	*/
+/* FALSE								*/
+#define CPM3	TRUE
+
+/*			 DISK1 PORTS					*/
+#define	fdport	0xc0		/* base address of disk controller	*/
+#define	fdcstat	fdport		/* 8272 status port			*/
+#define	fdcdata	fdport + 1	/* 8272 command and results data port	*/
+#define	fdma	fdport + 2	/* Disk1 DMA port (write)		*/
+#define	ints	fdport + 2	/* Disk1 interrupt status port (read)	*/
+
+/* 			8272 COMMAND CODES				*/
+#define	c_rtk	0x02		/* read a track				*/
+#define	c_spec	0x03		/* specify				*/
+#define	c_dsts	0x04		/* sense drive status			*/
+#define	c_wrat	0x05		/* write data				*/
+#define	c_rdat	0x06		/* read data				*/
+#define	c_reca	0x07		/* recalibrate				*/
+#define	c_rsts	0x08		/* sense interrupt status		*/
+#define c_rdid	0x0A		/* read ID				*/
+#define	c_form	0x0D		/* format				*/
+#define	c_seek	0x0F		/* seek					*/
+		
+			8272 ERROR MASKS
+#define ds_err	0x03		/* incorrect disk select		*/
+#define nr_err 	0x08		/* not ready error			*/
+#define eq_err	0x10		/* equipment error			*/
+#define no_err	0xc0		/* no error				*/
+
+/* 			GLOBAL VARIABLES				*/
+/*     globals have the form variable[drive] where drive is 0..3	*/
+
+char	mt[4];		/* two side operation = 1, one side = 0		*/
+char	mfm[4];		/* double density = 1, single density = 0	*/ 
+char	sk[4];		/* skip (not used) always 0			*/
+char	bps[4];		/* bytes per sector 0,1,2,3 for Godbout format	*/
+char	eot[4];		/* final sector number of track			*/
+char	gpl[4];		/* gap length					*/
+char	dtl[4];		/* data length					*/
+
+int	x,y;		/* cursor coordinates used by iolib.c		*/
+
+
+
+
+
+
+				LISTING	6
+
+/* Getresult() routine reads the results from a read,write,format or 	*/
+/* readid command returns TRUE for a good read or write			*/
+
+int	getresult(bytes)
+char	bytes[];
+{
+  int	k;			/* byte counter				*/
+    
+  for (k = 0 ; k < 7 ; ) {
+    resultstat();		/* wait till ready for result byte	*/
+    bytes[k++] = inp(fdcdata);  /* read result byte			*/
+    }
+  return((bytes[1] == 0x80));	/* return TRUE if end of cylinder	*/
+}/* getresult */
+
+
+
+
+
+				LISTING	7
+
+/*		 DENSITY.C 						*/
+/* program to return number of sides, density and format of a disk	*/
+
+#include bdscio.h
+#include cdisk.h
+
+main(argc,argv)
+char	**argv;
+{   
+  char  cyl,hds,drive;
+  char  bytes[8];	
+  int	  i;
+  
+  printf("\ndensity version 1.3\n");
+  drive = getdrive();			/* request drive		*/
+  hds= 0;				/* select head 0		*/
+  cyl = 2;				/* select cylinder 2		*/
+  dseek(drive,cyl);			/* position head		*/
+  getmt(drive);				/* find number of sides		*/
+  readid(drive,hds,bytes);		/* find density and format	*/
+  printf("\ndrive %c is ",(drive+'A'));
+    if (mt[drive]) printf("Double Sided, ");
+    else printf("Single sided, ");
+    switch (n[drive]) {
+	case 0	: printf("Single density with 128 Byte sectors\n");
+		  break;
+	case 1	: printf("Double density with 256 Byte sectors\n");
+		  break;
+	case 2	: printf("Double density with 512 Byte sectors\n");
+		  break;
+	case 3	: printf("Double density with 1024 Byte sectors\n");
+	} /* switch */
+} /* density */
+    
+
+
+
+
+				LISTING	8
+/*		segment of setparam() code				*/
+    
+    else 		/* double density */
+	switch (n[drive]) {
+	    case 1	: gpl[drive] = 0x0e;	/* gap length		*/
+			  eot[drive] = 0x1a;	/* last sector on track	*/
+			  dtl[drive] = 0xff;	/* no meaning in dd	*/
+		  break;
+	    case 2	: gpl[drive] = 0x1b;	/* gap length		*/
+			  eot[drive] = 0x0f;	/* last sector on track	*/
+			  dtl[drive] = 0xff;	/* no meaning in dd	*/
+		  break;
+	    case 3	: gpl[drive] = 0x35;	/* gap length		*/
+			  eot[drive] = 0x08;	/* last sector on track	*/
+			  dtl[drive] = 0xff;	/* no meaning in dd	*/
+		  break;
+	    } /* case */
+}/* setparam */ 
+
+
+
+
+
+
+
+
+
+				LISTING	9 
+
+/*             Setrscmd() fills the 9 byte read command array		*/
+
+setrscmd(rdcmd,drive,cyl,sector,sectors,hds)
+char	rdcmd[],drive,cyl,sector,sectors,hds;
+{
+    rdcmd[0] = (mfm[drive]<<6) | (sk[drive]<< 5) | c_rdat;
+    rdcmd[1] = (hds << 2) | drive;	/* head and drive data		*/
+    rdcmd[2] = cyl;			/* cylinder number		*/
+    rdcmd[3] = hds;			/* head				*/
+    rdcmd[4] = sector;			/* first sector to read		*/
+    rdcmd[5] = n[drive];		/* disk format			*/
+    rdcmd[6] = sector + sectors - 1;	/* last sector to read		*/
+    rdcmd[7] = gpl[drive];		/* gap length			*/
+    rdcmd[8] = dtl[drive];
+}/* setrscmd */
+
+
+
+
+
+				LISTING	10
+
+/* perform a read operation either sector or cylinder. Must have set up	*/
+/* the rdcmd[] array before calling this function. Returns TRUE if read */
+/* was successful FALSE if an error occured.				*/
+
+int	dread(rdcmd,bytes)
+char	rdcmd[];		/* array contaning the read command	*/
+char	bytes[];		/* array to recieve the results		*/
+{
+    int	j;			/* byte counter				*/
+    
+    for (j = 0; j < 9;j++)	/* send 9 bytes				*/
+        {
+        cmdstat();		/* wait till ready for command byte	*/
+        outp(fdcdata,rdcmd[j]); /* send read command byte		*/
+        }
+    intstat();			/* wait till end of execution phase	*/
+    if(getresult(bytes)) return(TRUE);
+    else {
+	printf("\nread error drive %c head %u ",
+	    ( (bytes[0]&3)+'A' ),( (bytes[0]>>2) & 1) );
+	geterror(bytes);
+	return(FALSE);
+	}
+}/* dread */
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				LISTING	11
+
+/* Geterror() prints  an error message for an incorrect read or write 	*/
+/* command, detailing the error. Must call getresults(bytes) first.	*/
+        
+int	geterror(bytes)
+char	bytes[];		/* array containg the results bytes	*/
+{
+if (( bytes[0] & 8) != 0) printf("not ready \n");
+if (( bytes[1] & 0x7f) != 0) {
+    if ((( bytes[1] & 1) != 0) && (( bytes[2] & 1) == 0))
+			printf("missing ID address mark\n");
+    if (( bytes[1] & 2 ) != 0 ) printf("write protected\n");
+    if (( bytes[1] & 4) != 0) printf("no data transfered \n");
+    if ((( bytes[1] & 0x20) != 0) && ((bytes[2] & 0x20) == 0))
+		printf("crc error in ID field\n");
+    }
+if (( bytes[2] != 0)) {
+    if (( bytes[2] & 1) != 0) printf("missing data address mark\n");
+    if (( bytes[2] & 0x20) != 0) printf("crc error in  data field\n");
+    if (( bytes[2] & 0x10) != 0) printf("wrong cylinder\n");
+    }
+return(TRUE);
+}/* geterror */
+
+
+
+
+
+
+				LISTING	12
+
+/* Segment of setform() command that sets up format command sequence 	*/
+/* to be read by the controller	as it formats each sector.		*/
+
+for(sector=1,k = 0; sector<=eot[drive]; sector++) {/* do for each sector*/
+	buffer[k++] = cyl;				/* cylinder	*/
+	buffer[k++] = hds;				/* head (side)	*/
+	buffer[k++] = sector;				/* sector	*/
+	buffer[k++] = n[drive];				/* format	*/
+    }/* for */
+}/* setformat */
+

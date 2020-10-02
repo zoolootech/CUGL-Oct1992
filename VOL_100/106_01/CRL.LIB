@@ -1,0 +1,297 @@
+;				crl.lib
+;
+;	Copyright (C) 1980, M J Maney
+;
+;	First created 8/16/80
+;	Last revised 8/29/80 14:00
+;
+;	This file contains some macro definitions designed for asembling
+;	code to the "crl" format employed by the BDS C compiler and linker.
+;
+;
+ARG1	equ	3F7H
+ARG2	equ	ARG1+2
+ARG3	equ	ARG2+2
+ARG4	equ	ARG3+2
+ARG5	equ	ARG4+2
+ARG6	equ	ARG5+2
+;
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;
+;				PROC
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;	PROC is the function header macro. It must be used to introduce each
+;	function in the source module before the object code for that module.
+;	The syntax is:
+;
+;	PROC	func_name {,<needed functions list>}
+;
+;	NB: if there is more than one "needed function", then the list
+;	MUST be protected by "<",">"...see MAC manual for explanation
+;	of the syntax.
+;
+;	To maintain compatibility with the 1.32 release of C, all function
+;	names must be upper-case alpha-numerics, and should also be limited
+;	to a maximum of eight characters in length. The needed function list
+;	must be enclosed in broken brackets if there is more than one needed
+;	function.
+;
+;	I have modified DSTR to allow the inclusion of the underscore
+;	character in function names. NB that the name in the PROC or PEND
+;	statement MUST use the '?' character in place of the underscore.
+;	Thus, the PROC for a function to be called '_bc' is:
+;
+;	PROC	?BC
+;
+;
+;	PROC creates the directory entry, the needed functions list, and the
+;	dummy vector table for the function. The body of the module begins
+;	immediately following the PROC declaration, and continues to the
+;	next PEND. PROCs and PENDs may NOT be nested!
+;
+PROC	macro	?name,?list
+@nxdir	set	100H		;;initialize a few assembe-time variables
+@nxcod	set	305H
+;;
+PROC	macro	name,list	;;after initializations, re-define PROC
+	local	start
+?rp	set	1			;;reset relocation counter
+	org	@nxdir			;;create directory entry
+	DSTR	name
+	dw	@nxcod-100H
+@nxdir	set	$
+	org	@nxcod
+	if not nul list			;;list of needed functions
+	irp	fn,<list>
+	DSTR	fn
+	endm
+	endif
+	db	0
+	dw	&name$end - &name$ent	;;length of module code
+&name$ent:
+@base	set	&name$ent
+	if not nul list			;;dummy vectors
+	bra	start
+	irp	fn,<list>
+fn	set	$
+	jmp	0
+	endm
+	endif
+start	endm			;;end of inner definition
+;;
+	PROC	?name,<?list>	;;invoke new definition to create header
+	endm
+;
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;
+;				PEND
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;	PEND must be invoked to close each function definition. The syntax is:
+;
+;	PEND	func_name
+;
+;	The func_name must match the last (active) PROC's func_name, and must
+;	be a proper function name. PEND creates the label needed to compute
+;	the length of the body and the list of relocation parameters.
+;	PEND also handles the directory termination.
+;
+PEND	macro	name
+&name$end	equ	$	;;label
+	dw	?rp - 1		;;number of relocation parameters
+?n	set	1
+	rept	?rp - 1		;;generate reloc. list
+	GDW	ra,%?n
+?n	set	?n + 1
+	endm
+@nxcod	set	$		;;set @nxcod for next function
+	org	@nxdir
+	db	80H		;;terminate directory list
+	dw	@nxcod-100H	;;and put in file limit
+	endm
+;
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;
+;			relocatable op-code mnemonics
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;	These pseudo-ops produce normal 8080 ops, but have the virtue of
+;	adding the necessary addresses to an assemble-time list of reloc
+;	parameters, which PEND uses to create the relocation parameter
+;	list.
+;
+;
+BRA	macro	adr		;;relocatable jump
+	ADDRP	$+1-@base
+	jmp	adr - @base
+	endm
+;
+;
+BZ	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jz	adr - @base
+	endm
+;
+;
+BNZ	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jnz	adr - @base
+	endm
+;
+;
+BC	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jc	adr - @base
+	endm
+;
+;
+BNC	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jnc	adr - @base
+	endm
+;
+;
+BM	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jm	adr - @base
+	endm
+;
+;
+BP	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jp	adr - @base
+	endm
+;
+;
+BPO	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jpo	adr - @base
+	endm
+;
+;
+BPE	macro	adr		;;relocatable conditional jump
+	ADDRP	$+1-@base
+	jpe	adr - @base
+	endm
+;
+;
+BSR	macro	adr		;;relocatable subroutine call
+	ADDRP	$+1-@base
+	call	adr - @base
+	endm
+;
+;
+LHLR	macro	adr		;;load HL direct from relocatable address
+	ADDRP	$+1-@base
+	lhld	adr - @base
+	endm
+;
+;
+SHLR	macro	adr		;;store HL direct to relocatable address
+	ADDRP	$+1-@base
+	shld	adr - @base
+	endm
+;
+;
+LDAR	macro	adr		;;load A direct from relocatable address
+	ADDRP	$+1-@base
+	lda	adr - @base
+	endm
+;
+;
+STAR	macro	adr		;;store A direct to relocatable address
+	ADDRP	$+1-@base
+	sta	adr - @base
+	endm
+;
+;
+LXIR	macro	reg,adr		;;load rp immediate with relocatable address
+	ADDRP	$+1-@base
+	lxi	reg,adr - @base
+	endm
+;
+;
+;	RELOC was added after I mentioned this library to Leor. He says
+;	that this (or something very like it) is the basis of a library
+;	that he has, and which is being distributed with the 1.4 release
+;	of the C package. Personally, I prefer the pseudo-ops above, but
+;	this is somewhat a matter of taste. Also, the conditional calls
+;	have not been implemented as pseudo-ops, so RELOC may occasionally
+;	be necessary, whether you prefer it or not.
+;
+;	RELOC can be used with any three-byte operation, provided that the
+;	source format has the address operand as the LAST or only operand.
+;	For example, a typical use would be:
+;
+;	RELOC <cnz foo>
+;
+;	Which will expand to generate the code-producing line:
+;
+;	cnz foo-@base
+;
+;	Of course, RELOC also adds the address of the address field of the
+;	generated code to the list of relocation parameters. Note that the
+;	protection of the entire operation is required, so that it will be
+;	handled as a single parameter by MAC. 'nuff said.
+;
+RELOC	macro	op
+	ADDRP	$+1-@base
+	op-@base
+	endm
+;
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;
+;			utility routines for crl.lib
+;
+; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ; ;
+;	There are several little utility routines that the above macros
+;	need. They follow here.
+;
+;
+ADDRP	macro	adr		;;adr an address to the reloc list
+	GSET	ra,%?rp,adr
+?rp	set	?rp + 1
+	endm
+;
+;
+GSET	macro	nam,num,val	;;set generated symbol to val
+nam&num	set	val
+	endm
+;
+;
+GDW	macro	nam,num		;;generate dw with generated symbol
+	dw	nam&num
+	endm
+;
+;
+DSTR	macro	string		;;generate byte string with B7=1 in last byte
+	local	?n,?c
+	STRLEN	<string>,?n		;;set ?n = strlen(string)
+	irpc	C,<string>
+	if	'&C' eq '?'
+?c	set	'_'
+	else
+?c	set	'&C'
+	endif
+?n	set	?n - 1
+	if	?n EQ 0
+	db	?c OR 80H
+	else
+	db	?c
+	endif
+	endm
+	endm
+;
+;
+STRLEN	macro	string,len
+len	set	0
+	irpc	C,<string>
+len	set	len + 1
+	endm
+	endm
+

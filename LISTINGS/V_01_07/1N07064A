@@ -1,0 +1,262 @@
+        page    55, 132
+
+;
+;  Firgure 2 - Mouse support functions
+;
+;  Requires MASM 5.1 or later
+;
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros,
+                                        ;e.g. MASM /Dmemodel=LARGE /Dlang=C
+
+        .CODE
+;
+;  Initialize the mouse driver
+;
+;  Arguments: none
+;  Returns:   number of buttons (2 or 3)
+;             Errors: -1 = Driver not installed
+;                      0 = Failure to initialize
+;
+MSstart PROC    USES BX ES
+        mov     ax,3533h                ;Is Int 33h valid?
+        int     21h
+        mov     ax,es
+        or      ax,bx
+        jnz     valid                   ;Not 0:0, continue
+        mov     ax,-1                   ;Invalid vector, abort
+invalid:
+        ret
+valid:
+        xor     ax,ax                   ;Try to initialize mouse driver
+        int     33h
+        or      ax,ax                   ;Successful?
+        jz      invalid                 ;Nope, abort
+        mov     ax,bx                   ;Yes, return # of buttons in AX
+        ret
+MSstart ENDP
+
+;
+;  Turn on the cursor
+;
+;  Arguments: none
+;  Returns:   none
+;
+MSc_on  PROC
+        mov     ax,0001h
+        int     33h
+        ret
+MSc_on  ENDP
+
+;
+;  Turn off the cursor
+;
+;  Arguments: none
+;  Returns:   none
+;
+MSc_off PROC
+        mov     ax,0002h
+        int     33h
+        ret
+MSc_off ENDP
+
+;
+;  Get mouse position
+;
+;  Arguments: X position (by reference)
+;             Y position (by reference)
+;             Button status (by reference)
+;  Returns:   none
+;
+    IF @DataSize
+MSgetxy PROC    USES BX CX DX ES, ms_x:PTR, ms_y:PTR, buttons:PTR
+    ELSE
+MSgetxy PROC    USES BX CX DX, ms_x:PTR, ms_y:PTR, buttons:PTR
+    ENDIF
+        mov     ax,0003h
+        int     33h
+    IF @DataSize                                ;(Far arguments)
+        mov     ax,bx                           ;Store button status
+        les     bx,buttons
+        mov     es:[bx],ax
+        les     bx,ms_x                         ;Store X
+        mov     es:[bx],cx
+        les     bx,ms_y                         ;Store Y
+        mov     es:[bx],dx
+    ELSE                                        ;(Near arguments)
+        mov     ax,bx                           ;Store button status
+        mov     bx,buttons
+        mov     [bx],ax
+        mov     bx,ms_x                         ;Store X
+        mov     [bx],cx
+        mov     bx,ms_y                         ;Store Y
+        mov     [bx],dx
+    ENDIF
+        ret
+MSgetxy ENDP
+
+;
+;  Set mouse position
+;
+;  Arguments: X position
+;             Y position
+;  Returns:   none
+;
+MSsetxy PROC    USES CX DX, ms_x:WORD, ms_y:WORD
+        mov     ax,0004h
+        mov     cx,ms_x
+        mov     dx,ms_y
+        int     33h
+        ret
+MSsetxy ENDP
+
+;
+;  Set mouse horizontal limits
+;
+;  Arguments: Minimum X bound
+;             Maximum X bound
+;  Returns:   none
+;
+MSxlim  PROC    USES CX DX, min_x:WORD, max_x:WORD
+        mov     ax,0007h
+        mov     cx,min_x
+        mov     dx,max_x
+        int     33h
+        ret
+MSxlim  ENDP
+
+;
+;  Set mouse vertical limits
+;
+;  Arguments: Minimum Y bound
+;             Maximum Y bound
+;  Returns:   none
+;
+MSylim  PROC    USES CX DX, min_y:WORD, max_y:WORD
+        mov     ax,0008h
+        mov     cx,min_y
+        mov     dx,max_y
+        int     33h
+        ret
+MSylim  ENDP
+
+;
+;  Set mouse graphics cursor shape
+;
+;  Arguments: Horizontal (X) position
+;             Vertical (Y) position
+;             Pointer to screen & cursor masks
+;  Returns:   none
+;
+MSsetcg PROC    Uses BX CX DX ES, pos_x:WORD, pos_y:WORD, masks:FAR PTR
+        mov     ax,0009h
+        mov     bx,pos_x
+        mov     cx,pos_y
+        les     dx,masks
+        int     33h
+        ret
+MSsetcg ENDP
+
+;
+;  Set mouse text cursor type
+;
+;  Arguments: 0=Attribute cursor, 1=Hardware cursor
+;             Screen mask for attribute cursor/Starting hardware scan line
+;             Cursor mask for attribute cursor/Ending hardware scan line
+;  Returns:   none
+;
+MSsetct PROC    USES BX CX DX, ctype:WORD, smask:WORD, cmask:WORD
+        mov     ax,000Ah
+        mov     bx,ctype
+        mov     cx,smask
+        mov     dx,cmask
+        int     33h
+        ret
+MSsetct ENDP
+
+;
+;  Set sensitivity
+;
+;  Arguments: Mickeys to cause 8 pixel horizontal change
+;             Mickeys to cause 8 pixel vertical change
+;             Double speed threshold
+;  Returns:   none
+;
+MSssens PROC    USES BX CX DX, sens_x:WORD, sens_y:WORD, doubl:WORD
+        mov     ax,001Ah
+        mov     bx,sens_x
+        mov     cx,sens_y
+        mov     dx,doubl
+        int     33h
+        ret
+MSssens ENDP
+
+;
+;  Get sensitivity
+;
+;  Arguments: Mickeys to cause 8 pixel horizontal change (reference)
+;             Mickeys to cause 8 pixel vertical change (reference)
+;             Double speed threshold (reference)
+;  Returns:   Above 3 values by reference
+;
+    IF @DataSize
+MSgsens PROC    USES BX CX DX ES, sens_x:PTR, sens_y:PTR, doubl:PTR
+    ELSE
+MSgsens PROC    USES BX CX DX, sens_x:PTR, sens_y:PTR, doubl:PTR
+    ENDIF
+        mov     ax,001Bh                        ;Get data
+        int     33h
+    IF @DataSize                                ;(Far pointers)
+        mov     ax,bx                           ;Save X Mickeys
+        les     bx,sens_x                       ;Store X Mickeys
+        mov     es:[bx],ax
+        les     bx,sens_y                       ;Store Y Mickeys
+        mov     es:[bx],cx
+        les     bx,doubl                        ;Store double speed threshold
+        mov     es:[bx],dx
+    ELSE                                        ;(Near pointers)
+        mov     ax,bx                           ;Save X Mickeys
+        mov     bx,sens_x                       ;Store X Mickeys
+        mov     [bx],ax
+        mov     bx,sens_y                       ;Store Y Mickeys
+        mov     [bx],cx
+        mov     bx,doubl                        ;Store double speed threshold
+        mov     [bx],dx
+    ENDIF
+        ret
+MSgsens ENDP
+
+;
+;  Install user-defined event handler
+;
+;  Arguments: New call mask
+;             New vector
+;             Pointer to storage for old call mask
+;             Pointer to storage for old vector
+;
+MSvinst PROC    USES BX CX DX DS ES, cmask:WORD, vect:FAR PTR, \
+                                     omask:PTR, ovect:PTR
+        mov     ax,0014h                        ;Setup int
+        mov     cx,cmask                        ;Pass call mask
+        les     dx,vect                         ;Pass new vector
+        int     33h
+    IF @DataSize                                ;(Far arguments)
+        lds     bx,omask                        ;Store old call mask
+        mov     ds:[bx],cx
+        lds     bx,ovect
+        mov     ds:[bx],dx                      ;Store old vector
+        mov     ax,es
+        mov     ds:[bx+2],ax
+    ELSE                                        ;(Near arguments)
+        mov     bx,omask                        ;Store old call mask
+        mov     [bx],cx
+        mov     bx,ovect                        ;Store old vector
+        mov     [bx],dx
+        mov     ax,es
+        mov     [bx+2],ax
+    ENDIF
+        ret
+MSvinst ENDP
+
+        end

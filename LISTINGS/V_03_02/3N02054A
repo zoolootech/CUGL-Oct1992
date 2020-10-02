@@ -1,0 +1,423 @@
+/*
+ * GRAFBUTN.C
+ *
+ * A sample application demonstrating the use of
+ * a custom text button and a free-standing
+ * graphic pushbutton in an application's main
+ * window. 
+ *
+ * Written by Alex Leavens, for ShadowCat Technologies
+ */
+
+#include <WINDOWS.H>
+#include "GRAFBUTN.H"
+
+/* ID of user-created buttons  */
+#define	GRAPH_BUTTON_ID	4001
+#define	TEXT_BUTTON_ID	4002
+
+/* defines for user-drawn buttons... */
+#define		NOFOCUS_NOFLAGS		0
+#define		FOCUS_NOFLAGS		1
+#define		FOCUS_FOCUS		2
+#define		DRAWALL			4
+#define		SELECT_NOFLAGS		8
+#define		SELECT_SELECT		0x10
+#define		SELECT_FOCUS		0x20
+#define		SELECT_FOCUS_SELECT	0x30
+#define		ALL_NOFLAGS		0x40
+#define		ALL_FOCUS		0x80
+#define		ALL_SELECT		0x100
+#define		ALL_FOCUS_SELECT	0x180
+
+/*------- Function prototypes --------*/
+
+HWND CreateGraphButtonWindow(HWND);
+HWND CreateTextButtonWindow(HWND);
+BOOL DrawBitmap (HDC, int, int, HBITMAP, DWORD);
+void DrawGraphicButton(HWND, unsigned, WORD, LONG);
+WORD NEAR PASCAL  GetDesiredButtonState(HWND, WORD, WORD);
+
+/*----------- Global variables ---------*/
+ 
+HANDLE  hInst   = 0;  /* Handle to instance.             */
+HWND    MainhWnd= 0;  /* Handle to main window.          */
+HWND    hClient = 0;  /* Handle to window in client area.*/
+FARPROC lpClient= 0L; /* Function for same.              */
+
+HANDLE	hGraphButton;
+HANDLE	hTextButton;
+
+/* WinMain() -    Main windows routine */
+int PASCAL WinMain(HANDLE hInstance,
+    HANDLE hPrevInstance, LPSTR lpCmdLine,
+    int nCmdShow)
+{
+    MSG msg;
+ 
+    hInst = hInstance; /* Saves the current instance */
+    
+    if (!hPrevInstance) /* If already running */
+        if (!BLDRegisterClass(hInstance))
+            return FALSE;
+ 
+    MainhWnd = BLDCreateWindow(hInstance);
+    if (!MainhWnd)
+        return FALSE;
+    ShowWindow(MainhWnd, nCmdShow);
+    UpdateWindow(MainhWnd);
+    while (GetMessage(&msg, 0, 0, 0))
+        {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+        }
+    return(msg.wParam);
+}
+ 
+/*   WINDOW PROCEDURE FOR MAIN WINDOW  */
+long FAR PASCAL
+BLDMainWndProc(HWND hWnd, unsigned message, WORD wParam,
+    LONG lParam)
+{
+    switch (message)
+    {
+    case WM_DRAWITEM: /* Owner draw button message */
+	DrawGraphicButton(hWnd, message,
+            wParam, lParam);
+	break;
+    case WM_CREATE:
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    case WM_SETFOCUS: /* notification of focus change */
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        return DefWindowProc(hWnd, message, wParam, lParam);
+        break;
+    case WM_COMMAND: /* command from the main window */
+        switch(wParam)
+        {
+        case IDM_Quit:
+            PostMessage(hWnd, WM_CLOSE, 0, 0L);
+            return DefWindowProc(hWnd, message,
+                        wParam,lParam);
+            break;
+        case GRAPH_BUTTON_ID:
+            MessageBox(hWnd,"You clicked my button!",
+                "Graphic button example",
+                MB_ICONEXCLAMATION | MB_OK);
+            break;
+        case TEXT_BUTTON_ID:
+            MessageBox(hWnd,"You clicked my button!",
+                "Text button example",
+                MB_ICONEXCLAMATION | MB_OK);
+            break;
+        default:
+            return DefWindowProc(hWnd, message,
+                                wParam, lParam);
+        }
+        break;
+    default:
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    }
+    return FALSE; /* Returns FALSE if processed */
+}
+
+/* BLDRegisterClass() - Registers class for main window  */
+
+    BOOL
+BLDRegisterClass(HANDLE	hInstance)
+{
+    WNDCLASS WndClass;
+  
+    WndClass.style         = 0;
+    WndClass.lpfnWndProc   = BLDMainWndProc;
+    WndClass.cbClsExtra    = 0;
+    WndClass.cbWndExtra    = 0;
+    WndClass.hInstance     = hInstance;
+    WndClass.hIcon         = LoadIcon(HInstance,"GRAPHIC");
+    WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+    WndClass.hbrBackground = CreateSolidBrush(
+                            GetSysColor(COLOR_WINDOW));
+    WndClass.lpszMenuName  = "GRAFBUTN";
+    WndClass.lpszClassName = "GRAFBUTN";
+ 
+    return RegisterClass(&WndClass);
+}
+    
+/* BLDCreateWindow() - Creates the main window */
+ 
+    HWND
+BLDCreateWindow(HANDLE	hInstance)
+{
+    HWND hWnd; /* window handle */
+    int coordinate[4]; /* Coordinates of main window  */
+
+    coordinate[0]=CW_USEDEFAULT;
+    coordinate[1]=0;
+    coordinate[2]=CW_USEDEFAULT;
+    coordinate[3]=0;
+    
+    hWnd = CreateWindow(
+        "GRAFBUTN",  /* window class registered earlier */
+        "Graphic Picturebutton Example", /* caption */
+        WS_OVERLAPPED | WS_THICKFRAME |
+        WS_SYSMENU    | WS_MINIMIZEBOX|
+        WS_MAXIMIZEBOX,    /* window style */
+           CW_USEDEFAULT,  /* x position   */
+           0,              /* y position   */
+           CW_USEDEFAULT,  /* width        */
+           0,              /* height       */
+           0,              /* parent handle   */
+           0,              /* menu or child ID*/
+           hInstance,      /* instance        */
+           (LPSTR)NULL);   /* additional info */
+
+    hGraphButton    = CreateGraphButtonWindow(hWnd);
+    hTextButton     = CreateTextButtonWindow(hWnd);
+    if (hGraphButton && hTextButton)
+    	return hWnd;
+    else
+    	return NULL;
+}
+
+/* CreateTextButtonWindow()
+ *   Creates a free-standing child window
+ *   button in a program's main window.
+ */
+
+HWND CreateTextButtonWindow(HWND hWnd)
+{
+    HWND 	deskhWnd, hButton;
+    HDC		deskhDC;
+    int		gl_hchar, gl_wchar;
+    TEXTMETRIC	sysText;
+
+    /* Get system metrics so that we can size the button properly.
+     */
+    deskhWnd = GetDesktopWindow();
+    deskhDC = GetDC(deskhWnd);
+    
+    /* Grab the size of text cells...
+     */
+    GetTextMetrics(deskhDC, (LPTEXTMETRIC)&sysText);
+    gl_wchar = sysText.tmAveCharWidth;
+    gl_hchar = sysText.tmHeight;
+    ReleaseDC(deskhWnd, deskhDC);
+    
+    hButton = CreateWindow(
+    		"BUTTON",
+    		(LPSTR)"My Button",
+    		BS_PUSHBUTTON |
+    		   WS_CHILD   |
+    		   WS_VISIBLE,
+    		60,
+    		20,
+    		11 * gl_wchar,
+    		gl_hchar + gl_hchar / 3 + 1,
+    		hWnd,
+    		TEXT_BUTTON_ID,
+    		hInst,
+    		NULL);
+
+    if (!hButton)
+    {
+    	DestroyWindow(hWnd);
+    	return FALSE;
+    }
+
+    return hButton;
+}
+
+/* CreateGraphButtonWindow() - Creates a free-standing
+ *     child window button in a program's main window.
+ */
+HWND CreateGraphButtonWindow(HWND hWnd)
+{
+    HWND        hButton;
+
+    hButton = CreateWindow("BUTTON", (LPSTR)"My Button",
+    		BS_OWNERDRAW | WS_CHILD | WS_VISIBLE,
+    		20,     /* x offset */
+    		20,     /* y offset */
+    		32,     /* x size in pixels */
+    		32,     /* y size in pixels */
+    		hWnd, GRAPH_BUTTON_ID, hInst, NULL);
+    if (!hButton)
+        {
+        DestroyWindow(hWnd);
+        return FALSE;
+        }
+    return hButton;
+}
+
+/*
+ * DrawBitmap()
+ *
+ * Given a handle to a bitmap, and a device
+ * context, this routine will draw the bitmap
+ * into that device context at the requested
+ * offset locations. 
+ *
+ * Returns: TRUE - bitmap sucessfully drawn
+ *	    FALSE - bitmap was not drawn sucessfully
+ */
+
+    BOOL
+DrawBitmap (HDC     hDC,    /* Destination DC */
+	    int     x,      /* X offset */
+	    int     y,      /* Y offset */
+	    HBITMAP hbm,    /* Handle to source bitmap */
+	    DWORD   rop)    /* Raster OP to perform */
+{
+    HDC       	hMemoryDC;
+    BITMAP    	bm;
+    BOOL      	f;
+    HBITMAP	bmHand;
+
+    if (!hDC || !hbm)	/* If either handle is bad, punt */
+        return FALSE;
+
+    /* Before we can blit the bitmap, it has to be
+     * selected into a device context compatible
+     * with the destination.  So first, we need to
+     * create the compatible DC. 
+     */
+    hMemoryDC = CreateCompatibleDC(hDC);
+
+    /* Select desired bitmap into the memory DC we
+     * just created.  Also remember the old bitmap
+     * handle that used to be in the DC, so that we
+     * can restore it after we're done. 
+     */
+    bmHand = SelectObject(hMemoryDC, hbm);
+
+    /* Get information about the bitmap, so that we
+     * can blit it properly.
+     */
+    GetObject(hbm, sizeof(BITMAP), (LPSTR)&bm);
+
+    /* Everything's set up--we can now blit the
+     * image into the destination DC.
+     */
+    f = BitBlt(hDC,     /* Destination DC */
+	       x,       /* Destination x offset (if any) */
+	       y,       /* Destination y offset (if any) */
+	       bm.bmWidth,/* Width of source bitmap */
+	       bm.bmHeight,/* Height of source bitmap */
+	       hMemoryDC,/* Source DC */
+	       0,       /* Source x offset (none) */
+	       0,       /* Source y offset (none) */
+	       rop);    /* Copy the bitmap... */
+
+    /* Now select the old bitmap handle back into the
+     * memory DC.  (Failure to do this will cause a 
+     * small piece of Windows resource to be lost
+     * until re-boot time.)
+     */
+    SelectObject(hMemoryDC, bmHand);
+
+    /* Delete the memory DC so that we're not
+     * using up system resources.
+     */
+    DeleteDC(hMemoryDC);
+
+    /* Return status of the BitBlt() call. */
+    return f;
+}
+
+/* DrawGraphicButton()
+ *    Draws a graphic bitmap button on the screen.
+ * Returns; Nothing
+ */
+
+    void
+DrawGraphicButton(HWND hWnd, unsigned message, WORD wParam,
+                LONG lParam)
+{
+    LPDRAWITEMSTRUCT lpDraw; /* Info about thing to draw */
+    WORD        flags;  /* Info about button state */
+    HBITMAP     bmButton; /* Handle to bitmap button */
+
+    lpDraw = (LPDRAWITEMSTRUCT)lParam;
+
+    /* If control is not the right type, punt.
+     * (This should never happen, right?)
+     */
+    if (lpDraw->CtlType != ODT_BUTTON)
+    	return;
+
+    /* Get button state   */
+    flags = GetDesiredButtonState(hWnd,
+            lpDraw->itemAction, lpDraw->itemState);
+    switch(flags)
+    {
+	case ALL_SELECT:
+        case ALL_FOCUS_SELECT:
+        case SELECT_SELECT:
+        case SELECT_FOCUS_SELECT:
+            bmButton = LoadBitmap(hInst, "DOWNFACE");
+	    break;
+	default:
+            bmButton = LoadBitmap(hInst, "UPFACE");
+    }
+
+    DrawBitmap(lpDraw->hDC, 0, 0, bmButton, SRCCOPY);
+}
+
+/***************************
+ *
+ * GetDesiredButtonState()
+ *   Returns a value which indicates the desired end result
+ * of a button press on an owner-drawn button.
+ *
+ * Params:
+ *  hWnd - window handle
+ *  itemAction - action taken
+ *  itemState - desired end state
+ *
+ * Returns:
+ *  Flag setting
+ *
+ * Assumptions:
+ *  None
+ *
+ */
+
+    WORD NEAR PASCAL
+GetDesiredButtonState(HWND	hWnd,
+		      WORD	itemAction,
+		      WORD	itemState)
+{
+    WORD lFlags;  /* Local flag value */
+    
+    /*-----------------------*/
+    
+    lFlags = NOFOCUS_NOFLAGS;
+    
+    if (itemAction & ODA_FOCUS)
+    {
+	if (itemState & ODS_FOCUS)
+	    lFlags = FOCUS_FOCUS;
+	else
+	    lFlags = FOCUS_NOFLAGS;
+    }
+
+    if (itemAction & ODA_SELECT)
+    {
+	if (itemState & ODS_FOCUS)
+	    lFlags |= SELECT_FOCUS;
+	if (itemState & ODS_SELECTED)
+	    lFlags |= SELECT_SELECT;
+    }
+
+    if (itemAction & ODA_DRAWENTIRE)
+    {
+    	lFlags = ALL_NOFLAGS;
+	if (itemState & ODS_FOCUS)
+	    lFlags |= ALL_FOCUS;
+	if (itemState & ODS_SELECTED)
+	    lFlags |= ALL_SELECT;
+    }
+
+    return (lFlags);
+}

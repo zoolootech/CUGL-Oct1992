@@ -1,0 +1,59 @@
+
+/*****************************************************/
+/* icon.c                                            */
+/* -- Module implements a routine to create an icon. */
+/*****************************************************/
+
+/*****************************************************/
+/* Header files.                                     */
+/*****************************************************/
+#include <windows.h>
+#include "icon.h"
+
+/*****************************************************/
+/* Routines.                                         */
+/*****************************************************/
+
+HICON
+HicnFromBmpBmp(HBITMAP hbmpColor, HBITMAP hbmpMono)
+/******************************************************/
+/* -- Given a color and monochrome bitmap with the    */
+/*    dimension, create and return a handle to an     */
+/*    icon.                                           */
+/* -- hbmpColor	: Color bitmap.                       */
+/* -- hbmpMono	: Monochrome bitmap.                  */
+/******************************************************/
+    {
+    LPICN   lpicn;
+    BITMAP  bmpColor, bmpMono;
+    HICON   hicn;
+    DWORD   cbColor, cbMono;
+
+    /* Get the header info from the bitmaps. */
+    GetObject(hbmpMono, sizeof bmpMono, (LPSTR)&bmpMono);
+    cbMono = bmpMono.bmWidthBytes * bmpMono.bmHeight;
+    GetObject(hbmpColor, sizeof bmpColor, (LPSTR)&bmpColor);
+    cbColor = bmpColor.bmWidthBytes * bmpColor.bmHeight;
+
+    /* Get some space for the icon. */
+    hicn = GlobalAlloc(GMEM_MOVEABLE, sizeof *lpicn -
+      sizeof(BYTE) + cbColor + cbMono);
+    if (hicn == NULL)
+        return hicn;
+
+    /* Initialize the icon header info. */
+    lpicn = (LPICN)GlobalLock(hicn);
+    lpicn->cbLine = bmpMono.bmWidthBytes;
+    lpicn->dx = bmpColor.bmWidth;
+    lpicn->dy = bmpColor.bmHeight;
+    lpicn->ptHot.x = lpicn->ptHot.y = 0;
+    lpicn->cpln = bmpColor.bmPlanes;
+    lpicn->cbit = bmpColor.bmBitsPixel;
+
+    /* Finish the filling the icon with bitmap bits. */
+    GetBitmapBits(hbmpMono, cbMono, lpicn->rgb);
+    GetBitmapBits(hbmpColor, cbColor,
+        lpicn->rgb + cbMono);
+    GlobalUnlock(hicn);
+    return hicn;
+    }

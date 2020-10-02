@@ -1,0 +1,1403 @@
+;/*
+;*****************************************************************
+;*	Written by : Hakuo Katayose (JUG-CP/M No.179)		*
+;*		JIP 980						*
+;*		49-114 	kawauchi-Sanjuunin-machi		*
+;*		Sendai, Miyagi, Japan.				*
+;*		Telph.No (0222)61-3219				*
+;*	Edited  by : 						*
+;*								*
+;*****************************************************************
+;*/
+;
+	INCLUDE	"BDS.LIB"
+
+BIASEXP	EQU	0400H
+NBYTES	EQU	16
+
+;
+;--------------------------------------------------------------
+;--------------------------------------------------------------
+;
+; 128_bit floting opration result flags.
+;
+;	EP		1  byte length.
+;	OUTSGN		1  byte length.
+;	OUTBUF		48 byte length.
+;	
+;	OVF		1  byte length.
+;	UNF		1  byte length.
+;	ZERO		1  byte length.
+;	MINUS		1  byte length.
+;
+;--------------------------------------------------------------
+;	
+; 128_bit floting work_registers.
+;
+;	TEMPW		nbytes+5 byte length.
+;	
+;	UU		nbytes byte length.
+;	VV		nbytes byte length.
+;	WW		nbytes byte length.
+;	XX		nbytes byte length.
+;	YY		nbytes byte length.
+;	
+;--------------------------------------------------------------
+;
+; 128_bit floting Acc registers.
+;
+;	LA	128_bit floting ACC_A.		A_Acc extention.
+;	AREG	128_bit floting ACC_A.		A_Acc.
+;	AEXP	128_bit floting ACC_A.		expornemt.
+;	ASIGN	128_bit floting ACC_A.		sign_flag.
+;	
+;	LB	128_bit floting ACC_B.		B_Acc extention.
+;	BREG	128_bit floting ACC_B.		B_Acc.
+;	BEXP	128_bit floting ACC_B.		expornemt.
+;	BSIGN	128_bit floting ACC_B.		sign_flag.
+;	
+;	TEN1	128_bit floting constant.	10.0
+;	ONE	128_bit floting constant.	 1.0
+;	TENM1	128_bit floting constant.	 0.1
+;	NUM0	128_bit floting constant.	 0.0
+;
+;
+;
+;
+
+	FUNCTION	fp128
+	call	arghak
+	push	b
+	lda	arg1
+	ora	a
+	jz	FPTEST
+	cpi	11
+	jz	FPIN
+	cpi	255
+	jz	FPTST2
+	lhld	arg2
+	xchg
+	lxi	h,AREG
+	call	unpack		; (arg2) --> Acc. (Unpack).
+	lda	arg1
+	cpi	10
+	jz	FPCONV
+	lhld	arg3
+	xchg
+	lxi	h,BREG
+	call	unpack		; (arg2) --> Bcc. (Unpack).
+	lxi	h,exitp
+	push	h
+	lda	arg1
+	cpi	1
+	jz	FPMUL0
+	cpi	2
+	jz	FPDIV0
+	cpi	3
+	jz	FPADD0
+	cpi	4
+	jz	FPSUB0
+	pop	h
+	pop	b
+	lxi	h,0
+	ret
+
+exitp:	lhld	arg4
+	xchg
+	call	pack
+	lxi	h,OVF
+	xra	a
+	ora	m
+	inx	h
+	ora	m
+	inx	h
+	ora	m
+	inx	h
+	ora	m
+	mov	l,a
+	mvi	h,0
+	pop	b
+	ret
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT DIVIDE ------ Acc = Acc / Bcc.
+;--------------------------------------------------------------
+
+FPDIV0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	ovrfw
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	;
+fdiv1:	lxi	h,0
+	shld	LA
+	shld	LA+2
+	shld	LA+4
+	shld	LA+6
+	lxi	h,LA+NBYTES+NBYTES-1
+	mvi	b,NBYTES+1
+	xra	a
+	call	sftr0
+	lxi	h,BREG+NBYTES-1
+	xra	a
+	call	sftr
+	lhld	BEXP
+	inx	h
+	shld	BEXP
+	mvi	b,NBYTES*8
+fdiv2:	push	b
+	lxi	d,AREG+NBYTES-1
+	lxi	h,BREG+NBYTES-1
+	call	icmp		; comp  Acc - Bcc.
+	jc	fdiv3		; if Acc < Bcc then fdiv3.
+	lxi	d,AREG
+	lxi	h,BREG
+	call	isub		; Acc = Acc - Bcc.
+	xra	a
+fdiv3:	cmc
+	lxi	h,LA
+	call	sftl
+	call	sftl
+	pop	b
+;	djnz	fdiv2
+	db	010h,0dch
+
+	lxi	h,LA
+	lxi	d,AREG
+	lxi	b,NBYTES
+	ldir
+	lhld	AEXP
+	lxi	d,BIASEXP+2
+	dad	d
+	xchg
+	lhld	BEXP
+	xchg
+	jmp	expnrm
+
+
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT MULTIPLY ------ Acc = Acc * Bcc.
+;--------------------------------------------------------------
+;
+FPMUL0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	setzero
+	;
+fmul3:	lxi	h,AREG
+	lxi	d,LA
+	lxi	b,nbytes
+	ldir
+
+	lxi	h,BREG
+	call	imul
+
+	lhld	AEXP
+	xchg
+	lhld	BEXP
+	dad	d
+	lxi	d,BIASEXP
+
+expnrm:	ora	a
+	dsbc	d
+	shld	AEXP
+	jc	undrfw
+	mov	a,h
+	cpi	BIASEXP/128
+	jnc	ovrfw
+	lda	ASIGN
+	lxi	h,BSIGN
+	xra	m
+	sta	ASIGN
+	jmp	fpnorm
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT ADDITION  Acc = Acc + Bcc.
+; FLOATING POINT SUBTRACT  Acc = Acc - Bcc.
+;--------------------------------------------------------------
+;
+
+FPSUB0:	lda	BSIGN
+	xri	080h
+	sta	BSIGN
+;
+FPADD0:	lxi	h,0
+	shld	OVF
+	shld	ZERO
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	xchg
+	jnz	fadd1
+	lxi	h,BREG
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	fpnorm
+fadd1:	lhld	BEXP
+	mov	a,h
+	ora	l
+	jz	fpnorm
+	xchg
+	dsbc	d
+	jz	fadd4
+	jnc	fadd2
+
+	lda	ASIGN		; Acc_flag <--> Bcc_flag.
+	mov	c,a
+	lda	BSIGN
+	sta	ASIGN
+	mov	a,c
+	sta	BSIGN
+	lxi	h,AREG
+	lxi	d,BREG
+	mvi	b,nbytes+2
+	call	swap0
+
+	shld	BEXP
+	xchg
+	shld	AEXP
+	ora	a
+	dsbc	d
+fadd2:	mov	a,h
+	ora	a
+	jnz	fpnorm
+	mov	a,l
+	cpi	NBYTES*8-1
+	jnc	fpnorm
+	mov	b,a
+	lhld	BEXP
+	xchg
+fadd3:	push	b
+	xra	a
+	lxi	h,BREG+NBYTES-1
+	call	sftr
+	inx	d
+	pop	b
+;	djnz	fadd3
+	db	010h,0f4h
+fadd4:	xchg
+	shld	BEXP
+	lda	ASIGN
+	lxi	h,BSIGN
+	xra	m
+	jnz	fadd5
+;
+;  if same sign.
+;
+	lxi	d,AREG
+	lxi	h,BREG
+	call	iadd		; (Acc) = (Acc) + (Bcc).
+	jnc	fpnorm
+	lxi	h,AREG+NBYTES-1	; if carry_flag set then,
+	call	sftr		;  shift right
+	lhld	AEXP
+	inx	h
+	shld	AEXP		;  & exp = exp + 1.
+	jmp	fpnorm
+;
+;  if different sign.
+;
+fadd5:	lxi	d,AREG
+	lxi	h,BREG
+	call	isub		; Acc = Acc - Bcc.
+	jnc	fpnorm
+	lxi	h,AREG
+	call	ineg		; negate Acc.
+	lda	BSIGN
+	sta	ASIGN		; Asign = Bsign.
+	call	fpnorm
+	ret
+;
+;--------------------------------------------------------------
+; UNPACK (DE) -> (HL).
+;--------------------------------------------------------------
+;
+
+UNPACK:	xra	a
+	mov	m,a
+	inx	h
+	push	h
+	xchg
+	lxi	b,NBYTES
+	ldir
+	pop	h
+	xra	a
+	mvi	b,nbytes
+unpck1:	rld
+	inx	h
+;	djnz	unpck1
+	db	010h,0fbh
+
+	mov	c,a
+	ani	00000111b
+	mov	m,a
+	mov	a,c
+	ani	00001000b
+	jz	unpck2
+	mvi	a,080h
+unpck2:	inx	h
+	mov	m,a
+	ret
+;
+;--------------------------------------------------------------
+; PACK SOURCE = A REG , DESTINATION = DE.
+;--------------------------------------------------------------
+;
+
+pack:	push	d
+	lxi	h,OVF
+	mov	a,m		; OVF
+	inx	h
+	ora	m		; UNF
+	inx	h
+	ora	m		; ZERO
+	jnz	pack1
+
+	lxi	h,AREG+1
+	mov	a,m
+	ani	08h
+	cnz	inca
+
+pack1:	lda	ASIGN
+	ora	a
+	mvi	c,0
+	jz	pack2
+	mvi	c,08h
+pack2:	lda	AEXP+1
+	ani	00000111b
+	ora	c
+	lxi	h,AEXP
+	mvi	b,nbytes
+pack3:	rrd
+	dcx	h
+;	djnz	pack3
+	db	010h,0fbh
+
+	inx	h
+	pop	d
+	lxi	b,NBYTES
+	ldir
+	RET
+;
+;
+; INCREMENT A AND CORRECT FORM.
+;
+inca:	mov	a,m
+	ani	0f8h
+	adi	08h
+	mov	m,a
+	rnc
+	mvi	b,NBYTES-2
+inca1:	inx	h
+	inr	m
+	rnz
+;	djnz	inca1
+	db	010h,0fbh
+
+	stc
+	call	sftr
+	lhld	AEXP
+	inx	h
+	shld	AEXP
+	mov	a,h
+	cpi	BIASEXP/128
+	rc
+	mvi	h,BIASEXP/128-1
+	shld	AEXP
+	mvi	a,08h
+	sta	OVF
+	ret
+
+;
+;--------------------------------------------------------------
+; FLOTING NUMBER OUTPUT CONVERTION.
+;--------------------------------------------------------------
+;
+
+FPCONV:	lda	ASIGN
+	ora	a
+	mvi	a,' '
+	jz	conv1
+	mvi	a,'-'
+conv1:	sta	outsgn
+	lhld	AEXP
+	mov	a,h
+	ora	l
+	jz	conv9
+
+	xra	a
+	sta	ASIGN
+	lxi	h,0
+	shld	EP		; EP = 0;
+conv20:	lxi	h,256
+	shld	k2		; k2 = 256;
+
+conv2:	lxi	d,AREG+NBYTES+1
+	lxi	h,ONE +NBYTES+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jc	mconv		; if (A < 1.0) then mconv.
+
+	lxi	h,TEN256	; T  = TEN256;
+	shld	T		;
+
+pconv1:	lxi	d,NBYTES+1
+	dad	d
+	lxi	d,AREG+NBYTES+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jc	pconv2		; if (A < *T) then  pconv2
+
+	lhld	T		; A = A / *T;
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0;
+
+	lhld	k2		; EP = EP + k2;
+	xchg
+	lhld	EP
+	dad	d
+	shld	EP
+				;			}
+pconv2:
+	lhld	k2
+	srlr	h
+	rarr	l		;		k2 = k2 / 2;
+	shld	k2
+	mov	a,h
+	ora	l
+	jz	conv3
+
+	lhld	T
+	lxi	d,nbytes+3
+	dad	d
+	shld	T		;		T = T + NBYTES+3;
+	jmp	pconv1		;	}
+
+;
+;
+;
+mconv:	lxi	d,AREG+nbytes+1
+	lxi	h,TENM1+nbytes+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jnc	conv3		; if (A >= 0.1) then conv3
+
+	lxi	h,TENM128	; T  = 10**(-128);
+	shld	T
+
+	lxi	d,AREG+NBYTES+1
+	lxi	h,TENM256+NBYTES+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jnc	mconv1		; if (A >= *T) then mconv2
+	lxi	h,TEN256
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0;
+	lxi	h,TEN256
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0;
+
+	lxi	h,-512
+	shld	EP
+	jmp	conv20
+
+mconv1:	lhld	T
+	lxi	d,nbytes+1
+	dad	d
+	lxi	d,AREG+NBYTES+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jc	mconv2		; if (A < *T) then mconv2.
+
+	lhld	k2
+	srlr	h
+	rarr	l		;		k2 = k2 / 2;
+	shld	k2
+
+	lhld	T
+	lxi	d,nbytes+3
+	dad	d
+	shld	T		;		T = T + NBYTES+3;
+	jmp	mconv1		;	}
+
+
+mconv2:	lhld	T		;			A = A / *T;
+	dcx	h
+	lxi	d,BREG+NBYTES+2
+	lxi	b,NBYTES+3
+	lddr
+	call	FPDIV0;
+
+	lhld	k2		;			EP = EP - k2;
+	xchg
+	lhld	EP
+	ora	a
+	dsbc	d
+	shld	EP
+	jmp	conv20
+
+
+conv3:	lxi	d,AREG+NBYTES+1
+	lxi	h,ONE +NBYTES+1
+	mvi	b,nbytes+2
+	call	icmp0
+	jc	conv4		; if (A < 1.0) then conv4.
+	lxi	h,TEN1
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPDIV0
+	lhld	EP
+	inx	h
+	shld	EP
+conv4:	lxi	h,0
+	shld	AREG-1
+	lhld	AEXP
+	lxi	d,BIASEXP
+	xchg
+	ora	a
+	dsbc	d
+	jz	conv6
+	mov	b,l
+conv5:	push	b
+	lxi	h,AREG+NBYTES-1
+	xra	a
+	mvi	b,nbytes+1
+	call	sftr0
+	pop	b
+;	djnz	conv5
+	db	010h,0f3h
+conv6:	mvi	b,34
+	lxi	h,outbuf+2
+conv7:	call	tenthA
+	adi	'0'
+	mov	m,a
+	inx	h
+;	djnz	conv7
+	db	010h,0f7h
+
+	call	tenthA
+	cpi	5
+	jc	conv8
+
+	mvi	b,34
+conv70:	dcx	h
+	mov	a,m
+	inr	a
+	mov	m,a
+	cpi	'9'+1
+	jnz	conv8
+	mvi	a,'0'
+	mov	m,a
+;	djnz	conv70
+	db	010h,0f2h
+
+	mvi	a,'1'
+	sta	outbuf+2
+	lxi	h,outbuf+3
+	lxi	d,outbuf+4
+	lxi	b,33
+	mvi	m,'0'
+	ldir
+	lhld	EP
+	inx	h
+	shld	EP
+
+conv8:	mvi	a,0
+	sta	outbuf+36
+	mvi	a,'0'
+	sta	outbuf
+	mvi	a,'.'
+	sta	outbuf+1
+	lxi	h,EP
+	pop	b
+	ret
+
+conv9:	lxi	h,outbuf+2
+	lxi	d,outbuf+3
+	lxi	b,34
+	mvi	m,'0'
+	ldir
+	mvi	m,0
+	jmp	conv8
+;
+tenthA:	push	h
+	push	d
+	push	b
+ 	lxi	h,AREG-1
+	lxi	d,BREG-1
+	lxi	b,NBYTES+4
+	LDIR
+	stc
+	lxi	h,AREG-1
+	mvi	b,nbytes+1
+	call	sftl0
+	mvi	a,0
+	ral
+
+	lxi	h,AREG-1
+	mvi	b,nbytes+1
+	call	sftl0
+	ral
+
+	mov	c,a
+	lxi	d,AREG-1
+	lxi	h,BREG-1
+	mvi	b,nbytes+1
+	call	iadd0
+	mvi	a,0
+	adc	c
+
+	lxi	h,AREG-1
+	mvi	b,nbytes+1
+	call	sftl0
+	ral
+	pop	b
+	pop	d
+	pop	h
+	ret
+
+;
+;
+;
+FPIN:	call	cleara
+	lxi	h,0
+	shld	EPX
+	mvi	a,0
+	sta	SIGNX
+	sta	outsgn
+	lhld	arg2
+	xra	a		; null terminator search.
+ 	lxi	b,100
+	ccir
+	jnz	fpin15		; if not found goto fpin15.
+	xchg
+	lhld	arg2
+	xchg
+	ora	a
+	dsbc	d
+	push	h		; string length save.
+;
+	mov	b,h
+	mov	c,l
+	lhld	arg2
+	mvi	a,'E'
+	ccir
+	pop	b
+	jz	fpin1
+;
+	lhld	arg2
+	mvi	a,'e'
+	ccir
+	jnz	fpin6
+;
+;
+fpin1:	dcx	h
+	mvi	m,0
+	inx	h
+	mov	a,m
+	cpi	'-'
+	jnz	fpin2
+	sta	SIGNX
+	jmp	fpin3
+fpin2:	cpi	'+'
+	jnz	fpin4
+fpin3:	inx	h
+fpin4:	call	ctoi
+	jc	fpin5
+	push	h
+	lhld	EPX
+	mov	d,h
+	mov	e,l
+	dad	h
+	dad	h
+	dad	d
+	dad	h
+	mov	e,a
+	mvi	d,0
+	dad	d
+	shld	EPX
+	pop	h
+	jmp	fpin3
+
+fpin5:	lda	SIGNX
+	cpi	'-'
+	jnz	fpin6
+	lhld	EPX
+	xchg
+	lxi	h,0
+	ora	a
+	dsbc	d
+	shld	EPX
+;
+fpin6:	xra	a
+	sta	SIGNX
+	lhld	arg2
+	mov	a,m
+	cpi	'+'
+	jz	fpin7
+	cpi	'-'
+	jnz	fpin8
+	sta	outsgn
+fpin7:	inx	h
+fpin8:	mov	a,m
+	cpi	'.'
+	jz	fpin10		; goto real part.
+	cpi	'0'
+	jnz	fpin11		; goto integer part.
+	jmp	fpin7
+;
+fpin10:	inx	h		; real part. ( 0.000...nn)
+	mov	a,m
+	cpi	'0'
+	jnz	fpin13
+	xchg
+	lhld	EPX
+	dcx	h
+	shld	EPX
+	xchg
+	jmp	fpin10
+;
+fpin11:	call	ctoi		; integer part.
+	jc	fpin12
+	call	fpinx
+	inx	h
+	jmp	fpin11
+;
+fpin12:	cpi	'.'
+	jnz	fpin14
+	inx	h
+fpin13:	call	ctoi		; real part. ( n.mmm)
+	jc	fpin14
+	call	fpinx
+	xchg
+	lhld	EPX
+	dcx	h
+	shld	EPX
+	xchg
+	inx	h
+	jmp	fpin13
+;
+fpin14:	lhld	EPX
+	mov	a,h
+	ora	l
+	jz	fpin15
+	lxi	h,AREG
+	lxi	d,xx
+	lxi	b,NBYTES+3
+	ldir
+	call	exp
+	lxi	h,AREG
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	lxi	h,xx
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+;
+	lda	SIGNX
+	cpi	'-'
+	jnz	fpin17
+	call	FPDIV0
+	jmp	fpin15
+fpin17:	call	FPMUL0
+
+fpin15:	lda	outsgn
+	ora	a
+	jz	fpin16
+	mvi	a,080h
+	sta	ASIGN
+fpin16:	lhld	arg3
+	xchg
+	call	pack
+	pop	b
+	ret
+
+ctoi:	mov	a,m
+	call	isdigit
+	rc
+	sui	'0'
+	ret
+
+fpinx:	push	h
+	push	psw
+	lxi	h,TEN1
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	pop	psw
+	mov	c,a
+	add	a
+	add	a
+	add	c
+	add	a
+	add	a
+	sub	c
+	mov	c,a
+	mvi	b,0
+	lxi	h,NUM0
+	dad	b
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPADD0
+	pop	h
+	ret
+;
+exp:	lhld	EPX
+	mov	a,h
+	ora	a
+	jp	exp0
+	xchg
+	lxi	h,0
+	ora	a
+	dsbc	d
+	shld	EPX
+	mvi	a,'-'
+	sta	SIGNX
+;
+exp0:	lxi	h,ONE
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lhld	EPX
+	mov	a,h
+	ora	l
+	rz
+	mov	a,h
+	ora	a
+	jz	exp1
+	lxi	h,TEN256
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	lhld	EPX
+exp1:	mvi	c,128
+	mvi	b,0
+exp2:	mov	a,l
+	ora	a
+	rz
+	sub	c
+	jc	exp3
+	mov	l,a
+	push	b
+	push	h
+	mov	a,b
+	add	a
+	add	a
+	add	b
+	add	a
+	add	a
+	sub	b
+	mov	c,a
+	mvi	b,0
+	lxi	h,TEN128
+	dad	b
+	lxi	d,BREG
+	lxi	b,NBYTES+3
+	ldir
+	call	FPMUL0
+	pop	h
+	pop	b
+exp3:	srlr	c
+	inr	b
+	jmp	exp2
+;
+
+SIGNX	ds	1
+EPX	ds	2
+T	ds	2
+numlen	ds	2
+;
+;
+;
+FPTEST:	lhld	arg2
+	push	h
+	pop	d
+	dad	h
+	dad	h
+	dad	d
+	dad	h
+	dad	h
+	dsbc	d
+	lxi	d,TEN256
+	dad	d
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	FPCONV
+
+
+FPTST2:	lhld	arg2
+	lxi	d,AREG
+	lxi	b,NBYTES+3
+	ldir
+	jmp	FPCONV
+
+
+isdigit:cpi	'0'
+	rc
+	cpi	'9'+1
+	cmc
+	ret
+
+cleara:	push	h
+	lxi	h,areg
+	mvi	b,nbytes+3
+	call	iclr0
+	pop	h
+	ret
+;
+;
+;
+iclr:	mvi	b,nbytes
+iclr0:	push	psw
+	xra	a
+iclr1:	mov	m,a
+	inx	h
+;	djnz	iclr1
+	db	010h,0fch
+	pop	psw
+	ret
+;
+;
+;
+imul:	shld	tmp
+	lxi	h,areg
+	call	iclr
+	mvi	b,nbytes*8
+loopml:	push	b
+	lxi	h,la+nbytes-1
+	call	sftr
+	jnc	jumpml
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	iadd
+jumpml:	lxi	h,areg+nbytes-1
+	call	sftr
+	pop	b
+;	djnz	loopml
+	db	010h,0e3h
+	call	sftr
+	ret
+;
+;
+;
+idiv:	shld	tmp
+	lxi	h,areg
+	call	iclr
+	mvi	b,nbytes*8
+	lda	la+nbytes-1
+	bit	7,a
+	jnz	loopdv
+dvchkk:	;djnz	dvchk
+	db	010h,02h
+	stc
+	ret
+dvchk:	push	b
+	lxi	h,la
+	call	sftl
+	pop	b
+	jp	dvchkk
+loopdv:	push	b
+	lxi	h,la
+	call	sftl
+	call	sftl
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	isub
+	jnc	jumpdv
+	lhld	tmp
+	lxi	d,areg
+	ora	a
+	call	iadd
+jumpdv:	cmc	
+	pop	b
+;	djnz	loopdv
+	db	010h,0dbh
+	lxi	h,la
+	call	sftl
+	ana	a
+	ret
+;
+;
+;
+iadd:	mvi	b,nbytes
+iadd0:	ldax	d
+	adc	m
+	stax	d
+	inx	h
+	inx	d
+;	djnz	iadd0
+	db	010h,0f9h
+	ret
+;
+;
+;
+isub:	mvi	b,nbytes
+isub1:	ldax	d
+	sbb	m
+	stax	d
+	inx	d
+	inx	h
+;	djnz	isub1
+	db	010h,0f9h
+	ret
+;
+;
+;
+icmp:	mvi	b,nbytes
+icmp0:	ldax	d
+	sub	m
+	rnz
+	dcx	d
+	dcx	h
+;	djnz	icmp0
+	db	010h,0f9h
+	ret
+;
+ineg:	mvi	b,nbytes
+ineg0:	mov	a,m
+	cma
+	adi	1
+	mov	m,a
+	dcr	b
+ineg1:	inx	h
+	mov	a,m
+	cma
+	aci	0
+	mov	m,a
+;	djnz	ineg1
+	db	010h,0f8h
+	ret
+;
+;
+;
+sftl:	mvi	b,nbytes
+sftl0:	ralr	m
+	inx	h
+;	djnz	sftl0
+	db	010h,0fbh
+	ret
+;
+;
+;
+sftr:	mvi	b,nbytes
+sftr0:	rarr	m
+	dcx	h
+;	djnz	sftr0
+	db	010h,0fbh
+	ret
+;
+;
+;
+tenth:	push	b
+	shld	tmp
+	lxi	d,llwork
+	lxi	b,nbytes
+	ldir
+	xra	a
+	lhld	tmp
+	call	sftl
+	ral
+	ora	a
+	lhld	tmp
+	call	sftl
+	ral
+	mov	c,a
+	lhld	tmp
+	lxi	d,llwork
+	xchg
+	call	iadd
+	mvi	a,0
+	adc	c
+	ora	a
+	lhld	tmp
+	call	sftl
+	ral
+	pop	b
+	ret
+
+swap:	mvi	b,nbytes
+swap0:	mov	c,m
+	ldax	d
+	mov	m,a
+	mov	a,c
+	stax	d
+	inx	h
+	inx	d
+;	djnz	swap0
+	db	010h,0f7h
+	ret
+
+;
+;--------------------------------------------------------------
+; FLOATING POINT normalization.
+;--------------------------------------------------------------
+;
+fpnorm:	lhld	AEXP
+	xchg
+	lxi	b,1
+fpnrm1:	lda	AREG+NBYTES-1
+	ral
+	jc	fpnrm2
+	lxi	h,la
+	call	sftl
+	call	sftl
+	xchg
+	dsbc	b
+	xchg
+	jnc	fpnrm1
+	jmp	undrfw
+
+fpnrm2:	xchg
+	mov	a,h
+	cpi	BIASEXP/128
+	jnc	ovrfw
+	shld	AEXP
+	jmp	extnrm
+
+
+ovrfw:	lxi	h,AREG
+	call	iclr
+	mvi	h,BIASEXP/128-1
+	shld	AEXP
+	mvi	a,08h
+	sta	OVF
+	xra	a
+	sta	ZERO
+	jmp	extnrm
+	;
+	;
+undrfw:	lxi	h,AREG
+	mvi	b,nbytes+2
+	call	iclr0
+	mvi	a,04h
+	sta	UNF
+	xra	a
+	sta	ZERO
+extnrm:	lda	ASIGN
+	ora	a
+	jz	extnm2
+	mvi	a,1
+extnm2:	sta	MINUS
+	ret
+	;
+	;
+setzero:
+	lxi	h,AREG
+	mvi	b,nbytes+3
+	call	iclr0
+	lxi	h,0
+	shld	OVF
+	mvi	a,020h
+	sta	ZERO
+	xra	a
+	sta	MINUS
+	ret
+
+
+llwork	ds	nbytes+3
+;
+
+k2	ds	2
+EP	ds	2
+OUTSGN	ds	1
+OUTBUF	ds	48
+	;
+OVF	ds	1
+UNF	ds	1
+ZERO	ds	1
+MINUS	ds	1
+;
+;
+tempw	ds	nbytes+8
+uu	ds	nbytes+3
+vv	ds	nbytes+3
+ww	ds	nbytes+3
+xx	ds	nbytes+3
+yy	ds	nbytes+3
+;
+;
+LA	DS	NBYTES
+AREG	DS	NBYTES
+AEXP	DS	2
+ASIGN	DS	1
+	;
+LB:	DS	NBYTES
+BREG:	DS	NBYTES
+BEXP:	DS	2
+BSIGN:	DS	1
+;
+;
+;
+ten256	db	0b7h,0eah,0feh,098h,01bh,090h,0bbh,0ddh
+	db	08dh,0deh,0f9h,09dh,0fbh,0ebh,07eh,0aah
+	dw	biasexp+353h
+	db	000h
+ten128	db	037h,001h,0b1h,036h,06ch,033h,06fh,0c6h
+	db	0dfh,08ch,0e9h,080h,0c9h,047h,0bah,093h
+	dw	biasexp+1aah
+	db	000h
+ten64	db	0fbh,025h,06bh,0c7h,071h,06bh,0bfh,03ch
+	db	0d5h,0a6h,0cfh,0ffh,049h,01fh,078h,0c2h
+	dw	biasexp+0d5h
+	db	000h
+ten32	db	000h,000h,000h,000h,000h,000h,020h,0f0h
+	db	09dh,0b5h,070h,02bh,0a8h,0adh,0c5h,09dh
+	dw	biasexp+06bh
+	db	000h
+ten16	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,004h,0bfh,0c9h,01bh,08eh
+	dw	biasexp+036h
+	db	000h
+ten8	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,020h,0bch,0beh
+	dw	biasexp+01bh
+	db	000h
+ten4	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,040h,09ch
+	dw	biasexp+00eh
+	db	000h
+ten2	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0c8h
+	dw	biasexp+007h
+	db	000h
+ten1	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0a0h
+	dw	biasexp+004h
+	db	000h
+one	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+001h
+	db	000h
+;
+tenm256	db	008h,053h,0fbh,0feh,055h,011h,091h,0fah
+	db	039h,019h,07ah,063h,025h,043h,031h,0c0h
+	dw	biasexp-352h
+	db	000h
+tenm128	db	0deh,0dbh,05dh,0d0h,0f6h,0b3h,07ch,0ach
+	db	0a0h,0e4h,0bch,064h,07ch,046h,0d0h,0ddh
+	dw	biasexp-1a9h
+	db	000h
+tenm64	db	024h,062h,0b3h,047h,0d7h,098h,023h,03fh
+	db	0a5h,0e9h,039h,0a5h,027h,0eah,07fh,0a8h
+	dw	biasexp-0d4h
+	db	000h
+tenm32	db	0f2h,04ah,081h,0a5h,0edh,018h,0deh,067h
+	db	0bah,094h,039h,045h,0adh,01eh,0b1h,0cfh
+	dw	biasexp-06ah
+	db	000h
+tenm16	db	0b3h,0a9h,089h,079h,068h,0beh,02eh,04ch
+	db	05bh,0e1h,04dh,0c4h,0beh,094h,095h,0e6h
+	dw	biasexp-035h
+	db	000h
+tenm8	db	03dh,07ch,0bah,036h,02bh,00dh,0c2h,0fdh
+	db	0fch,0ceh,061h,084h,011h,077h,0cch,0abh
+	dw	biasexp-01ah
+	db	000h
+tenm4	db	0a8h,0a4h,04eh,040h,013h,061h,0c3h,0d3h
+	db	02bh,065h,019h,0e2h,058h,017h,0b7h,0d1h
+	dw	biasexp-00dh
+	db	000h
+tenm2	db	0a3h,070h,03dh,00ah,0d7h,0a3h,070h,03dh
+	db	00ah,0d7h,0a3h,070h,03dh,00ah,0d7h,0a3h
+	dw	biasexp-006h
+	db	000h
+tenm1	db	0cdh,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	db	0cch,0cch,0cch,0cch,0cch,0cch,0cch,0cch
+	dw	biasexp-003h
+	db	000h
+;
+;
+;
+num0	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,000h
+	dw	000h
+	db	000h
+num1	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+001h
+	db	000h
+num2	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+002h
+	db	000h
+num3	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0c0h
+	dw	biasexp+002h
+	db	000h
+num4	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+003h
+	db	000h
+num5	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0a0h
+	dw	biasexp+003h
+	db	000h
+num6	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0c0h
+	dw	biasexp+003h
+	db	000h
+num7	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,0e0h
+	dw	biasexp+003h
+	db	000h
+num8	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,080h
+	dw	biasexp+004h
+	db	000h
+num9	db	000h,000h,000h,000h,000h,000h,000h,000h
+	db	000h,000h,000h,000h,000h,000h,000h,090h
+	dw	biasexp+004h
+	db	000h
+;
+;
+;
+pai	db	000h,020h,0dah,080h,08bh,062h,0c6h,0c4h
+	db	034h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+002h
+	db	000h
+pai2	db	000h,020h,0dah,080h,08bh,062h,0c6h,0c4h
+	db	034h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+003h
+	db	000h
+paid2	db	000h,020h,0dah,080h,08bh,062h,0c6h,0c4h
+	db	034h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+001h
+	db	000h
+paid4	db	000h,020h,0dah,080h,08bh,062h,0c6h,0c4h
+	db	034h,0c2h,068h,021h,0a2h,0dah,00fh,0c9h
+	dw	biasexp+000h
+	db	000h
+
+	ENDFUNC
+

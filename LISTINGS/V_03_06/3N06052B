@@ -1,0 +1,77 @@
+
+Listing 2
+
+#include <stdio.h>
+#include <string.h>
+
+/*
+ * arraycmp - a general-purpose array comparer in C
+ * using run-time genericity
+ */
+typedef int (*cf_t)(const void *p, const void *q);
+
+int arraycmp
+    (const void *a1, const void *a2, size_t n,
+    size_t size, cf_t cf)
+    {
+    const char *p1 = a1;
+    const char *p2 = a2;
+    size_t i;
+    int cmp;
+
+    for (i = 0; i < n * size; i += size)
+        if ((cmp = cf(p1 + i, p2 + i)) != 0)
+            return cmp;
+    return 0;
+    }
+
+/*
+ * Some element comparison functions
+ */
+int intcf(const void *p, const void *q)
+    {
+    return *(int *)p - *(int *)q;
+    }
+
+int doublecf(const void *p, const void *q)
+    {
+    if (*(double *)p < *(double *)q)
+        return -1;
+    else if (*(double *)p == *(double *)q)
+        return 0;
+    else
+        return 1;
+    }
+
+int strcf(const void *p, const void *q)
+    {
+    return strcmp(p, q);
+    }
+
+/*
+ * Sample calls to arraycmp...
+ */
+int a[] = {1, 2, 3, 4, -5};
+int b[] = {1, 2, 3, 4, 4};
+
+double f[] = {1, 2, 3, 4, 5};
+double g[] = {1, 2, 3, 3, 4};
+
+char *s[] = {"123", "456", "789"};
+char *t[] = {"123", "789", "456"};
+
+int main(void)
+    {
+    printf("a vs. b = %d\n",
+        arraycmp(a, b, 4, sizeof(int), intcf));
+    printf("a vs. b = %d\n",
+        arraycmp(a, b, 5, sizeof(int), intcf));
+    printf("f vs. g = %d\n",
+        arraycmp(f, g, 5, sizeof(double), doublecf));
+    printf("s vs. t = %d\n",
+        arraycmp(s, t, 3, sizeof(char *), strcf));
+    printf("s vs. t = %d\n",
+        arraycmp(s, t, 3, sizeof(char *), (cf_t)strcmp));
+    return 0;
+    }
+

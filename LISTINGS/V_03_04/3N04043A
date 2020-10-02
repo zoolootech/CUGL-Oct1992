@@ -1,0 +1,173 @@
+/*
+      High Resolution Time Stamping Routines
+                    tstamp.c
+       Author: Charles B. Allison,
+                Allison Technical Services
+                Houston, Texas USA
+       Change History:
+                      Created 07:30 4-11-91
+       Purpose: To provide high resolution time of
+                day time stamp acquisition and
+                printing.
+       Hardware: PC and compatibles
+*/
+
+#include <stdio.h>
+#include <conio.h>
+#include <dos.h>
+#include "timer.h"
+
+/* generate inline code for interrupt and i/o */
+#pragma intrinsic (inp,outp,enable,disable)
+
+/* # of seconds in a day at 12:00 noon
+  (i.e., 3600 * 12)                   */
+#define NOON_SECS 43200L
+
+/*  Number of ticks til noon when including timer byte
+    as least significant byte of tick count.
+    (i.e., 256 * 12 * 3600 * 18.2)                  */
+#define NEW_TICKS 201277440L
+
+/*  FRAC_SEC = 10 * the number of new ticks in a second
+    since one second has 18.2 ticks (i.e., 256 * 182)*/
+#define FRAC_SEC 46592L
+
+long far *systime = (long far *) 0x0046b;  
+             /*actually 46c but want times 256*/
+
+long get_time(void);     /* get 32 bit time value */
+int  get_tmr(void);      /* get timer contents    */
+void init_timer(void);   /* set 8253 timer mode=2 */
+long get_sec_time(long val);
+int get_msec_time(long val);
+long atime_diff(unsigned long time1,
+                unsigned long time2);
+void print_time(unsigned long intim);
+
+/* ********* time access ************ */
+/* ------ get 32 bit time stamp -------- */
+/*
+NOTES - there are 86,400 seconds per day
+0x40:6c (long) has number of ticks (18.2x per sec)
+              since midnight
+then get number of ticks from 40:6c * 10/182 
+          for # of seconds today
+then add together for number of seconds
+each timer tick is 54.945054 ms
+take remainder of the /182 division for
+           the fraction of seconds
+ (fraction*10000)/182 = milliseconds*10
+                        (use long and multiply first)
+take timer msb to .2 ms - each tick is .2146ms 
+of ms byte of timer
+(long) (timer byte * 2146)/1000 = 10*milliseconds
+number should be good to  .1 ms - divide
+               by 10 to get msecs for struct timeb
+timeb is loaded by ftime()
+note timeb is struct with:
+time_t (long) time seconds since 1-1-1970 (GMT)
+unsigned short milliseconds
+short timezone (diff. in minutes between gmt
+                 and local)
+short dstflag  ( =0 no daylight savings time)
+                needs <sys\timeb.h>
+alternately just use 40:6c 4 bytes + timer 1 byte
+*/
+
+/* ---------- get_time ------------- */
+long get_time(void)
+{
+ long temptime;
+
+_disable();
+temptime = (*systime) & 0xFFFFFF00L; /** 256;*/
+temptime += get_tmr();
+_enable();
+return temptime;
+}     /* end of get 32 bit time value */
+
+/* ------- get 8 bit timer contents -------- */
+int get_tmr(void)
+{
+int tmp1;
+/* WARNING should be called with interrupts disabled
+     or risk glitching the who is who sequence 
+     of bytes for upper lower byte              */
+  outp(TIMERC,0);  /* latch data */
+  inp(TIMER0);     /* throw away lsb */
+  tmp1 = 255 - (0xff & inp(TIMER0));
+  /* request pending intrpt status */
+  outp(PIC00,OCW3IR);
+  tmp1 |= ( inp(PIC00) & 0x01) ? 0x100 : 0x00; 
+      /* get the pending status for timer int irq01*/
+      /* set - timer int not done yet */
+
+   /* use PIC for rollover not captured yet */
+return tmp1;    
+}      /* end of get timer contents */
+
+/* ----------- init_timer ------------- */
+void init_timer(void)
+{
+_disable();
+outp(TIMERC,TMODE2);
+outp(TIMER0,0);         /* load 65536 */
+outp(TIMER0,0);
+_enable();
+}
+
+/* ----------- get_sec_time -------------- */
+long get_sec_time(long val)
+{
+long subflg = 0;
+long tmp = NEW_TICKS;
+
+if(val > tmp)
+ {
+ val -= tmp;/* sub out 12 hrs if need to - overflow */
+ subflg = NOON_SECS; /* subtract 12 hrs of seconds */
+ }
+/*  return integer result of number of seconds */
+ return (subflg + ((val*10L)/(FRAC_SEC)));
+}
+
+/* ----------- get_msec_time ------------ */
+int get_msec_time(long val)
+{
+long tmp = NEW_TICKS;
+
+if(val > tmp) val -= tmp;  /* sub out 12 hrs  */
+
+/*  return integer 0-9,999 for tenths of a fractional
+  millisecond.  i.e., get the fraction of a second
+  remainder of val and scale it. */
+return (int)((10000L*((10L*val)%FRAC_SEC))/FRAC_SEC);
+}
+
+
+/* ----------- atime_diff -------------- */
+long atime_diff(unsigned long time1,
+                        unsigned long time2)
+{
+if (time1 > time2)
+  return (time1-time2);
+else
+  return (time2-time1);
+}
+
+/* ---------- print_time -------------- */
+void print_time(unsigned long intim)
+{
+long tmp;
+int sec,min,hr;
+int tenms;
+
+tenms = get_msec_time(intim);
+tmp = get_sec_time(intim);
+sec = (int)(tmp % 60);
+tmp = (int)(tmp / 60);
+min = (int)(tmp % 60);
+hr  = (int)(tmp / 60);
+printf("%2d:%2.2d:%2.2d.%4.4d",hr, min,sec,tenms);
+}

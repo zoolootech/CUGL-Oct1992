@@ -1,0 +1,1444 @@
+;
+;RDRTL.MAC  Small C Runtime Library with redirectable output
+;	    Always used with compiler
+;	    Must be linked first when used
+;	    Supports 8 1k file buffers
+;	    Redirected output via > (only to a file)
+;	    Redirected append output via >> (only to a file)
+;	    Functions included:
+;		fopen()		fclose()	(r, w, & a modes)
+;		getchar()	putchar()
+;		gets()		puts()
+;		getc()		putc()
+;		fgetc()		fputc()
+;		fgets()		fputs()
+;		exit()		abort()
+;		bdos() (for cp/m calls)
+;
+;		and all supporting functions
+;
+;		grabio(), freeio(), fcb(), fcbfill(), fcbpad()
+;		cpmio(), cpmdisk()
+;
+;			by
+;
+;		F. A. Scacchitti
+;		25 Glenview Lane
+;		Rochester, NY 14609
+;
+;		   3 - 25 - 86
+;
+;
+;	*** 
+	EXTRN	MAIN, CCDSGI, CCSXT, ZZBUF 
+;	***
+;
+; ========================================
+;  I/O subroutines for CP/M
+;	originally
+;	      	By Glen	Fisher
+;		The Code Works(tm)
+;	then
+;		[modified by Bill Randle]
+;	and finally
+;		[significantly modified by Fred Scacchitti]
+;
+; ========================================
+;
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-character pointer in I/O structure
+UNUSED	EQU	2	;offset	to unused-positions-count in I/O structure
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers 
+NSECTS	EQU	8	;sectors per buffer
+TBUFSZ	EQU	128	;default CP/M buffer size
+			; (change buffer declarations, too)
+	; CP/M system call codes
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+LF	EQU	10	;line feed
+EOL	EQU	13	;end-of-line character (=carriage return)
+CTRLZ	EQU	26	;end-of-file mark for text files
+EOF	EQU	0FFH	;end of file marker for other
+TBUFF	EQU	80H	;address of default I/O	address
+CBDOS	EQU	5	;Entry point to	CP/M BDOS (mod to cbdos(fas)) 
+CPMARG	EQU	80H	;CP/M command line
+MAXARG	EQU	24	;Maximum number	of args	in input line
+STDOUT	EQU	1	;Default for stdout
+STDERR	EQU	2	;Default for stderr
+;
+DFLTDSK: DS	1	;drive to use if no drive is named
+UNIT:	DS	2	;I/O structure address to act on
+IP:	DS	2	;int *ip;
+CHP:	DS	2	;char *chp;
+DP:	DS	2	;char *dp;
+FILE:	DS	2	;file name
+MODE:	DS	2	;char *mode;(read or write)
+ZCH:	DS	2	;char ch;
+ZT:	DS	2	;int t;
+FN:	DS	2	;int fn;	i/o function (for cpmio)
+NUBUFF:	DS	2	;# TEMPORARY BUFFER STORAGE 
+MAXSEC:	DS	1	;# SECTOR COUNTER
+AFLAG:	DS	1	;# append flag
+;
+SVCHP:	DS	2	;char *svchp;	saved character	pointer
+RSTDOUT: DS	2	;int rstdout;	unit of	redirected stdout
+;
+ZZMEM::		DS	2	;memory pointer used by calloc
+ZZSTAK::	DS	2
+;
+; First	thing, we save CPM's stack pointer and current disk and
+; init stdin and stdout.
+; Second thing,	we run through the CPM input line and
+; modify it so that we can pass	the C program the
+; command line in the argc, argv form that it expects
+
+; HL = pointer to next argv entry
+; DE = pointer to next character in command line
+; B = number of	characters left	in line
+; C = argument count (argc)
+
+ULINK::	LXI	H,0	; Get CPM's stack pointer
+	DAD	SP
+	SHLD	ZZSTAK	; Save it for later
+;
+	MVI	C,26
+	LXI	D,ZZBUF
+	CALL	CBDOS	;Set the default buffer way out there
+;
+SETIO:	
+	MVI	B,NBUFS
+	LXI	H,ZZBUF+TBUFSZ+FLAG
+	LXI	D,FCBSIZE+BUFFER+BUFSIZ
+	MVI	A,FREEFLG
+SETIO2:	MOV	M,A			;# SET ALL BUFFERS TO FREE
+	DAD	D			;on to next buffer
+	DCR	B
+	JNZ	SETIO2			;if there is one...
+;
+	SHLD	ZZMEM
+;
+	MVI	C,QUERY	; get logged-in	disk
+	CALL	CBDOS	; (mod to cbdos(fas))
+	INR	A	; make it so it	will work in fcb
+	STA	DFLTDSK
+;
+	LDA	CBDOS+2	; Get base of BDOS (mod to cbdos(fas))
+	MOV	H,A	; Save page in HL
+	MVI	L,0
+	SPHL		; Set stack pointer
+;
+	LXI	H,STDOUT
+	SHLD	RSTDOUT	; Init rstdout
+;
+	MVI	C,0	; Init argc
+	LXI	H,ARGV	; Pointer to first entry of argv array
+
+; Unfortunately, CPM does not tell us what the first word of
+; the command line was (the name of pgm), so we	fake
+; it by	pointing it to a ascii string with '*' in	it
+
+	LXI	D,PGM	; Pointer to 'pgmname' string
+	CALL	SVARG	; Save next argument
+
+; Ok, now for the real stuff.  Set DE pair to point to
+; CPM command line and start searching for arguments
+
+	LXI	D,CPMARG ; Pointer to CPM arg line
+	LDAX	D	; Load # character in line
+	MOV	B,A	; Save it in B
+NXTSP:	INX	D	; Point	to next	character
+	DCR	B	; Decrement character count
+	JM	ENDCMD	; End of cmd line
+	LDAX	D	; Load next character in line
+	CPI	' '	; Space?
+	JZ	NXTSP	; Yes...continue searching
+	CPI	'>'	; Redirect output?
+	JZ	RDOUT	; Yes...open the file for output
+	CALL	SVARG	; Nope,	save starting point of this arg
+
+; Loop looking for either end of line of a space
+
+NXTCH:	INX	D	; Point	to next	character
+	DCR	B	; Decrement character count
+	JM	ENDWRD	; End of cmd line, but need to end arg
+	LDAX	D	; Load next character in line
+	CPI	' '	; Space?
+	JNZ	NXTCH	; Nope...keep looking
+	MVI	A,0	; Yes, replace it with a zero byte
+	STAX	D
+	JMP	NXTSP	; Look for start of next arg
+ENDWRD:	MVI	A,0
+	STAX	D
+ENDCMD:	MVI	B,0	; Zero B (BC now is 16 bit argc)
+	PUSH	B	; First	arg to main procedure
+	LXI	H,ARGV	; Point	to argv	array
+	PUSH	H	; Second argument to main procedure
+	MVI	A,2	; Load up the argument count
+	CALL	MAIN	; Transfer to the C world....
+;
+;	off
+;		we
+;			go
+;				into
+;				     the
+;				         wild
+;					      b
+;					       l
+;						u
+;						 e
+;
+	JMP	EXIT	; Return to CPM
+;
+SVARG:	MOV	M,E	; Save pointer to start	of string
+	INX	H
+	MOV	M,D
+	INX	H
+	INR	C	; Increment argc
+	RET
+ARGV:	DS	MAXARG*2
+PGM:	DB	'*',0
+;
+
+RDOUT:  INX	D	; get next character
+	DCR	B
+	LDAX	D
+	CPI	'>'	; check for append mode
+	JNZ	RDOUT1
+	MVI	A,0FH
+	STA	AFLAG	; Set flag for appending
+	INX	D	; stand on next character
+	DCR	B
+RDOUT1:	CALL	DEBLNK	; Skip leading spaces
+	JM	RDERR	; End of line reached
+	PUSH	H
+	CALL	CPYNAM	; Copy filename	to temp	buffer
+	PUSH	D	; Save registers
+	PUSH	B
+	LXI	H,NAMBUF ; Begining of filename
+	PUSH	H
+	LDA	AFLAG	; Test for append mode
+	CPI	0FH
+	JNZ	RDOUT2	; No, set write mode
+	XRA	A	; Yes, clear the flag and
+	STA	AFLAG
+	LXI	H,APOPN	; set append mode
+	JMP	RDOUT3	; doit
+RDOUT2:	LXI	H,WROPN	; Mode
+RDOUT3:	PUSH	H
+	CALL	FOPEN	; Open the file
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	L	; Check	return status
+	JZ	RDERR
+	SHLD	RSTDOUT	; Save unit for	redirected output
+	POP	B	; Restore registers
+	POP	D
+	POP	H
+	MVI	A,0FFH
+	CMP	B	; End of command line?
+	JZ	ENDCMD
+	JMP	NXTSP	; Get next argument
+;
+DEBLNK:
+	LDAX	D
+	CPI	' '
+	RNZ
+	INX	D	; Skip leading spaces
+	DCR	B
+	RM		; End of line reached
+	JMP	DEBLNK
+;
+CPYNAM:	LXI	H,NAMBUF ; Copy	filename to temp buffer
+	PUSH	B	; Save reg C
+	MVI	C,16	; Maximum filename length
+CPY1:	MOV	M,A
+	INX	D
+	INX	H
+	DCR	B
+	JM	ENDNAM
+	DCR	C
+	JZ	RDERR
+	LDAX	D
+	CPI	' '
+	JNZ	CPY1
+ENDNAM:	MVI	M,0
+	POP	H
+	MOV	C,L	; Restore reg C
+	RET
+;
+RDERR:	LXI	D,RDEMSG ; Error message
+	MVI	C,CPMSTR
+	CALL	CBDOS	; Make sure it gets put	on the terminal (mod fas)
+	JMP	EXIT
+;
+TEMP:	DB	0,0
+RDOPN:	DB	'r',0
+WROPN:	DB	'w',0
+APOPN:	DB	'a',0
+NAMBUF:	DS	16
+RDEMSG:	DB	'rdrtl:	Unable to open output file$'
+;
+;
+;
+; This assembly	routine	allows CPM calls from Small C.
+;
+;     cpm(cpmfunction#,	inputparameter)
+;    bdos(bdos#,data)
+;
+; NOTE - These two functions are the same. This addition may just
+;	 save editing some code. (fas)
+;
+; Since	this function returns whatever is returned in register
+; it cannot be used to call ReturnVersionNumber, ReturnLoginVector,
+; WriteProtectDisk, or GetAddr.
+
+BDOS::			; added alias (fas)
+CPM::	POP	H	; Pop rtn address
+	POP	D	; Pop input parameter in DE register pair
+	POP	B	; Pop function code into C register
+	PUSH	B	; Restore stack
+	PUSH	D
+	PUSH	H
+	CALL	CBDOS	; Call CPM (mod to cbdos (fas))
+	MOV	L,A	; Sign extend A	into HL	register pair
+	RLC
+	SBB	A
+	MOV	H,A
+	RET
+
+;	exit()
+;
+;	Stop execution of the program,
+;	restore	the logged-in drive,
+;	and re-boot CP/M
+;
+EXIT::	LHLD	RSTDOUT
+	MOV	A,H
+	ORA	A		; See if stdout	has been redirected
+	JZ	EXIT1
+	PUSH	H
+	CALL	FCLOSE		; If so, close the file
+	POP	B
+EXIT1:	LDA	DFLTDSK		; Grab orig. logged-in disk
+	MOV	E,A
+	DCR	E		; (cvt.	back to	0-n)
+	MVI	C,SELECT	; and log it in	again
+	CALL	CBDOS		; (mod to cbdos (fas))
+	LHLD	ZZSTAK		; Load stack pointer
+	SPHL
+	JMP	0		; return to CP/M
+;
+;	abort(reason)
+;
+ABORT::	POP	B
+	POP	H
+	ORA	A
+	JZ	ABORT2
+	MOV	A,L
+	STA	ABCODE
+ABORT2:	LXI	D,ABTMSG	; Load abort message
+	MVI	C,9
+	CALL	CBDOS
+	JMP	EXIT
+
+ABTMSG:	DB	0DH, 'Aborted '
+ABCODE:	DB	07H,0DH,'$'
+;
+;	grabio()
+;
+;	find an	input buffer, and return its address.
+;	if there isn't one, return a NULL.
+;
+GRABIO::						;6 May 80 rj
+	MVI	B,NBUFS
+	LXI	H,ZZBUF+TBUFSZ+FLAG
+	LXI	D,FCBSIZE+BUFFER+BUFSIZ
+	MVI	A,FREEFLG
+GRAB2:	CMP	M			;flag byte == freeflg?
+	JZ	GRAB3			;if so,	found a	free buffer
+	DAD	D			;on to next buffer
+	DCR	B
+	JNZ	GRAB2			;if there is one...
+	LXI	H,NULL			;there ain't
+	RET				;give up
+;
+GRAB3:	MVI	M,0			;mark buffer as	taken
+	LXI	D,-FLAG			;back up to buffer start
+	DAD	D	
+	RET				;and hand it back
+;
+;	freeio(unit)
+;
+;	mark a buffer as free.
+;
+FREEIO::				;Mod  6	May 80 rj
+	POP	B			;save rtn addr
+	POP	H			;get buffer addr
+	PUSH	H			;put the stack back together
+	PUSH	B
+	LXI	D,FLAG			;find flag byte
+	DAD	D
+	MVI	M,FREEFLG		;mark buffer as	'free'
+	LXI	H,NULL			;return	something
+	RET
+;
+; Storage variables used by append mode
+;
+CURREC:	DB	0
+CUREXT:	DB	0
+OLDREC:	DB	0
+OLDEXT:	DB	0
+;
+;	fopen(name,mode)
+;
+FOPEN::
+;
+	POP	B			;get args
+	POP	H			;mode
+	SHLD	MODE
+	POP	D
+	XCHG
+	SHLD	FILE
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	CALL	GRABIO			; unit = grabio();
+	SHLD	UNIT
+	MOV	A,H			; if(unit==NULL)
+	ORA	L			;	return(NULL);
+	RZ
+	LXI	D,FCBSIZE		; ZZIP = unit+FCBSIZE;
+	DAD	D
+	SHLD	IP
+;
+	LXI	D,UNGOT			;# OFFSET TO UNGOTTEN CHAR
+	DAD	D
+	MVI	M,0FFH			;# EOF TO AVOID EXTRA CHAR
+;
+	DCX	H			;# POINT TO ERROR BYTE
+	MVI	M,0			;# CLEAR IT
+;
+	LHLD	IP			;ZZIP[NEXTP]=&ZZIP[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	XCHG
+	LHLD	IP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	UNIT			; fcb(unit,name);
+	PUSH	H
+	LHLD	FILE
+	PUSH	H
+	CALL	FCB
+	POP	H
+	POP	H
+	LHLD	UNIT			; cpmdisk(*unit);
+	MOV	L,M
+	MVI	H,0
+	PUSH	H
+	CALL	CPMDISK
+	POP	H
+	LHLD	MODE			;if(*mode=='R'||*mode=='A'){
+	MOV	A,M
+;
+	ANI	5FH			;# CONVERT TO UPPERCASE
+	CPI	'R'			;# MODE = R ?
+	JNZ	FOPIF1
+;
+FOPIF0:
+	MVI	C,OPEN			;	if(cpm(OPEN,unit)<0){
+	LHLD	UNIT
+	XCHG
+	CALL	CBDOS		; (mod to€cbdos (fas))
+	ORA	A
+	JP	FOPIF2
+	LHLD	UNIT		;		freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;		return(NULL);
+	RET
+				;		}
+FOPIF2:
+	LHLD	IP		;	IP[UNUSED] = 0;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,0
+	MOV	M,E
+	INX	H
+	MOV	M,D
+				;	}
+	JMP	FOPIFX
+FOPIF1:				; else if(*mode=='W'){
+	LHLD	MODE	
+	MOV	A,M
+	ANI	5FH
+	CPI	'W'		;# WRITE MODE ?
+	JZ	FOPIFA		;# YES - GO DO IT
+	CPI	'A'		;# APPEND MODE ?
+	JNZ	FOPIF5		;# NO  - BACK TO CALLER OF FOPEN
+;				;#     NO MODES LEFT TO TRY
+;
+	MVI	C,OPEN		;# FIRST LET'S SEE IF IT'S THERE
+	LHLD	UNIT
+	XCHG
+	CALL	CBDOS
+	ORA	A
+	JP	FOPIF3		;# YES  - SET IT UP FOR USE
+;
+				;# NO   - LET'S MAKE ONE
+	LHLD	MODE		;# SET MODE TO 'W' ON NEW FILE
+	MVI	M,'W'		;# TO AVOID WASTING TIME AND CODE
+				;# SEARCHING AN EMPTY FILE
+;
+FOPIFA:
+	MVI	C,DELETE	;	cpm(DELETE,unit);
+	LHLD	UNIT
+	XCHG
+	CALL	CBDOS		; (mod to cbdos(fas))
+	MVI	C,CREATE	;	if(cpm(CREATE,unit)<0){
+	LHLD	UNIT
+	XCHG
+	CALL	CBDOS		; (mod to cbdos(fas))
+	ORA	A
+	JP	FOPIF3
+	LHLD	UNIT		;		freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;		return(NULL);
+	RET
+				;		}
+FOPIF3:
+	LHLD	IP		;	IP[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	UNIT		;	unit[FLAG] = WRITE_FL;
+	LXI	D,FLAG
+	DAD	D
+	MVI	A,WRTFLG
+	ORA	M
+	MOV	M,A
+	JMP	FOPIF4
+				;	}
+FOPIF5:
+	LHLD	UNIT		; else{	freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LXI	H,NULL		;	return(NULL);
+	RET
+;
+				;	}
+FOPIF4:
+;
+	LHLD	MODE		;#
+	MOV	A,M		;# GET MODE
+	ANI	5FH
+	CPI	'A'		;# APPEND MODE ?
+	JNZ	FOPIFX		;# NO  -  RETURN NORMALLY
+;
+AMSCRD:
+;
+	LDA	CUREXT		;# SAVE EXTENT AND RECORD NUMBERS
+	STA	OLDEXT		;#    TWO DEEP
+	LDA	CURREC
+	STA	OLDREC
+	LHLD	UNIT
+	LXI	D,12
+	DAD	D
+	MOV	A,M		;# GET CURRENT EXTENT #
+	STA	CUREXT
+	LXI	D,20
+	DAD	D
+	MOV	A,M		;# GET CURRENT RECORD #
+	STA	CURREC
+;
+	LHLD	UNIT		;# YES -  LET'S READ TO THE END
+	XCHG			;# DE --> FCB
+	MVI	C,READ
+	CALL	CBDOS		;# READ A SECTOR
+	ORA	A
+	JZ	AMSCRD		;# READ TO PHYSICAL END OF FILE
+;
+	LHLD	UNIT
+	LXI	D,12
+	DAD	D
+	LDA	OLDEXT
+	MOV	M,A		;# RESTORE LAST EXTENT #
+	LXI	D,20
+	DAD	D
+	LDA	OLDREC
+	MOV	M,A		;# RESTORE LAST RECORD #
+;
+	LXI	H,ZZBUF
+	SHLD	TEMP		;# SAVE THE BUFF. WE'RE READING FROM
+;
+	XRA	A
+	STA	OLDREC		;# use oldrec for a counter
+AMCHRD:
+	LHLD	TEMP		;# HL --> TEMPORARY BUFFER
+	MOV	A,M
+;
+	CPI	0AH		;# LINE FEED CHECK
+	JNZ	NOTLF
+	INX	H		;# INCREMENT POINTER 
+	SHLD	TEMP		;#  AND GO ON TO NEXT CHARACTER
+	JMP	AMCHRD
+;
+NOTLF:	CPI	1AH		;# END OF FILE MARKER ?
+	JZ	FOPIFX		;# YES - EXIT GRACEFULLY
+	MOV	C,A
+	MVI	B,0		;# BC CONTAINS THE CHARACTER
+	INX	H
+	SHLD	TEMP		;# SAVE UPDATED POINTER
+	LHLD	UNIT
+	PUSH	B
+	PUSH	H
+	CALL	PUTC		;# PUTC(CHAR,ZZUNIT)
+	POP	B
+	POP	B
+;
+	LDA	OLDREC		;# get the counter
+	INR	A		;# add a count
+	STA	OLDREC		;# store it
+;
+	JNZ	AMCHRD		;# keep going (max 128 bytes)
+;
+FOPIFX:
+	LHLD	UNIT		; return(unit);
+	RET
+;
+;
+;	fclose(unit)
+;
+FCLOSE::
+	POP	B
+	POP	H
+	SHLD	UNIT
+	PUSH	H
+	PUSH	B
+	MOV	A,H			; if (unit<256)
+	ORA	A			; /* assume stdin, stdout, etc. */
+	MVI	L,0	
+	RZ				; 	return NULL;
+	LXI	 H,1			 ; t = 1;
+	SHLD	ZT
+	LHLD	UNIT			; if(unit[FLAG]	& WRITE_FL){
+	LXI	D,FLAG
+	DAD	D
+	MOV	A,M
+	ANI	WRTFLG
+	JZ	FCLIF1
+	LXI	H,CTRLZ			;	putc(CTRL_Z,unit);	
+	PUSH	H
+	LHLD	UNIT
+	PUSH	H
+	CALL	PUTC
+	POP	H
+	POP	H
+	LHLD	UNIT			;	ip = unit + FCBSIZE;
+	LXI	D,FCBSIZE
+	DAD	D
+	SHLD	IP
+	LHLD	IP			;		cp = ip[NEXTP];
+	LXI	D,NEXTP
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	CHP
+	LHLD	IP			;	dp = &ip[BUFFER]+BUFSIZ;
+	LXI	D,BUFFER+BUFSIZ
+	DAD	D
+	SHLD	DP
+FCLWH1:					;		while(cp<dp)
+	LHLD	CHP
+	XCHG
+	LHLD	DP
+	MOV	A,D
+	CMP	H
+	JC	FCLWH2
+	JNZ	FCLWH3
+	MOV	A,E
+	CMP	L
+	JNC	FCLWH3
+FCLWH2:					;		*cp++ =	CTRL_Z;
+	LHLD	CHP
+	MVI	M,CTRLZ
+	INX	H
+	SHLD	CHP
+	JMP	FCLWH1
+FCLWH3:
+	LXI	H,WRITE			;	if(cpmio(WRITE,unit)<0)
+	PUSH	H
+	LHLD	UNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	A
+	JP	FCLIF4
+	LXI	H,0			;			t = 0;
+	SHLD	ZT
+FCLIF4:
+					;		}
+FCLIF3:
+					;	}
+FCLIF1:
+	MVI	C,CLOSE			; if(cpm(CLOSE,unit)<0)
+	LHLD	UNIT
+	XCHG
+	CALL	CBDOS		; (mod tocbdos(fas))
+	ORA	A
+	JP	FCLIF5
+	LXI	H,0			;	t = 0;
+	SHLD	ZT
+FCLIF5:
+	LHLD	UNIT			; freeio(unit);
+	PUSH	H
+	CALL	FREEIO
+	POP	H
+	LHLD	ZT			; return(NULL+t);
+	RET
+;
+
+;
+;	fcb(fp,name)
+;
+FCB::
+	POP	H			;get args
+	POP	D			;name
+	POP	B			;fp
+	PUSH	B
+	PUSH	D
+	PUSH	H
+	INX	D			; if(name[1]==':'){
+	LDAX	D
+	DCX	D
+	CPI	':'
+	JNZ	FCBIF1
+	LDAX	D			;	A = *name - '@';
+	SUI	40H			; '@' 9	Jun 80 rj
+		
+	INX	D			;	name +=	2;
+	INX	D
+
+	CPI	61H-41H
+	JC	FCBIF2
+	SUI	61H-41H			;	A -= 'a'-'A'; 9	Jun 80 rj
+	JMP	FCBIF2			;	}
+FCBIF1:
+	LDA	DFLTDSK			; else	A = default_drive;
+FCBIF2:
+	STAX	B			; *fp++	= A;
+	INX	B
+	MVI	H,' '			; fp = fcbfill(fp,name,' ',8);
+	MVI	L,8
+	CALL	FCBFILL
+	MVI	L,3			; fp = fcbfill(fp,name,' ',3);
+	CALL	FCBFILL
+	MVI	H,0			; fp = fcbpad(fp,0,4);
+	MVI	L,4
+	CALL	FCBPAD
+	LXI	H,16			; fp[16] = 0;
+	DAD	B
+	MVI	M,0
+	RET				; return;
+;
+;	fcbfill(dest,name,pad,size)
+;		B    D	  H   L
+;
+FCBFILL::
+	MOV	A,L		; while(L>0 && (A= *D)~='.' && A~=0){
+	ORA	A
+	JZ	FILL2
+	LDAX	D
+	CPI	'.'
+	JZ	FILL2
+	CPI	0
+	JZ	FILL2
+	CPI	61H		;	if(A>='a' && A<='z')
+	JC	FILL1
+	CPI	7AH+1		; 'z' 9	Jun 80 rj
+	JNC	FILL1
+	SUI	61H-41H		;		A = A -	'a' + 'A';
+FILL1:
+	STAX	B		;	*B++ = A;
+	INX	B
+	INX	D		;	D++;
+	DCR	L		;	L--;
+	JMP	FCBFILL		;	}
+FILL2:
+	LDAX	D		; while(*D~='.'	&& *D~=0)	
+	CPI	'.'
+	JZ	FILL3
+	CPI	0
+	JZ	FILL3
+	INX	D		;	D++;
+	JMP	FILL2
+FILL3:
+	CPI	'.'		; if(*D=='.')
+	JNZ	FILL4
+	INX	D		;	D++;
+FILL4:
+;	fall into...
+;
+;	fcbpad(dest,pad,size)
+;		B   H	L
+;
+FCBPAD::
+	MOV	A,L			; while(L>0){
+	ORA	A
+	JZ	PAD2
+	MOV	A,H			;	*B++ = H;
+	STAX	B
+	INX	B
+	DCR	L			;	L--;
+	JMP	FCBPAD			;	}
+PAD2:
+	RET				; return;
+;
+;	getc(unit)
+;
+FGETC::
+GETC::
+	POP	B
+	POP	H			; get args
+	PUSH	H
+	PUSH	B
+					; c=cget(unit);
+	PUSH	H
+	CALL	CGET
+	POP	D
+	MOV	A,L			; if(c=='\r')	
+	ANI	7FH			; /* mask parity in compare */
+	CPI	EOL
+	JNZ	GETCRET
+	PUSH	H			;	cget(unit);
+	PUSH	D			;	/* to skip LF */
+	CALL	CGET
+	MOV	A,L
+	ANI	7FH
+	CPI	0AH			; and only skip line feeds
+	JZ	GETCNLF
+	LHLD	UNIT
+	LXI	D,FCBSIZE+UNGOT
+	DAD	D
+	MOV	M,A			; if not LF, the next cgets it
+GETCNLF:
+	POP	H
+	POP	H
+GETCRET:
+	RET
+;
+;	cget(unit)
+;
+CGET:
+	POP	D
+	POP	H
+	PUSH	H
+	PUSH	D
+	MOV	A,H			; file or console ?
+	ORA	A
+	JNZ	CGET1			; file
+	CALL	GETCHAR			; console
+	POP	D
+	POP	D
+	RET
+CGET1:	SHLD	UNIT
+	LXI	D,FLAG			; if(unit[FLAG]	& EOF_FL)
+	DAD	D
+	MOV	A,M
+	ANI	EOFFLG
+	JZ	GTCIF1
+	LXI	H,-1			;	return(-1);
+	RET
+GTCIF1:
+	LHLD	UNIT			; ip = unit + FCBSIZE;
+	LXI	D,FCBSIZE
+	DAD	D
+	SHLD	IP
+;
+	LXI	D,UNGOT			; check for ungotten char
+	DAD	D
+	MOV	A,M
+	CPI	EOF			; is it an end of file ?
+	JZ	GTCCON
+	MOV	B,A
+	MVI	A,EOF
+	MOV	M,A
+	MOV	L,B
+	MOV	H,0
+	RET				; return with char in HL
+;
+GTCCON:	LHLD	IP
+	LXI	D,NEXTP			; cp = ip[NEXTP];
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	CHP
+	LHLD	IP			; if(ip[UNUSED]==0){
+	LXI	D,UNUSED
+	DAD	D
+	MOV	A,M
+	INX	H
+	ORA	M
+	JNZ	GTCIF2
+;
+; Mark beginning of each 128 byte segment of buffer with EOF to
+; eliminate possible bogus read
+;
+	LHLD	UNIT			;  unit + FCBSIZE;
+	LXI	D,FCBSIZE + BUFFER
+	DAD	D
+	LXI	D,128
+	MVI 	B,NSECTS
+	MVI	A,1AH
+SETEOF:
+	MOV	M,A			; mark it with an EOF
+	DAD	D
+	DCR	B
+	JNZ	SETEOF
+;
+	LXI	H,READ			;if(cpmio(READ,unit)~=0)
+	PUSH	H
+	LHLD	UNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	L
+	JZ	GTCIF3
+	LDA	MAXSEC			;# IS THIS THE FIRST READ
+	CPI	NSECTS			;#
+	JNZ	GTCIF3			;# NO, THERE'S CHARS IN THAT BUFFER
+					;# YES, GETOUTAHERE
+	LXI	H,-1			;		return(-1);
+	RET
+GTCIF3:
+	LHLD	IP			;	else {	ip[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	IP			;		cp = &ip[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	CHP
+					;		}
+					;	}
+GTCIF2:
+	LHLD	IP			; ip[UNUSED]--;
+	LXI	D,UNUSED
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	DCX	D
+	MOV	M,D
+	DCX	H
+	MOV	M,E
+	LHLD	CHP			; ip[NEXTP] = cp+1;
+	INX	H
+	XCHG
+	LHLD	IP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	CHP			; if(*cp==CTRL_Z){
+	MOV	A,M
+	ANI	7FH			; /* mask parity in compare */
+	CPI	CTRLZ
+	JNZ	GTCIF4
+	LHLD	UNIT			;	unit[FLAG] |= EOF_FL;
+	LXI	D,FLAG
+	DAD	D
+	MOV	A,M
+	ORI	EOFFLG
+	MOV	M,A
+	LXI	H,-1			;	return(-1);
+	RET
+					;	}
+GTCIF4:
+	MOV	A,M
+	MOV	L,A			; return(*cp & 0377);
+	MVI	H,0
+	RET
+
+;
+;	getchar()
+;
+GETCHAR::
+GETCHR1:			; } else { /* read from	console	*/
+	MVI	C,GETCH			; t = cpm(GETCH,0) & 0377;
+	CALL	CBDOS		; (mod to cbdos(fas))
+	MOV	L,A		
+	MVI	H,0
+	ANI	7FH			; /* mask parity in compare */
+	CPI	CTRLZ			; if(t==CTRLZ)
+	JNZ	GET1CHAR
+	LXI	H,-1			;	t = -1;
+GET1CHAR:
+	CPI	EOL			; if(t==EOL)
+	JNZ	GET2CHAR
+	PUSH	H			;	putchar('\n');
+	MVI	C,PUTCH
+	MVI	E,LF
+	CALL	CBDOS		; (mod to cbdos(fas))
+	POP	H
+GET2CHAR:				; return(t);
+	RET			; }
+
+;
+;	gets(buff)
+;
+GETS::
+GETS1:	POP	H		; } else {
+	SHLD	CHP
+	DCX	H			; save = buff[-1]; save2 = buff[-2];
+	MOV	D,M			; buff[-1] = 0;	 buff[-2] = 79;
+	MVI	M,0
+	DCX	H
+	MOV	E,M
+	MVI	M,79					;6 May 80 rj
+	PUSH	H
+	PUSH	D
+	XCHG				; cpm(GETSTR,buff-2);
+	MVI	C,GETSTR
+	CALL	CBDOS		; (mod to cbdos(fas))
+	LHLD	CHP			; buff[buff[-1]] = 0; (9 Jun 80. Was cp)
+	DCX	H
+	MOV	E,M
+	INX	H
+	MVI	D,0
+	DAD	D
+	MVI	M,0
+	POP	D			; buff[-1] = save; buff[-2] = save2;
+	POP	H
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	INX	H
+	MVI	C,PUTCH			; putchar('\n');
+	MVI	E,LF
+	CALL	CBDOS		; (mod to cbdos(fas))
+	LHLD	CHP			; return(buff);
+	RET			; }
+;
+;	fgets(cp,len,unit)
+;
+FGETS::
+	INX	SP	; skip rtn addr
+	INX	SP
+	POP	B	; unit
+	POP	D	; length
+	POP	H	; cp
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	DCX	SP
+	DCX	SP
+FGETS1:	SHLD	SVCHP		;	save_cp	= cp;
+	PUSH	D	; keep stack right
+FGETS2:	POP	D
+	DCX	D		;	while (--len) {
+	PUSH	D
+	MOV	A,D
+	ORA	E
+	JZ	FGETS4
+	PUSH	H	; save cp
+	PUSH	B	; unit
+	CALL	GETC		;	    c =	getc(unit);
+	POP	B
+	MOV	A,H		;	    if(c==EOF) /* c>255	*/
+	ORA	A
+	JZ	FGETS3
+	POP	D	; cp
+	LHLD	SVCHP		;		  if (cp<>save_cp)
+	XCHG			;			/* read	something */
+	MOV	A,H
+	CMP	D
+	JNZ	FGETS4		;			goto fgets4;
+	MOV	A,L
+	CMP	E
+	JNZ	FGETS4		;		  else
+	LXI	H,0		;			/* no characters */
+	POP	D	; fix stack
+	RET			;			return (NULL);
+FGETS3:	MOV	A,L		;	    else {
+	POP	H
+	MOV	M,A		;		*cp++ =	c;
+	INX	H
+	ANI	7FH		;	     /*	mask parity in compare */
+	CPI	EOL		;		if(c=='\n')
+	JNZ	FGETS2
+FGETS4:	MVI	M,0		;			*cp='\0';
+	POP	D	; fix stack
+	LHLD	SVCHP		;			return save_cp;
+	RET			; }	}	}	}
+;
+;	putc(c,unit)
+;
+FPUTC::
+PUTC::
+	POP	B	;rtn addr
+	POP	D	;unit
+	POP	H	;c
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	MOV	A,D
+	ORA	A		; if(unit < 256) {
+	JNZ	PUTC4		;	/* assume stdout, stderr */
+	MOV	A,E
+	CPI	STDOUT		;	if(unit	== stdout) {
+	JNZ	PUTC1
+	PUSH	H
+	CALL	PUTCHAR		;		putchar(c);
+	POP	H
+	RET			;		return;}
+PUTC1:	CPI	STDERR		;	elseif(unit == stderr) {
+	JNZ	PUTC3
+	CALL	PUTCON		;		putconsole(c);
+	RET			;		return;}
+PUTC3:	JMP	PTCER1		;	else goto putcerr; }
+
+PUTC4:	PUSH	H			; if(cput(c,unit)<0)
+	PUSH	D			;	goto putcerr;
+	CALL	CPUT
+	POP	D
+	MOV	A,H
+	ORA	A
+	JM	PUTCERR
+	MOV	A,L			; if(c=='\r')
+	CPI	EOL
+	JNZ	PUTCRET
+	LXI	H,LF			;	cput('\n',unit);
+	PUSH	H
+	PUSH	D
+	CALL	CPUT
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	A
+	JM	PUTCERR
+PUTCRET:
+	POP	H			; return(c);
+	RET
+PUTCERR:				;putcerr:
+	POP	B			; return(-1);
+PTCER1:
+	LXI	H,-1
+	RET
+;
+;	cput(c,unit)
+;
+CPUT::
+	POP	B
+	POP	D
+	POP	H
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	SHLD	ZCH
+	XCHG
+	SHLD	UNIT
+	LXI	D,FCBSIZE		; ip = unit + FCBSIZE;
+	DAD	D
+	SHLD	IP
+	LXI	D,NEXTP			; cp = ip[NEXTP];
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	CHP
+	LHLD	IP			; if(ip[UNUSED]==0){
+	LXI	D,UNUSED
+	DAD	D
+	MOV	A,M
+	INX	H
+	ORA	M
+	JNZ	PTCIF1
+	LXI	H,WRITE			;	if(cpmio(WRITE,unit)~=0)	
+	PUSH	H
+	LHLD	UNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	L
+	JZ	PTCIF2
+	LXI	H,-1			;		return(-1);
+	RET
+PTCIF2:
+	LHLD	IP			;	else {	ip[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	IP			;		cp = &ip[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	CHP
+					;		}
+					;	}
+PTCIF1:
+	LHLD	IP
+	LXI	D,UNUSED		; ip[UNUSED]--;
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	DCX	D
+	MOV	M,D
+	DCX	H
+	MOV	M,E
+	LHLD	CHP			; ip[NEXTP] = cp+1;
+	INX	H
+	XCHG
+	LHLD	IP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LDA	ZCH			; return((*cp =	c) & 0377);
+	LHLD	CHP
+	MOV	M,A
+	MVI	H,0
+	MOV	L,A
+	RET
+;
+;	putchar(c)
+;
+PUTCHAR::
+	POP	B
+	POP	H
+	PUSH	H
+	PUSH	B
+	PUSH	H
+	LHLD	RSTDOUT		; if(rdstdout >= 256) {
+	MOV	A,H		;	/* stdout has been redirected */
+	ORA	A
+	JZ	PUTCHR1
+	PUSH	H
+	CALL	PUTC		;	putc(c,	rdstdout);
+	POP	B
+	POP	B		;	return;
+	RET
+PUTCHR1:			; } else {
+	POP	H
+PUTCON:	SHLD	ZCH		;	/* send to console */
+	XCHG				; cpm(PUTCH,c);
+	MVI	C,PUTCH
+	CALL	CBDOS		; (mod fas)
+	LDA	ZCH			; if(c==EOL)
+	ANI	7FH			; /* mask parity in compare */
+	CPI	EOL
+	JNZ	PUTCHIF1
+	MVI	E,LF			;	cpm(PUTCH,LF);
+	MVI	C,PUTCH
+	CALL	CBDOS		; (mod fas)
+PUTCHIF1:
+	LHLD	ZCH			; return(c & 0377);
+	MVI	H,0
+	RET			; }
+;
+;	puts(cp)
+;
+PUTS::
+	POP	B			; get args
+	POP	H
+	PUSH	H
+	PUSH	B
+	PUSH	H	; cp
+	LHLD	RSTDOUT
+	PUSH	H
+	CALL	FPUTS		;	return (fputs(cp, rstdout));
+	POP	B
+	POP	B
+	RET
+;
+;	fputs(cp,unit)
+;
+FPUTS::
+	POP	B
+	POP	D	; unit
+	POP	H	; cp
+	PUSH	H
+	PUSH	D
+	PUSH	B
+FPUTS1:	MOV	A,M		; while((c=*cp++) <> NULL) {
+	INX	H
+	ORA	A
+	JZ	FPUTS3
+	PUSH	H
+	MOV	C,A
+	MVI	B,0
+	PUSH	B
+	PUSH	D
+	CALL	PUTC		;	if(putc(c,unit)==EOF)
+	POP	D
+	POP	B
+	MOV	A,H
+	ORA	A
+	JZ	FPUTS2
+	POP	B
+	RET			;		return(EOF);
+FPUTS2:	POP	H
+	JMP	FPUTS1		; }
+FPUTS3:	LXI	H,0
+	RET			; return(NULL);
+;
+;	cpmio(fn,unit)
+;
+CPMIO:
+	POP	B
+	POP	D
+	POP	H
+	SHLD	FN
+	XCHG
+	SHLD	UNIT
+	PUSH	D
+	PUSH	H
+	PUSH	B
+	LHLD	UNIT			; cpmdisk(*unit);
+	MOV	L,M
+	MVI	H,0
+	PUSH	H
+	CALL	CPMDISK
+	POP	H
+	LHLD	UNIT			; ip = unit+FCBSIZE;
+	LXI	D,FCBSIZE		; cpm(DMA,&ip[BUFFER]);
+	DAD	D
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	NUBUFF		;# SAVE TO UPGRADE DURING LOOPING
+	XCHG
+	MVI	C,DMA
+	CALL	CBDOS		; (mod fas)
+	LHLD	FN			; t = cpm(fn,unit);
+	MOV	C,L
+	MVI	A,NSECTS	;# READ/WRITE UP TO NSECT SECTORS
+	STA	MAXSEC		;# SAVE IT
+	LHLD	UNIT
+	XCHG
+IOLOOP:	PUSH	H		;# NEW CONSTRUCT TO ACCOMODATE 1K BUFFERS
+	PUSH	D		;# SAVE IT ALL FOR REPEAT PERFORMANCE
+	PUSH	B
+;
+	PUSH	H		;# DON'T WRITE BLANKS
+	MOV	A,C
+	CPI	READ
+	POP	H
+	JZ	NOWRIT
+	PUSH	H
+	LHLD	NUBUFF
+	MOV	A,M
+	POP	H
+	CPI	1AH		;# END OF FILE CHAR ?
+	JZ	IOEXIT
+;
+NOWRIT:
+	CALL	CBDOS		;# READ/WRITE A SECTOR
+	PUSH	PSW
+	CALL	CCSXT
+	SHLD	ZT
+	POP	PSW
+	ORA	A		;# CHECK FOR LAST SECTOR
+	JNZ	IOEXIT		;# IF LAST GET OUT OF HERE
+	LDA	MAXSEC
+	DCR	A		;# CHECK FOR 8 SECTORS DONE
+	JZ	IOEXIT
+	STA	MAXSEC
+	LHLD	NUBUFF		;# GET BUFFER ADDRESS
+	LXI	D,128
+	DAD	D		;# COMPUTE NEW BUFFER ADDRESS
+	SHLD	NUBUFF		;# SAVE TIL NEXT TIME
+
+	XCHG
+	MVI	C,DMA
+	CALL	CBDOS		;# SET THE NEW BUFFER
+	POP	B
+	POP	D
+	POP	H
+	JMP	IOLOOP
+IOEXIT:	POP	B		;# CLEAN UP
+	POP	D
+	POP	H
+	MVI	C,DMA			; cpm(DMA,TBUFF);
+	LXI	D,ZZBUF
+	CALL	CBDOS		; (mod fas)
+	LHLD	ZT			; if(t~=0) return(-1);
+	MOV	A,H			; else	   return(0);
+	ORA	L
+	JNZ	CPMIF1
+	LXI	H,0
+	JMP	CPMIF2
+CPMIF1:
+	LXI	H,-1
+CPMIF2:
+	RET
+;
+;	cpmdisk(disk)
+;
+CPMDISK:
+	POP	D
+	POP	H
+	PUSH	H
+	PUSH	D
+	MOV	A,L			; if(d~=0)
+	ORA	H
+	JZ	DISKIF1
+	XCHG				;	cpm(SELECT,d-1);
+	DCX	D
+	MVI	C,SELECT
+	CALL	CBDOS		; (mod fas)
+DISKIF1:
+	RET
+;
+	END	ULINK	
+
+

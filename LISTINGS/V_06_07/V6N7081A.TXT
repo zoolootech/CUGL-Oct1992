@@ -1,0 +1,223 @@
+Microsoft (R) Macro Assembler Version 5.00                  6/23/88 20:28:00
+                                                             Page     1-1
+
+
+				; C device driver startup 
+				 PAGE 75,118 
+				; Philip J. Erdelsky - June 23, 1988 
+				 
+				; request header structure for INIT command 
+				 
+				REQ_HEADER      STRUC 
+ 0000  ??			REQ_HDR_LENGTH  DB	(?) 
+ 0001  ??			UNIT_CODE       DB	(?) 
+ 0002  ??			COMMAND_CODE    DB	(?) 
+ 0003  ????			STATUS          DW	(?) 
+ 0005  0008[			RESERVED        DB	8 DUP (?) 
+	    ??			
+			 ]	
+				
+ 000D  ??			NUMBER_OF_UNITS DB	(?) 
+ 000E  ????????			END_OF_DRIVER   DD	(?) 
+ 0012				REQ_HEADER      ENDS 
+				 
+ = 8000				ERROR_STATUS = 8000H 
+ = 0200				BUSY_STATUS  = 0200H 
+ = 0100				DONE_STATUS  = 0100H 
+				 
+ = 0000				WRITE_PROTECT_VIOLATION             =  0 
+ = 0001				UNKNOWN_UNIT                        =  1 
+ = 0002				DRIVE_NOT_READY                     =  2 
+ = 0003				UNKNOWN_COMMAND                     =  3 
+ = 0004				CRC_ERROR                           =  4 
+ = 0005				BAD_DRIVE_REQUEST_STRUCTURE_LENGTH  =  5 
+ = 0006				SEEK_ERROR                          =  6 
+ = 0007				UNKNOWN_MEDIA                       =  7 
+ = 0008				SECTOR_NOT_FOUND                    =  8 
+ = 0009				PRINTER_OUT_OF_PAPER                =  9 
+ = 000A				WRITE_FAULT                         = 10 
+ = 000B				READ_FAULT                          = 11 
+ = 000C				GENERAL_FAILURE                     = 12 
+				 
+				 
+				CGROUP	GROUP	CODE,DDSTACK,STACKTOP 
+				DGROUP	GROUP	DATA,UDATA,TDATA 
+				 
+ 0000				CODE	SEGMENT	BYTE PUBLIC 'CODE' 
+					ASSUME	CS:CGROUP 
+				 
+				; device header 
+				 
+ 0000  FFFF FFFF			DW	-1,-1 
+ 0004  0000				DW	0 
+ 0006  0036 R				DW	OFFSET CGROUP:STRATEGY_ENTRY 
+ 0008  0041 R				DW	OFFSET CGROUP:INTERRUPT_ENTRY 
+ 000A  20 20 20 20 20 20 20		DB	'        ' 
+       20			
+				 
+				; command jump table 
+				 
+					EXTRN	INIT:NEAR 
+					EXTRN	MEDIA_CHECK:NEAR 
+					EXTRN	BUILD_BPB:NEAR 
+					EXTRN	IOCTL_INPUT:NEAR 
+					EXTRN	INPUT:NEAR 
+					EXTRN	NONDESTRUCTIVE_INPUT:NEAR 
+					EXTRN	INPUT_STATUS:NEAR 
+					EXTRN	INPUT_FLUSH:NEAR 
+					EXTRN	OUTPUT:NEAR 
+					EXTRN	OUTPUT_WITH_VERIFY:NEAR 
+					EXTRN	OUTPUT_STATUS:NEAR 
+					EXTRN	OUTPUT_FLUSH:NEAR 
+					EXTRN	IOCTL_OUTPUT:NEAR         
+				 
+ 0012				COMMAND_JUMP_TABLE: 
+ 0012  0000 E				DW	OFFSET CGROUP:INIT 
+Microsoft (R) Macro Assembler Version 5.00                  6/23/88 20:28:00
+                                                             Page     1-2
+
+
+ 0014  0000 E				DW	OFFSET CGROUP:MEDIA_CHECK          
+ 0016  0000 E				DW	OFFSET CGROUP:BUILD_BPB            
+ 0018  0000 E				DW	OFFSET CGROUP:IOCTL_INPUT          
+ 001A  0000 E				DW	OFFSET CGROUP:INPUT                
+ 001C  0000 E				DW	OFFSET CGROUP:NONDESTRUCTIVE_INPUT 
+ 001E  0000 E				DW	OFFSET CGROUP:INPUT_STATUS           
+ 0020  0000 E				DW	OFFSET CGROUP:INPUT_FLUSH          
+ 0022  0000 E				DW	OFFSET CGROUP:OUTPUT               
+ 0024  0000 E				DW	OFFSET CGROUP:OUTPUT_WITH_VERIFY   
+ 0026  0000 E				DW	OFFSET CGROUP:OUTPUT_STATUS          
+ 0028  0000 E				DW	OFFSET CGROUP:OUTPUT_FLUSH         
+ 002A  0000 E				DW	OFFSET CGROUP:IOCTL_OUTPUT         
+				 
+				; These items must be saved in the CODE segment because the must be 
+				; accessed before the DS register can be loaded 
+				 
+ 002C  00000000			SAVE_POINTER    DD  0 
+ 0030  0000			SAVE_SP         DW  0 
+ 0032  0000			SAVE_SS         DW  0 
+ 0034  0000			DGROUP_ADDRESS  DW  0 
+				 
+ 0036				STRATEGY_ENTRY PROC FAR 
+				 
+ 0036  2E: 89 1E 002C R			MOV	WORD PTR SAVE_POINTER,BX 
+ 003B  2E: 8C 06 002E R			MOV	WORD PTR SAVE_POINTER+2,ES 
+ 0040  CB				RET 
+				 
+ 0041				STRATEGY_ENTRY ENDP 
+				 
+ 0041				INTERRUPT_ENTRY PROC FAR 
+				 
+ 0041  50				PUSH	AX 
+ 0042  53				PUSH	BX 
+ 0043  51				PUSH	CX 
+ 0044  52				PUSH	DX 
+ 0045  55				PUSH	BP 
+ 0046  56				PUSH	SI 
+ 0047  57				PUSH	DI 
+ 0048  1E				PUSH	DS 
+ 0049  06				PUSH	ES 
+ 004A  2E: 89 26 0030 R			MOV	SAVE_SP,SP 
+ 004F  2E: 8C 16 0032 R			MOV	SAVE_SS,SS 
+ 0054  FA				CLI 
+ 0055  8C C8				MOV	AX,CS 
+ 0057  8E D0				MOV	SS,AX 
+ 0059  BC 0000 R			MOV	SP,OFFSET CGROUP:STACKTOP 
+ 005C  FB				STI 
+ 005D  2E: C4 1E 002C R			LES	BX,SAVE_POINTER 
+ 0062  26: 8A 47 02			MOV	AL,ES:[BX].COMMAND_CODE 
+ 0066  3C 0C				CMP	AL,12 
+ 0068  77 2F				JA	BAD_DEVICE_DRIVER_FUNCTION 
+ 006A  98				CBW 
+ 006B  8B F0				MOV	SI,AX 
+ 006D  03 F0				ADD	SI,AX 
+ 006F  74 30				JZ	INITIALIZE 
+ 0071  2E: 8E 1E 0034 R			MOV	DS,DGROUP_ADDRESS 
+					ASSUME	DS:DGROUP 
+ 0076  89 1E 0000 R		IE2:	MOV	REQUEST_HEADER,BX 
+ 007A  8C 06 0002 R			MOV	REQUEST_HEADER+2,ES 
+ 007E  2E: FF 94 0012 R			CALL	WORD PTR COMMAND_JUMP_TABLE[SI] 
+					ASSUME	DS:NOTHING 
+				 
+					PUBLIC	EXIT 
+ 0083				EXIT PROC NEAR 
+ 0083				EXIT ENDP 
+				 
+ 0083  FA				CLI 
+ 0084  2E: 8B 26 0030 R			MOV	SP,SAVE_SP 
+ 0089  2E: 8E 16 0032 R			MOV	SS,SAVE_SS 
+ 008E  FB				STI 
+ 008F  07				POP	ES 
+Microsoft (R) Macro Assembler Version 5.00                  6/23/88 20:28:00
+                                                             Page     1-3
+
+
+ 0090  1F				POP	DS 
+ 0091  5F				POP	DI 
+ 0092  5E				POP	SI 
+ 0093  5D				POP	BP 
+ 0094  5A				POP	DX 
+ 0095  59				POP	CX 
+ 0096  5B				POP	BX 
+ 0097  58				POP	AX 
+ 0098  CB				RET 
+				 
+ 0099				INTERRUPT_ENTRY ENDP 
+				 
+					PUBLIC	BAD_DEVICE_DRIVER_FUNCTION 
+				 
+ 0099				BAD_DEVICE_DRIVER_FUNCTION: 
+ 0099  26: C7 47 03 8103		MOV	WORD PTR ES:[BX].STATUS,ERROR_STATUS+DONE_STATUS+UNKNOWN_COMMAND 
+ 009F  EB E2				JMP	EXIT 
+				 
+ 00A1				INITIALIZE: 
+ 00A1  B1 04				MOV	CL,4 
+ 00A3  B8 0000 R			MOV	AX,OFFSET CGROUP:STACKTOP 
+ 00A6  D3 E8				SHR	AX,CL 
+ 00A8  8C CA				MOV	DX,CS 
+ 00AA  03 D0				ADD	DX,AX 
+ 00AC  8E DA				MOV	DS,DX 
+					ASSUME	DS:DGROUP 
+ 00AE  2E: 89 16 0034 R			MOV	DGROUP_ADDRESS,DX 
+ 00B3  26: C7 47 0E 0000 R		MOV	WORD PTR ES:[BX].END_OF_DRIVER,OFFSET DGROUP:TDATA 
+ 00B9  26: 8C 5F 10			MOV	WORD PTR ES:[BX].END_OF_DRIVER+2,DS 
+ 00BD  8C 0E 0006 R			MOV	DEVICE_HEADER+2,CS 
+ 00C1  EB B3				JMP	IE2 
+					ASSUME	DS:NOTHING 
+				 
+ 00C3				CODE	ENDS 
+				 
+ 0000				DDSTACK	SEGMENT WORD PUBLIC 'CODE' 
+ 0000  0080[				DW	128 DUP (?) 
+	   ????			
+			 ]	
+				
+ 0100				DDSTACK	ENDS 
+				 
+ 0000				STACKTOP  SEGMENT PARA 'CODE' 
+ 0000				STACKTOP  ENDS 
+				 
+ 0000				DATA		SEGMENT	PARA PUBLIC 'DATA' 
+						PUBLIC	REQUEST_HEADER, DEVICE_HEADER 
+ 0000  ????			REQUEST_HEADER	DW	(?) 
+ 0002  ????					DW	(?) 
+ 0004  0000			DEVICE_HEADER	DW	0 
+ 0006  ????					DW	(?) 
+ 0008				DATA		ENDS 
+				 
+ 0000				UDATA	SEGMENT WORD PUBLIC 'DATA' 
+ 0000				UDATA	ENDS 
+				 
+ 0000				TDATA  SEGMENT WORD PUBLIC 'DATA' 
+ 0000				TDATA  ENDS 
+				 
+					END 
+
+    195 Source  Lines
+    195 Total   Lines
+     60 Symbols
+
+  50472 + 208216 Bytes symbol space free
+
+      0 Warning Errors
+      0 Severe  Errors

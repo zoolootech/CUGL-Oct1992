@@ -1,0 +1,28 @@
+/* update.c - Update task */
+
+#include <synrtx.h>
+
+#define OBSERVE 0
+#define REPORT  1
+
+static word eventCount;
+
+static handler Observe(msg_t *msg_p) {
+    io_putf("Update.Observe: eventCount = %w\n", ++eventCount);
+}
+
+static handler Report(msg_t *msg_p) {
+    io_putf("Update.Report: eventCount = %w\n", eventCount);
+    eventCount = 0;
+}
+
+task Update(void) {
+    task_setHandler(2, Observe, Report);
+
+    eventCount = 0;
+    loop {
+        /* give a fair access by rotating interrupt priorities */
+        task_enableWait(NO_TIMEOUT, 2, OBSERVE, REPORT);
+        task_enableWait(NO_TIMEOUT, 2, REPORT, OBSERVE);
+    }
+}

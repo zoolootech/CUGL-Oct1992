@@ -1,0 +1,65 @@
+Author:
+-------
+   Michael Evans   (312) 329-6302 days.
+
+Summary:
+--------
+      The following patch to any EXE type file created by the C86 linker (cl)
+   will allow the return code from function MAIN to be passed to DOS 2.0.
+   Once applied, the ERRORLEVEL batch facility in DOS 2.0 may be used
+   to evaluate the returned value from a C86 program.  One handy implementation
+   is patching the EXE files provided with the C86 system so that a batch file
+   can test for successful completion of the various C86 programs.
+
+       Restrictions: a. DOS 2.0 only allows for an 8 bit return code, thus the
+                        16 bit result from C86 will be folded via OR to 8 bits.
+                     b. Once patch is applied, modules are not downward
+                        compatible from DOS 2.0.
+
+              Notes: a. ALL values mentioned below are HEXADECIMAL.
+                     b. When looking at a word in storage, remember that it
+                        is stored LEAST significant byte first.
+                     c. ALWAYS assume SIGNED quantities unless otherwise noted.
+                     d. This patch was tested on software supplied as
+                        version 1.33D from CI.
+                     e. NEVER alter the original CI release diskettes.
+                     f. Abort the procedure if any verifications do not match,
+                        the patch will only work if installed exactly as shown.
+
+Procedure:
+----------
+
+   1. Copy filename with EXE extension to one with a ZAP extension.
+
+   2. Load the filename.ZAP file under DEBUG.
+
+   3. Locate the program entry point as follows:
+      a. At offset 108 in the file is a word containing the header size
+         in paragraphs, multiply this value by 10.
+      b. Perform an addition of the words at file offsets 114 and
+         116.
+      c. The entry point of the program is 100 + (step 3.a) + (step 3.b).
+
+   4. The byte at location (step 3.c) must be an E9, if not, recheck the
+      preceding steps.
+
+   5. The file offset to $MAIN is: 3 + (step 3.c) + the contents of the word
+      at file offset ((step 3.c) + 1).
+
+   6. Locate the following string within 8 bytes of (step 5) + 58:
+      8A 1E nn nn 0A DB 74 35 78 04  (nn means don't care).
+
+   7. Considering the file offset of the string in step 6 as BASE, make the
+      following modifications:
+      a. Move 2 bytes from BASE + 2 to BASE + 4.
+      b. Change bytes starting at BASE to: 0A C4 D0 26
+      c. Change bytes starting at BASE + 6 to: 72 06 74 31
+      d. Verify at BASE + D: 2F, change to: 2D
+      e. Verify at BASE + 35: 76 05 8B 6E 00 EB D3 58,
+                   change to: 8B 6E 00 77 D5 58 B4 4C
+      f. Verify at BASE + 3E: 20, change to: 21
+
+   8. Update filename.ZAP with W subcommand of DEBUG, then exit via Q.
+
+   9. Rename filename.ZAP to filename.EXE.
+

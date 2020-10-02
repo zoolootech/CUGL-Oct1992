@@ -1,0 +1,617 @@
+.pl 66
+.rm 65
+.m1 4
+.m2 2
+.m3 2
+.m4 4
+.he 'BDS C Coroutine Package''Introduction'
+.fo '28 May 1983'-#-'K. B. Kenny'
+.ls 1
+.ce 3
+Coroutine Package for BDS C
+by
+Kevin B. Kenny
+.sp 2
+.ul 1
+Acknowledgements.
+.sp
+.ti +5
+The BDS 'C' coroutine package is based on one developed at the University of
+Waterloo for the programming language 'B' by I. D. Allen.  The author
+is also indebted to Peter Fraser, who explained the Waterloo implementation
+and provided much good advice for the 'C' version.
+.sp 2
+.ul 1
+1. Introduction: What are coroutines?
+.sp
+.ti +5
+Every programmer is familiar with the concept of subroutines; portions
+of a program that, in effect, provide extensions to the hardware and
+allow the programmer to think of complex tasks as sequences of simpler
+ones.  While this way of thinking about subroutines is enormously useful,
+another view is possible: a main program and its subroutines can be seen
+as a team of actors, each with its own job to do.  When the main program
+has a task that some subroutine performs, it asks that subroutine for service;
+when the subroutine finishes its job, it exits to the main program.
+.sp
+.ti +5
+When a very complex subroutine is written, it is difficult to see it as
+simply performing a service for the main program; it might be equally valid
+to say that when the subroutine exits to the main program, it is asking
+the main program to perform a service for it.  The main program does its
+duty, then returns to the subroutine for further orders.
+.sp
+.ti +5
+Consider, for instance, a program which has very complicated operations
+to perform on an input stream, eventually producing an output stream.
+If the input routine is very complicated, we are tempted to make it the
+"main program" and generate the output stream by calling an "output
+subroutine".  If, on the other hand, the output procedure is complex,
+we are tempted to make
+.ul 1
+it
+the "main program," retrieving its data from the "input subroutine."
+What do we do when they are both complicated procedures and neither one
+can conveniently be made into a subroutine?
+.sp
+.ti +5
+The solution to this problem is to use
+.ul 1
+coroutines.
+Coroutines are components of a program which are like subroutines in that
+they are called from outside (although the correct technical term is
+that they are
+.ul 1
+resumed).
+Unlike subroutines, however, neither one of them is the "main program."  
+Each can call on the other in as many places as necessary; when one needs
+a service (from its point of view) it resumes the other one.  Rather than
+entering it from the beginning, however, the machine picks up the
+resumed coroutine
+.ul 1
+exactly where it left off.
+The second coroutine then continues processing until, from
+.ul 1
+its
+point of view, it needs the services of the first.  It then resumes the
+first coroutine, which is entered where it left off processing.
+.sp
+.ti +5
+To each of the coroutines, then, the other appears as a subroutine.  The
+first resumes the second, and the second returns to the first.  This
+is the fundamental difference between subroutines and coroutines:  while
+a subroutine is always entered at the beginning, a coroutine is always
+entered at the point where it left off.
+.he 'BDS C Coroutine Package''Rationale'
+.sp 3
+.ul 1
+2. Rationale: Why use coroutines?
+.sp
+.ti +5
+It is difficult to come up with a simple example of the use of coroutines,
+since they are most useful in interfacing two or more complicated tasks.
+Generally, if one of the tasks is fairly simple, it is easier to implement
+as a subroutine; making a coroutine of it seems contrived.
+.sp
+.ti +5
+The most common uses of coroutines in practice arise either in terms of
+multi-pass algorithms or in simulation.  Multi-pass algorithms can use
+coroutines to implement the passes, with each resuming the next when it
+has output to be processed by the next pass and resuming the prior pass when
+input is required.
+Simulations can use coroutines to act like independent processes; for instance,
+a simulation of a machine shop might use one coroutine to represent each
+machine and pass the simulated workpiece around by having these coroutines
+resume one another.
+.sp
+.ti +5
+The first of these, the multipass algorithm, is probably more familiar to
+C programmers, since Unix pipelines operate this way.  When the user enters
+a command like
+.sp
+.ti +10
+.bo
+foo | bar | zot
+.sp
+the system sets up three coroutines, corresponding to the commands "foo,"
+"bar," and "zot."
+It then enters the "zot" coroutine to begin the processing.
+.sp
+.ti +5
+Things proceed normally until the first time "zot" needs a character from the
+standard input stream.  When it does, it calls "getchar" as usual; "getchar"
+sees that "zot" has a predecessor in the pipeline.  Rather than reading the
+character from the terminal or some file, it resumes "bar" to get the
+character.
+.sp
+.ti +5
+Now "bar" starts running, and eventually needs an input character itself.  When
+it does, it calls "getchar," who sees that "bar" isn't the first command in the
+pipeline either.  As before, it resumes the preceding coroutine, "foo."
+"Foo" runs normally, and since it is the first coroutine in the pipe, its calls
+to "getchar" cause input from the standard input stream.
+.sp
+.ti +5
+Eventually, "foo" has some output to place on the output stream.  It calls
+"putchar," who sees that "foo" isn't the last command in the pipeline.  Instead
+of writing the character somewhere, "putchar" resumes the "bar" coroutine,
+passing the character to it.  Since "bar" left off processing in "getchar"
+where it resumed "foo", it is in just the right state to pick up the character
+and continue processing, exactly as if it had been the first command in
+the pipeline and got the character from the input stream.
+.sp
+.ti +5
+"Foo" and "bar" continue passing and receiving characters until "bar" has
+output to the output stream.  As with "foo", it calls "putchar," who sees
+that "bar" isn't the last command in the pipe, either.  It then resumes
+"zot", who has been waiting all this time for its first input character.
+"Zot" is, of course, still in "getchar;" he picks up the character which
+"bar" gave to "putchar" and continues processing.  Since "zot" is the
+last coroutine in the pipeline, its calls to "putchar" go on the standard
+output stream.
+.sp
+.ti +5
+The disc for the coroutine package contains a sample program organized as
+a Unix-style pipeline, in the file "retab.c".  "Retab" consists of the two
+programs "entab" and "detab" from
+.ul 1
+Software Tools,
+connected together in the sequence
+.sp
+.ti +10
+.bo
+detab | entab
+.sp
+so that the combination will convert the tabs in its input file to spaces,
+and then reconvert them to tabs, possibly at a different set of tab stops.
+.sp 3
+.he 'BDS C Coroutine Package''Functions Available'
+.ul 1
+3. Functions Available in the Coroutine Package.
+.sp
+.ti +5
+The most basic functions available in the coroutine package are C_CREATE,
+which creates a coroutine; C_RESUME, which passes control to another coroutine,
+and C_DESTROY, which destroys a coroutine.  All of these primitives operate
+on a dynamically-allocated area of memory called the
+.ul 1
+"function control vector (FCV)."
+C_CREATE obtains an area of memory from free storage and initializes it as
+an FCV, C_RESUME accepts an FCV and transfers into the associated coroutine,
+and C_DESTROY accepts an FCV and recovers the space used.
+.sp
+.ti +5
+While these functions are sufficient to implement any application involving
+coroutines, the BDS C package supplies several additional primitives to make
+certain jobs somewhat easier.
+.sp
+.ti +5
+First, each coroutine has one word of user-specified information in its FCV.
+This word, which is set by C_CREATE, can be examined by C_GETINFO and
+modified by C_SETINFO.  Normally this word will be a pointer to a structure
+containing static storage for the coroutine to use.  For instance, if
+the coroutine is modelling a server in a queueing network, the area might
+contain head and tail pointers for the queue of transactions waiting for
+that server.
+.sp
+.ti +5
+The local static storage pointer in the FCV becomes particularly important
+if there are multiple copies of the same procedure.  For instance, in the
+Unix environment, the user might have typed
+.sp
+.ti +10
+.bo
+foo | lowercase | bar | lowercase
+.sp
+which runs the program "foo", converts the result to lower case, presents
+the lowercase material to "bar" as input, and lowercases the result.  Imagine
+the chaos that would result if both copies of "lowercase" used the same
+static and external storage areas!
+.sp
+.ti +5
+Another facility which the BDS 'C' package provides is the ability to
+create a hierarchy of coroutines in a "parent-child" relationship.  This
+is done by means of the primitives C_CALL and C_DETACH.
+C_CALL puts a pointer to the calling coroutine's FCV in the FCV of the
+called coroutine, indicating that the caller is the "parent" of the callee.
+It then resumes the callee normally.  If the callee does a C_DETACH, the
+effect is to resume the caller again.  In this way, the callee has no need
+to know which coroutine invoked it but can always return control to it.
+.sp
+.ti +5
+In addition, any coroutine which is invoked by the callee using C_RESUME
+inherits the parent linkage.  C_RESUME copies the pointer to the parent
+coroutine from the FCV of the origin to the destination FCV.  If the
+destination coroutine does a C_DETACH, the effect is to resume the
+original caller.
+.sp
+.ti +5
+The analogue to these three mechanisms is the CALL, GO TO, and RETURN
+functions of ordinary subroutines.  A subroutine invoked by GO TO inherits
+the caller of the one that did the GO TO.  Any RETURN goes back to the
+most recent CALL, even if it did not call the present subroutine directly.
+Similarly, a coroutine invoked by C_RESUME inherits the caller of the
+one that did the C_RESUME.  Any C_DETACH goes back to the most recent C_CALL,
+even if the C_CALL did not directly call the current coroutine.
+.sp
+.ti +5
+Finally, a number of functions are available to query and alter the state of
+a coroutine.  C_WMI returns a pointer to the FCV of the current coroutine.
+C_PASSER returns a pointer to the FCV of the coroutine that directly 
+transferred to this one (via C_CALL, C_RESUME, or C_DETACH); C_TYPE tells
+which of the three methods was used.  C_CALLER returns a pointer to the
+"caller" coroutine, i.e., the one to which a C_DETACH would transfer control.
+Lastly, C_CALLBY allows a coroutine to change its caller and DETACH elsewhere.
+While this function is needed in some advanced applications, its use is
+rather esoteric and it will not be discussed further.
+.sp 3
+.he 'BDS C Coroutine Package''Implementation'
+.ul 1
+4. Implementation of Coroutines in 'C'.
+.sp
+.ti +5
+In order to discuss how coroutines are implemented in 'C', let us first examine
+what information must be preserved in order to be able to leave a 'C' procedure
+and return to it.
+Clearly, the most important item is the program counter (PC).  It is
+obviously impossible to return to a procedure if we don't know where it
+left off processing.
+The rest of the procedure's state is described by the contents of its
+variables.
+.sp
+.ti +5
+External variables present no problems; they are preserved across the calls
+and returns between procedures.  Auto variables, however, must have some
+other mechanism, since a procedure exit destroys them.  This requirement
+leads us to the definition:
+.sp
+.ul 2
+A BDS C coroutine is a set of procedures with their own stack, distinct
+from the stack of any other coroutine.
+.sp
+.ti +5
+Given a separate stack, we have a place to preserve the PC, and the program's
+registers (most notably BC, the current stack frame pointer).  We still need
+a place to store the stack pointer when the coroutine is not in execution.
+This area of memory is the 
+.ul 1
+function control vector (FCV).
+The FCV contains, in addition to the stack pointer, contains other information
+about the coroutine's state:
+.sp
+.in +4
+.ti -2
+- the passer, which is the coroutine that most recently transferred control
+to this one.
+.sp
+.ti -2
+- the type of control transfer (CALL, RESUME, or DETACH) that invoked the
+current coroutine most recently.
+.sp
+.ti -2
+- the caller, i.e., the coroutine to which DETACH will transfer control.
+.sp
+.ti -2
+- the size of the coroutine's stack.  This information is available for
+stack tracers and the like, which normally assume that the end of the
+'C' stack is the same as the top of the TPA.
+.sp
+.ti -2
+- one word of user-specified information, normally a pointer to some private
+static storage.
+.sp
+.in -4
+.ti +5
+The address of the FCV is the coroutine's unique identification.  Any function
+that operates on a coroutine accepts the FCV as the indicator of which
+coroutine to use.
+The structure of an FCV is defined in the #include file "coro.h".
+.sp
+.ti -5
+Within a coroutine, function call and return operate just as they do
+within an ordinary C program using the main stack.  Just as function calls
+can overflow the main C stack, they can overflow the coroutine's stack.
+Non-local transfers (SETJMP/LONGJMP) work, but with the limitation that
+it is possible to LONGJMP only to a point which was set within the current
+coroutine.  An attempt to LONGJMP to another coroutine will appear to
+work, but in fact the stack pointer will have changed without storing
+it in the FCV.  On any subsequent attempt to transfer into either coroutine,
+the package will get confused and make a mess of things.
+.sp 3
+.he 'BDS C Coroutine Package''Creating a Coroutine'
+.ul 1
+5. Creating a Coroutine
+.sp
+.ti +5
+A coroutine is created in BDS 'C' by a call of the following form:
+.sp
+.ti +10
+.bo
+fcv = c_create (function, stack [, userinfo] );
+.sp
+where "fcv" is the pointer to the new coroutine's FCV, "function" is the
+initial entry of the coroutine (its "main program", if you will),
+"stack" is the number of bytes of stack space required, and
+"userinfo" is the word to place in the user area of the FCV.
+.sp
+.ti +5
+C_Create takes the following actions to initialize the coroutine:
+.sp
+.in +4
+.ti -2
+- It gets space for the FCV and the stack from free memory.  The
+FCV and stack area are cleared to zero.
+.sp
+.ti -2
+- The stack size word in the FCV is initialized.  The stack pointer is set
+to point to the location two words before the end of the stack area.  These
+locations are the initial stack for the coroutine, and are initialized as
+follows:
+.sp
+.in +4
+.ti -2
+- Word SP+0 is set to the address of the initial entry.  This word will be
+loaded into the BC register when the coroutine is first entered via any of
+the transfer mechanisms.
+.sp
+.ti -2
+- Word SP+2 is set to the address of a "driver" procedure, CORSTART.  This
+is a short program, discussed below, which enters the coroutine at its
+initial entry point.  Any of the transfer mechanisms will get to CORSTART
+on initial entry by doing a RET instruction to this word in the stack.
+.sp
+.in -4
+.ti -2
+- The "caller" word in the FCV is initialized to designate the current
+coroutine, for want of a better choice.
+.sp
+.ti -2
+- The user information word in the FCV is initialized.
+.sp
+.in -4
+.ti +5
+The new coroutine is now ready to be started.  When the coroutine that created
+it is ready to have it begin, it can start it up via C_CALL or C_RESUME.
+.sp 3
+.he 'BDS C Coroutine Package''Transfer of Control'
+.ul 1
+6. Transfer of control
+.sp
+.ti +5
+All of the three transfer-of-control mechanisms (C_CALL, C_RESUME, and
+C_DETACH) operate in a similar fashion.  All of them depend on the fact that
+a coroutine which is not in execution has its stack pointer saved in its FCV,
+and that the top two words on the stack are the BC register and PC at the
+time the coroutine last exited.  Most of the code is in a common assembly
+language procedure called CORPASS, which should
+.ul 1
+never
+be called directly by the user.
+The three types of control transfers work as follows:
+.sp
+.bo 1
+C_CALL:
+.sp
+.in +4
+.ti -2
+- Set the "caller" pointer in the destination coroutine's FCV to designate
+the originating coroutine.  Set the "type" word to indicate that the
+transfer type was CALL.
+.sp
+.ti -2
+- Enter the destination coroutine by calling "corpass".
+.sp
+.in -4
+.ti +0
+C_DETACH:
+.sp
+.in +4
+.ti -2
+- Determine the destination coroutine by retrieving the "caller" pointer from
+the originating coroutine's FCV.  Set the "type" word in the destination
+FCV to indicate that the transfer type was DETACH.
+.sp
+.ti -2
+- Enter the destination coroutine by calling "corpass".
+.sp
+.in -4
+.ti +0
+C_RESUME:
+.sp
+.in +4
+.ti -2
+- Retrieve the originating coroutine's "caller" pointer from its FCV, and
+store the "caller" pointer into the destination coroutine's FCV.
+.sp
+.ti -2
+- Set the "type" word in the destination FCV to indicate that the transfer
+type was RESUME.
+.sp
+.ti -2
+- Enter the destination routine by calling CORPASS.
+.sp
+.in -4
+.ti +5
+When CORPASS is called, the PC has already been placed on the top of the
+stack.  CORPASS is responsible for saving the rest of the context and
+getting to the destination coroutine.  It operates as follows:
+.sp
+.in +4
+.ti -2
+- The BC register is pushed on the stack, since the caller wants it to
+be preserved.
+.sp
+.ti -2
+- The stack pointer is saved in the originating coroutine's FCV.  The original
+context is now preserved.
+.sp
+.ti -2
+- The "passer" word in the target FCV is set to designate the originating FCV.
+.sp
+.ti -2
+- The "current FCV" pointer in memory is set to the target FCV, and the
+SP is reloaded from the FCV.  We are now executing within the target coroutine.
+.sp
+.ti -2
+- The BC register is popped off the stack, and a RET instruction is executed
+to resume execution in the target coroutine.  All of the target's context has
+been restored.
+.sp
+.in -4
+.ti +5
+It is an interesting exercise to verify that C_RESUME of the current coroutine
+does nothing, as indeed it ought.  Following the process will lead to a better 
+understanding of how the coroutine switching operates.
+.sp 3
+.he 'BDS C Coroutine Package''Initial Entry'
+.ul 1
+7. Initial Entry into a Coroutine.
+.sp
+.ti +5
+As mentioned above, when a coroutine is initially created, its BC register
+(on the initial stack) is set to the initial entry address and its PC
+(also on the stack) is set to a procedure called "corstart".  "Corstart"
+is a driver program that is responsible for getting the coroutine started.
+All that it does is rearrange the register contents, and perform an ordinary
+C call to the initial entry of the coroutine.  The initial entry may be
+viewed in much the same light as the "main" function in an ordinary C
+program.
+.sp 3
+.he 'BDS C Coroutine Package''Falling off the End'
+.ul 1
+8. Falling off the End
+.sp
+.ti +5
+The question now arises, "What happens when the main procedure of a coroutine
+executes a C 'return' statement?"  This unusual action is generally called 
+"falling off the end" of the coroutine.
+.sp
+.ti +5
+When a coroutine "falls off the end", it enters the "corstart" procedure again.
+The "corstart" procedure fixes up the stack, and then calls "detach."  This
+call has the effect of resuming whoever it was that called the coroutine that
+"fell off the end," and leaving the coroutine that "fell off" in a quiescent
+state.
+.sp
+.ti +5
+If some other coroutine then transfers control to the one that "fell off",
+CORSTART is resumed yet again. When this happens, it goes back up to the
+beginning and restarts the coroutine from its initial entry point.  
+The meaning of this becomes clear if one thinks of the coroutine as a
+program within a multi-tasking operating system.  When it is started initially,
+it enters at its main entry point, and performs whatever duties it has to do.
+It may require the services of other tasks; if so, it calls them, and
+they eventually return to it.  When it has completed its job, it returns to
+the operating system.  If anyone calls it thereafter, it has a new task
+to perform, and starts over again from the beginning.
+.sp 3
+.he 'BDS C Coroutine Package''Data Passing'
+.ul 1
+9. Passing Data Between Coroutines
+.sp
+.ti +5
+In some of the discussion above, the notion that one coroutine passes some
+data item to another has been mentioned.  Given the structure presented so
+far, the way that this works is fairly simple.  The first coroutine, when
+it performs a CALL, DETACH, or RESUME, supplies an argument (the first argument
+to DETACH or the second to CALL or RESUME) which is the datum to pass.
+.sp
+.ti +5
+When a coroutine is re-entered, the value which the passer supplied is
+available as the return value of the CALL, DETACH, or RESUME which
+caused it to exit.  For instance, assume that there is a coroutine called
+"mailman", which accepts a message and returns a reply.  A request to the
+mailman might look something like:
+.sp
+.ti +10
+.bo 1
+reply = c_call (mailman, &message);
+.sp
+while the code in the "mailman" coroutine would look like:
+.sp
+.ti +10
+.bo 1
+next_message = c_detach (&reply);
+.sp
+.ti +5
+Upon the first entry to a coroutine (or re-entry if it has "fallen off the
+end"), the parameter given to CALL, DETACH, or RESUME is available as the
+argument of the initial entry procedure.  The main procedure of the "mailman"
+coroutine probably begins something like:
+.sp
+.ti +10
+.bo 1
+mailmaid (first_msg)
+.br
+.ti +14
+.bo 1
+struct msg * first_msg;
+.sp
+.ti +5
+Finally, if a coroutine "falls off the end", the value given to the "return"
+statement is the argument which is given to the implicit DETACH.  If the
+"mailman" coroutine is done with its rounds, it might say:
+.sp
+.ti +10
+.bo 1
+return (last_reply);
+.sp
+which would cause it to start all over the next time somebody gave it a
+message.
+.sp 3
+.he 'BDS C Coroutine Package''Main as a Coroutine'
+.ul 1
+10. The Main Program as a Coroutine.
+.sp
+.ti +5
+Under the definitions of the above discussion, the main C program and its
+subroutines constitute a coroutine; they are a set of functions sharing a
+common stack (in this case, the main C stack).  In fact, the main program
+can be treated as a coroutine like any other:  one can CALL and RESUME it,
+adjust its FCV, and do all the other coroutine operations, with one exception:
+the effect of doing a DETACH from the main program.
+.sp
+.ti +5
+The problem if, of course, the philosophical question, "Who is the caller
+of the main program?"  The answer might be expected to be, "the operating
+system," and so the expected behaviour of a DETACH from the main program
+might be to resume executing whatever got us there.  In fact, however,
+there is no convenient way of saving the state of the coroutines when
+we return to CP/M, so this attitude, while consistent, isn't very useful.
+.sp
+.ti +5
+Instead, the coroutine package contains a dummy FCV that represents "the
+operating system."  If the main program inquires about its caller, it will
+receive this FCV in reply.  The difference is that any attempt to RESUME
+this procedure is treated as a disaster:  the package prints an error message
+on the console and quits.  Of course, if a return to the operating system
+is needed, it can still be done by returning from the main program or
+using the C procedure "exit()"; it is only DETACH and its allies that cause
+trouble.
+.sp
+.ti +5
+While this procedure is somewhat inconsistent, it is perhaps more useful in
+the long run to catch unexpected DETACHes from the main program or some
+coroutine which it has simply RESUMEd.
+.sp 3
+.he 'BDS C Coroutine Package''Further Reading'
+.ul 1
+11. Further Reading.
+.sp
+.ti +5
+The file, "CORO.NRO," on the coroutine package disc contains the individual
+manual pages for the functions in the package.
+.sp
+.ti +5
+A more elaborate discussion of coroutines is found in:
+.sp
+Knuth, Donald E.
+.ul 1
+The Art of Computer Programming.
+Volume 1:
+.ul 1
+Fundamental Algorithms.
+2nd ed., Reading, Massachusetts, Addison-Wesley, 1973.
+.sp
+Of particular interest are Sections 1.4.2, 1.4.4, and 2.2.5.
+e is treated as a disaster:  the package prints an error m

@@ -1,0 +1,54 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     CHKHNDL.A    Check whether handle refers to a file
+;	----------                   or a device on a Microsoft Networks 
+;	                             station (local) or is redirected
+;	                             to a server (= remote).
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int CHKHNDL(drv, &_carryf)
+;	-----           int drv;  A = 1, B = 2.....DEFAULT = 0
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC CHKHNDL_
+
+CHKHNDL_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	byte bl,[bp+4]	; the drive code
+	mov	ah,44h	; the Function No.
+	mov	al,0ah
+	int	21h
+	jc	CHKHNDL_ERROR
+	mov	ax,dx	; prepare for normal return
+	jmp	CHKHNDL_QUIT
+CHKHNDL_ERROR:
+	mov	si,[bp+6]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+CHKHNDL_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

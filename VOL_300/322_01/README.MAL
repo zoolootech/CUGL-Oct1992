@@ -1,0 +1,168 @@
+			  Malloc Leak Trace Package
+
+			     by Michael Schwartz
+	     University of Washington Computer Science Department
+			   Seattle, Washington, USA
+		    schwartz@cs.washington.edu  (ARPANET)
+	       schwartz%cs.washington.edu@relay.cs.net  (CSNET)
+	    ...{allegra,caip,ihnp4,nike}!uw-beaver!schwartz  (UUCP)
+
+				  April 1987
+
+
+
+
+
+
+
+1. Description
+
+This package is designed to help trace dynamic memory allocation leaks.
+It works by providing the standard malloc/free/realloc interface, but at
+the same time keeping track of all malloc'd buffers, including their size,
+order of call, and address.  That way, at any point during the execution of
+your program, you can see what malloc'd buffers haven't yet been freed.
+It is particularly useful when your program performs many allocations
+before reaching some steady state, and hence you want to ignore
+the initial allocations and concentrate on where steady-state
+leaks occur.
+
+The idea is that you have some code (usually a server) that looks as follows:
+	initialization code;
+	do {
+		...
+	} while (1); /* main loop */
+
+There might be some dynamic allocation during the initialization,
+but this isn't where the memory leak is, since it's a one-shot allocation
+(i.e., at worst the initialization wastes some memory, but doesn't
+continually leak it).  There might also be some dynamic allocation in
+the first few iterations of the main loop, until a "steady state" is
+reached (e.g., until some cache gets filled).  In both cases (initialization
+and pre-steady state iterations), there may be many allocation calls, but
+you don't really want to look at them; rather, you want to look at what
+memory isn't being free'd once steady state has been reached.  This
+package helps you to see the state of memory allocation after steady
+state has been reached.
+
+Bug reports and suggestions for improvements are welcome.
+
+
+
+
+
+
+
+2. Instructions
+
+To use this package, take your favorite malloc/free/realloc code,
+and change the routine names as follows:
+
+	malloc -> mmalloc
+	free -> ffree
+	realloc -> rrealloc
+
+You'll probably also need to add the following line to the beginning of
+your malloc.c:
+
+	char *malloc();
+
+(because realloc still calls malloc, but malloc is no longer defined in
+that file).  Then link the program to be leak-traced with maltrace.o,
+btree.o, and (your modified) malloc.o.  I would have included my malloc.c,
+but it's the copyrighted BSD 4.3 code, and besides, there are plenty
+of public domain malloc's available (e.g., in volume 6 of mod.sources).
+
+To trace a leak, take the example program skeleton, and augment it as
+follows:
+	extern int MalTraceEnbld;
+	extern int MalBrkNum;
+	initialization code;
+	do {
+		...
+		if ( steady state reached)
+			MalTraceEnbld = 1;
+		...
+		at end of first steady-state cycle:
+			PMal(-10);	/* print last 10 (say) malloc's
+					   that haven't yet been free'd */
+	} while (1); /* main loop */
+
+Then compile the program with -g, and run it.  At the end of the first
+cycle, PMal will print a list of the last 10 malloc's that haven't yet been
+freed.  (PMal(n) will print the first n entries if n > 0, the last -n
+entries if n < 0, and all entries if n == 0).  Note the sequence number of
+one of these mallocs, and then go into dbx on the program, and put a
+breakpoint somewhere in the initialization code, and run the program.  When
+you hit the breakpoint, use dbx to set MalBrkNum to the number of the
+malloc you just noticed, and set a break in MalBreak.  Then, continue the
+program.  When the malloc call in question is reached, MalBreak will get
+called, breaking, and giving you a chance to examine the state of the
+program at the time of this (potentially leaking) malloc call.  In case
+this call is still within the steady-state setup (it is sometimes difficult
+to find where the setup ends), you can use dbx to call NextMal, to set
+MakBrkNum to be the next traced malloc call.
+
+
+
+
+
+
+
+2.1 Usage Details
+
+This technique is not applicable to situations where the steady state
+allocation behavior (i.e., order and size of malloc requests) exhibits
+variation, e.g., due to pseudo-randomization or interaction with other
+processes via non-deterministically ordered message exchanges.  In such
+situations you can sometimes inhibit the variation during debugging (e.g.,
+by forcing interactions to occur in the same order each time).
+Alternatively, you can use dbx to set MalBreakSize to be the size of the
+malloc request at which to have MalBreak called, to reach a breakpoint
+(similar to the MalBrkNum scheme described above).  This can be useful when
+the order of mallocs isn't fixed, but a particular size keeps showing up in
+the list of malloc's that haven't yet been free'd.
+
+There is also a routine called UntracedFree that gets called when a free
+call is made on an address that was not malloc'd with tracing enabled
+(again, this routine is present to allow one to set dbx breakpoints for
+this event).  This could either indicate a free call on an address that
+isn't malloc'd (a bug) or a free call on an address that was malloc'd with
+tracing disabled.  You can determine if it was of the former nature by
+going through the standard malloc code.  For example, in the BSD code, you
+can set the switches -DDEBUG and -DRCHECK to check for this and other
+types of bugs.  Alternatively, you can enable tracing from the very
+beginning of your program, and then any time UntracedFree gets called, it
+indicates a free call on an addresss that isn't malloc'd.
+
+
+
+
+
+
+
+3. Interactive Demo
+
+You can try out this package interactively by making the program 'test'.
+Note that if you tell it to free some memory that was not malloc'd (with
+MalTraceEnbld = 1), it will give you a warning and then try to free the
+address anyway (for the reasons explained earlier).  This may or may not
+cause malloc/free to get into a bad state; in BSD malloc this can cause a
+core dump, for instance.
+
+
+
+
+
+
+
+4. Acknoledgements, History
+
+Thanks to Richard Hellier from the University of Kent at Canterbury
+(rlh@ukc.UUCP) for the btree package (which I modified slightly for the
+current package).  I probably could have implemented my trace package more
+efficiently than it works currently (e.g., by incorporating the linked-list
+and btree nodes into the malloc header nodes), but I was more into hacking
+something together quickly that would solve my problems than making
+efficient code.  Besides, this code doesn't need to be efficient, since
+it's only plugged in during debugging.

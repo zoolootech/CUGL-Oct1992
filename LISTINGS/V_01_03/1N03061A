@@ -1,0 +1,253 @@
+/*
+    File: CURLYBRC.C
+    Author: Bill Perez/Mario Perez
+    Date: 6/17/1990
+    Purpose: Finds matching curly braces in current file buffer of PWB.
+
+    Operating System: MS-DOS 3.x
+
+    Revision: 0.1
+
+    Revision History:
+
+        0.1 - 6/17/1990 - Initial Coding, Bill Perez.
+
+    Notes:
+
+*/
+
+/* Include Files */
+#include <stdlib.h>
+#include <ext.h>
+
+/* Define Statements */
+#define MODE_CURLYBRACES    0
+#define MODE_PARENTHESIS    1
+
+/* Structures */
+
+/* Type Definitions */
+
+/* Prototypes */
+void EXTERNAL WhenLoaded( void );
+PWBFUNC CheckCurlyBrace( unsigned argData, ARG _far *pArg, flagType fMeta );
+PWBFUNC CheckParenthesis( unsigned argData, ARG _far *pArg, flagType fMeta );
+
+/* Global Variables */
+char pszOpenBrace[ 2 ] = "{";
+char pszCloseBrace[ 2 ] = "}";
+char pszOpenParen[ 2 ] = "(";
+char pszCloseParen[ 2 ] = ")";
+
+/* Switch table */
+struct swiDesc swiTable[] =
+{
+    { "OpenBrace",  toPIF( pszOpenBrace ), SWI_SPECIAL },
+    { "CloseBrace", toPIF( pszCloseBrace ), SWI_SPECIAL },
+    { "OpenParen",  toPIF( pszOpenParen ), SWI_SPECIAL },
+    { "CloseParen", toPIF( pszCloseParen ), SWI_SPECIAL },
+    { NULL, NULL, 0, }
+};
+
+/* Command Table */
+struct cmdDesc cmdTable[] =
+{
+    { "CheckCurlyBrace", CheckCurlyBrace, 0, NOARG | NULLARG },
+    { "CheckParenthesis", CheckParenthesis, 0, NOARG | NULLARG },
+    { NULL, NULL, 0, 0 }
+};
+
+// Called during loading by PWB for initialization purposes.
+void EXTERNAL WhenLoaded( void )
+{
+    int hMatch;
+
+    DoMessage( "Loading Curly Brace Matcher" );
+
+    // Create the top-line menu bar menu
+    hMatch =
+        AddMenu(
+            "Ma~tch",
+            "Match curly braces or parenthesis",
+            "",
+            TRUE );
+
+    // Create menu item under Match menu
+    AddMenuItem(
+        hMatch,
+        "Match ~Curly Brace",
+        "Matches curly braces",
+        NULL,
+        "CheckCurlyBrace" );
+
+    // Place separator between options
+    AddMenuItem( hMatch, "-", "", "", "" );
+
+    AddMenuItem(
+        hMatch,
+        "Match ~Parenthesis",
+        "Matches parenthesis",
+        NULL,
+        "CheckParenthesis" );
+
+    // Set key for functions
+    SetKey( "CheckCurlyBrace", "shift+ctrl+b" );
+    SetKey( "CheckParenthesis", "shift+ctrl+p" );
+}
+
+
+// Searches from current location for first curly brace till closing curly
+//  brace found (counting all curly braces from there until closing one found
+//  or end of file found).  Reports error if unmatched brace found.
+unsigned int ScanText( unsigned int uMode )
+{
+	LINE yStart,
+		yStartInit,
+		lineCurrent,
+		lines_in_file;
+	COL xStart,
+		xStartInit,
+        column,
+        colMaxLength;
+	int brace_count = 0;
+	int col;
+	PFILE pFile;
+    char pszInBuffer[ BUFLEN ];
+    char pszOpenChar[ 2 ],
+        pszCloseChar[ 2 ];
+
+    DoMessage(
+        uMode == MODE_CURLYBRACES ?
+            "Searching for opening curly brace" :
+            "Searching for opening parenthesis" );
+
+    farstrcpy(
+        pszOpenChar,
+        uMode == MODE_CURLYBRACES ? pszOpenBrace : pszOpenParen );
+
+    farstrcpy(
+        pszCloseChar,
+        uMode == MODE_CURLYBRACES ? pszCloseBrace : pszCloseParen );
+
+    // Get starting location - (both line and column).
+	GetCursor( &xStart, &yStart );
+	yStartInit = yStart;
+	xStartInit = xStart;
+
+    // Get handle to file
+    pFile = FileNameToHandle( "", "" );
+
+	// Get the number of lines in the file
+	lines_in_file = FileLength( pFile );
+
+    // Read current line
+    colMaxLength = GetLine( yStart, pszInBuffer, pFile );
+
+    // Find opening brace on this line (starting first from current location,
+    //  then from first column on current line to end of current line - if
+    //  not found, then error message in message box).
+    if( pszInBuffer[ xStart ] != pszOpenChar[ 0 ] )
+    {
+        for( column = 0; column < colMaxLength; column++ )
+            if( pszInBuffer[ column ] == pszOpenChar[ 0 ] )
+            {
+                xStart = column;
+				MoveCur( xStart, yStart );
+				xStartInit = xStart;
+                break;
+            }
+
+        if( column >= colMaxLength )
+        {
+            DoMessageBox(
+                "",
+                uMode == MODE_CURLYBRACES ?
+                    "Starting curly brace not found" :
+                    "Starting parenthesis not found",
+                "",
+                MBOX_OK,
+                0 );
+
+            return FALSE;
+        }
+	}
+
+    DoMessage(
+        uMode == MODE_CURLYBRACES ?
+            "Searching for closing curly brace" :
+            "Searching for closing parenthesis" );
+
+    /* We found an opening brace, or wouldn't be here */
+    brace_count = 1;
+
+    // Slide past current opening brace character in current buffer
+    xStart++;
+
+    // Loop until closing brace found starting from xStart, yStart
+    while( brace_count      )
+    {
+        for( col = xStart; col < colMaxLength; col++ )
+        {
+            if( pszInBuffer[ col ] == pszOpenChar[ 0 ] )
+            {
+                brace_count++;
+                continue;
+            }
+
+            if( pszInBuffer[ col ] == pszCloseChar[ 0 ] )
+            {
+                brace_count--;
+
+                /* More braces to find? */
+                if( brace_count )
+                    continue;
+                else
+                {
+                    /* All braces found, since none are left */
+                    xStart = col;
+                    break;
+                }
+            }
+        }
+
+        if( brace_count )
+        {
+			/* Should really check to see that yStart is in file */
+			if( yStart < lines_in_file )
+				colMaxLength = GetLine( ++yStart, pszInBuffer, pFile );
+			else
+			{
+				MoveCur( xStartInit, yStartInit );
+				DoMessage(
+					uMode == MODE_CURLYBRACES ?
+						"Couldn't find matching curly brace" :
+						"Couldn't find matching parenthesis" );
+				break;
+			}
+            xStart = 0;
+        }
+        else
+        {
+            /* Move the cursor to the row and column found */
+            MoveCur( xStart, yStart );
+            DoMessage(
+                uMode == MODE_CURLYBRACES ?
+                    "Found closing curly brace" :
+                    "Found closing parenthesis" );
+        }
+    }
+    return TRUE;
+}
+
+// Sets mode to search for curly braces, then scans text
+PWBFUNC CheckCurlyBrace( unsigned argData, ARG _far *pArg, flagType fMeta )
+{
+    // Set up characters to search for based on mode
+    return ScanText( MODE_CURLYBRACES ) ;
+}
+
+// Sets mode to parenthesis
+PWBFUNC CheckParenthesis( unsigned argData, ARG _far *pArg, flagType fMeta )
+{
+    return ScanText( MODE_PARENTHESIS );
+}

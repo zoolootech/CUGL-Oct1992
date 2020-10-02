@@ -1,0 +1,42 @@
+/*
+**	Test code for the FDC routine in floppy.c.
+*/
+#include	<stdio.h>
+#include	"floppy.h"
+#include	"delay.h"
+
+static char buffer[512];
+
+int
+main(void)
+{
+	unsigned rc;
+
+	/* Setup FDC */
+	calibrateDelay();
+	fdcSetDriveParms(0x0c, 0x0f, 0x02);
+	fdcReset();
+
+	/* Select drive 0, and recalibrate it */
+	fdcSelectDrive(0);
+	rc = fdcRecalibrate();
+	printf("fdcRecalibrate() == %u\n", rc);
+
+	/* Read in sector 1 from head 0 */
+	rc = fdcSeek(0, 0);
+	printf("fdcSeek(0, 0) == %u\n", rc);
+	rc = fdcReadSectors(1, 1, buffer);
+	printf("fdcReadSectors(1, 1, buffer) == %u\n", rc);
+
+	fdcResetParms();
+
+	{
+		FILE *fd;
+
+		fd = fopen("tmp.dat", "wb");
+		fwrite(buffer, 1, sizeof(buffer), fd);
+		fclose(fd);
+	}
+
+	return 0;
+}

@@ -1,0 +1,252 @@
+
+
+COMMENT #
+------------------------------------------------------
+        FILE   -  SFHT.ASM
+
+  Non model specific method to determine the number
+  of file handles available to the entire system.
+
+  Written for Microsoft MASM 5.x to interface with
+  Microsoft C 5.x.
+
+  Module Contents:
+        int max_sys_file_handles(void);
+        int sys_handles_in_use(void);
+------------------------------------------------------
+END OF COMMENT #
+
+.model small            ;memory model directive
+
+;           --- EQUATES ---
+FOXES           equ     0ffffh
+
+
+;           --- STRUCTURES ---
+
+; DOS List of Lists structure definition
+list_of_list struc
+   dcb_head_addr       dd  0  ;head DCB list
+   sys_file_tbl_addr   dd  0  ;head SFHT list
+   clock_addr          dd  0  ;clock device
+   console_addr        dd  0  ;console device
+   max_sector          dw  0  ;largest sector size
+   cache_addr          dd  0  ;head of cache control block
+   current_dir_addr    dd  0  ;current directory structure
+   sys_fcb_tbl_addr    dd  0  ;head of sys file fcb list
+   unknown             dw  0  ;unknown
+   num_drives          db  0  ;specified by lastdrive=
+   current_drive_cnt   db  0  ;current number of drives
+list_of_list ends
+
+; System File Handle Table Header structure definition
+sys_file_tbl_hdr struc
+   next_sys_file_tbl  dd   0  ;addr of next tbl in chain
+   num_hdl_ctl_blks   dw   0  ;number of file handle control
+                              ; blks in this data structure
+sys_file_tbl_hdr ends
+
+; System File Handle Information Block structure definition
+sys_fcb struc
+   open_cnt           dw   0  ;zero if not in use
+   open_mode          dw   0  ;mode handle was open in
+   dir_attr           db   0  ;directory attributes
+   flags              dw   0  ;flags
+   dbc                dd   0  ;device control block
+   cluster1           dw   0  ;initial cluster
+   time               dw   0  ;file time
+   date               dw   0  ;file date
+   fsize              dd   0  ;file size
+   fpos               dd   0  ;file pointer location
+   rel_cluster        dw   0  ;relative cluster
+   cur_cluster        dw   0  ;current cluster
+   blk_num            dw   0  ;block number
+   dir_index          db   0  ;directory index
+   file_name          db 11 dup(0) ;file/device name
+   un_known           db  4 dup(0) ;unknown
+   owner_machine      dw   0  ;machine id of owner
+   owner_psp          dw   0  ;psp of owner process
+   status             dw   0  ;status
+sys_fcb ends
+
+
+SYS_FILE_TBL_HDR_SIZE   equ     size sys_file_tbl_hdr
+SYS_FCB_SIZE            equ     size sys_fcb
+
+
+;                   --- CODE ---
+.code
+
+
+;------------------------------------------------------
+; int max_sys_file_handles(void);
+;
+;       Sums the number of individual file handle table
+;       entries available to the system.
+; CAUTION:
+;   1.  Utilizes an undocumented function (52h) of
+;       int 21h to obtain the addr of the List of
+;       Lists.
+;   2.  Utilizes undocumented structures of the List of
+;       Lists, the System File Handle Table Header
+;       Record and the System File Handle Information
+;       Block data structures.
+;   The availablity of function 52h and the layout of
+;   the data structures is consistent for all DOS
+;   versions 2.1 and greater - at least as far as they
+;   are used here.
+
+; INPUT:    None
+; OUTPUT:   None
+; RETURNS:  Number of file handles available to the
+;           system in the AX register.
+;           All other registers preserved.
+;------------------------------------------------------
+
+public _max_sys_file_handles
+_max_sys_file_handles proc
+; --- setup
+        push    es
+        push    bx
+        push    ds
+        push    si
+
+; --- undocumented function to retrieve the
+;     address of the list of lists (in es:bx)
+        mov     ah,52h
+        int     21h
+
+; --- initialize (zero out) the counter
+        xor     ax,ax
+
+; --- establish addressability to the first
+;     system file handle table data structure
+        lds     si,es:[bx.sys_file_tbl_addr]
+
+get_next:
+; --- add the number of individual file handles
+;     the data structure can accommodate
+        add     ax,[si.num_hdl_ctl_blks]
+
+; --- load the address of the next system file
+;     handle table data structure in the chain
+        lds     si,[si.next_sys_file_tbl]
+
+; --- is the offset to the next 0ffffh, indicating that
+;     the one just processed was the last in the chain
+        cmp     si,FOXES
+
+; --- if the last data structure has been processed
+;     return to the caller
+        jz      got_last
+
+; --- else process the new system file handle table
+;     data structure
+        jmp     get_next
+
+; --- clean up and return
+got_last:
+        pop     si
+        pop     ds
+        pop     bx
+        pop     es
+        ret
+_max_sys_file_handles endp
+
+
+;------------------------------------------------------
+; int sys_handles_in_use(void);
+;
+;       Sums the number of DOS internal file handle
+;       information blocks within the System File Handle
+;       Table linked list that are in use.
+; CAUTION:
+;   1.  Utilizes an undocumented function (52h) of
+;       int 21h to obtain the addr of the List of
+;       Lists.
+;   2.  Utilizes undocumented structures of the List of
+;       Lists, the System File Handle Table Header
+;       Record and the System File Handle Information
+;       Block data structures.
+;   The availablity of function 52h and the layout of
+;   the data structures is consistent for all DOS
+;   versions 2.1 and greater - at least as far as they
+;   are used here.
+
+; INPUT:    None
+; OUTPUT:   None
+; RETURNS:  Number of file handles currently in use in
+;           the AX register.
+;           All other registers preserved.
+;------------------------------------------------------
+
+public _sys_handles_in_use
+_sys_handles_in_use proc
+; --- setup
+        push    es
+        push    bx
+        push    ds
+        push    si
+
+; --- undocumented function to retrieve the
+;     address of the list of lists
+        mov     ah,52h
+        int     21h
+
+; --- initialize (zero out) the counter
+        xor     ax,ax
+
+; --- establish addressability to the first
+;     system file handle table data structure
+        lds     si,es:[bx.sys_file_tbl_addr]
+
+get_next1:
+; --- save the offset addr of the header record
+        push    si
+
+; --- load thge number of elements in this node
+        mov     cx,[si.num_hdl_ctl_blks]
+
+; --- bump the offset past the header record
+        add     si,SYS_FILE_TBL_HDR_SIZE
+
+; --- is this handle control block in use?
+nxt_element:
+        mov     bx,[si.open_cnt]
+        or      bx,bx
+        jz      not_in_use
+        inc     ax
+not_in_use:
+
+; --- move the offset on to the next element
+        add     si,SYS_FCB_SIZE
+        loop    nxt_element
+        pop     si
+
+; --- load the address of the next system file
+;     handle table data structure in the chain
+        lds     si,[si.next_sys_file_tbl]
+
+; --- is the offset to the next 0ffffh, indicating that
+;     the one just processed was the last in the chain
+        cmp     si,FOXES
+
+; --- if the last data structure has been processed
+;     return to the caller
+        jz      got_last1
+
+; --- else process the new system file handle table
+;     data structure
+        jmp     get_next1
+
+; --- clean up and return
+got_last1:
+        pop     si
+        pop     ds
+        pop     bx
+        pop     es
+        ret
+_sys_handles_in_use endp
+
+end
+

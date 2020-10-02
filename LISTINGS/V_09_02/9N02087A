@@ -1,0 +1,97 @@
+
+/*
+ *    10-Oct-1990 - created
+ */
+
+/***********************************************************
+ *
+ *    Module:   _olist.h
+ *
+ *    Purpose:  Private include file for olist.c
+ *
+ *    (c) Copyright 1990 Kenneth L. Grogan Jr.
+ *
+ **********************************************************/
+
+
+#ifndef _OLIST_H
+#define _OLIST_H
+                                /* for maximum double value */
+#include "float.h"
+
+#define MIN_KEY         0
+#define MAX_KEY         (OLIST_NUM_KEY_TYPES - 1)
+
+#define KEY_1_MAX       UINT_MAX
+#define KEY_2_MAX       DBL_MAX
+#define KEY_3_MAX       NULL
+                                /* for double equality test */
+#define TOLERANCE       3e-8
+                                /* set maximum key values */
+#define SET_MAXIMUM_KEY_VALUES()                        \
+    max_key_value[OLIST_KEY_1].key_1 = KEY_1_MAX;       \
+    max_key_value[OLIST_KEY_2].key_2 = KEY_2_MAX;       \
+    max_key_value[OLIST_KEY_3].key_3 = KEY_3_MAX
+                                /* get appropriate key type */
+#define GET_KEY(key, type, key_ptr)             \
+    if ((type) == OLIST_KEY_1)                  \
+        (key).key_1 = *((KEY_1_T *)(key_ptr));  \
+    else if ((type) == OLIST_KEY_2)             \
+        (key).key_2 = *((KEY_2_T *)(key_ptr));  \
+    else                                        \
+        (key).key_3 = *((KEY_3_T *)(key_ptr))
+                           /* set appropriate key type */
+#define SET_KEY(key, type, key_ptr)             \
+    if ((key_ptr) != NULL)                      \
+        if ((type) == OLIST_KEY_1)              \
+            *((KEY_1_T *)(key_ptr)) = (key).key_1;\
+        else if ((type) == OLIST_KEY_2)           \
+            *((KEY_2_T *)(key_ptr)) = (key).key_2;\
+        else                                      \
+            *((KEY_3_T *)(key_ptr)) = (key).key_3
+                           /* key >= Maximum key value? */
+#define KEY_IS_INVALID(sl, type, key_ptr)       \
+    ((type) != (sl)->key_type ? TRUE :          \
+        ((type) == OLIST_KEY_1 ?                \
+            *((KEY_1_T *)(key_ptr)) >= UINT_MAX : \
+            ((type) == OLIST_KEY_2 ?            \
+                *((KEY_2_T *)(key_ptr)) >= DBL_MAX : \
+                *((KEY_3_T *)(key_ptr)) == NULL)))
+
+                                /* key_a == key_b */
+#define KEY_EQ(sl, key_a, key_b)                    \
+    ((sl)->key_type == OLIST_KEY_1 ?                \
+        (key_a).key_1 == (key_b).key_1 :            \
+        ((sl)->key_type == OLIST_KEY_2 ?            \
+            fabs((key_a).key_2 - (key_b).key_2) <= TOLERANCE :\
+            ((key_a).key_3 == NULL ? 0 :            \
+                ((*((sl)->compare_func))((key_a).key_3, \
+                                        (key_b).key_3)) == 0)))
+
+                                /* key_a < key_b */
+#define KEY_LT(sl, key_a, key_b)                \
+    ((sl)->key_type == OLIST_KEY_1 ?            \
+        (key_a).key_1 < (key_b).key_1 :         \
+        ((sl)->key_type == OLIST_KEY_2 ?        \
+            (key_a).key_2 < (key_b).key_2 :     \
+            ((key_a).key_3 == NULL ? 0 :        \
+                ((*((sl)->compare_func))((key_a).key_3, \
+                                        (key_b).key_3)) < 0)))
+
+                                /* key data types */
+typedef uint    KEY_1_T;
+typedef double  KEY_2_T;
+typedef void    *KEY_3_T;
+
+typedef union
+{
+    KEY_1_T     key_1;
+    KEY_2_T     key_2;
+    KEY_3_T     key_3;
+} SL_KEY;
+
+#endif   /* _OLIST_H */
+
+/*
+ *    end of file
+ */

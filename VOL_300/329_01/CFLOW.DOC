@@ -1,0 +1,129 @@
+cFlow Operating Instructions
+(C) October 18  1989  Asaf Arkin
+All rights reserved
+
+
+C How Your Code Flows
+
+The CUG library includes, amongst many, one cFlow utility. As Kenji Hino pointed out in his column, this utility is far from perfect -- far from the UNIX version, that is. He, therefore, made the proposition that one of CUJ's readers write a replica of the UNIX tool. I took that challange, and in this article am proud to present my implementation of the cFlow programming tool.
+
+
+Strictly speaking, what cFlow does is read a number of C source files and process them to produce a collective report of function dependencies. Put in plainer language, it shows you which function calls which and where you can find it, from a set of files you supply it with.
+
+cFlow scans one or more source files, openning include files: from the listings it extracts the function definitions and invokations it requires. Having properly digested all files, cFlow dumps the dependency tree. The tree, like all structured material, is indented: a function's definition is followed by a list of all the functions it calls, slightly indented to the right; each called function is followed by a list of all the functions it calls, slightly further indented, and so on. To illustrate the point, observe listing 1, from which cFlow produces listing 2.
+
+The functions a certain function calls are shown only once for that function, but may appear in the definition of others, including their own (what is termed recursion). For each definition, the filename, as provided by you or an #include directive, prints along with the line number. No filename or line number appear for undefined functions. In fact, functions lacking definition (and a declaration does not count as one) are not at all in the report; unless you order cFlow to, in which case undefined functions will print, and may even constitute a separate list (the -u option.)
+
+
+The Syntax Of cFlow
+
+The syntax of cFlow is as follows
+
+     cFlow  [<file> | -<options>]..
+
+where options is
+
+     <options>:   i | m <func> | o <file> | u
+
+As you can see, cFlow accepts a number of filenames from the command line. Inbetween the filenames can come options. Their order of appearance has no relevance. Their effect is discussed next.
+
+Specifying the -i option tells cFlow to open and read #include files referred to in the source code. This way you don't have to name them all at the command line. The -m option is followed by the name of a function: cFlow will start the dependency tree with that function, instead of main. The -o option directs all output to the named file or output destination. And the -u option, appearing once, requests that undefined functions be included in the dependency tree. Appearing twice, undefined functions will also constitute their own list.
+
+cFlow will complain if it cannot open a source file, but still produce output from the files it is able to read. Two command line examples are
+
+     cFlow myprog1.c -i myprog2.c myprog3.c -uu
+     cFlow graph.c  -m DrawObject -o flow.out
+
+
+cFlow Flaws
+
+As much as I wanted to, I could not create a perfect cFlow. For that, the utility must understand C in full, making it too long and complex for a magazine article. For its simplicity, cFlow pays in three features:
+
+--   cFlow does no macro expansion, or indeed any preprocessor activities, except for reading include files. If you define or invoke functions with macros, you will need a preprocessor to work on your code before passing it to cFlow: there are some public domain preprocessors available; some compilers come with an independent preprocessor for just such cases.
+
+--   typedef is strange to cFlow, and so are such defined functions. Since handling typedef requires that cFlow master a large portion of C, I chose not to. If you typedef a function's parameters list, you've bad luck; if only the return value is typedefed, the output will come out correct.
+
+--   cFlow gets confused with pointers to functions, and functions returning pointers to functions or arrays. This is because such definitions include two sets of parentheses, which cFlow cannot distinguish. Consider
+
+     int (*FuncPtr)(a,b,c);
+     int (*FuncPtr(a,b,c))[];
+
+In the second case, you may typedef the return value:
+
+     typedef int  Array_Int[];
+     Array_Int  *FuncPtr(a,b,c);
+
+N.B.: It is your obligation to assure the correctness of the source code: cFlow finds it difficult to handle faulty listings.
+
+
+Implementation Notes 1
+
+To sustain the dependency tree in memory, cFlow must handle a multitude of memory blocks. The following paragraphs discuss them each.
+
+FileBase/FileLen -- FileBase points to the start of a memory block FileLen is the length of. The File block holds the name of all source files so definitions can refer to them.
+
+IDBase/IDLen -- cFlow gathers identifier names from the source code, stacking them in ID one after the other. Non-identifier characters cause ID to flush, or in case of an openning parentheses ('('), convince cFlow that ID contains the name of a function.
+
+NameBase/NameLen -- The Name block holds successive names of all functions (whether invoked, declared or defined) found in the source code: a function's name is the last name on ID at the time of reading a '('. New names are appended to the end of Name; no function name is stored more than once.
+
+ListBase/ListLen -- For each Name entry, there is a corresponding entry in List. A List entry is a structure of type strList, holding one offset and one pointer: the offset indexes the function's name within Name; the pointer designates a memory block of type Func.
+
+When a function is encountered for the first time, its identifier appends to Name, and a matching entry appends to List. Also allocated is a memory block, holding a structure of type strFunc, to which the List entry points. The Func block contains information relevant to the function's definition: whether the function was defined; a pointer to the definition or declaration text (yet another memory block); the definition's line number and filename; and offsets to the invoked functions' List entry.
+
+
+Implementation Notes 2
+
+The function responsible for reading source files and building the dependency tree is Process. Process accepts a filename, appending its name to File and openning it for reading. Characters read one at a time with GetChar: this function ignores \NL sequences, and treats whitespaces, line delimiters and comments as spaces. Process scans the source file, skipping literal strings and character constants, counting left and right braces and stacking ID with identifiers. The braces count (variable Level) can tell if a function is defined (Level equals zero) or invoked (more than zero).
+
+Upon reaching a '(', cFlow assumes the contents of ID is a function name and calls DoFunc. DoFunc first checks the name is not a C token (eg, return (5);). If not, ScanFunc is called, returning a pointer to the function's Func block; if previously inexistent, ScanFunc will create the Func block, as well as Name and List entries. That done, DoFunc moves on to assemble the function's definition: the formal parameters are read and affixed to the return value located in ID.
+
+If Level is zero, cFlow checks what follows the parameters list: a ';' or ',' signals a declaration -- the definition is accepted but the function is not considered defined; for any other character, cFlow assumes a definition. It sets the line number and filename, and skips characters up to the first '{' (or: skips the formal parameters of an unprototyped function.)
+
+If Level is more than zero, the function is invoked: the offset to its List entry is added to the Calls list of the currently defined function. This list later serves to appoint branches and leaves to the dependency tree.
+
+Once the dependency tree is complete, the printing phase commences: DumpFlow prints the definition of main (or any other particular function you specify), the definition of all other defined functions, and if the -u option appeared twice, a list of all undefined functions.
+
+DumpFunc prints the function definitions: it prints all available information about a given function (name, definition, line number, filename) and then lists the functions it calls using itself (referring to the Calls list.) This recursion accounts for the tree's indentation.
+
+
+Ending Remarks
+
+As you have seen, cFlow is quite a powerful tool. It can show you programs from a perspective not possible otherwise. By letting you inspect function dependencies, cFlow assists in developing, debugging and reading programs -- your own or other's -- saving you hours of paging to and fro through C listings.
+
+
+
+
+     void  main(void)
+     {
+       a();
+       b();
+     }
+
+     void  a(void)
+     {
+       a();
+       b();
+     }
+
+     void  b(void)
+     {
+       c();
+     }
+
+     void  c(void)
+     {
+     }
+
+Listing 1: Example of C source code
+
+
+     main: void (void),  <file1 1>
+       a: void (void),  <file1 7>
+         a: void (void),  <file1 7>
+         b: void (void),  <file1 13>
+           c: void (void),  <file1 18>
+       b: void (void),  <file1 13>
+
+Listing 2: The report cFlow generates from listing 1
+
+

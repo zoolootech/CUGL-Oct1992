@@ -1,0 +1,200 @@
+/* TCATREST.C
+** May 5, 1987
+** Eduard Qualls
+** 
+** --example file for use with TCAT, STCAT, CapBak.
+*/
+#define LINT_ARGS
+
+#include "stdio.h" 
+#include <ctype.h>
+
+#define INPUTERROR     -1
+#define INPUTDONE       0
+#define MENU_CHOICES   13
+#define STD_LEN        79
+
+#ifndef TRUE
+#define TRUE  1
+#define FALSE 0
+#define BOOL  int
+#endif
+
+#define OK      TRUE
+#define NOT_OK  FALSE
+
+char menu[MENU_CHOICES][STD_LEN] = {
+   "SOFTWARE RESEARCH'S RESTAURANT GUIDE \n",
+   "\n",
+   "      What type of food would you like?\n",
+   "\n",
+   "      1        American 50s   \n",
+   "      2        Chinese    - Hunan Style \n",
+   "      3        Chinese    - Seafood Oriented \n",
+   "      4        Chinese    - Conventional Style \n",
+   "      5        Danish          \n",
+   "      6        French          \n",
+   "      7        Italian         \n",
+   "      8        Japanese        \n",
+   "\n\n"
+};
+
+int char_index;
+/* simple program to pick a restaurant, to demo TCAT */
+main(argc,argv)  
+int	argc;
+char	*argv[];
+{
+   int  i, choice, c,answer;
+   char str[STD_LEN];
+   BOOL ask, repeat;
+
+#ifdef NO_EXT_KEYS
+#ifdef LINT_ARGS
+   int proc_input();
+#else
+   int proc_input();
+#endif
+
+#else
+
+#ifdef LINT_ARGS
+   int proc_input();
+#else
+   int proc_input();
+#endif
+#endif
+   c = 3;
+   repeat = TRUE;
+
+   while(repeat) {
+      printf("\n\n\n");
+      for(i = 0; i < MENU_CHOICES; i++)
+         printf("%s", menu[i]);
+
+      gets(str);
+      printf("\n");
+      while(choice = proc_input(str)) {
+         switch(choice) {
+            case 1:
+               printf("\tFog City Diner          \
+                       1300 Battery   982-2000 \n");
+               break;
+             case 2:
+               printf("\tHunan Village Restaurant \
+                        839 Kearney   956-7868 \n");
+               break;
+             case 3: 
+               printf("\tOcean Restaurant         \
+                        726 Clement   221-3351 \n");
+               break;
+             case 4:
+               printf("\tYet Wah                  \
+                        1829 Clement   387-8056 \n");
+               break;
+             case 5:
+               printf("\tEiners Danish Restaurant \
+                        1901 Clement   386-9860 \n");
+               break;
+             case 6: 
+               printf("\tChateau Suzanne          \
+                        1449 Lombard   771-9326 \n");
+               break;
+             case 7:
+               printf("\tGrifone Ristorante       \
+                        1609 Powell    397-8458 \n");
+               break;
+             case 8:
+               printf("\tFlints Barbeque          \
+                        4450 Shattuck, Oakland \n");
+               break;
+             default:
+               if(choice != INPUTERROR)
+                  printf("\t>>> %d: not a valid choice.\n", 
+                          choice);
+               break;
+         }
+      }
+      for(ask = TRUE; ask; ) {
+         printf("\n\tDo you want to run it again? ");
+         while((answer = getchar()) != '\n') {
+            switch(answer) {
+               case 'Y':
+               case 'y':
+                  ask = FALSE;
+                  char_index = 0;
+                  break;
+               case 'N':
+               case 'n':
+                  ask = FALSE;
+                  repeat = FALSE;
+                  break;
+               default:
+                  break;
+            }
+         } 
+      }
+   }
+}
+
+
+int proc_input(in_str)
+char *in_str;
+{
+   int tempresult = 0;
+   char bad_str[80], *bad_input;
+   BOOL got_first = FALSE;
+   bad_input = bad_str;
+
+   while(isspace(in_str[char_index]))
+      char_index++;
+   for( ; char_index <= strlen(in_str); char_index++) {
+      switch(in_str[char_index]) {
+         case '0':
+         case '1':
+         case '2':
+         case '3':
+         case '4':
+         case '5':
+         case '6':
+         case '7':
+         case '8':
+         case '9':
+            /* process choice */
+            tempresult = tempresult * 10 + 
+                         (in_str[char_index] - '0');
+            got_first = TRUE;
+            break;
+
+         default:
+            if(chk_char(in_str[char_index])) {
+               return(tempresult);
+            }
+            else {
+               if(char_index > 0 && got_first)
+                  char_index--;
+               while(char_index <= strlen(in_str)) {
+                  if(chk_char(in_str[char_index]))
+                     break;
+                  else
+                     *bad_input++ = in_str[char_index];
+                  char_index++;
+               }
+               *bad_input = '\0';
+               printf("\t>>> bad input: %s\n", bad_str);
+               char_index++;
+               return(INPUTERROR);
+            }
+      }
+   }
+   return(INPUTDONE);
+}
+
+BOOL chk_char(ch)
+char ch;
+{
+   if(isspace(ch) || ch == '\0')
+      return(OK);
+   else
+      return(NOT_OK);
+}

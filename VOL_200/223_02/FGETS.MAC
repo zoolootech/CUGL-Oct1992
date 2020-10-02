@@ -1,0 +1,130 @@
+
+;
+;	fgets(cp,len,unit)
+;
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-character pointer in I/O structure
+UNUSED	EQU	2	;offset	to unused-positions-count in I/O structure
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;	File i/o storage varibles found in ulink()
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+;
+;	Characteristics variable storage found in ulink()	
+;
+EXTRN	ZZSVCH
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+;
+EXTRN	GETC
+EXTRN	GETS
+;
+FGETS::
+	INX	SP	; skip rtn addr
+	INX	SP
+	POP	B	; unit
+	POP	D	; length
+	POP	H	; cp
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	DCX	SP
+	DCX	SP
+	MOV	A,B		; if(unit < 256) {
+	ORA	A		;	/* assume stdin	*/
+	JNZ	FGETS1
+	PUSH	H
+	CALL	GETS		;	gets(cp)
+	POP	B		;	return (cp);
+	RET			; } else {
+FGETS1:	SHLD	ZZSVCH		;	save_cp	= cp;
+	PUSH	D	; keep stack right
+FGETS2:	POP	D
+	DCX	D		;	while (--len) {
+	PUSH	D
+	MOV	A,D
+	ORA	E
+	JZ	FGETS4
+	PUSH	H	; save cp
+	PUSH	B	; unit
+	CALL	GETC		;	    c =	getc(unit);
+	POP	B
+	MOV	A,H		;	    if(c==EOF) /* c>255	*/
+	ORA	A
+	JZ	FGETS3
+	POP	D	; cp
+	LHLD	ZZSVCH		;		  if (cp<>save_cp)
+	XCHG			;			/* read	something */
+	MOV	A,H
+	CMP	D
+	JNZ	FGETS4		;			goto fgets4;
+	MOV	A,L
+	CMP	E
+	JNZ	FGETS4		;		  else
+	LXI	H,0		;			/* no characters */
+	POP	D	; fix stack
+	RET			;			return (NULL);
+FGETS3:	MOV	A,L		;	    else {
+	POP	H
+	MOV	M,A		;		*cp++ =	c;
+	INX	H
+	ANI	7FH		;	     /*	mask parity in compare */
+	CPI	EOL		;		if(c=='\n')
+	JNZ	FGETS2
+FGETS4:	MVI	M,0		;			*cp='\0';
+	POP	D	; fix stack
+	LHLD	ZZSVCH		;			return save_cp;
+	RET			; }	}	}	}
+
+	END
+
+

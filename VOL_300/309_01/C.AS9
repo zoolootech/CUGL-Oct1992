@@ -1,0 +1,102 @@
+*
+* 16 bit division
+*
+*
+* D=X/D
+*
+ccdiv: CLR ADR31
+ STX ADR1
+ STD ADR2
+ccd1: BGT ccd2
+ COM ADR31
+ COMA
+ COMB
+ ADDD #1
+ STD ADR2
+ccd2: LDD ADR1
+ CMPD #0
+ BGT ccd3
+ COM ADR31
+ COMA
+ COMB
+ ADDD #1
+ STD ADR1
+ccd3: LDA #16
+ STA ADR3
+ CLRA
+ CLRB
+ DIVD
+ ASL ADR1+1
+ ROL ADR1
+ ROLB
+ ROLA
+ CMPD ADR2
+ BLO NOSUB
+ SUBD ADR2
+ INC ADR1+1
+NOSUB: DEC ADR3
+ BNE DIVD
+ TFR D,X
+ LDD ADR1
+ TST ADR31
+ BEQ ccd4
+ COMA
+ COMB
+ ADDD #1
+ccd4: RTS
+*
+* 16 bit multiplication
+*
+ccmult: STX ADR1
+ STD ADR2
+ CLR ADR3
+ CLR ADR3+1
+ LDA ADR1+1
+ LDB ADR2+1
+ MUL
+ STD ADR3+2
+ LDA ADR1
+ LDB ADR2+1
+ MUL
+ ADDD ADR3+1
+ STD ADR3+1
+ LDA ADR1+1
+ LDB ADR2
+ MUL
+ ADDD ADR3+1
+ STD ADR3+1
+ BCC NOCARRY
+ INC ADR3
+NOCARRY: LDA ADR1
+ LDB ADR2
+ MUL
+ ADDD ADR3
+ TFR D,X
+ LDD ADR3+2
+ RTS
+
+ADR1:  RMB 2
+ADR2:  RMB 2
+ADR3:  RMB 1
+ADR31: RMB 3
+*
+*  switch statement
+*
+* D = switch value
+* S = switch table
+*     FDB addr1, value1
+*     FDB addr2, value2
+*     ...
+*     FDB 0
+*     [JMP DEFAULT]
+*     continuation
+*
+CCSWITCH: PULS X get stack adr
+SWLOOP: LDY ,X++ get address
+ CMPY #0 if 0
+ BEQ SWEND then it is the default
+ CMPD ,X++ else, if it is not the switch value
+ BNE SWLOOP try next one
+ JMP ,Y else we found it
+SWEND: JMP ,X default exit
+

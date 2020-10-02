@@ -1,0 +1,119 @@
+
+-------------------------------------------------------------
+Listing 2
+-------------------------------------------------------------
+		IDEAL
+		%pagesize 56,120
+		MODEL	LARGE
+		P386
+STRUC		descSTRUCTURE 	;global descriptor table entry structure
+seglim		dw	?	;max size of the segment
+loaddr		dw	?       ;24-bits of address little-endian
+hiaddr		db	?
+axright		db	?	;access rights must be 93h
+res0		dw	?	;reserved - must be zero
+		ENDS
+
+		stack
+		DB	512 DUP (?)
+
+		dataseg
+label		GDT  descstructure	;User supplied partially filled-in GDT
+ descstructure	<0,0,0,0,0>		;dummy - must be zeros
+ descstructure	<0,0,0,0,0>		;descriptor of this GDT - must be zero
+label		movesource	descstructure
+ descstructure	<0ffffh,0,0,0,0>	;descriptor of source block
+label		movedest 	descstructure
+ descstructure	<0ffffh,0,0,0,0>	;descriptor of destination block
+ descstructure	<0,0,0,0,0>		;BIOS will modify to Protected code seg
+ DESCSTRUCTURE	<0,0,0,0,0>		;BIOS will modify to Protected stk seg
+
+POSTER		DB	0
+COUNTER		DW	0
+
+FILL		DB	2400 DUP (0AAH)	;source
+FELL		DB	2400 DUP (055H)	;destination
+
+MACRO		MAKE_24_BIT_ADDR SEGVAL, OFSET, MEG
+		MOV	AX,MEG
+		MOV	CX,SEGVAL
+		REPT	4
+		  SHL	CX,1
+		  RCL	AL,1
+		ENDM
+		ADD	CX,offset OFSET
+		ADC	AL,0		;fixup if carry out of 16 bits
+		ENDM
+
+MACRO		PR2HEX	SOURCE 		;print two hex digits
+		MOV	DL,SOURCE
+		SHR	DL,4
+		call	toascii
+		MOV	AH,2
+		INT	21H
+		MOV	DL,SOURCE
+		AND	DL,0FH
+		call	toascii
+		mov	ah,2
+		INT	21H
+		ENDM
+
+		codeseg
+proc		start	near
+		cld				;string direction
+		mov	ax,dgroup		;init data seg
+		MOV	DS,AX
+		MOV	[COUNTER],0
+		AND	[POSTER],7FH		;turn off posting bit
+
+;synchronize to next 976 microsecond beat - goes away and waits
+		MOV	CX,0
+		MOV	DX,1
+		MOV	AH,86H			;
+		INT	15H
+; set up to indicate expiration of 2 hex milliseconds
+		MOV	CX,0
+		MOV	DX,1951			; 2 hex millisec = 1/512 sec
+		MOV	AH,83H
+		MOV	AL,0
+		MOV	BX,DS
+		MOV	ES,BX
+		MOV	BX,OFFSET POSTER
+		INT	15H
+RECYCLE:
+		make_24_bit_addr ds, fill, 0	;test pattern
+		MOV	[MOVESOURCE.LOADDR],CX	;addr goes into GDT entry for
+		MOV	[MOVESOURCE.HIADDR],AL	;     source
+
+		make_24_bit_addr ds, fell, 0	;address target area
+		MOV	[MOVEdest.LOADDR],CX
+		MOV	[MOVEdest.HIADDR],AL
+		MOV	[MOVEsource.axright],93h;tell 80x86 protection it's ok
+		MOV	AX,DS                   ;point ES:SI to our GDT
+		MOV	ES,AX
+		MOV	SI,OFFSET GDT
+		MOV	AH,87H			;request function 87h
+		MOV	CX,1200			;how many WORDS to move
+		INT	15H
+
+		INC	[COUNTER]		;take credit for cycle
+		TEST	[POSTER],80H            ;time window expired?
+		JZ	RECYCLE			;no
+
+		MOV	BX,[COUNTER]		;display cycle count
+		PR2HEX	BH
+		PR2HEX	BL
+
+		MOV	AX,4CH 		;terminate program
+		INT	21H
+		endp
+PROC		TOASCII	NEAR
+		OR	DL,30H		;convert 00-0f to 30-3f
+		CMP	DL,39H          ;see if 3a-3f
+		JBE	@@NAX           ;no, is a decimal digit
+		ADD	DL,7		;convert 3a-3f to 'A'-'F'
+@@NAX:
+		RET
+		ENDP
+		end	start
+

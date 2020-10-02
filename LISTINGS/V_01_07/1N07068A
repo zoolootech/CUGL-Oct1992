@@ -1,0 +1,81 @@
+        page    55, 132
+
+;
+;  Figure 4 - Joystick support functions
+;
+;  Requires MASM 5.1 or later
+;
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros,
+                                        ;e.g. MASM /Dmemodel=LARGE /Dlang=C
+
+        .CODE
+
+;
+;  Read the joystick switch settings
+;
+;  Arguments: none
+;  Returns:   Switch status in bits 0-3
+;             Error: -1
+;
+JOYsw   PROC    USES DX
+        mov     ah,84h                  ;Set up interrupt
+        xor     dx,dx                   ;Subfunction 0 reads the switches
+        int     15h
+        jc      err1                    ;PC, PCjr, & PC/XT 11/08/82 come here
+        shr     al,1                    ;Move switches from bits 4-7...
+        shr     al,1
+        shr     al,1
+        shr     al,1                    ;...to bits 0-3
+        xor     ah,ah                   ;Clear hi byte
+        ret
+err1:
+        mov     ax,-1                   ;Return 0FFFFh for error
+        ret
+JOYsw   ENDP
+
+;
+;  Read joystick position
+;
+;  Arguments: Pointer to X value of A joystick
+;             Pointer to Y value of A joystick
+;             Pointer to X value of B joystick
+;             Pointer to Y value of B joystick
+;  Returns:   0 if successful, else -1
+JOYpos  PROC    USES BX CX DX ES, a_x:PTR, a_y:PTR, b_x:PTR, b_y:PTR
+        mov     ah,84h
+        mov     dx,1                    ;Subfunction 1 to read positions
+        int     15h
+        jc      err2                    ;PC, PCjr, & PC/XT 11/08/82 come here
+    IF @DataSize                        ;(Far pointers)
+        push    bx                      ;Save A(Y)
+        les     bx,a_x                  ;Store A(X)
+        mov     es:[bx],ax
+        pop     ax                      ;Store A(Y)
+        les     bx,a_y
+        mov     es:[bx],ax
+        les     bx,b_x                  ;Store B(X)
+        mov     es:[bx],cx
+        les     bx,b_y                  ;Store B(Y)
+        mov     es:[bx],dx
+    ELSE                                ;(Near pointers)
+        push    bx                      ;Save A(Y)
+        mov     bx,a_x                  ;Store A(X)
+        mov     [bx],ax
+        pop     ax                      ;Store A(Y)
+        mov     bx,a_y
+        mov     [bx],ax
+        mov     bx,b_x                  ;Store B(X)
+        mov     [bx],cx
+        mov     bx,b_y                  ;Store B(Y)
+        mov     [bx],dx
+    ENDIF
+        xor     ax,ax                   ;Return 0 for success
+        ret
+err2:
+        mov     ax,-1                   ;Return 0FFFFh for error
+        ret
+JOYpos  ENDP
+
+        end

@@ -1,0 +1,231 @@
+                     Using Assembler with C
+
+This  program  is an attempt to demonstrate the use  of  assembly 
+language  routines  with C.  The whole idea is to write the  time 
+critical routines in ASM for it's obvious superiority (speedwise) 
+and call them from your C program as a function (with or  without 
+parameters) with a minimum of hassle. This procedure doesn't seem 
+to be too well documented, at least not in the books I have or in 
+the doc that is sold with Lattice C; the compiler used here.    
+
+The  latest  version of Lattice has a new function called  INTDOS 
+that generates a DOS function call.  This, of course would be the 
+easy  way  to  do  the two things I  did,  namely  CLS  and  CPOS 
+(positions  the cursor).  But there will be times we need  to  do 
+things *this* way; that is the reason for this study. 
+        
+I  hope  you find this information useful;  I have tried hard  to 
+keep  it error free.  If I have failed in this,  or if  you  have 
+suggestions,  comments,  or criticisms,  I'd be very glad to hear 
+them.    
+
+My current UID is 74176,3051 but I don't expect it to be so after 
+the middle of November 84.
+
+   ********************************************************** 
+        
+This  function will display a number of text strings (defined  in 
+the header) centered on the screen.      
+       
+If  you  wish  to develop a working  program  here,  extract  the 
+listings  from this text file,  complile the C program,  assemble 
+the  two .ASM files to .OBJ files,  and LINK the  three  together 
+with C[S].OBJ, and LCS.LIB.
+
+Unix  C compilers are usually initiated by issuing the command CC 
+(presumably for C Compiler!) and the .C source filespec.  If  you 
+are  using  Lattice  (as I am) you don't get to do  it  that  way 
+unless  you use a batch file  with that name.  While we're at  it 
+(writing  the  .BAT file so we can issue 'CC filespec'  like  the 
+'big  boys') we may as well have CC do something for us!  Here is 
+what my .BAT looks like: 
+
+
+ 
+lc1 %1                           ;1st pass.
+IF NOT EXIST %1.q GOTO quit      ;An error will keep the .Q file
+                                 ; from being generated, and we
+                                 ; might as well stop, eh?!
+lc2 %1                           ;If it's there, let's do pass 2.
+IF NOT EXIST %1.obj GOTO quit    ;Same story, here.
+                                 ;This is the confusing part.....
+link cs %1 %2 %3 %4,%1,,lcs;     ;%2, %3, etc are for 'extra' .OBJ 
+                                 ; modules if we have them; else 
+                                 ; they're ignored.
+DIR %1.*                         ;We wanna see what we've done, right?!
+:quit
+
+Just make sure the first filespec you link with is the file  with 
+main  () in it.  The next three can be  CLS.OBJ,  CPOS.OBJ,  etc. 
+Also,  be sure you DON'T include the .ext's in the filenames. The 
+compiler and linker are smart enough to figure out what they are.
+
+So, you could issue this command:
+
+     CC MYPROG CLS CPOS <ENTER> 
+        
+where  MYPROG.C  and CLS.OBJ and CPOS.OBJ are all on the  default 
+disk.  The  resulting .EXE file (MYPROG.EXE) will have  the  .ASM 
+code included,  and our work will be complete. As always, be sure 
+you save everything BEFORE you try to run the program. You'd hate 
+to start all over, right?
+
+
+                 
+#include <stdio.h>
+
+/* *********************************************************** */
+/*   These DEFINES can be changed to change output.            */
+
+#define  LINE1   "BootStrap Micro"
+#define  LINE2   "R. B. Miller"
+#define  LINE3   "P. O. Box 6221"
+#define  LINE4   "Stanford, Calif 94305"
+#define  LINE5   "415-960-3773"
+#define  NLINES   5                 /* Nmbr of lines of text. */
+
+/* *********************************************************** */
+
+
+#define  LLEN         80         /* Line length */
+#define  SCRN_LINES   25         /* Nmbr of lines on scrn. */
+#define  COL          0          /* Always position to col 0. */
+
+
+static char *data [5] = {
+                              LINE1,
+                              LINE2,
+                              LINE3,
+                              LINE4,
+                              LINE5  
+                                         } ;
+
+
+
+MAIN ()                           /* Display and center text */
+
+{ 
+     int i, j, inset ;
+     static char *string; 
+
+        cls ();                         /* Clear the screen. */
+        cpos ((SCRN_LINES - NLINES) / 2 , COL );/* Pos the cursor.   */
+
+        for  (i=0 ; i <= NLINES-1 ; i++ )
+        {
+        
+                string =  data[i];
+                
+                for  ( j = 1 ; j <= (( LLEN - strlen ( string )) / 2 ); j++ )
+                    putchar ( ' ' );
+                      
+                printf ( "%s\n",string );
+                   
+        } 
+
+  
+       cpos ( 22 , COL );                              /* Pos the cursor.  */
+
+}
+
+
+
+
+
+
+title   clear screen function
+name    cls
+page    ,132
+
+comment @
+
+This is the source code for the 'C' function CLS.  This
+function does exactly the same thing as the DOS COMmand
+by the same name except this can be LINKed with a 'C'
+module and called as a function:
+                                          
+USAGE:  no variable preparation, no return value,
+                                                  
+            CLS () ;
+@
+                                 
+                                
+                                
+pgroup  group   prog
+prog    segment byte    public  'prog'
+public  cls
+                                
+assume  cs:pgroup
+                                
+cls     proc    near            ;CLS and HOME the cursor.
+                                
+                                
+        mov     ax,0600h        ;Scroll the whole screen.
+        mov     cx,0            ;from 0,0 to...
+        mov     dx,184fh        ;ROW 24, COL 79.
+        mov     bh,7            ;'NORMAL' attribute.
+        int     10h
+                                        
+        mov     ah,2            ;SET_CURS function.
+        mov     dx,0            ;ROW, COL 0,0.
+        mov     bh,0            ;Page 0.
+        int     10h
+                                
+        ret
+                                
+ cls     endp
+ prog    ends
+         end
+
+title        cursor position function
+name         cpos
+page         ,132 
+                                
+comment @
+                                 
+This is the source code for the 'C' function CPOS ( ROW , COL );
+that does exactly what it sounds like it does.. it positions
+the cursor at the ROW and COLumn indicated in the arguments.
+                                        
+Usage:     
+                                
+INT ROW , COL ;
+                                                
+/* Assign values 0,0  to  24,79  */
+                                                
+CPOS ( ROW , COL ) ;
+@
+                                
+                                
+prog         segment      byte     public    'prog'
+public       cpos
+                                
+assume       cs:pgroup
+                                
+cpos         proc         near
+                                
+             push         bp
+             mov          bp,sp
+             mov          dx,[bp+4]          ;Skip over return address,
+                                             ; and saved bp, and 
+                                             ; get left parm (ROW).
+             mov          ax,[bp+6]          ;Get 2nd parm (COL).
+             pop          bp
+                                             
+             mov          dh,dl              ;ROW in DH,
+             mov          dl,al              ;COL in DL.
+             mov          bh,0               ;Page 0.
+             mov          ah,2               ;Funct 2 'SET_CPOS'.
+                                             
+             int          10h
+             ret
+                                
+                                             
+ cpos         endp
+ prog         ends
+              end
+
+-------------------------
+Downloaded  from  the IBMPC special interest area of  CompuServe, 
+uploaded to PCanada by Bob Leigh, PC1022.
+ 

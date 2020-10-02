@@ -1,0 +1,1 @@
+%1:bind qed qed1 qed2 qed3 qed4 qed5 qed6 qed7 qed8 qed9 qed10 qed11 qedibmpc qedpcio -l%1

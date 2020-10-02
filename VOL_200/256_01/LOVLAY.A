@@ -1,0 +1,55 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     LOVLAY.A     Load Overlay
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int LOVLAY(name, parm_blk, &_carryf)
+;	-----           char *name, /* pointer to pathname */
+;	                     *parm_blk; /* pointer to parameter block
+;	                                   in ES */
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC LOVLAY_
+
+LOVLAY_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	dx,[bp+4]	; the pathname address
+	mov	bx,[bp+6]	; the parameter block address
+	mov	ah,4bh	; the Function No.
+	mov	al,3
+	int	21h
+	jc	LOVLAY_ERROR
+	xor	ax,ax	; prepare for normal return
+	jmp	LOVLAY_QUIT
+LOVLAY_ERROR:
+	mov	si,[bp+8]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+LOVLAY_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

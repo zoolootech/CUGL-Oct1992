@@ -1,0 +1,409 @@
+     1	/*
+     2	 *	e n v i r o n . h
+     3	 *	-----------------
+     4	 *	This module contains environment specific information.
+     5	 *	It's used to make the programs more portable.
+     6	 *
+     7	 *	@(#)Copyrigth (C) by Rainer Gerhards. All rights reserved.
+     8	 *
+     9	 *	Include-file selection defines are:
+    10	 *
+    11	 *	Define		Class
+    12	 *	----------------------------------------------------------------------
+    13	 *	INCL_ASSERT	assert macro and needed functions
+    14	 *	INCL_CONIO	low-level console i/o
+    15	 *	INCL_CONVERT	conversion and classification functions
+    16	 *	INCL_CTYPE	ctype.h
+    17	 *	INCL_CURSES	curses.h
+    18	 *	INCL_LLIO	low-level i/o
+    19	 *	INCL_MEMORY	memory acclocation/deallocation functions
+    20	 *	INCL_MSDOS	MS-DOS support
+    21	 *	INCL_PROCESS	process control
+    22	 *	INCL_STDIO	stdio.h
+    23	 *	INCL_STDLIB	standard library functions
+    24	 *	INCL_STRING	string handling functions
+    25	 */
+    26	#ifndef	ENVIRON_H
+    27	#define ENVIRON_H
+       
+    28	#undef	MSDOS
+    29	#undef	OS2
+    30	#undef	UNIX
+    31	#undef	STARSYS
+       
+    32	/*
+    33	 *	configurable parameters.
+    34	 *	modify the following parameters according to the target environment.
+    35	 */
+       
+    36	/*
+    37	 *	define target operating system
+    38	 */
+    39	#define MSDOS		0
+    40	#define	UNIX		0
+    41	#define OS2		1
+    42	#define	STARSYS		0
+       
+    43	/*
+    44	 *	define target machine
+    45	 *
+    46	 *	This is auxiluary data only needed for some operating
+    47	 *	systems. Currently only needed if MS-DOS is active.
+    48	 */
+    49	#define	IBM_PC		1		/* IBM PC, XT, AT & compatibels	*/
+    50	#define	WANG_PC		0		/* Wang PC, APC ...		*/
+       
+    51	/*
+    52	 *	define target compiler (if neccessary)
+    53	 */
+    54	#undef	MSC
+    55	#define	MSC		1		/* Microsoft C			*/
+       
+    56	#define	AUTO_SEL	1
+    57	/*
+    58	 * The above #define allowes an automatic language set selection. It is
+    59	 * only functional if the used compiler identifies itself via a #define.
+    60	 *
+    61	 * Note: If AUTO_SEL is set, the parameters below are meaningless!
+    62	 */
+       
+    63	#define	USE_FAR		0		/* use far keyword		*/
+    64	#define	USE_NEAR	0		/* use near keyword		*/
+    65	#define	USE_VOID	1		/* use void keyword		*/
+    66	#define	USE_VOLA	0		/* use volatile keyword		*/
+    67	#define	USE_CONST	0		/* use const keyword		*/
+    68	#define	USE_PROTT	0		/* use function prototypes	*/
+    69	#define	USE_INTR	0		/* use interrupt keyword	*/
+       
+    70	/*	+----------------------------------------------------------------+
+    71	 *	|                  End Of Configurable Parameters                |
+    72	 *	+----------------------------------------------------------------+
+    73	 *	Please do not make any changes below this point!
+    74	 */
+       
+    75	#ifndef	SYMDEB
+    76	# define	SYMDEB		0
+    77	#endif
+       
+    78	/*
+    79	 *	Check target compiler. Note that the MSC switch is overriden if
+    80	 *	either __TURBOC__ or DLC are defined.
+    81	 */
+    82	#ifdef	__TURBOC__
+    83	# undef	MSC
+    84	#endif
+    85	#ifdef	DLC
+    86	# undef	MSC
+    87	#endif
+    88	#if	STARSYS
+    89	# undef MSC
+    90	#endif
+       
+    91	#if	!(MSDOS || OS2)
+    92	# undef MSC
+    93	# undef	AUTO_SEL
+    94	# define	AUTO_SEL	0
+    95	#endif
+       
+    96	#if	OS2
+    97	# undef 	MSC
+    98	# define	MSC		1
+    99	# undef 	AUTO_SEL
+   100	# define	AUTO_SEL	1
+   101	#endif
+       
+   102	/*
+   103	 * Compiler ANSI-compatible?
+   104	 * (First we assume it's not!)
+   105	 */
+   106	#define		ANSI_C		0
+   107	#ifdef	MSC
+   108	#  undef	ANSI_C
+   109	#  define	ANSI_C		1
+   110	#endif
+   111	#ifdef	TURBO_C
+   112	#  undef	ANSI_C
+   113	#  define	ANSI_C		1
+   114	#endif
+       
+   115	#if	AUTO_SEL
+   116	#  undef	USE_FAR
+   117	#  undef	USE_NEAR
+   118	#  undef	USE_VOID
+   119	#  undef	USE_VOLA
+   120	#  undef	USE_CONST
+   121	#  undef	USE_PROTT
+   122	#  undef	USE_INTR
+   123	#  ifdef	__TURBOC__
+   124	#    define	USE_FAR		1
+   125	#    define	USE_NEAR	1
+   126	#    define	USE_VOID	1
+   127	#    define	USE_VOLA	1
+   128	#    define	USE_CONST	1
+   129	#    define	USE_PROTT	1
+   130	#    define	USE_INTR	1
+   131	#  endif
+   132	#  ifdef	DLC
+   133	#    define	USE_FAR		1
+   134	#    define	USE_NEAR	1
+   135	#    define	USE_VOID	1
+   136	#    define	USE_VOLA	1
+   137	#    define	USE_CONST	1
+   138	#    define	USE_PROTT	1
+   139	#    define	USE_INTR	0
+   140	#  endif
+   141	#  ifdef	MSC
+   142	#    define	USE_FAR		1
+   143	#    define	USE_NEAR	1
+   144	#    define	USE_VOID	1
+   145	#    define	USE_VOLA	1
+   146	#    define	USE_CONST	1
+   147	#    define	USE_PROTT	1
+   148	#    define	USE_INTR	1
+   149	#  endif
+   150	#endif
+       
+       
+   151	#if	!USE_FAR
+   152	#define	far
+   153	#endif
+       
+   154	#if	!USE_NEAR
+   155	#define	near
+   156	#endif
+       
+   157	#if	!USE_VOID
+   158	#define	void
+   159	#endif
+       
+   160	#if	!USE_VOLA
+   161	#define	volatile
+   162	#endif
+       
+   163	#if	!USE_CONST
+   164	#define	const
+   165	#endif
+       
+   166	#if	USE_INTR
+   167	# ifdef	MSC
+   168	#   define	INTERRUPT interrupt far
+   169	# else
+   170	#   define	INTERRUPT interrupt
+   171	# endif
+   172	#else
+   173	# define	INTERRUPT
+   174	#endif
+       
+   175	#if	USE_PROTT
+   176	#  define	PROTT(x)	x
+   177	#  ifdef MSC
+   178	#    define	STATICPT(func, prott) static func prott
+   179	#  else
+   180	#    define	STATICPT(func, prott) extern func prott
+   181	#   endif
+   182	#else
+   183	#  define	PROTT(x)	()
+   184	#  ifdef MSC
+   185	#    define	STATICPT(func, prott) static func ()
+   186	#  else
+   187	#    define	STATICPT(func, prott) extern func ()
+   188	#   endif
+   189	#endif
+       
+   190	#ifdef	MSC
+   191	# define	inportb(port) inp(port)
+   192	# define	outportb(port, val) outp(port, val)
+   193	#endif
+       
+   194	#ifdef	__TURBOC__
+   195	#  define	REGPKT	struct REGS
+   196	#else
+   197	#  define	REGPKT	union REGS
+   198	#endif
+       
+   199	#ifdef	DLC
+   200	#  define	defined(x)
+   201	#  define	inportb		inp
+   202	#  define	outportb	outp
+   203	#endif
+       
+   204	#if	!SYMDEB				/* symbolic debugging support	*/
+   205	#  define	STATICATT	static
+   206	#endif
+       
+   207	#if	STARSYS
+   208	#  define	exit(x)		dx_exit(x)
+   209	#endif
+       
+   210	/*
+   211	 * Define open modes according to selected operating system/compiler.
+   212	 */
+   213	#if	MSDOS || OS2
+   214	#  define	OPM_WB		"wb"
+   215	#  define	OPM_WT		"wt"
+   216	#  define	OPM_RB		"rb"
+   217	#  define	OPM_RT		"rt"
+   218	#endif
+       
+   219	#if	UNIX
+   220	#  define	OPM_WB		"w"
+   221	#  define	OPM_WT		"w"
+   222	#  define	OPM_RB		"r"
+   223	#  define	OPM_RT		"r"
+   224	#endif
+       
+   225	#define	TRUE	1
+   226	#define	FALSE	0
+       
+   227	typedef unsigned char	uchar;
+   228	typedef int		bool;
+   229	typedef unsigned short	ushort;
+   230	typedef unsigned long	ulong;
+       
+   231	#define tonumber(x)	((x) - '0')
+   232	#define	FOREVERL()	for(;;)
+       
+   233	/*
+   234	 * Select #include-files depending on target compiler and OS.
+   235	 *
+   236	 * Phases:
+   237	 * 1. Define all include selection constants to true or false.
+   238	 * 2. Select actual include files and include them.
+   239	 * 3. #Undef all include selection constants.
+   240	 */
+   241	#ifndef	INCL_STDIO
+   242	#	define	INCL_STDIO	0
+   243	#else
+   244	#	undef	INCL_STDIO
+   245	#	define	INCL_STDIO	1
+   246	#endif
+   247	#ifndef	INCL_CURSES
+   248	#	define	INCL_CURSES	0
+   249	#else
+   250	#	undef	INCL_CURSES
+   251	#	define	INCL_CURSES	1
+   252	#endif
+   253	#ifndef	INCL_CTYPE
+   254	#	define	INCL_CTYPE	0
+   255	#else
+   256	#	undef	INCL_CTYPE
+   257	#	define	INCL_CTYPE	1
+   258	#endif
+   259	#ifndef	INCL_ASSERT
+   260	#	define	INCL_ASSERT	0
+   261	#else
+   262	#	undef	INCL_ASSERT
+   263	#	define	INCL_ASSERT	1
+   264	#endif
+   265	#ifndef	INCL_LLIO
+   266	#	define	INCL_LLIO	0
+   267	#else
+   268	#	undef	INCL_LLIO
+   269	#	define	INCL_LLIO	1
+   270	#endif
+   271	#ifndef	INCL_PROCESS
+   272	#	define	INCL_PROCESS	0
+   273	#else
+   274	#	undef	INCL_PROCESS
+   275	#	define	INCL_PROCESS	1
+   276	#endif
+   277	#ifndef	INCL_MEMORY
+   278	#	define	INCL_MEMORY	0
+   279	#else
+   280	#	undef	INCL_MEMORY
+   281	#	define	INCL_MEMORY	1
+   282	#endif
+   283	#ifndef	INCL_STRING
+   284	#	define	INCL_STRING	0
+   285	#else
+   286	#	undef	INCL_STRING
+   287	#	define	INCL_STRING	1
+   288	#endif
+   289	#ifndef	INCL_STDLIB
+   290	#	define	INCL_STDLIB	0
+   291	#else
+   292	#	undef	INCL_STDLIB
+   293	#	define	INCL_STDLIB	1
+   294	#endif
+   295	#ifndef	INCL_CONVERT
+   296	#	define	INCL_CONVERT	0
+   297	#else
+   298	#	undef	INCL_CONVERT
+   299	#	define	INCL_CONVERT	1
+   300	#endif
+   301	#ifndef	INCL_MSDOS
+   302	#	define	INCL_MSDOS	0
+   303	#else
+   304	#	undef	INCL_MSDOS
+   305	#	define	INCL_MSDOS	1
+   306	#endif
+   307	#ifndef	INCL_CONIO
+   308	#	define	INCL_CONIO	0
+   309	#else
+   310	#	undef	INCL_CONIO
+   311	#	define	INCL_CONIO	1
+   312	#endif
+       
+   313	#if	INCL_STDIO && !(INCL_CURSES && UNIX)
+   314	#	include <stdio.h>
+   315	#endif
+   316	#if	INCL_CURSES && UNIX
+   317	#	include <curses.h>
+   318	#endif
+   319	#if	INCL_CTYPE || INCL_CONVERT
+   320	#	include <ctype.h>
+   321	#endif
+   322	#if	INCL_ASSERT
+   323	#	include <assert.h>
+   324	# ifdef	MSC
+   325	#	undef	INCL_PROCESS
+   326	#	define	INCL_PROCESS	1
+   327	# endif
+   328	# ifdef	__TURBOC__
+   329	#	undef	INCL_PROCESS
+   330	#	define	INCL_PROCESS	1
+   331	# endif
+   332	#endif
+   333	#if	INCL_LLIO
+   334	# ifdef	MSC
+   335	#	include <fcntl.h>
+   336	#	include <io.h>
+   337	# endif
+   338	#endif
+   339	#if	INCL_PROCESS
+   340	# ifdef	MSC
+   341	#	include <process.h>
+   342	# endif
+   343	#endif
+   344	#if	INCL_MEMORY
+   345	#	include <malloc.h>
+   346	#endif
+   347	#if	INCL_STRING
+   348	# if	ANSI_C
+   349	#	include <string.h>
+   350	# endif
+   351	#endif
+   352	#if	INCL_STDLIB || INCL_CONVERT
+   353	# if	ANSI_C
+   354	#	include <stdlib.h>
+   355	# endif
+   356	#endif
+   357	#if	INCL_CONIO
+   358	#  ifdef	 __TURBOC__
+   359	#	include <conio.h>
+   360	#  endif
+   361	#  ifdef	 MSC
+   362	#	include <conio.h>
+   363	#  endif
+   364	#endif
+   365	#if	MSDOS && INCL_MSDOS
+   366	#	include <dos.h>
+   367	#endif
+       
+       
+   368	/*
+   369	 * Purge utility #defines.
+   370	 */
+   371	#undef	INCL_STDIO
+       
+   372	#endif

@@ -1,0 +1,118 @@
+/* ----------------------------------------------------
+ *  LISTING 7
+ *
+ *  Filename:           btest.c
+ *  Summary:            test cache file i/o interface
+ *  Author:             T.W. Nelson
+ *  Compile options:    
+ *  Version:            1.00
+ *  Date:               05-Sep-1991
+ *  Notes:
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ * ------------------------------------------------- */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
+#include <bios.h>
+#include <io.h>
+#include "bfile.h"
+
+#define BMAX      8     //#cache blocks
+#define BSIZE   512     //block size in bytes
+
+BFILE *bf;
+char buf[BSIZE];
+int Fblocks;
+
+void do_random(void)
+{
+    //read and write random blocks from file .....
+    long blockno;
+
+    printf( "Random block read/write test routine.\n");
+    printf( "Press any key to quit...\n\n" );
+    randomize();        //initialize random# generator
+
+    while( bioskey(1) == 0 )    {
+        blockno = random( Fblocks );
+        read_b( bf, (void *) buf, (ulong) blockno );
+        write_b( bf, (void *) buf, (ulong) blockno );
+    }
+
+    bioskey(0);         //remove keypress from buffer
+}
+
+int btest(void)
+{
+    int     option;
+    static long num = -1L;
+
+    printf("\n0=quit, 1=auto r/w, 2=read, 3=write: ");
+    scanf( "%d", &option );
+
+    switch( option )
+    {
+    case    0:
+        return 0;       //quit
+    case    1:
+        do_random();    //random read/write
+        return 1;
+    case    2:
+        printf( "Enter block to read: " );
+        scanf( "%ld", &num );
+        if( (int) num >= Fblocks )
+            printf("Block# out of range\a\n");
+        else
+            read_b( bf, (void *) buf, (ulong) num);
+        return 1;
+    case    3:
+        if( num != -1L )    {
+            write_b( bf, (void *) buf, (ulong) num);
+            printf("Block %ld written\n", num );
+        }
+        return 1;
+    default:
+        return 1;
+    }
+}
+
+void print_status(void)
+{
+    chdr_t *p = 0;
+
+    printf("Cache stats: hits=%ld miss=%ld adds=%ld\n",
+            bf->cac.hits, bf->cac.miss, bf->cac.adds );
+    printf( "Block#  Acc   Stat  MFRU=%ld  LFRU=%ld\n",
+               bf->cac.mfru->bnum, bf->cac.lfru->bnum);
+    printf( "------- ----- -----\n" );
+
+    for( p = bf->cac.mfru; p != GROUND; p = p->next ) {
+            printf( "%-7ld %-5ld %-4u\n", p->bnum,
+                                          p->acc,
+                                          p->stat );
+    }
+}
+
+main( int argc, char **argv )
+{
+    if( argc <= 1 )     {
+            printf("Need file name argument...\n");
+            return 1;
+    }
+
+    bf = open_b( argv[1], BMAX, BSIZE, 0);
+    Fblocks = (int) (filelength( bf->fd ) / BSIZE);
+
+    while( btest() )
+            print_status();
+
+    close_b( bf );
+
+    return 0;
+}
+
+/* ---- End of File -------------------------------- */

@@ -1,0 +1,60 @@
+/*
+REPTEST.CPP
+
+Source for example repetition rate program.
+Paul A. Cornelius, August 1991
+*/
+
+#include "reprate.hpp"
+#include <disp.h>
+#include <stdio.h>
+#include <sound.h>
+#include <bios.h>
+
+static long tix1,tix2;
+void ch0()
+{
+    sound_click();
+    tix1++;
+}
+
+void ch1()
+{
+    tix2++;
+}
+
+void show_objects()
+{
+    // loop until key is pressed
+    while (bioskey(1) == 0)         
+    {
+        disp_move(2,0);
+        disp_printf("%8ld %8ld",tix1,tix2);
+    }
+    // remove keypress from buffer
+    getch();                        
+}
+
+int main()
+{
+    // open Zortech display package
+    disp_open();                    
+    disp_move(0,0);
+    disp_setattr(15);
+    disp_eeop();
+    RepRate ticker0(100.0,&ch0),ticker1(1.0,&ch1);
+    disp_move(5,0);
+    disp_printf("Rep rates: %.2f %.2f",
+     ticker0.GetRepRate(),ticker1.GetRepRate());
+
+    show_objects();
+    TimerList.Linkin(&ticker0);
+    show_objects();
+    TimerList.Linkin(&ticker1);
+    show_objects();
+    TimerList.Linkout(&ticker1);
+    show_objects();
+
+    return 0;
+}
+

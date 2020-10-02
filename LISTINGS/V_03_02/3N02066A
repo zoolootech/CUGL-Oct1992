@@ -1,0 +1,96 @@
+
+const
+	BITS_PER_SET = 30;
+	BITS_PER_BYTE = 8;
+	BYTES_PER_SET = (BITS_PER_SET + BITS_PER_BYTE - 1)
+		div BITS_PER_BYTE;
+type
+	bitset = array [0 .. BYTES_PER_SET] of byte;
+
+{*
+ * Empty set s.  This is equivalent to s := [];
+ *}
+procedure empty(var s : bitset);
+	var
+		i : integer;
+	begin
+	for i := 0 to sizeof(s) - 1 do
+		s[i] := 0;
+	end;
+
+{*
+ * Add element e to set s.  This is equivalent to
+ * s := s + [e];
+ *}
+procedure incl(var s : bitset; e : integer);
+	var
+		bitpos, offset : integer;
+		mask : byte;
+	begin
+	offset := e div BITS_PER_BYTE;
+	bitpos := e mod BITS_PER_BYTE;
+	mask := 1 shl bitpos;
+	s[offset] := s[offset] or mask;
+	end;
+
+{*
+ * Return TRUE if e is an element of set s.  This is
+ * equivalent to (e in s).  This version assumes that
+ * BITS_PER_BYTE is 8 so it can generate slightly
+ * better code.
+ *}
+function member(e : integer; var s : bitset) :
+boolean;
+	var
+		bitpos, offset : integer;
+		mask : byte;
+	begin
+	offset := e shr 3;
+	bitpos := e and 7;
+	mask := 1 shl bitpos;
+	member := (s[offset] and mask) <> 0;
+	end;
+
+{*
+ * Intersect sets s1 and s2, and store the result in
+ * s1.  This is equivalent to s1 := s2 * s2;
+ *}
+procedure intersect(var s1, s2 : bitset);
+	var
+		i : integer;
+	begin
+	for i := 0 to sizeof(s1) - 1 do
+		s1[i] := s1[i] and s2[i];
+	end;
+
+{*
+ * Display a set as a series of bytes (in decimal).
+ *}
+procedure display(var s : bitset);
+	var
+		i : integer;
+	begin
+	for i := 0 to sizeof(s) - 1 do
+		write(s[i]:2, ' ');
+	writeln;
+	end;
+
+var
+	s1, s2 : bitset;
+	i : integer;
+begin
+empty(s1);
+write('s1 = '); display(s1);
+incl(s1, 10);
+incl(s1, 25);
+write('s1 = '); display(s1);
+for i := 0 to BITS_PER_SET do
+	if member(i, s1) then
+		writeln(i, ' is a member of s1');
+empty(s2);
+incl(s2, 11);
+incl(s2, 25);
+write('s2 = '); display(s2);
+intersect(s1, s2);
+write('s1 = '); display(s1);
+end.

@@ -1,0 +1,493 @@
+;
+;			BIOS Macros
+;
+;	These macros define the indeterfaces to the BIOS.  These macros aid in
+; making calls to BIOS from other assembly language routines.  These macros
+; provide the complete interface to the particular BIOS function.
+;
+;
+;		LDREG
+;
+;	This macro is an "inner" macro for the use by the BIOS interface macros.
+; It allows the caller of a macro to specify a register or a literal value as
+; the parameter to the macro.  This macro loads the correct register specified
+; by the caller of the macro with the contents of the register, literal or
+; memory location also specified.  No code will be generated if the two
+; parameters are the same.
+;
+ldreg		macro		destreg,source
+		ifdif		<destreg>,<source>
+		mov		destreg,source
+		endif
+		endm
+;
+;		TSTNSET
+;
+;	This macro will compare the value of two fields, if they are equal the
+; third parameter will be OR'd into AL.
+;
+tstnset 	macro		src1,src2,orval
+		ifidn		<src1>,<src2>
+		or		al,orval
+		endif
+		endm
+;
+;		IRS232
+;
+;	This macro will generate a call to BIOS to initialize the RS232 port.
+;
+irs232		macro		initparms,linenum
+		ldreg		dx,linenum
+		ldreg		al,initparms
+		mov		ah,0
+		int		14h
+		endm
+;
+;		IRS232A
+;
+;	This macro will generate a call to BIOS to initialize the RS232 port.
+; This macro allows the fields to be specified that initialize the port.
+;
+irs232a 	macro		baudrate,parity,stopbits,datalen,linenum
+		ldreg		dx,linenum
+		sub		ax,ax
+;		tstnset 	baudrate,110,00000000b
+		tstnset 	baudrate,150,00100000b
+		tstnset 	baudrate,300,01000000b
+		tstnset 	baudrate,600,01100000b
+		tstnset 	baudrate,1200,10000000b
+		tstnset 	baudrate,2400,10100000b
+		tstnset 	baudrate,4800,11000000b
+		tstnset 	baudrate,9600,11100000b
+;		tstnset 	parity,none,00000000b
+		tstnset 	parity,odd,00001000b
+		tstnset 	parity,even,00011000b
+;		tstnset 	stopbits,1,00000000b
+		tstnset 	stopbits,2,00000100b
+		tstnset 	datalen,7,00000010b
+		tstnset 	datalen,8,00000011b
+		int		14h
+		endm
+;
+;		SENDCHR
+;
+;	This macro will send a character over the RS232 line.
+;
+sendchr 	macro		char,linenum
+		ldreg		dx,linenum
+		ldreg		al,char
+		mov		ah,1
+		int		14h
+		endm
+;
+;		RECVCHR
+;
+;	This macro will recieve a character from the RS232 line.
+;
+recvchr 	macro		linenum
+		ldreg		dx,linenum
+		mov		ah,2
+		int		14h
+		endm
+;
+;		COMSTAT
+;
+;	This macro will get the status of the RS232 line.
+;
+comstat 	macro		linenum
+		ldreg		dx,linenum
+		mov		ah,3
+		int		14h
+		endm
+;
+;		GETKBCHAR
+;
+;	This macro will get a character from the keyboard.
+;
+getkbchar	macro
+		mov		ah,0
+		int		16h
+		endm
+;
+;		TSTKBCHAR
+;
+;	This macro will test to see if a character is available from the keybd.
+;
+tstkbchar	macro
+		mov		ah,1
+		int		16h
+		endm
+;
+;		GETKBSHIFT
+;
+;	This macro will get the keyboard shift state.
+;
+getkbshift	macro
+		mov		ah,2
+		int		16h
+		endm
+;
+;		DSKRESET
+;
+;	This macro will reset the diskette controller.
+;
+dskreset	macro
+		mov		ah,0
+		int		16h
+		endm
+;
+;		GETDSKSTAT
+;
+;	This macro will get the diskette status of the last operation performed.
+;
+getdskstat	macro
+		mov		ah,1
+		int		16h
+		endm
+;
+;		DSKREAD
+;
+;	This macro will read from the diskette.
+;
+dskread 	macro		drive,head,track,sector,numsecs,buffoff
+		ldreg		dl,drive
+		ldreg		dh,head
+		ldreg		ch,track
+		ldreg		cl,sector
+		ldreg		al,numsecs
+		ldreg		bx,buffoff
+		mov		ah,2
+		int		16h
+		endm
+;
+;		DSKWRITE
+;
+;	This macro will write to the diskette.
+;
+dskwrite	macro		drive,head,track,sector,numsecs,buffoff
+		ldreg		dl,drive
+		ldreg		dh,head
+		ldreg		ch,track
+		ldreg		cl,sector
+		ldreg		al,numsecs
+		ldreg		bx,buffoff
+		mov		ah,3
+		int		16h
+		endm
+;
+;		DSKVERFY
+;
+;	This macro will verify the diskette.
+;
+dskverfy	macro		drive,head,track,sector,numsecs,buffoff
+		ldreg		dl,drive
+		ldreg		dh,head
+		ldreg		ch,track
+		ldreg		cl,sector
+		ldreg		al,numsecs
+		ldreg		bx,buffoff
+		mov		ah,4
+		int		16h
+		endm
+;
+;		DSKFORMAT
+;
+;	This macro will format the diskette.
+;
+dskformat	macro		drive,head,track,sector,numsecs,buffoff
+		ldreg		dl,drive
+		ldreg		dh,head
+		ldreg		ch,track
+		ldreg		cl,sector
+		ldreg		al,numsecs
+		ldreg		bx,buffoff
+		mov		ah,5
+		int		16h
+		endm
+;
+;		PRNTCHAR
+;
+;	This macro will print a character on the printer.
+;
+prntchar	macro		char,printer
+		ldreg		al,char
+		ldreg		dx,printer
+		mov		ah,0
+		int		17h
+		endm
+;
+;		INIPRNTR
+;
+;	This macro will initialize the printer.
+;
+iniprntr	macro		printer
+		ldreg		dx,printer
+		mov		ah,1
+		int		17h
+		endm
+;
+;		PRNTSTAT
+;
+;	This macro will get the printer status.
+;
+prntstat	macro		printer
+		ldreg		dx,printer
+		mov		ah,2
+		int		17h
+		endm
+;
+;		SETCRTMODE
+;
+;	This macro will set the vidio mode for the CRT.
+;
+setcrtmode	macro		modeval
+		ldreg		al,modeval
+		mov		ah,0
+		int		10h
+		endm
+;
+;		SCRTMODE
+;
+;	This macro will set the vidio mode for the CRT.  It will allow the
+; caller of the macro to set the mode symbolicly.
+;
+scrtmode	macro		modeval
+		sub		al,al
+;		tstnset 	modeval,bw40x25,0
+		tstnset 	modeval,color40x25,1
+		tstnset 	modeval,bw80x25,2
+		tstnset 	modeval,color80x25,3
+		tstnset 	modeval,color320x200,4
+		tstnset 	modeval,bw320x200,5
+		tstnset 	modeval,bw640x200,6
+		mov		ah,0
+		int		10h
+		endm
+;
+;		SETCURTYPE
+;
+;	This macro will set the cursor type.
+;
+setcurtype	macro		start,end
+		ldreg		ch,start
+		ldreg		cl,end
+		mov		ah,1
+		int		10h
+		endm
+;
+;		SETCURPOS
+;
+;	This macro will set the cursor position.
+;
+setcurpos	macro		row,col,crtpage
+		ldreg		dh,row
+		ldreg		dl,col
+		ldreg		bh,crtpage
+		mov		ah,2
+		int		10h
+		endm
+;
+;		GETCURPOS
+;
+;	This macro will get the cursor position.
+;
+getcurpos	macro		crtpage
+		ldreg		bh,crtpage
+		mov		ah,3
+		int		10h
+		endm
+;
+;		GETPENPOS
+;
+;	This macro will get the light pen position.
+;
+getpenpos	macro
+		mov		ah,4
+		int		10h
+		endm
+;
+;		SETPAGE
+;
+;	This macro will set the display page.
+;
+setpage 	macro		crtpage
+		ldreg		al,crtpage
+		mov		ah,5
+		int		10h
+		endm
+;
+;		SCROLLUP
+;
+;	This macro will scroll the page up.
+;
+scrollup	macro		lines,ulcrow,ulccol,lrcrow,lrccol,attr
+		ldreg		al,lines
+		ldreg		ch,ulcrow
+		ldreg		cl,ulccol
+		ldreg		dh,lrcrow
+		ldreg		dl,lrccol
+		ldreg		bh,attr
+		mov		ah,6
+		int		10h
+		endm
+;
+;		SCROLLDOWN
+;
+;	This macro will scroll the page down.
+;
+scrolldown	macro		lines,ulcrow,ulccol,lrcrow,lrccol,attr
+		ldreg		al,lines
+		ldreg		ch,ulcrow
+		ldreg		cl,ulccol
+		ldreg		dh,lrcrow
+		ldreg		dl,lrccol
+		ldreg		bh,attr
+		mov		ah,7
+		int		10h
+		endm
+;
+;		READATRCHR
+;
+;	This macro will read the attribute and character at the current cursor
+; position.
+;
+readatrchr	macro		page
+		ldreg		bh,page
+		mov		ah,8
+		int		10h
+		endm
+;
+;		WRITEATRCHR
+;
+;	This macro will write the attribute and character at the current cursor
+; position.
+;
+writeatrchr	macro		char,attr,count,page
+		ldreg		al,char
+		ldreg		bl,attr
+		ldreg		cx,count
+		ldreg		bh,page
+		mov		ah,9
+		int		10h
+		endm
+;
+;		WRITECHAR
+;
+;	This macro will write the character at the current cursor position.
+;
+writechar	macro		char,count,page
+		ldreg		al,char
+		ldreg		cx,count
+		ldreg		bh,page
+		mov		ah,10
+		int		10h
+		endm
+;
+;		SETPALETTE
+;
+;	This macro will set the color palette.
+;
+setpalette	macro		colorid,colorval
+		ldreg		bh,colorid
+		ldreg		bl,colorval
+		mov		ah,11
+		int		10h
+		endm
+;
+;		WRITEDOT
+;
+;	This macro will write a dot on the CRT.
+;
+writedot	macro		row,col,color
+		ldreg		dx,row
+		ldreg		cx,col
+		ldreg		al,color
+		mov		ah,12
+		int		10h
+		endm
+;
+;		READDOT
+;
+;	This macro will read a dot from the CRT.
+;
+readdot 	macro		row,col
+		ldreg		dx,row
+		ldreg		cx,col
+		mov		ah,13
+		int		10h
+		endm
+;
+;		TELEWRITE
+;
+;	This macro will perform a teletype write.
+;
+telewrite	macro		char,color,page
+		ldreg		al,char
+		ldreg		bl,color
+		ldreg		bh,page
+		mov		ah,14
+		int		10h
+		endm
+;
+;		VIDIOSTATE
+;
+;	This macro will get the current vidio state.
+;
+vidiostate	macro
+		mov		ah,15
+		int		10h
+		endm
+;
+;		GETMEMSIZE
+;
+;	This macro will return the amount of memory in 1K increments.
+;
+getmemsize	macro
+		int		12h
+		endm
+;
+;		EQUIPMENT
+;
+;	This macro will return the kinds of devices that are attached to the
+; system.
+;
+equipment	macro
+		int		11h
+		endm
+;
+;		CASMOTOR
+;
+;	This macro will turn the cassette motor on or off.
+;
+casmotor	macro		motorstate
+		ifidn		<motorstate>,<on>
+		mov		ah,0
+		endif
+		ifidn		<motorstate>,<off>
+		mov		ah,1
+		endif
+		int		15h
+		endm
+;
+;		CASREAD
+;
+;	This macro will read 256 byte blocks from the cassette.
+;
+casread 	macro		numbytes,buffoff
+		ldreg		cx,numbytes
+		ldreg		bx,buffoff
+		mov		ah,2
+		int		15h
+		endm
+;
+;		CASWRITE
+;
+;	This macro will write 256 byte blocks to the cassette.
+;
+caswrite	macro		numbytes,buffoff
+		ldreg		cx,numbytes
+		ldreg		bx,buffoff
+		mov		ah,3
+		int		15h
+		endm
+                                                                                                    

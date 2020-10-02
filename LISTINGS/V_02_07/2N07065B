@@ -1,0 +1,142 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <conio.h>
+#include "esp.h"
+#include "esp.fu"
+
+#define OK     1
+#define FAIL   0
+#define bool   short
+
+int main();
+short ESP_InfoReport();
+void DisplayAttributes();
+
+struct attr_list {
+   short attr_val;      /* Bitmask value for "AND" comparison  */
+   char *attr_false;    /* Display this string if masked false */
+   char *attr_true;     /* Display this string if masked true  */
+      } AttrList;
+
+struct attr_list test_attrs[] = {
+   { ESP_TEST_RAM_FAIL,
+    "RAM test OK", "RAM test FAILED" },
+   { ESP_TEST_ROM_FAIL,
+    "ROM test OK", "ROM checksum FAILED" },
+   { ESP_TEST_8K_ROM,
+    "ROM size is 4K", "ROM size is 8K" },
+   { ESP_TEST_MCA_BUS,
+    "AT ISA-compatible bus", "PS/2 MCA-compatible bus" },
+   { ESP_TEST_2_PORT,
+       "Single-port ESP interface (phantom product)",
+       "Dual-port ESP interface" }
+   };
+
+struct attr_list mode_attrs[] = {
+   { ESP_MODE_ENHANCED,
+    "Compatibility Mode enabled", "Enhanced Mode enabled" },
+   { ESP_MODE_COMP_UART_FIFO,
+    "Compatibility Mode UART FIFO disabled",
+    "Compatibility Mode UART FIFO enabled" },
+   { ESP_MODE_COMP_RTS_FLOW,
+    "Compatibility Mode RTS flow control disabled",
+    "Compatibility Mode RTS flow control enabled" },
+   { ESP_MODE_COMP_DTR_FLOW,
+    "Compatibility Mode DTR flow control disabled",
+    "Compatibility Mode DTR flow control enabled" },
+   { ESP_MODE_ENH_RX_DMA,
+    "Enhanced Mode RX is Programmed I/O Mode",
+    "Enhanced Mode RX is Direct Memory Access Mode" },
+   { ESP_MODE_ENH_TX_DMA,
+    "Enhanced Mode TX is Programmed I/O Mode",
+    "Enhanced Mode TX is Direct Memory Access Mode" }
+   };
+
+#define NUM_TEST_ATTRS (sizeof(test_attrs) / sizeof(AttrList))
+#define NUM_MODE_ATTRS (sizeof(mode_attrs) / sizeof(AttrList))
+
+extern short esp_uart_addr[], esp_irq[];
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+   return ESP_InfoReport();
+}
+
+
+short ESP_InfoReport()
+{
+   ESP_Handle esp1, esp2;
+   short rom_rev;
+   short test_results;
+   short dips;
+   short def_mode;
+   short cur_mode;
+
+   if (!ESP_InitHandle(&esp1, 1, 1))
+      return FAIL;
+
+   if (!ESP_InitHandle(&esp2, 1, 2))
+      return FAIL;
+
+   ESP_Reset(&esp1);
+   ESP_GetSelfTestResults(&esp1, &rom_rev, &test_results);
+   if (rom_rev > 0x0F || test_results > 0x20) {
+      printf("ESP port address incorrect or no ESP found!\n");
+      return FAIL;
+      }
+
+   printf("ESP Information report\n\n");
+   printf("Firmware revision %d.00.\n", rom_rev);
+   DisplayAttributes(test_attrs,NUM_TEST_ATTRS,test_results);
+   if (!(dips=ESP_GetNormalModeAddrSwitch(&esp1))) {
+      printf("No additional info for MCA-bus card\n");
+      return OK;
+      }
+
+   printf("\nDIP switch settings indicate\n");
+   printf("Port 1:  UART address is %XH, IRQ level %d\n",
+      esp_uart_addr[dips & 0x07], esp_irq[dips & 0x07]);
+   dips >>= 4;
+   printf("Port 2:  UART address is %XH, IRQ level %d\n",
+      esp_uart_addr[dips & 0x07], esp_irq[dips & 0x07]);
+
+   ESP_GetMode(&esp1, &def_mode, &cur_mode);
+   printf("\nPort 1 Current Mode Attributes:\n");
+   DisplayAttributes(mode_attrs, NUM_MODE_ATTRS, cur_mode);
+
+   ESP_GetMode(&esp2, &def_mode, &cur_mode);
+   printf("\nPort 2 Current Mode Attributes:\n");
+   DisplayAttributes(mode_attrs, NUM_MODE_ATTRS, cur_mode);
+
+   printf("\nPort 1 Bytes waiting to be read from RX Buffer: %d\n",
+        ESP_GetRXBytesAvail(&esp1));
+   printf("Port 1 Bytes available to be written in TX Buffer: %d\n",
+        ESP_GetTXSpaceAvail(&esp1));
+   printf("\nPort 2 Bytes waiting to be read from RX Buffer: %d\n",
+        ESP_GetRXBytesAvail(&esp2));
+   printf("Port 2 Bytes available to be written in TX Buffer: %d\n",
+        ESP_GetTXSpaceAvail(&esp2));
+   return OK;
+}
+
+
+
+
+void DisplayAttributes(attr_ptr, attr_count, source_info)
+struct attr_list *attr_ptr;
+short attr_count;
+short source_info;
+{
+   int i;
+   char *use_str;
+   for (i=0; i<attr_count; i++)
+      {
+      if (attr_ptr[i].attr_val & source_info)
+         use_str = attr_ptr[i].attr_true;
+      else
+         use_str = attr_ptr[i].attr_false;
+      printf("\t%s.\n",use_str);
+      }
+}

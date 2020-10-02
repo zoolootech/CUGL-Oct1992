@@ -1,0 +1,150 @@
+*****Listing 2*****
+   1:   /*
+   2:    *  MDBMAIN.C       (Static Array Only Version)
+   3:    *
+   4:    *  Program:    Mini-Database
+   5:    *  Written by: Leor Zolman
+   6:    *  Module:     Main Program Module
+   7:    *
+   8:    *  Program Description:
+   9:    *      This system is an "introductory showcase" of
+  10:    *      C programming techniques for File I/O-related
+  11:    *      applications. Areas of focus include:
+  12:    *          Static and Dynamic Array Allocation
+  13:    *          Text-based and Binary-based Disk Data Storage
+  14:    *          Elementary user-interface and error-handling
+  15:    *
+  16:    *  Compile & Link (Turbo C):
+  17:    *      tcc mdbmain.c mdbedit.c mdbutil.c
+  18:    *                          {mdbftxt.c or mdbfbin.c}
+  19:    */     
+  20:   
+  21:   #include <stdio.h>
+  22:   #include <stdlib.h>
+  23:   
+  24:   #define MAIN_MODULE 1       /* force data definitions   */
+  25:   #include "mdb.h"
+  26:   
+  27:   
+  28:   #define CREATE  1           /* Main menu action codes   */
+  29:   #define OPEN    2
+  30:   #define EDIT    3
+  31:   #define SAVE    4
+  32:   #define BAKUP   5
+  33:   #define CLOSE   6
+  34:   #define ABANDON 7
+  35:   #define QUIT    8
+  36:   
+  37:   static struct menu_item main_menu[] =
+  38:   {
+  39:       {CREATE, "Create New Database"},
+  40:       {OPEN, "Select Existing Database to Work With"},
+  41:       {EDIT, "Edit Database Records"},
+  42:       {SAVE, "Write Database to Disk"},
+  43:       {BAKUP, "Backup Database to Floppies"},
+  44:       {CLOSE, "Close the Database"},
+  45:       {ABANDON, "Abandon Changes to the Current Database"},
+  46:       {QUIT, "Quit"},
+  47:       {NULL}                          /* End of list              */
+  48:   };
+  49:   
+  50:   
+  51:   main(int argc, char **argv)
+  52:   {
+  53:       char db_name[150];
+  54:       int db_active = FALSE;      /* No Database currently open   */
+  55:       FILE *fp;
+  56:   
+  57:       while (1)
+  58:       {
+  59:           switch(do_menu(main_menu, "Main Menu"))
+  60:           {
+  61:               case CREATE:
+  62:                   if (db_active)
+  63:                       goto still_open;
+  64:                   printf("Name for new Database? ");
+  65:                   gets(db_name);
+  66:                   if ((fp = fopen(db_name,"r")) != NULL)
+  67:                   {
+  68:                       printf("A file by that name already exists.\n");
+  69:                       fclose(fp);
+  70:                       break;
+  71:                   }
+  72:                   max_recs = MAX_RECS;
+  73:                   db_active = TRUE;
+  74:                   n_recs = 0;
+  75:                   printf("Database created; entering EDIT mode:\n");
+  76:                           /* After creating, fall through to EDIT */
+  77:   
+  78:               case EDIT:
+  79:                   if (!db_active)
+  80:                       goto inactive;
+  81:                   edit_db();  /* Edit records in memory   */
+  82:                   break;
+  83:                   
+  84:               case OPEN:
+  85:                   if (db_active)
+  86:                   {
+  87:           still_open: printf("Please close the current Database.\n");
+  88:                       break;
+  89:                   }
+  90:                   printf("Database Name? ");
+  91:                   gets(db_name);
+  92:                   if ((n_recs = read_db(db_name)) != NULL)
+  93:                   {
+  94:                       printf("\nLoaded %d Record(s).\n", n_recs);
+  95:                       db_active = TRUE;
+  96:                   }
+  97:   
+  98:                   edit_db();
+  99:                   break;
+ 100:                           
+ 101:               case BAKUP:
+ 102:                   if (!db_active)
+ 103:                       goto inactive;
+ 104:                   backup_db();    /* Perform backup       */
+ 105:                   break;
+ 106:                           
+ 107:               case CLOSE:
+ 108:                   if (!db_active)
+ 109:                       goto inactive;
+ 110:                   write_db(db_name);  /* write to disk    */
+ 111:                   free_up();
+ 112:                   db_active = FALSE;
+ 113:                   break;
+ 114:               
+ 115:               case SAVE:
+ 116:                   if (!db_active)
+ 117:                       goto inactive;
+ 118:                   write_db(db_name);  /* write to disk    */
+ 119:                   break;
+ 120:   
+ 121:               case ABANDON:
+ 122:                   if (!db_active)
+ 123:                   {
+ 124:             inactive: printf("Please select a Database first!\n");
+ 125:                       break;
+ 126:                   }
+ 127:                   free_up();
+ 128:                   db_active = FALSE;
+ 129:                   break;
+ 130:                           
+ 131:               case QUIT:
+ 132:                   if (db_active)
+ 133:                       goto still_open;
+ 134:                   exit(0);
+ 135:           }
+ 136:       }
+ 137:   }
+ 138:   
+ 139:   /*
+ 140:    * Function:        backup_db
+ 141:    * Purpose:         Backup current Database to floppies
+ 142:    * Parameters:      None
+ 143:    * Return Value:    None
+ 144:    */
+ 145:   
+ 146:   void backup_db()        /* Backup module */
+ 147:   {}
+ 148:   
+ 149:   

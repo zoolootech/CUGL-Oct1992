@@ -1,0 +1,159 @@
+/* ----------------------------------------------------------
+ *  macros and declarations for assert-style debugging system
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson.
+ *  May be used only for non-commercial purposes with
+ *  appropriate acknowledgement.
+ * ------------------------------------------------------- */
+
+#ifndef SNOOPER_H
+#define SNOOPER_H
+
+/* pre-defined debugger device handles ... */
+#define __SCRN__    0           /* debugger screen */
+#define __CON__     1           /* console device */
+#define __FIL0__    2           /* disk files on cwd */
+#define __FIL1__    3
+#define __FIL2__    4
+#define __FIL3__    5
+#define __LPT1__    6           /* parallel devices */
+#define __LPT2__    7
+#define __LPT3__    8
+#define __COM1__    9           /* serial devices */
+#define __COM2__    10
+#define MAX_DEVICES 11
+
+#define MAX_AREA_MARKERS    15
+
+/* Debugger cmd line arguments ........
+ * Cmd <+help> always prints out explanation strings.
+ * Last member of argument table must be { 0, 0, 0 };
+ */
+typedef struct debug_arguments {
+    char *arg;          /* -> cmd-line argument string */
+    int *var;           /* -> boolean variable to set */
+    char *help;         /* -> explanation string */
+    }DEBUG_ARGS;
+
+/* prototypes ....... */
+void  d_break(int dh, const char *file, int linenum);
+void  d_exec(void);
+void  d_printf( const char *format, ... );
+int  d_putc( int ch );
+void  d_echo(int mode);
+void  *d_malloc(const char *file, int lineno, size_t nbytes);
+void  *d_calloc(const char *file, int lineno,
+                                size_t nitems, size_t size);
+void  *d_realloc(const char *file, int lineno,
+                           void *oldp, size_t nbytes );
+void  d_free(const char *file, int lineno, void *pheap );
+void  d_getargs( int *argc, char **argv, DEBUG_ARGS *argtab);
+void d_begmark(int id);
+void d_endmark( int id );
+void d_profile(void);
+
+/* Unconditional breakpoint. Executes user-supplied function
+ * <fn>, writing to device handle <dh> ...*/
+#ifndef NDEBUG
+#define __BREAK(dh,fn)  { d_break(dh,__FILE__,__LINE__); \
+                                            fn; d_exec(); }
+#else
+#define __BREAK(dh,fn)  ((void) 0)
+#endif
+
+/* Conditional watch macro. Activates debugger when <expr>
+ * evaluates true (non-0).... */
+#ifndef NDEBUG
+#define __WATCH(expr,dh,fn)     if(expr) __BREAK(dh,fn)
+#else
+#define __WATCH(expr,dh,fn)    ((void) 0)
+#endif
+
+/* Macro to implement a pass-count activated break point.
+ * Break occurs on the nth pass thru the macro. Resets
+ * counter when debugger is activated .... */
+#ifndef NDEBUG
+#define __PBREAK(n,dh,fn)  { static int counter = n; \
+             __WATCH( --counter == 0, dh,(fn,counter = n)) }
+#else
+#define __PBREAK(n,dh,fn)   ((void)0)
+#endif
+
+/* Macro that associates a pass count with a watch condition.
+ * Break occurs on the nth time the expression evaluates true
+ * (non-0) ....*/
+#ifndef NDEBUG
+#define __PWATCH(expr,n,dh,fn)  if(expr) __PBREAK(n,dh,fn)
+#else
+#define __PWATCH(expr,n,dh,fn)  ((void)0)
+#endif
+
+/* Assert-style, truth-or-consequences macro that writes to
+ * debugger screen only. Activates debugger when <expr>
+ * evaluates false (0) ...*/
+#ifndef NDEBUG
+#define istrue(expr)    __WATCH(!(expr),__SCRN__,\
+                 d_printf("Assertion <%s> failed\n",#expr))
+#else
+#define istrue(expr) ((void) 0)
+#endif
+
+/* Enable extended error checking for malloc() et al.
+ * #defining NDEBUG or NO_EXT_MALLOC disables these macros.
+ * NOTE: If enabled, "snooper.h" must be placed AFTER any
+ * #include files that declare prototypes for these functions.
+ */
+#ifndef NDEBUG
+#ifndef NO_EXT_MALLOC
+#define malloc(size)    d_malloc(__FILE__,__LINE__,size)
+#define calloc(n,size)  d_calloc(__FILE__,__LINE__,n,size)
+#define realloc(p,size) d_realloc(__FILE__,__LINE__,p,size)
+#define free(p)         d_free(__FILE__,__LINE__,p)
+#endif
+#endif
+
+/* Extract debugger command-line arguments. Macro
+ * __GETARGS assumes placement within body of
+ * main(argc,**argv).  Macro __EXTERN_DECL allows conditional
+ * extern reference to global (int) variables defined in
+ * argtab[] .... */
+#ifndef NDEBUG
+#define __GETARGS(argtab)     d_getargs(&argc,argv,argtab)
+#define __EXTERN_DECL(var)    extern int var
+#else
+#define __GETARGS(argtab)     ((void) 0)
+#define __EXTERN_DECL(var)    ((void) 0)
+#endif
+
+/* Execution profiling macros. __START() and __STOP()
+ * define area markers for a section of code identified
+ * by 'id'.  Macros with '__W_' prefix allow conditional
+ * execution of base macro.... */
+#if !defined(NDEBUG) && !defined(NPROFILE)
+#define __START(id)         d_begmark(id)
+#define __STOP(id)          d_endmark(id)
+#define __PROFILE(dh)       __BREAK(dh,d_profile())
+#define __W_START(expr,id)  if(expr) __START(id)
+#define __W_STOP(expr,id)   if(expr) __STOP(id)
+#define __W_PROFILE(expr,dh) __WATCH(expr,dh,d_profile())
+#else
+#define __START(id)             ((void) 0)
+#define __STOP(id)              ((void) 0)
+#define __PROFILE(dh)           ((void) 0)
+#define __W_START(expr,id)      ((void) 0)
+#define __W_STOP(expr,id)       ((void) 0)
+#define __W_PROFILE(expr,dh)    ((void) 0)
+#endif
+
+/* Macros to control __SCRN__ echo mode... */
+#define ECHO_OFF    0       /* Echo mode values */
+#define ECHO_ON     1
+#ifndef NDEBUG
+#define __ECHO(mode)        d_echo(mode)
+#define __W_ECHO(expr,mode) if(expr) __ECHO(mode)
+#else
+#define __ECHO(mode)        ((void) 0)
+#define __W_ECHO(expr,mode) ((void) 0)
+#endif
+
+#endif  /* SNOOPER_H */

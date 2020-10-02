@@ -1,0 +1,445 @@
+/* Symbol table routines for Software Tools
+ * source:  symtab.bds
+ * version: November 27, 1981
+ */
+
+#include tools.h
+
+/* These routines assume that the data field in each node
+ * has the following format:
+ *
+ *	name field:   string, ends with EOS.
+ *	value field:  string, ends with EOS.
+ *
+ * The length of these fields is arbritrary;
+ * that is why they are not made part of struct node.
+ * The table lookup routines examine only the name field.
+ * This format works well for macros, but may not be so
+ * good for numeric fields which may contain embedded EOS
+ * characters.
+ */
+
+/* format of each symbol table */
+
+struct symtab {
+	char stchk;		/* check byte */
+	int  htsize;		/* size of hash table */
+	struct node *hashtab [1]; /* start of hash table */
+};
+
+#define TABCHK "T"	/* only legal value for stchk */
+#define STHEAD 3	/* size of fixed part of symtab */
+
+/* format of each node */
+
+struct node {
+	char nchk;		/* check byte */
+	struct node *next;	/* pointer to next node */
+	char data [1];		/* first byte of data field */
+};
+
+#define NODE  "N"	/* only legal value for nchk  */
+#define NHEAD 3		/* size of fixed part of node */
+
+/* These routines have different calling sequences from
+ * the RATFOR routines from the Software Tools Users Group:
+ *
+ *
+ *  RATFOR:  delete (symbol, table)
+ *           char *symbol, *table;
+ *
+ *  C:       delete (symbol, table)
+ *           char *symbol;
+ *           struct symtab *table;
+ *           
+ *
+ *  RATFOR:  enter (symbol, info, table)
+ *           char *symbol;
+ *           int info;
+ *           char *table;
+ *
+ *  C:       enter (symbol, info, table)
+ *           char *symbol, *info;
+ *           struct symtab *table;
+ *
+ *
+ *  RATFOR:  lookup (symbol, info, table)
+ *           char *symbol, *info, *table;
+ *           (copy information to info []);
+ *
+ *  C:       lookup (symbol, table)
+ *           char *symbol;
+ *           struct symtab *table;
+ *           (return pointer to info field)
+ *           
+ *
+ *  RATFOR:  mktabl (nodesize)
+ *           int nodesize;
+ *
+ *  C:       mktable (htsize)
+ *           int htsize;
+ *
+ *
+ *  RATFOR:  rmtabl (table)
+ *           char *table;
+ *
+ *  C:       rmtabl (table)
+ *           struct symtab *table;
+ *
+ *
+ *  RATFOR:  sctabl (table, sym, info, posn)
+ *           char *table, *sym, *info;
+ *           int *posn;
+ *           (copy fields to sym [] and info [])
+ *
+ *  C:       sctabl (table, posn)
+ *           struct symtab *table;
+ *           int *posn;
+ *           (return pointer to data field of node)
+ *
+ */
+
+#define NTABS 10		/* number of symbol tables */
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+	initst(argc, argv);
+	main1();
+	endst();
+}
+
+main1()
+{
+	char inbuf[100];	/* input buffer */
+	int  i, number;
+
+	char *tables [NTABS];	/* pointer to symbol tables */
+	char symbol [100];	/* symbol name */
+	char info [100];	/* info field of symbol */
+
+	/* init available memory */
+	dsinit();
+	printf("\nTest of symtab.bds:  August 27, 1981\n");
+	for (i = 0; i < NTABS; i++) {
+		tables [i] = 0;
+	}
+
+	/* main loop */
+
+	for(;;) {
+		printf("\nEnter table number or ");
+		printf("-1 to exit or ");
+		printf("-2 to dump tables.\n");
+
+		_gets(inbuf);
+		number = atoi(inbuf);
+		if (number == -1) {
+			return;
+		}
+		if (number == -2) {
+			for (i = 0; i < NTABS; i++) {
+				if (tables [i] != 0) {
+			printf("\nDump of table %d\n",i);
+					dumptabl (tables [i]);
+				}
+			}
+			continue;
+		}
+		if (number < 0 || number >= NTABS) {
+			printf("Bad table number\n");
+			continue;
+		}
+
+		/* create table if needed */
+		if (tables [number] == 0) {
+			printf("Creating table %d\n",number);
+			tables [number] = mktabl(33);
+			printf("Table %d at %x\n",
+				number, tables [number]);
+		}
+
+		/* get name of symbol */
+		printf("Enter symbol name\n");
+		_gets(symbol);
+		if (symbol [0] == 0) {
+			continue;
+		}
+
+		/* delete if info field is null */
+		printf("Enter info field or CR\n");
+		_gets(info);
+                if (info [0] == 0) {
+			delete(symbol, tables [number]);
+		}
+		else {
+			enter(symbol, info, tables [number]);
+		}
+	}
+}
+
+/*  delete - remove a symbol from the symbol table */
+
+delete (symbol, table)
+char *symbol;
+struct symtab *table;
+{
+	int h;
+	struct node   *n, *n1;
+
+	/* comment out -----
+	printf("In delete:  symbol = %s,  table = %x\n",
+		symbol, table);
+	----- end comment out */
+
+	/* point at list of buckets */
+	h = hashfunc(symbol, table -> htsize);
+	n = table -> hashtab [h];
+
+	/* the first bucket is a special case so that the code
+	 * is independent of the format of struct symtab.
+	 */
+	if (n == 0) {
+		return;
+	}
+	if (equal(symbol, n -> data)) {
+		table -> hashtab [h] = n -> next;
+		dsfree(n);
+		return;
+	}
+
+	/* general case:  search list of buckets */
+	   
+	n1 = n;		/* n1 points at previous bucket */
+	n  = n -> next;	/* n  points at current bucket */
+
+	while (n) {
+		if (equal(symbol, n -> data)) {
+			n1 -> next = n -> next;
+			dsfree(n);
+			return;
+		}
+		else {
+			n1 = n;
+			n  = n -> next;
+		}
+	}
+}
+
+/* dumptabl -- dump all symbols of a symbol table */
+
+dumptabl (table)
+struct symtab *table;
+{
+	int i, k, posn;
+	char *n, *symbol, *info;
+	int  *p;
+
+	/* dump hash table */
+	printf("The hash table is:\n\n");
+	for (i = 0; i < table -> htsize; i++) {
+		if (k = table -> hashtab [i]) {
+			printf("hashtab [%3d] = %x\n",
+				i, k);
+		}
+	}
+
+	/* print all the nodes in the table */
+	posn = 0;
+	while (symbol = sctabl(table, &posn)) {
+		info = symbol;
+		while (*info++ != EOS) {
+			;
+		}
+		p = symbol - 2;
+		printf("node = %x,  ", symbol);
+		printf("next = %x,  ", *p);
+		printf("symbol = %s,  ", symbol);
+		printf("info = %s\n", info);
+	}
+}
+		
+
+/*  enter -- place a symbol in the symbol table
+ *           update entry if already present
+ */
+
+enter (symbol, info, table)
+char *symbol, *info;
+struct symtab *table;
+{
+	struct node *n;
+	int  i, h, k;
+
+	/* allocate another node */
+	k = (length(symbol) + 1) + (length(info) + 1) + NHEAD;
+
+	/* use a cast for maximum portability:
+	 *  n = (struct * node) dsget (k);
+	 */
+	n = dsget (k);
+
+	/* set header fields of node */
+	n -> nchk = NODE;
+
+	/* copy symbol and info to data area */
+	i = 0;
+	stcopy (symbol, 0, n -> data, &i);
+	i++;
+	scopy (info, 0, n -> data, i);
+
+	/* hang node from hash table */
+	h = hashfunc(symbol, table -> htsize);
+	n -> next = table -> hashtab [h];
+	table -> hashtab [h] = n;
+}
+
+/* compute the hash function for symbol in a table with
+ * n entries.
+ */
+
+hashfunc (symbol, n)
+char *symbol;
+int  n;
+{
+	int i, h;
+
+	h = 0;
+	for (i = 0; symbol[i] != EOS; i++) {
+		h += symbol [i];
+	}
+	return (h%n);
+}
+
+/*  lookup - return pointer to info for symbol in table.
+ *         -- return 0 if symbol not in table
+ */
+
+char *lookup (symbol, table)
+char *symbol;
+struct symtab * table;
+{
+	int h;
+	struct node *n;
+	char *p;
+
+	h = hashfunc(symbol, table -> htsize);
+	n = table -> hashtab [h];
+
+	for ( ; n; n = n -> next) {
+		if (equal(symbol, n -> data)) {
+			/* point p at info field */
+			p = n -> data;
+			while (*p++ != EOS) {
+				;
+			}
+			return(p);
+		}
+	}
+	return (0);
+}
+
+/*  mktabl - make a new (empty) symbol table */
+
+char *mktabl (hashsize)
+int hashsize;
+{
+	char *dsget();
+	struct symtab *table;
+	int i;
+
+	/* get storage for the table.
+	 * use a cast for maximum portability:
+	 * table = (symtab *) dsget (...);
+	 */
+	table = dsget ((2 * hashsize) + STHEAD);
+
+	/* fill in the debugging byte */
+	table -> stchk = TABCHK;
+
+	/* fill in the size of the table */
+	table -> htsize = hashsize;
+
+	/* zero out the hash table */
+	for (i = 0; i < hashsize; i++) {
+		table -> hashtab [i] = 0;
+	}
+	return(table);
+}
+		
+/*  rmtabl - remove a symbol table, deleting all entries */
+
+rmtabl (table)
+struct symtab *table;
+{
+	struct node *n, *n1;
+	int  i;
+
+	/* check debugging byte */
+	if (table -> stchk != TABCHK) {
+		syserr ("rmtabl:  bad check byte");
+	}
+
+	/* free every entry in hash table */
+	for (i = 0; i < table -> htsize; i++) {
+		n = table -> hashtab [i];
+		while (n) {
+			n1 = n -> next;
+			dsfree(n);
+			n = n1;
+		}
+	}
+			
+	/* free the symbol table itself.
+	 * a cast would be best:  dsfree( (char *) table);
+	 */
+	dsfree(table);
+	printf("End of rmtabl\n");
+}
+
+/*  sctabl -- scan symbol table.
+ *            update *posn.
+ *            return pointer to data field or 0.
+ */
+
+char *sctabl (table, posn)
+struct symtab *table;
+int *posn;
+{
+	int i, count;
+	struct node *n;
+
+	count = 0;
+	for (i = 0; i < table -> htsize; i++) {
+		n = table -> hashtab [i];
+		while (n) {
+			if (count == *posn) {
+				(*posn)++;
+				return (n -> data);
+			}
+			else {
+				count++;
+				n = n -> next;
+			}
+		}
+	}
+	(*posn)++;
+	return(0);
+}
+
+
+/*  sctabl -- scan symbol table.
+ *            update *posn.
+ *            return pointer to data field or 0.
+ */
+
+char *sctabl (table, posn)
+struct symtab *table;
+int *posn;
+{
+	int i, count;
+	struct node *n;
+
+	count = 0;
+	for (i = 0; i < 

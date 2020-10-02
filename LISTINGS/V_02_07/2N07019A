@@ -1,0 +1,193 @@
+
+{ Multi-timer demo package.  }
+
+
+program MultiDemo;
+
+{
+The following resource is supplied with the examples that
+come with TPW.
+}
+{$R MDIAPP.RES}
+
+uses WObjects, WinTypes, WinProcs, Strings, StdDlgs, Timers;
+
+
+type
+    TimerMDIWin = object(TMDIWindow)
+        TimerNumber    : integer;
+        function InitChild : PWindowsObject; virtual;
+        function CreateChild : PWindowsObject; virtual;
+        constructor Init(ATitle: PChar; AMenu: HMenu);
+        procedure WMSize(var Msg:TMessage); virtual wm_First + wm_Size;
+    private
+        function GetTimer : integer;
+    end;
+
+    PTimerMDIWin = ^TimerMDIWin;
+
+    TimerWin     = object(TWindow)
+        TotalEvents    : Longint;
+        EventInterval  : Longint;
+        LastEvent      : Longint;
+        WinTimer           : PWindowTimer;
+        constructor Init(AParent:PWindowsObject; Title:PChar;
+                         Interval:Longint);
+        Destructor Done; virtual;
+        procedure SetupWindow; virtual;
+        procedure WMTimer(var Msg:TMessage); virtual wm_First + wm_Timer;
+    procedure Paint(PaintDC : HDC; var PaintInfo:TPaintStruct); virtual;
+    procedure UpdateTitle;
+    end;
+    PTimerWin  = ^TimerWin;
+
+  { Define a TApplication descendant }
+  TMDIApp = object(TApplication)
+    procedure InitMainWindow; virtual;
+    end;
+
+constructor TimerWin.Init(AParent:PWindowsObject; Title:PChar;
+                          Interval:Longint);
+begin
+    TWindow.Init(AParent, Title);
+    EventInterval       := Interval;
+    TotalEvents         := 0;
+end;
+
+destructor TimerWin.Done;
+var
+        p :     PTimerMDIWin;
+begin
+        if WinTimer <> NIL then
+        Dispose(WinTimer, Done);
+    UpdateTitle;
+    TWindow.Done;
+    p   := PTimerMDIWin(Parent);
+    p^.TileChildren;
+end;
+
+procedure       TimerWin.UpdateTitle;
+var
+    Sbuf        : string[128];
+    Wbuf        : array [0..127] of char;
+begin
+    Str(TimerGetInterval, Sbuf);
+    Sbuf        := 'Timer Demo (interval == '+Sbuf+')';
+    StrPCopy(Wbuf, Sbuf);
+        SetWindowText(Parent^.HWindow, Wbuf);
+end;
+
+procedure       TimerWin.SetupWindow;
+begin
+    WinTimer    := New(PWindowTimer, Init(@Self));
+    WinTimer^.Start(EventInterval);
+    UpdateTitle;
+end;
+
+procedure       TimerWin.WMTimer(var Msg:TMessage);
+var
+        Rect : Trect;
+begin
+        Rect.left       := 0;
+    Rect.right  := 100;
+    Rect.Top    := 0;
+    Rect.Bottom := 100;
+        InvalidateRect(HWindow, @Rect, TRUE);
+        PostMessage(HWindow, wm_Paint, 0, 0);
+    TotalEvents := TotalEvents+1;
+end;
+
+procedure TimerWin.Paint(PaintDC : HDC; var PaintInfo:TPaintStruct);
+var
+        TextDC  : HDC;
+    Sbuf        : string[128];
+    Wbuf        : array [0..127] of char;
+begin
+    TextDC      := PaintDC;
+        Str(GetTickCount, Sbuf);
+    Sbuf        := 'Time '+Sbuf;
+    StrPCopy(Wbuf, Sbuf);
+    TextOut(TextDC, 0, 0, WBuf, Length(Sbuf));
+    Str(TotalEvents, Sbuf);
+    Sbuf        := 'Count '+Sbuf;
+    StrPCopy(Wbuf, Sbuf);
+    TextOut(TextDC, 0, 15, WBuf, Length(Sbuf));
+end;
+
+constructor TimerMDIWin.Init(ATitle: PChar; AMenu: HMenu);
+begin
+    TMDIWindow.Init(ATitle, AMenu);
+    TimerNumber := 0;
+end;
+function TimerMDIWin.CreateChild: PWindowsObject;
+begin
+        CreateChild     := TMDIWindow.CreateChild;
+    TileChildren;
+
+end;
+procedure TimerMDIWin.WMSize(var Msg:TMessage);
+begin
+        TMDIWindow.WMSize(Msg);
+        TileChildren;
+end;
+function TimerMDIWin.InitChild: PWindowsObject;
+var
+    Name    : array [0..63] of char;
+    Temp    : string[64];
+    Text    : array[0..79] of char;
+    Sbuf        : string[128];
+    Units       : string[10];
+    Interval, PrintInterval     : Longint;
+    Code        : integer;
+begin
+        Text[0]  := #0;
+    StrCopy(Text, '5000');
+        if Application^.ExecDialog(New(PInputDialog, Init(@Self,
+        'Timer Demo', 'Enter timer interval',
+        Text, SizeOf(Text)))) = id_OK then
+        begin
+                StrPas(Text);
+        Sbuf    := Text;
+            Val(Text, Interval, Code);
+        Str(GetTimer, Temp);
+            PrintInterval       := Interval;
+        if (PrintInterval mod 1000) = 0 then
+                begin
+            Units                       := 's';
+                PrintInterval   := PrintInterval div 1000;
+            end
+            else
+                Units                   := 'ms';
+            Str(PrintInterval,Sbuf);
+            Temp      := '#'+Temp+' ['+Sbuf+Units+']';
+        StrPCopy(Name, Temp);
+            InitChild := New(PTimerWin, Init(@Self, Name, Interval));
+        end
+    else
+        InitChild  := NIL;
+end;
+
+function TimerMDIWin.GetTimer : integer;
+begin
+        TimerNumber     := TimerNumber+1;
+    GetTimer    := TimerNumber;
+end;
+
+{ Construct the THelloApp's MainWindow object, loading its menu }
+procedure TMDIApp.InitMainWindow;
+begin
+  MainWindow  := New(PTimerMDIWin, Init('Multi-timer demo',
+    LoadMenu(HInstance, 'MDIMenu')));
+end;
+
+{ Declare a variable of type TMDIApp}
+var
+  MDIApp: TMDIApp;
+  x    : longint;
+
+{ Run the MDIApp }
+begin
+  MDIApp.Init('MDIApp');
+  MDIApp.Run;
+  MDIApp.Done;
+end.

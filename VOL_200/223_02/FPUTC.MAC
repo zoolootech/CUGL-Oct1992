@@ -1,0 +1,217 @@
+
+;
+;	putc(c,unit)
+;
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-character pointer in I/O structure
+UNUSED	EQU	2	;offset	to unused-positions-count in I/O structure
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;	File i/o storage varibles found in ulink()
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+;
+;	Characteristics variable storage found in ulink()	
+;
+EXTRN	ZZSVCH
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+;
+EXTRN	PUTCHAR
+EXTRN	PUTLIST
+EXTRN	CPMIO
+;
+FPUTC::
+PUTC::
+	POP	B	;rtn addr
+	POP	D	;unit
+	POP	H	;c
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	MOV	A,D
+	ORA	A		; if(unit < 256) {
+	JNZ	PUTC4		;	/* assume stdout, stderr */
+	MOV	A,E		;	/* or stdlist. */
+	CPI	STDOUT		;	if(unit	== stdout) {
+	JNZ	PUTC1
+	PUSH	H
+	CALL	PUTCHAR		;		putchar(c);
+	POP	H
+	RET			;		return;}
+PUTC1:	CPI	STDERR		;	elseif(unit == stderr) {
+	JNZ	PUTC2
+	PUSH 	H
+	CALL	PUTCHAR		;		putchar(c);
+	POP	H
+	RET			;		return;}
+PUTC2:	CPI	STDLST		;	elseif(unit == stdlist)	{
+	JNZ	PUTC3
+	PUSH	H
+	CALL	PUTLIST		;		putlist(c);
+	POP	H
+	RET			;		return;}
+PUTC3:	JMP	PTCER1		;	else goto putcerr; }
+
+PUTC4:	PUSH	H			; if(cput(c,unit)<0)
+	PUSH	D			;	goto putcerr;
+	CALL	CPUT
+	POP	D
+	MOV	A,H
+	ORA	A
+	JM	PUTCERR
+	MOV	A,L			; if(c=='\r')
+	CPI	EOL
+	JNZ	PUTCRET
+	LXI	H,LF			;	cput('\n',unit);
+	PUSH	H
+	PUSH	D
+	CALL	CPUT
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	A
+	JM	PUTCERR
+PUTCRET:
+	POP	H			; return(c);
+	RET
+PUTCERR:				;putcerr:
+	POP	B			; return(-1);
+PTCER1:
+	LXI	H,-1
+	RET
+
+;
+;	cput(c,unit)
+;
+CPUT::
+	POP	B
+	POP	D
+	POP	H
+	PUSH	H
+	PUSH	D
+	PUSH	B
+	SHLD	ZZCH
+	XCHG
+	SHLD	ZZUNIT
+	LXI	D,FCBSIZE		; ip = unit + FCBSIZE;
+	DAD	D
+	SHLD	ZZIP
+	LXI	D,NEXTP			; cp = ip[NEXTP];
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	ZZCHP
+	LHLD	ZZIP			; if(ip[UNUSED]==0){
+	LXI	D,UNUSED
+	DAD	D
+	MOV	A,M
+	INX	H
+	ORA	M
+	JNZ	PTCIF1
+	LXI	H,WRITE			;	if(cpmio(WRITE,unit)~=0)	
+	PUSH	H
+	LHLD	ZZUNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	L
+	JZ	PTCIF2
+	LXI	H,-1			;		return(-1);
+	RET
+PTCIF2:
+	LHLD	ZZIP			;	else {	ip[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	ZZIP			;		cp = &ip[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	ZZCHP
+					;		}
+					;	}
+PTCIF1:
+	LHLD	ZZIP
+	LXI	D,UNUSED		; ip[UNUSED]--;
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	DCX	D
+	MOV	M,D
+	DCX	H
+	MOV	M,E
+	LHLD	ZZCHP			; ip[NEXTP] = cp+1;
+	INX	H
+	XCHG
+	LHLD	ZZIP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LDA	ZZCH			; return((*cp =	c) & 0377);
+	LHLD	ZZCHP
+	MOV	M,A
+	MVI	H,0
+	MOV	L,A
+	RET
+
+	END	
+
+

@@ -1,0 +1,248 @@
+/**********
+**
+** Listing one: NEWT.C
+** Lee Daniel Crocker
+** 3/15/90
+*/
+
+#include <stdlib.h>
+#include <conio.h>
+#include <graph.h>
+#include <float.h>
+#include <math.h>
+
+typedef struct { double r, i; } COMPLEX;
+typedef double REAL;
+
+/* #define ASSEMBLY 1 */
+
+#define DEGREE  8
+#define ILIMIT  1000    /* Iteration count limit.   */
+#define EPSILON 0.000001
+
+#define PI      3.14159265358979323846
+
+#define WIDTH   320     /* Assume CGA.              */
+#define HEIGHT  200
+#define MODE    _MRES4COLOR
+
+#define YMIN    -3.0    /* Rectangular section      */
+#define YMAX    3.0     /* of complex plane.        */
+#define XMIN    -4.0
+#define XMAX    4.0
+
+COMPLEX roots[DEGREE];  /* Precalculated values.    */
+REAL eps2;
+
+#ifdef ASSEMBLY
+
+extern void cmult(COMPLEX *, COMPLEX *, COMPLEX *);
+extern int cdiv(COMPLEX *, COMPLEX *, COMPLEX *);
+extern void cpower(COMPLEX *, unsigned, COMPLEX *);
+extern int calcnewton(COMPLEX *);
+
+#else
+
+/* In all of the complex math procedures below, complex
+** arguments are passed through pointers for efficiency.
+** Any or all of the arguments passed may point to the
+** same structure without affecting the result, and only
+** the structure pointed to by the result argument is
+** modified (unless, of course, the same pointer is also
+** a non-result argument).
+*/
+/* Multiply two complex numbers producing a     complex
+** result.  Knuth's trick of doing it with three
+** multiplies and seven adds doesn't help here because
+** the 87's multiply is not much slower that its add.
+*/
+void cmult(COMPLEX *z1, COMPLEX *z2, COMPLEX *result)
+{
+    REAL tr;
+
+    tr = z1->r * z2->r - z1->i * z2->i;
+    result->i = z1->r * z2->i + z1->i * z2->r;
+    result->r = tr;
+}
+
+/* Divide two complex numbers producing a complex result.
+** returns 0 if all is well, -1 if overflow would occur.
+*/
+int cdiv(COMPLEX *z1, COMPLEX *z2, COMPLEX *result)
+{
+    COMPLEX tc;
+    REAL m, tr;
+
+    m = (z2->r * z2->r) + (z2->i * z2->i);
+    if (m < FLT_MIN) return -1;
+    else m = 1.0 / m;
+
+    tc = *z2;
+    tr = m * (z1->r * tc.r + z1->i * tc.i);
+    result->i = m * (z1->i * tc.r - z1->r * tc.i);
+    result->r = tr;
+
+    return 0;
+}
+
+/* Raise complex number to integer power.  Operates by
+** repeatedly squaring the base, multiplying that by the
+** result for every bit set in the exponent, therefore
+** running in O(log2(exp)) time.
+*/
+void cpower(COMPLEX *base, unsigned exp, COMPLEX *result)
+{
+    REAL xt, yt, t2;
+
+    xt = base->r;   yt = base->i;
+
+    if (exp & 1) {
+        result->r = xt;
+        result->i = yt;
+    } else {
+        result->r = 1.0;
+        result->i = 0.0;
+    }
+    exp >>= 1;
+
+    while (exp) {
+        t2 = (xt + yt) * (xt - yt);
+        yt = 2 * xt * yt;
+        xt = t2;
+ 
+        if (exp & 1) {
+            t2 = xt * result->r - yt * result->i;
+            result->i = result->i * xt + yt * result->r;
+            result->r = t2;
+        }
+        exp >>= 1;
+    }
+}
+
+/* Calculate one iteration.  The formula is z(n+1)=
+** z(n) - f(z(n)) / f'(z(n), where z(n)=old, z(n+1)=new,
+** f(z) = z^DEGREE, and f'(z) is the first derivative of
+** f(z), in this case DEGREE*z^(DEGREE-1).  Both old and
+** new are modified, and must point to different
+** structures.  Returns 1 if new point is sufficently
+** close to old, or if a divide overflow occurred.
+*/
+int onenewton(COMPLEX *old, COMPLEX *new)
+{
+    COMPLEX tc;             /* Temporary complex */
+
+    /* Set new=old^DEGREE, tc=old^(DEGREE-1).
+    */
+    cpower(old, DEGREE-1, &tc);
+    cmult(&tc, old, new);
+
+    new->r = new->r * (DEGREE-1) + 1.0;
+    new->i *= (DEGREE-1);
+
+    tc.r *= DEGREE;
+    tc.i *= DEGREE;
+
+    cdiv(new, &tc, new);
+
+    if (fabs(new->r - old->r) < EPSILON &&
+        fabs(new->i - old->i) < EPSILON) return 1;
+    else return 0;
+}
+
+/* Calculate the color of the point given.  Argument is
+** not modified.
+*/
+int calcnewton(COMPLEX *point)
+{
+    int i, root, iterations;
+    COMPLEX old, new;
+
+    old = *point;
+    iterations = 0;
+
+    while (++iterations < ILIMIT) {
+        if (onenewton(&old, &new)) break;
+        else old = new;
+    }
+
+    /* To which root did we converge?  Begin by assuming
+    ** root 0, then test each of the other roots exiting
+    ** if one of them works.  Thus, we don't ever have
+    ** to test root 0 explicitly.
+    */
+    root = 0;
+    for (i=DEGREE-1; i>0; --i) {
+        if (fabs(new.r - roots[i].r) < eps2 &&
+            fabs(new.i - roots[i].i) < eps2) {
+            root = i;
+            break;
+        }
+    }
+
+    /* At this point, <iterations> has the iteration count and
+    ** <root> has the root number.  These can be combined in
+    ** various ways to produce a color for interesting effects.
+    ** in this case, we will simply assign a color based on
+    ** the root, ignoring the iteration count.
+    */
+    return root;
+}
+
+#endif  /* ASSEMBLY */
+
+/* Main program:
+*/
+int newtonplot(void)
+{
+    int i, px, py, color;
+    COMPLEX point;
+    REAL xinc, yinc, theta, dtheta;
+
+    point.r = XMIN;
+    point.i = YMIN;
+
+    /* X and Y increments */
+
+    xinc = (XMAX - XMIN) / (WIDTH - 1);             
+    yinc = (YMAX - YMIN) / (HEIGHT - 1);
+
+    eps2 = 0.5 / DEGREE;
+    theta = dtheta = (2.0 * PI) / DEGREE;
+    roots[0].r = 1.0; roots[0].i = 0.0;
+
+    for (i = DEGREE-1; i > 0; --i) {
+        roots[i].r = cos(theta);
+        roots[i].i = sin(theta);
+        theta += dtheta;
+    }
+
+    _setvideomode(MODE);
+
+    for (py = 0; py < HEIGHT; ++py) {
+        for (px = 0; px < WIDTH; ++px) {
+
+            color = calcnewton(&point);
+
+            _setcolor(color);
+            _setpixel(px, py);
+
+            point.r += xinc;
+
+            if (kbhit()) break;
+        }
+        if (kbhit()) break;
+
+        point.i += yinc;
+        point.r = XMIN;
+    }
+
+    getch();
+    _setvideomode(_DEFAULTMODE);
+
+    return 0;
+}
+
+int main(int argc, char *argv[])
+{
+    return newtonplot();
+}

@@ -1,0 +1,79 @@
+
+Listing 2.  The byte-wide decoding routines
+
+/* decode routines for group 3 files
+
+  char g3_init (void) - initializes the g3 decode routines
+  char g3_reset (void) - may be called from within one of
+    the routines g3_white (), g3_black (), g3_error (), or
+    g3_EOL () to set the decoding state to zero
+  char g3_decode (void) - decodes a group 3 file
+
+  the above routines return nonzero on error, else zero
+
+USER MUST PROVIDE THE FOLLOWING ROUTINES:
+
+  short g3_next_byte (void) - returns the next byte in the
+    image, -1 at EOF
+  void g3_white (short runlength) - writes a white run of
+    the specified length to the output file
+  void g3_black (short runlength) - writes a black run of
+    the specified length to the output file
+  void g3_EOL (void) - processes the end-of-line character
+  void g3_error (void) - process an invalid code
+*/
+
+static char initialized = 0, reset = 0;
+static unsigned char action_table [220299];
+static long branch_table [216] [256];
+static short state = 0;
+static short column, row;
+
+extern unsigned char reverse_byte [];
+
+char g3_init () {
+  if (!initialized) /* if this is the first time this
+    routine is called */ {
+    long bytes_read;
+    int action_handle, jump_handle;
+    ... open the file containing action_table and read
+      into memory ...
+    ... open the file containing branch_table and read
+       into memory ...
+    initialized = 1;
+  }
+  state = 0; reset = 0;
+  return (0);
+}
+
+char g3_reset () {
+  state = 0; reset = 1;
+  return (0);
+}
+
+char g3_decode () {
+  char rcode;
+  unsigned char *p_action;
+  short g3byte;
+  if (!initialized)
+    if (rcode = g3_init ()) return (rcode);
+  while ((g3byte = g3_next_byte ()) != -1)
+    /* while not end-of-image */ {
+    unsigned char code_byte;
+    p_action = &action_table [branch_table [state] [g3byte]];
+    while ((code_byte = *(p_action++)) != 255 && !reset)
+      /* until state change code */ {
+      if (!code_byte) g3_EOL ();
+      else if (code_byte == 1) g3_error ();
+      else if (code_byte < 67) g3_white (code_byte-2);
+      else if (code_byte < 106) g3_white ((code_byte-65)*64);
+      else if (code_byte < 171) g3_black (code_byte-106);
+      else g3_black ((code_byte-169)*64);
+    }
+    state = *p_action;
+    if (reset) /* if reset flag set during above */ {
+      state = 0; reset = 0;
+    }
+  }
+}
+

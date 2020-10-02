@@ -1,0 +1,164 @@
+/*
+ *    TITLE:    TEST.C
+ *
+ *    Test for HEAP program.
+ *
+ *    It turns out that the program needed some massaging.  It did
+ *    not display behavior I wanted it to, at its first try.
+ *
+ *    I left the trail code of my experiments in.
+ *
+ *    All programs were developed on an IBM PC/XT having an
+ *    Intel 386 inboard.
+ *    Compiler:      MS C 5.1
+ *    OS:            PC DOS 3.3
+ *
+ *    Avi Farah.
+ */
+
+
+
+
+#include <stdio.h>
+#include <malloc.h>
+#include "heap.h"
+
+
+
+
+/*
+ *    #defines
+ */
+#define  LEN   20
+
+
+
+
+/*
+ *    Prototypes
+ */
+int   main( void );
+int   dummy1( void );
+int   dummy2( void );
+
+
+
+
+/*************************   main   ***************************************/
+
+int  main()
+   {
+   char  *p, *q;
+   char far *fp;
+   int   err;
+
+   MEMTRACE();          // Will report on the amount of local heap and stack
+   HEAPLOOK('\xCC');    // Initial look at the local/global heaps.
+
+   /*
+    *    Dummy mallocs
+    */
+   if ((p = malloc(LEN)) == NULL)
+      {
+      printf("p = NULL cannot allocate local memory\n");
+      return 1;
+      }
+
+   if ((q = malloc(LEN)) == NULL)
+      {
+      printf("q = NULL cannot allocate local memory\n");
+      return 2;
+      }
+
+/*
+ *    Massaged code
+ */
+#  if 0
+   err = dummy1();
+   if (err)
+      return err;
+#  endif
+
+   MEMTRACE();
+   HEAPLOOK('\xCC');    // mid point
+
+   /*
+    *    Dummy malloc
+    */
+   if ((fp = _fmalloc(LEN)) == NULL)
+      {
+      printf("fp == NULL cannot allocate global memory\n");
+      return 3;
+      }
+
+   err = dummy2();
+   if (err)
+      return err;
+
+   MEMTRACE();
+   HEAPLOOK('\xCC');    // Final HEAPLOOK()
+
+   _ffree(fp);
+   free(q);
+   free(p);
+
+   return NULL;
+   }   /* main */
+
+
+
+
+/******************************   dummy1   **********************************/
+
+int  dummy1()
+   {
+   char  *p;
+   char far *fp = 0;
+   register unsigned lc;
+
+   if ((p = malloc(LEN)) == NULL)
+      {
+      printf("p = NULL cannot allocate local memory\n");
+      return 4;
+      }
+
+   /*
+    *    Overflow !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    */
+   for (lc = 0; lc < LEN; ++lc)
+      p[lc] = lc;
+   p[lc] = '\0';        // One byte overflow
+
+   free(p);
+
+   return NULL;
+   }   /* dummy1 */
+
+
+
+
+/******************************   dummy2   **********************************/
+
+int  dummy2()
+   {
+   char  *p = 0;
+   char far *fp;
+   register unsigned lc;
+
+   if ((fp = _fmalloc(LEN)) == NULL)
+      {
+      printf("fp == NULL cannot allocate global memory\n");
+      return 3;
+      }
+
+   /*
+    *    Overflow !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    */
+   for (lc = 0; lc < LEN + 3; ++lc)    // Overflow
+      fp[lc] = lc;
+
+   _ffree(fp);
+
+   return NULL;
+   }   /* dummy2 */
+

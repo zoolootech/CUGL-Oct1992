@@ -1,0 +1,81 @@
+;+
+;	Serial Input routine for the 6809
+;	I/O port configured for Radio Shack color computer
+;-
+bitime	EQU	176H	;Time constant for 1200 baud bit interval
+halfbit	EQU	29H	; 1/2 bit time for center bit sync
+IPORT	EQU	0FF22H	; Color computer i/o port address
+IMASK	EQU	1	; Bit position of input bit in port
+;
+;+
+;	input call to receive a character
+;-
+serinp:
+	ORCC	50H	;Kill interrupts
+	bsr	inwait		;get character
+	clrb
+	EXG	B,A
+	rts			;exit, character in b
+;
+;+
+;	inwait	waits for an input character to start and
+;	receives it.
+;-
+inwait:
+	LDA	IPORT
+	ANDA	#IMASK			; Get the bit out
+	beq	inwait		; wait on line = 0 
+;
+serget:
+	PSHS	X,Y,B
+	LDY	#8		; Bit counter
+	LDX	#halfbit	; Bit time/2
+	clra		; clear receive register
+;+
+;	sync up on the start bit transition
+;-
+sync:
+	LDB	IPORT	;Get port value
+	ANDA	#IMASK		;Test bit value
+	bne	sync		;wait on start bit = 1
+start:
+	LEAX	-1,X
+	beq	assemble	;one half bit time has expired
+	LDB	IPORT
+	ANDB	#IMASK
+	beq	start		;count down the start bit
+	LDA	#-1		; Glitch on start, return error
+	PULS	X,Y,B
+	rts			;error exit
+assemble:
+	LDX	#bitime		; Set one bit time wait
+assem1:
+	LEAX	-1,X		;Decrement bit timer
+	bne	assem1
+	LDB	IPORT
+	ANDB	#IMASK
+	beq	assem2
+	ORA	#080H		; Or in the bit
+assem2:
+	LEAY	-1,Y		;Decrement the bit count
+	beq	seriox		; exit if done
+	lsra		; move the bit down for the next pass
+	bra	assemble
+seriox:
+	PULS	X,Y,B
+	rts			; character in A
+
+
+
+
+cter in A
+ character in A
+
+ in A
+
+
+
+cter in A
+
+racter in A
+ c

@@ -1,0 +1,90 @@
+/*
+ * example of a self-modifying .EXE file
+ * written for Turbo C 2.0, by Bob Bybee, June 1990
+ *
+ * usage:
+ *   selfexe (no arguments) prints the current data area
+ *
+ *   selfexe arg1 arg2...   changes the .EXE file to contain
+ *                          those args in the data area
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <io.h>
+#include <fcntl.h>
+
+/* Declare an area for the initializing data which will
+ * be modified.  This would probably be a structure,
+ * in a more complex program.
+ */
+
+#define KEY_LENGTH 10               /* length of "key" string */
+static char init_data[512] =
+    "INIT_DATA\0"                   /* the "key" string */
+    "This is the original data.\0"; /* some data */
+
+#define BLOCK_SIZE 256
+char block_buf[BLOCK_SIZE * 2];
+
+void main( int argc, char **argv )
+{
+    char new_data[80], *p;
+    int fh, nbytes, i, got_it;
+    long pos;
+
+    /* First, the program opens its own .EXE file.
+     * Its name is provided in argv[0].
+     */
+    if ((fh = open(argv[0], O_RDWR|O_BINARY)) == -1)
+        {
+        printf("Can't open myself!\n");
+        exit(1);
+        }
+
+    /* If there were arguments on the command line,
+     * concatenate them into a single string in new_data[].
+     */
+    if (argc > 1)
+        {
+        new_data[0] = '\0';     /* empty the new_data string */
+        for (i = 1; i < argc; ++i)
+            {
+            strcat(new_data, argv[i]);
+            strcat(new_data, " ");
+            }
+        }
+
+    /* Search the .EXE file, by reading 2 blocks at a time,
+     * one block apart.  (Read 0, 1, then 1, 2, ...)
+     * This works even if the key string overlaps a block boundary.
+     */
+    for (got_it = 0, pos = 0L; !got_it; pos += BLOCK_SIZE)
+        {
+        lseek(fh, pos, SEEK_SET);
+        nbytes = read(fh, block_buf, BLOCK_SIZE * 2);
+        if (nbytes <= 0)
+            break;      /* the search failed! */
+
+        for (p = block_buf, i = 0; i < BLOCK_SIZE; ++i, ++p)
+            if (memcmp(init_data, p, KEY_LENGTH) == 0)
+                {
+                got_it = 1;
+                printf("Found it: file position 0x%04lx\n", pos + i);
+                printf("Data in file is: \"%s\"\n",
+                    p + KEY_LENGTH);
+
+                if (argc > 1)
+                    {           /* write new data */
+                    printf("Writing new data...\n");
+                    lseek(fh, pos + i + KEY_LENGTH, SEEK_SET);
+                    write(fh, new_data, strlen(new_data) + 1);
+                    }
+                break;
+                }
+        }
+
+    close(fh);
+    exit(0);
+}

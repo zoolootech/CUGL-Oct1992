@@ -1,0 +1,147 @@
+
+
+/*******************************************************
+* DXRECV.C -- Receive a file from another network node.
+*
+*     Copyright 1990 Tom Jensen
+*******************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <conio.h>
+#include <string.h>
+#include "netbios.h"
+#include "dxdef.h"
+
+#define ESC 0x1b
+
+int IFLAG;
+
+void DispText(char *filename);
+static void DispHelp(void);
+
+int main(int argc, char **argv)
+{
+  struct NcbData  *ncb;
+  char            buffer [BUFSIZE];
+  char            lname[17], fname[17];
+  unsigned        retcode;
+  unsigned char   session = 0;
+
+  if(retcode = NetActive())
+    exit(retcode);
+
+  if((ncb =
+    (struct NcbData *) malloc(sizeof(struct NcbData)))
+    == NULL)
+    exit(1);
+
+  if(argc < 2)
+  {
+    DispHelp();
+    exit(1);
+  }
+
+  /* process recipient's name */
+  NbExpandName(fname, argv[1]);
+  fname[15] = NAME_UNIQUE;    /* make the name unique */
+  fname[16] = '\0';           /* make it a C string */
+
+  /* process local (recipient's) name */
+  LocalName(buffer);          /* Get local net name */
+  NbExpandName(lname, buffer);
+  lname[15] = NAME_UNIQUE;    /* make the name unique */
+  lname[16] = '\0';           /* make it a C string */
+
+  printf("Wait for unique name to be added.\n");
+  if((retcode = NbAddName(ncb, lname)) == NB_OK)
+    printf("Name \"%s\" added successfully.\n", lname);
+  else
+  {
+    printf("NETBIOS error %02xH encountered ", retcode);
+    printf(" encountered while adding \"%s\".\n", lname);
+    exit(1);
+  }
+
+  if((retcode = NbPostListen(ncb, lname, fname))
+    == NB_OK)
+  {
+    printf("Waiting for Call from \"%s\" ...\n", fname);
+    printf("Press the ESC key to abort.\n");
+    while (! IFLAG)
+    {
+      if(kbhit())
+        if(getch() == ESC)
+        {
+          printf("Program aborted!\n");
+          NbDelName(ncb, lname);
+          exit(2);
+        }
+    }
+    if((session = ncb->LSN) > 0)
+      printf("Session opened successfully.\n");
+  }
+
+  if (session == 0)
+  {
+    printf("NETBIOS error %02xH ", retcode);
+    printf("returned from Listen command.\n");
+    NbCloseSession(ncb, lname, fname, session);
+    NbDelName(ncb, lname);
+    exit(1);
+  }
+
+  *buffer = '\0';
+
+  NbReceiveData(ncb, lname, fname, buffer, BUFSIZE,
+    session);
+
+  printf("Message received:\n    %s\n", buffer);
+
+  if(strncmp(buffer, DXPREFIX, DXPFSIZE) == 0)
+  {
+    NbSendData(ncb, lname, fname, OKMSG, OKSIZE, session);
+
+    printf("\nContents of %s:\n\n", buffer + DXPFSIZE);
+    DispText(buffer + DXPFSIZE);
+  }
+  else
+    printf("Message not recognized.\n");
+
+  NbCloseSession(ncb, lname, fname, session);
+  NbDelName(ncb, lname);
+  return 0;
+}
+
+/**********************************
+* DispText -- Display a text file.
+**********************************/
+
+void DispText (char *filename)
+{
+  FILE *fil;
+  char buffer[81];
+
+  if(fil = fopen(filename, "rt"))
+  {
+    while(fgets(buffer, 80, fil))
+      printf("%s", buffer);
+    if(ferror(fil))
+      puts("\nError reading file.");
+
+    fclose(fil);
+  }
+}
+
+/*******************************************
+* DispHelp -- Display a brief help message.
+*******************************************/
+
+static void DispHelp(void)
+{
+  printf("Usage: DXRECV <sender's name>\n");
+  printf("  Where <sender's name> is the network name ");
+  printf("sending the file\n");
+  printf("Note: The sender's name is case sensitive.\n");
+}
+

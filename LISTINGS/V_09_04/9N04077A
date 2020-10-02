@@ -1,0 +1,50 @@
+
+/********************************************************************/
+/*	Check class allocation errors.  Copyright by Joe Schell 1989.	 */
+/********************************************************************/
+
+#ifndef CLASS_check_heap
+#define CLASS_check_heap
+
+#include <iostream.h>
+#include <stddef.h>		// Used for ptrdiff_t definition.
+
+// CHECK_HEAP_diff_:		Used get around segmented memory on IBMs.
+#if defined(__TURBOC__)  \
+		&& (defined(__LARGE__) || defined(__HUGE__) || defined(__COMPACT__))  
+	#define CHECK_HEAP_diff_		char huge *
+#else
+	#define CHECK_HEAP_diff_		char*
+#endif
+
+
+class check_heap
+	{
+public:
+	void start()	{  begin = new char;	delete begin; }
+	check_heap()	{ start(); }
+
+	void test(const char *s=0)	// Do a test. 
+		{
+		end = new char;
+		if (begin != end)
+			cerr << s
+				 << "Heap error: entry/exit difference = "
+				 << diff() << ".\n";
+		delete end;
+		}
+
+	void testnew(const char *s=0)	// Do a test and reset.
+		{ test(s); start(); }
+
+private:
+	char *begin, *end;		// Beginning and end of allocation.
+
+	ptrdiff_t diff()	const
+		{ return (ptrdiff_t)
+				((CHECK_HEAP_diff_)end - (CHECK_HEAP_diff_)begin);}
+
+	};	// End of check_heap class.
+
+#endif
+

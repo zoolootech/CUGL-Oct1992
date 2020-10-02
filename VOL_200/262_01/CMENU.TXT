@@ -1,0 +1,300 @@
+.ce 2
+Help for Those Really Long Dumb Menu Programs
+by Robert Ramey
+
+I just got my Hewlett Packard Laser Jet II.  It seems to have
+everything.  All I have to do is read the manual so I can
+set up the correct printer control codes.  This machine has a zillon
+options, all with funny codes and rules about which combinations
+of codes and options are valid.
+If I want to avoid a lot of tedious work sifting through manual
+everytime I want to change the printer setup,  I'll have to
+write a program.  Since I'm a programmer I don't mind
+This is an application made to order for a series of menus.
+Now if you've written one menu driven program you've written
+them all.  Or at least it seems that way.  This is another
+tedious job.  Its still better than sifting through the printer
+manual all the time as its only done once.  However,  writing
+a menu driven program is tedious in itself.
+
+I decided that this was the last tedious menu program I was going
+to write.
+
+1. Table Driven Code.
+
+My solution is to write once a small piece of code which
+handles dialog with the operator using a table of menus as a
+guide.  Then for each new menu application all I have to
+write are the menus themselves and some "action routines"
+which are invoked when certain points in the menu dialog are
+touched.
+
+Listing 1 shows the menus used for my laser printer program.
+The labels place each menu in its proper place in the hierarchy.
+At any time the operator can respond with one of the menu
+selections, return, or escape.
+Generally, escape will end the menu sequence. Return will return
+to the previous menu, and a valid menu selection will display
+a sub menu.
+For example, the top menu is the first to be displayed.
+If the operator selects 2 the menu labeled 2 is displayed.
+If the operator then selects 1 the menu labeled 21 is displayed.
+
+This flow of control will end if a menu selection has no sub
+menu or a specific "action routine" is specified.
+In this example,  For menu
+selection "4. Just exit" I have chosen exit(0) as the action
+routine.  When this selection is chosen function exit() will
+be called with argument 0.
+If there is no sub menu nor is there any specific "action routine"
+a function action() will be called with a character pointer argument.
+This argument contains the sequence of responses that led to the
+current position in the hierarchy.
+
+The basic idea of this program is that the operator moves around
+the hierarchy of menus at will.
+Listing 2 shows an example of the laser printer program in action.
+
+Listing 3 shows how my laser printer setup program functions with
+the menus.  The main program calls the library function menu()
+then exits.  The program doesn't specify the flow of control.
+This was specified in the menus.
+Later I'll show the code for menu() along with
+how the menus get into the program itself.
+Now the only thing left is to code the action routines.
+As the operator makes selections from the menus below selection
+"2. Alter print setup", function action() is executed.  This records
+his choices in the array p.
+From time to time he may select
+option "1. Display current printer setup" to see which combination
+he has selected so far and to check that is valid.
+This will invoke the function display().
+When he is satisfied, he selects "3. Write printer control codes
+and exit".  The finish() function is then executed which writes
+the proper codes to the output file.
+
+Separating the menus and flow of control from the
+action routines makes writing a program
+much more like writing a suite of small almost independent
+programs.  It also makes it much easier to expand the program:
+All one must do is add on to menus and the action routines.
+The rest of the program need not be touched.
+
+2. How It Works
+
+Each menu is stored in a data structure like that shown in listing 4.
+To initiate a menu dialog the main program calls menu() with the
+address of the initial menu as the parameter.
+
+Listing 5 shows the menu() function.  menu() displays the menu
+whose address it has recieved as an argument a : character for
+a prompt and waits for a response.  When a response is recieved
+it is compared against the first character in each line of the
+menu.  If it matches, the corresponding action routine is called
+with its associated parameter.  A hierarchy of menus is implemented
+by specifying menu() as the action routine with the address of the
+sub menu as the parameter.
+
+When an action routine (including menu()) returns,  it should specify
+which of the previously displayed menus should be repeated.
+If it returns a value of 0, the immediatly previous menu will be
+repeated.  If it returns a value of 1, the menu two levels back
+will be repeated, etc.
+In our laser printer setup program example, the function copies()
+returns a value of 0 so that the "What do you want to change" menu
+will be repeated.  The function action() returns 1 so that
+menus such as
+
+    Choose One.
+    1. Portrait(vertical)
+    2. Landscape(horizontal)
+
+will not be repeated immediatly after a choice is made.
+When ever the operator responds to a menu with RETURN, menu()
+returns a value of 0 which repeats the previous menu.
+Whenever the operator responds with ESCAPE, menu()
+returns a value of 99 which will normally return through all the menus
+back to the initial menu() call.
+
+Listing 6 show the C code which implements the menus originally
+displayed in Listing 1.  This should help to clarify the functioning
+of the menu() function as well as the the laser printer setup
+program.  To summarize,  A table driven menu program consists of
+three separatly compiled modules:
+
+.in +4
+A set of action routines along with a main program which calls menu(&m)
+
+A set of menu data structures containing the text of the menus,
+action routine addresses and paramters
+
+A library function menu()
+.in -4
+
+On my system, the laser printer setup program is produced by the
+following commands:
+
+    cc slptrm
+    cc slptr
+    zlink slptr,slptrm,crunlib/
+
+3. Polishing Up the System.
+
+So far we have simplfied the preparation of menu driven programs
+by separating the menus from the program code.
+Now we are now left with
+the task of coding the original menu into a C data structure.
+This is almost as bad as coding the menus into the original program.
+However, the job of translating the menus in listing 1 to the
+C program module in listing 6 is completely mechanical.  It can
+be turned over to a program we might call a menu compiler.
+
+Listing 7 shows the program cmenu.c.  This programs reads a file
+in the format of list 1 and writes a file in the format of listing 6.
+If the menu in figure 1 is in a file named slptrm.mnu, the new
+command sequence is:
+
+    cmenu <a:slptrm.mnu >slptrm.c
+    cc slptrm
+    cc slptr
+    zlink slptr,slptrm,crunlib/
+
+Each menu in the input file to menu compiler should be in the
+following format:
+
+.in +4
+The menu index indicating its position in the hierarchy
+should start in column 1.
+
+Subsequent lines should start with tab.
+
+The menu question on one or more lines.
+
+The menu selections one per line.  Menu selections are
+distinguished by a '.' in the second character
+position of the text.
+.in -4
+
+Each menu selection may be followed by a ';' and an action routine
+and parameter.  If no action routine is specified, the menu
+compiler will fill in a default action routine and parameter.
+If the menu indices indicate that a sub menu exists, the
+default action routine is menu() and the default parameter is
+the address of the submenu.  If there exists no sub menu,
+the default action routine is action() and the default parameter
+is a pointer to a string which contains the menu responses which
+brought us to this point.
+
+Sometimes I want to insert an action routine within the
+hierarchy of menus.  For example, consider the following
+menu and code fragment from a modem transfer program:
+
+.nf
+    ...
+    4. send file;gfname(m4)
+    ...
+4
+    Which prototcal do you want to use?
+    1. XMODEM with check sum
+    2. XMODEM with crc
+    3. YMODEM
+    4. Kermit
+    5. Simple Xon-Xoff
+    6. No protocal at all
+  
+
+FILE *df;   /* disk file pointer */
+char filename[MAXFNLENGTH]; /* file name specified by operator */
+int gfname(nextmenu)
+MENU *nextmenu;
+{
+    fprintf(stderr,"\ntype in file name:");
+    fgets(filename, MAXFNLENGTH, stdin);
+    if(df = fopen(filename, "r")){
+        menu(nextmenu); /* continue on with menus */
+        fclose(df); /* close file on returning from submenu */
+    }
+    else
+        /* simply display error message */
+        fprintf(stderr,"\nfile not found");
+    return 0;
+}
+.fi
+
+When the operator selects "4. send file" the function gfname is
+called and a filename is requested.  If the fule name is valid
+the menu dialog continues on to the sub menu 4.  Otherwise, an
+error message is displayed and control returns to the previous
+menu.
+
+This permits me to keep a potentially complicated program in small
+almost independent fragments.  I have to be careful of side effects
+however.  In general, one should undo any side effects on leaving
+that were set in the action routine.  In this case this boils
+down to closing the opened disk file before returning from gfname().
+
+One final trick which might come in handy is to modify at runtime
+the action routine addresses or parameters in the menu data
+structure.  This would mean that some menu selections would
+could alter the position of menus within the hierarchy.  Although
+I havn't done it yet It is interesting to think about.  It could
+allow a program to adapt itself to more experienced users.  It
+smells like self modifying code which is supposed to be no-no.
+However,  I want to experment more in this area before I discard
+the alternative.
+
+4. Extending the Idea.
+
+There a number of ways the basic idea could be altered that might
+be interesting.  First, menu tables could be loaded at run time.
+instead of compiled into the program. This would permit translation
+of programs into foreign languages without recompiling or relinking.
+I decided to compile in the menus for the following reasons:
+
+.in +4
+it usually saves some disk space since file sizes grow in
+increments of 2k on my system.
+
+having menu data and code in the same file simplifies copying
+of programs and reduces the number of files.
+
+it minimizes size of program as code to read, interpret and
+load menu data structures does not have to be included.
+
+it easier to incorporate action routine addresses and
+parameters at compile time.
+.in -4
+
+Another idea would be to extend the menu() function to include
+help displays any time a help key was pressed.  The menu
+compiler would be extended accordingly.
+
+Finally, the menu() function could adjusted for memory mapped
+systems to permit pop-up menus.
+None of these changes would alter the menu file
+nor the action routines of programs currently functioning.
+
+5. A Fly in the Ointment.
+
+When I finally got cmenu.c functioning I ran into a suprise.
+My C compiler, Q/C, will not initialize structures.  Hence,
+the code produced by cmenu.c was not compilable.  However, I was
+determined to eliminate the tedious work of coding menu
+programs, even though it involved more tedious coding to do so.
+I wrote a second version of cmenu.c which produces a program
+module written in Z-80 assembler instead of C.  This is listing 7.
+Its faster and more convenient than the C version,  but is not
+so portable.  It can be modified to function with most other
+assemblers.
+Now the command sequence to compile and link the laser printer
+setup program is:
+
+    cmenu <a:slptrm.mnu >slptrm.z80
+    zas slptrm
+    cc slptr
+    zlink slptr,slptrm,crunlib/
+
+Now I'm all set to write that next menu driven program.
+Of course, I can't think of any I need right now.
+It figures.
+

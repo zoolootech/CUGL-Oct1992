@@ -1,0 +1,39 @@
+#include <stdio.h>
+FILE *pfd = 0;
+FILE *efd = 0;
+FILE *ifd = stdin;
+extern int column;
+extern int lineno;
+extern char file_name[132];
+
+main()
+    {
+    int yyparse();
+    int result;
+
+    initsymtab();
+    preloadsyms();      /* load in int, char, etc types */
+    efd = fopen("ed.out","w");
+    if ( efd == NULL )
+        fprintf(stderr,"Could not open file ed.out\n");
+    pfd = fopen("proto.out","w");
+    if ( pfd == NULL )
+        fprintf(stderr,"Could not open file proto.out\n");
+    result = yyparse();
+    if ( efd )
+        fclose(efd);
+    if ( pfd )
+        fclose(pfd);
+    return result;
+    }
+
+/*-----------------------------------------------------------*/
+yyerror(s)
+    char *s;
+    {
+    fprintf(stderr,"\n%s at line %d in column %d of file
+            %s\n",s,lineno,column,file_name);
+    fprintf(stderr,"This is a fatal error, exiting ...\n");
+    exit(2);
+    }
+

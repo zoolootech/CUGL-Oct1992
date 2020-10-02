@@ -1,0 +1,327 @@
+
+
++-----+       +------------+       +---------+     +-----------+
+| OSC |------>| various    |------>| PIT     |---->| interrupt |
+|     |  14   | components | 1.19  | timer 0 |  18 | 8 and 1C  |
++-----+ Mhz   +------------+  Mhz  +---------+  Hz +-----------+
+
+                            Figure 1
+
+
+
+/* -------------------------------------------------------------------------
+** TIMER.H contains the variable declarations and definitions used among
+** timer interrupts.
+** ------------------------------------------------------------------------- */
+
+	typedef void (interrupt far * IVEC) (void);
+
+	IVEC int1c_dosvec;		/* DOS int 1C vector */
+	volatile long countdown_timer;
+
+	IVEC int08_dosvec;		/* DOS int 8 vector */
+	int int8_passcount;		/* Current interrupt downcounter */
+	volatile int timer_count;	/* Application countdown clock timer */
+
+#if defined (DEFINE_EXTERNALS)
+
+/* Defined interrupt 8 vector table address and port addresses for the
+** master i8259 programmable interrupt controller and the i8253 programmable
+** interval timer.							     */
+
+	const unsigned char **vector_table =	/* 80x86 interrupt table */
+		(unsigned char **) 0;
+
+	const unsigned isr_8259 = 0x0020;	/* i8259 in-service reg addr */
+	const int eoi_8259 = 0x20;		/* i8259 end-of-intrpt instr */
+
+	const unsigned cwr_8253 = 0x0043;	/* control word reg addr */
+	const unsigned ctr0_8253 = 0x0040;	/* timer 0 counter addr */
+	const unsigned set_ctr0_8253 = 0x0036;	/* Binary mode 3 ctr 0 */
+
+/* Define speedup factor and the corresponding i8253 counter values.
+** The normal timer 0 interrupt occurs every 54.9 ms. The frequency of that
+** interrupt is increased by a factor of 16 for this application so
+** interrupts occur every 3.43 ms.					     */
+
+	const int int8_passcount_reset = 16;
+
+/* The input clock frequency is 1.19318 MHz on the PC; the corresponding
+** downcount values for 54.9ms and 3.43ms follow.			     */
+
+	const unsigned char int8_newct_msb = 0x10;
+	const unsigned char int8_newct_lsb = 0x00;
+	const unsigned char int8_dosct_msb = 0x00;
+	const unsigned char int8_dosct_lsb = 0x00;
+
+#else
+
+	const unsigned char **vector_table;
+
+	const unsigned isr_8259;
+	const int eoi_8259;
+
+	const unsigned cwr_8253;
+	const unsigned ctr0_8253;
+	const unsigned set_ctr0_8253;
+
+	const int int8_passcount_reset;
+	const unsigned char int8_newct_msb;
+	const unsigned char int8_newct_lsb;
+	const unsigned char int8_dosct_msb;
+	const unsigned char int8_dosct_lsb;
+
+#endif
+
+/* A macro to convert some number of milliseconds to a downcount value for
+** clock tick interrupt 8.						     */
+
+#define COUNTMS(x) ((x * int8_passcount_reset) / 55)
+
+/* --------------------------------------------------------------------------
+** LISTING 1 contains examples of changing interrupt vectors safely and the
+** use of 55 ms precision timing.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <conio.h>
+#include <timer.h>
+	.
+	.
+	.
+	unsigned int1c = 0x001C;
+	extern void interrupt far i1chndlr(void);
+	.
+	.
+	.
+
+/* Get the DOS vector for interrupt 1C. Then install the new vector.	     */
+
+	int1c_dosvec = _dos_getvect(int1c);
+	_dos_setvect(int1c, (IVEC) i1chndlr);
+	.
+	.
+	.
+
+/* Example: delay for 200 ms.						     */
+
+	for (countdown_timer = 200L / 55L; countdown_timer > 0; );
+
+	.
+	.
+	.
+
+/* Example: wait for a keyboard stroke for 2 seconds.			     */
+
+	for (countdown_timer = 2000L / 55L;
+		(countdown_timer > 0) && !kbhit(); )
+
+	if (countdown_timer <= 0)	/* Time out on keyboard */
+	{
+	.
+	.
+	.
+	}
+
+/* Restore the interrupt 1C vector.					     */
+
+	_dos_setvect(int1c, int1c_dosvec);
+	.
+	.
+	.
+
+/* ---------------------------------------------------------------------------
+** LISTING 2 is an interrupt handler for the user timer tick (1C) interrupt.
+** The BIOS time tick interrupt (int 8) service routine (TIMER_INT) updates
+** the time of day clock, checks the diskette motor counter for timeout, and
+** issues a user time tick interrupt (int 1C). This routine decrements a count-
+** down timer maintained in external memory where it may be set and polled by
+** functions within the program.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <timer.h>			/* Time interrupt decls */
+
+#pragma check_stack(off)		/* Don't call chkstk() at entry */
+#pragma intrinsic(_enable)
+
+void interrupt far i1chndlr()
+{
+	_enable();			/* Enable interrupts */
+	countdown_timer--;		/* Decrement external timer */
+}
+
+/* --------------------------------------------------------------------------
+** LISTING 3 contains examples of changing the int 8 timing scheme and using
+** increased timing precision.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <conio.h>
+#include <timer.h>
+	.
+	.
+	.
+	unsigned char reply;
+	unsigned int8 = 0x08;
+	int ms300 = COUNTMS(300);
+
+	extern void  interrupt far i8swapin(void);
+	.
+	.
+	.
+
+/* Get the DOS vector for interrupt 8. Then install a vector to the function
+** that swaps in the new int 8 timing scheme at the next interrupt.	     */
+
+	int08_dosvec = _dos_getvect(int8);
+	_dos_setvect(int8, i8swapin);
+	.
+	.
+	.
+
+/* Example: wait 300 ms for pin 2 on LPT1: to go low (0).		     */
+
+	for (timer_count = ms300, reply = 0x01;
+		(timer_count > 0) && (reply == 0x01; )
+	{
+		reply = inp(0x03BC);		/* Read the port */
+		reply &= 0x01;			/* Mask the desired bit */
+	}
+
+	if (timer_count <= 0)		/* Time out on keyboard */
+	{
+	.
+	.
+	.
+	}
+
+/* Install a vector to the function that reprograms the PIT and restores the
+** DOS handler at the next interrupt.					     */
+
+	_dos_setvect(int8, i8swapout);
+	.
+	.
+	.
+
+/* ---------------------------------------------------------------------------
+** LISTING 4 is an interrupt handler for the DOS time tick interrupt (int 8).
+** This handler swaps in a new handler for more frequent hardware interrupts
+** while maintaining the normal 54.9 ms system clock updating. The swap occurs
+** at interrupt time so that no system clock tick are lost.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <conio.h>
+
+#include <timer.h>
+
+#pragma check_stack(off)
+#pragma intrinsic(inp, outp, _enable)
+
+void interrupt far i8swapin()
+{
+
+/* Declare external functions.						     */
+
+	extern void interrupt far i08hndlr(void);
+
+/* i8259 interrupts are disabled upon entry; re-enable interrupts.
+** Configure the i8253 to run in mode 3 (square wave) with a new 16 bit
+** binary countdown value.						     */
+
+	_enable();
+
+	outp(cwr_8253, set_ctr0_8253);
+	outp(ctr0_8253, int8_newct_lsb);
+	outp(ctr0_8253, int8_newct_msb);
+
+/* Swap in the new time tick interrupt handler vector. DOS interrupts shouldn't
+** be used within an interrupt handler. 				     */
+
+	*(vector_table + 8) = (unsigned char *) i08hndlr;
+
+/* Initialize pass counter for int 8 handler.				     */
+
+	int8_passcount = int8_passcount_reset;
+
+/* Go perform DOS time services. DOS does the eoi for the i8259 and the iret.*/
+
+	_chain_intr(int08_dosvec);
+
+}
+
+/* ---------------------------------------------------------------------------
+** LISTING 5 is an interrupt handler for the DOS time tick interrupt (int 8).
+** This handler processes more frequent hardware clock interrupts while
+** maintaining the normal 54.9 ms system clock updating.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <conio.h>
+#include <timer.h>
+
+#pragma check_stack(off)
+#pragma intrinsic(_enable, outp)
+
+void interrupt far i08hndlr()
+{
+
+/* Enable i8259 interrupts and decrement the application countdown timer.    */
+
+	_enable();
+	timer_count--;
+
+/* If it is time to do the system time chores, reset the pass counter and
+** chain to the normal DOS interrupt vector.
+** The normal DOS handler does an sti and reenables the i8259.		     */
+
+	if (--int8_passcount == 0)
+	{
+		int8_passcount = int8_passcount_reset;
+		_chain_intr(int08_dosvec);
+	}
+
+	outp(isr_8259, eoi_8259);
+}
+
+/* ---------------------------------------------------------------------------
+** LISTING 6 is an interrupt handler for the DOS time tick interrupt (int 8).
+** This handler swaps out the new handler and restores the DOS handler.
+** The swap occurs at interrupt time so that no system clock ticks are lost.
+** ------------------------------------------------------------------------- */
+
+#include <dos.h>
+#include <conio.h>
+#include <timer.h>
+
+#pragma check_stack(off)
+#pragma intrinsic(inp, outp, _enable)
+
+void interrupt far i8swapout()
+{
+/* i8259 interrupts are disabled at entry; re-enable.
+** Restore the normal DOS operation of i8253 timer 0: mode 3 with a binary
+** downcounter. 							     */
+
+	_enable();
+	timer_count--;
+
+	if (--int8_passcount == 0)
+	{
+
+		outp(cwr_8253, set_ctr0_8253);
+		outp(ctr0_8253, int8_dosct_lsb);
+		outp(ctr0_8253, int8_dosct_msb);
+
+/* Restore vector for interrupt 8 and do the DOS time service.		     */
+
+		*(vector_table + 8) = (unsigned char *) int08_dosvec;
+		_chain_intr(int08_dosvec);
+
+	}
+
+/* Restore i8259 interrupts.						     */
+
+	outp(isr_8259, eoi_8259);
+}

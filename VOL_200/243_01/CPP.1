@@ -1,0 +1,198 @@
+
+.TH CPP 1
+.SH NAME
+cpp \- C Pre-Processor
+.SH SYNOPSIS
+.B cpp
+[-options] [infile [outfile]]
+.SH DESCRIPTION
+.I Cpp
+reads a C source file, expands macros and include
+files, and writes an input file for the C compiler.
+If no file arguments are given,
+.I cpp
+reads from stdin and
+writes to stdout.
+If one file argument is given, it
+will define the input file,
+while two file arguments
+define both input and output files.
+.PP
+The following options are supported.
+Options may be given in either case.
+.TP 10
+.BI \-I directory
+Add this directory to the list of directories searched for
+#include "..."
+and
+#include <...> commands.
+Note that there is no space between the
+.B \-I
+and the directory string.
+More than one
+.B \-I
+command is permitted.
+On non-Unix systems
+.I directory
+is forced to upper-case.
+.TP 10
+.BI \-D name=value
+Define the name as if the programmer wrote
+
+                #define name value
+
+at the start of the first file.
+If
+.I =value
+is not given,
+a value of "1"
+will be used.
+
+On non-unix systems,
+all alphabetic text
+will be forced to upper-case.
+.TP 10
+.BI \-U name
+Undefine the name as if
+
+                #undef name
+
+were given.
+On non-Unix systems,
+.I name
+will be forced to upper-case.
+
+The following variables are pre-defined:
+
+Target computer (as appropriate):
+
+        pdp11, vax, M68000 m68000 m68k
+
+Target operating system (as appropriate):
+
+        rsx, rt11, vms, unix
+
+Target compiler (as appropriate):
+
+        decus, vax11c
+
+The implementor may add definitions to this list.
+The default definitions match the definition of the host
+computer, operating system, and C compiler.
+
+The following are always available unless undefined:
+.RS
+.TP 10
+__FILE__
+The input (or #include) file being compiled (as a quoted string).
+.TP 10
+__LINE__
+The line number being compiled.
+.TP 10
+__DATE__
+The date and time of compilation as a Unix ctime quoted string
+(the trailing newline is removed).
+Thus,
+
+   printf("Bug at line %s,", __LINE__);
+   printf(" source file %s", __FILE__);
+   printf(" compiled on %s", __DATE__);
+.RE
+.TP 10
+.BI \-X number
+Enable debugging code.
+If no value is given,
+a value of 1 will be used.
+(For maintenence of CPP only.)
+.SH DRAFT ANSI STANDARD CONSIDERATIONS:
+.LP
+Comments are removed from the input text.
+The comment is replaced by a single space character.
+This differs from usage on some existing preprocessors
+(but it follows the Draft Ansi C Standard).
+.LP
+Note that arguments may be concatenated as follows:
+
+    #define I(x)x
+    #define CAT(x,y)I(x)y
+    int value = CAT(1,2);
+.LP
+If the above macros are defined and invoked without
+extraneous spaces,
+they will be transportable to other
+implementations.
+Unfortunately,
+this will not properly expand
+
+    int CAT(foo,__LINE__);
+    int CAT(foo,__LINE__);
+.LP
+as __LINE__ is copied into the input stream,
+yielding
+"foo__LINE__"
+in both cases,
+rather than the expected
+"foo123", "foo124",
+which would result if
+__LINE__
+were expanded and the result copied into the input stream.
+.LP
+Macro formal parameters are not recognized within quoted
+strings and character constants in macro definitions.
+.LP
+CPP implements most of the ANSI draft standard.
+You should be aware of the following differences:
+.TP 4
+o
+In the draft standard,
+the \\n (backslash-newline)
+character is "invisible" to all processing.
+In this implementation,
+it is invisible to strings,
+but acts as a "whitespace" (token-delimiter) outside of strings.
+This considerably simplifies error message handling.
+.TP 4
+o
+The following new features of C are processed by cpp:
+
+    #elif expression     (#else #if)
+    '\\xNNN'              (Hexadecimal constants)
+    \'\\a'                 (Ascii BELL [silly])
+    \'\\v'                 (Ascii VT)
+    #if defined NAME     (1 if defined, 0 if not)
+    #if defined (NAME)   (1 if defined, 0 if not)
+    unary +              (gag me with a spoon)
+.TP 4
+o
+The draft standard has extended C,
+adding a string concatenation operator,
+where
+
+        "foo" "bar"
+
+is regarded as the single string "foobar".
+(This does not affect CPP's processing.)
+.SH ERROR MESSAGES:
+Many.
+CPP
+prints warning messages if you try to use
+multiple-byte character constants (non-transportable) or
+if you #undef a symbol that was not defined.
+.SH BUGS:
+Cpp prints spurious error or warning messages in #if
+sequences such as the following:
+
+    #define foo 0
+    #if (foo != 0) ? (100 / foo) : 0
+    #undef foo
+    #if ((defined(foo)) ? foo : 0) == 1
+
+Cpp
+should supress the error message if the expression's
+value is already known.
+
+This document is not necessarily up-to-date.  The file cpp.rno
+(cpp.mem) contains correct source for the documentation.
+.SH AUTHOR:
+Martin Minow
+

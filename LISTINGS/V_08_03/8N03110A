@@ -1,0 +1,258 @@
+*****Listing 3*****
+
+// LIST.CPP - implementation of non-specific double linked lists
+
+#include <stream.hpp>
+#include <stddef.h>
+#include <string.h>
+#include "list.hpp"
+
+LIST::LIST()      // constructor
+   {
+   head = curr = tail = NULL;
+   }
+
+LIST::~LIST()     // destructor
+   {
+   struct listelem *work;
+
+   while(head != NULL)
+      {
+      delete_data(head);
+      work = head->next;
+      delete head;
+      head = work;
+      }
+   }
+
+void *LIST::get_head(unsigned int &sz)
+   {
+   curr = head;
+   return get_curr(sz);
+   }
+
+void *LIST::get_curr(unsigned int &sz)
+   {
+   if(curr == NULL)
+      {
+      sz = 0;
+      return NULL;
+      }
+   sz = curr->size;
+   return curr->data;
+   }
+
+void *LIST::get_tail(unsigned int &sz)
+   {
+   curr = tail;
+   return get_curr(sz);
+   }
+
+void *LIST::get_prev(unsigned int &sz)
+   {
+   if(curr->prev != NULL)
+      {
+      curr = curr->prev;
+      return get_curr(sz);
+      }
+   else
+      {
+      sz = 0;
+      return NULL;
+      }
+   }
+
+void *LIST::get_next(unsigned int &sz)
+   {
+   if(curr->next != NULL)
+      {
+      curr = curr->next;
+      return get_curr(sz);
+      }
+   else
+      {
+      sz = 0;
+      return NULL;
+      }
+   }
+
+void LIST::add_before(void *vptr, unsigned int sz)
+   {
+   struct listelem *lptr;
+
+   lptr = new struct listelem;
+   if(lptr == NULL)
+      exit(99);         // ugly - should be fixed later
+
+   lptr->size = sz;
+   create_data(lptr);
+   copy_data(lptr,vptr);
+
+   // rearrange pointers
+
+   if(curr != NULL)
+      {
+      lptr->prev = curr->prev;
+      lptr->next = curr;
+
+      if(lptr->prev != NULL)
+         lptr->prev->next = lptr;
+      else
+         head = lptr;
+
+      curr->prev = lptr;
+      }
+   else     // curr == NULL - must be first element in list
+      {
+      lptr->prev = lptr->next = NULL;
+      head = curr = tail = lptr;
+      }
+   }
+
+void LIST::add_after(void *vptr, unsigned int sz)
+   {
+   struct listelem *lptr;
+
+   lptr = new struct listelem;
+   if(lptr == NULL)
+      exit(99);         // ugly - should be fixed later
+
+   lptr->size = sz;
+   create_data(lptr);
+   copy_data(lptr,vptr);
+
+   // rearrange pointers
+
+   if(curr != NULL)
+      {
+      lptr->prev = curr;
+      lptr->next = curr->next;
+
+      curr->next = lptr;
+
+      if(lptr->next != NULL)
+         lptr->next->prev = lptr;
+      else
+         tail = lptr;
+      }
+   else     // curr == NULL - must be first element in list
+      {
+      lptr->prev = lptr->next = NULL;
+      head = curr = tail = lptr;
+      }
+   }
+
+void LIST::add_head(void *vptr, unsigned int sz)
+   {
+   struct listelem *lptr;
+
+   lptr = new struct listelem;
+   if(lptr == NULL)
+      exit(99);         // ugly - should be fixed later
+
+   lptr->size = sz;
+   create_data(lptr);
+   copy_data(lptr,vptr);
+
+   if(head != NULL)
+      {
+      lptr->prev = NULL;
+      lptr->next = head;
+      head->prev = lptr;
+      head = lptr;
+      }
+   else
+      {
+      lptr->prev = lptr->next = NULL;
+      head = curr = tail = lptr;
+      }
+   }
+
+void LIST::add_tail(void *vptr, unsigned int sz)
+   {
+   struct listelem *lptr;
+
+   lptr = new struct listelem;
+   if(lptr == NULL)
+      exit(99);         // ugly - should be fixed later
+
+   lptr->size = sz;
+   create_data(lptr);
+   copy_data(lptr,vptr);
+
+   if(tail != NULL)
+      {
+      lptr->next = NULL;
+      lptr->prev = tail;
+      tail->next = lptr;
+      tail = lptr;
+      }
+   else
+      {
+      lptr->prev = lptr->next = NULL;
+      head = curr = tail = lptr;
+      }
+   }
+
+void LIST::delete_curr()
+   {
+   struct listelem *lptr;
+
+   if(curr == NULL)
+      return;
+
+   lptr = curr;
+
+   if(curr->prev != NULL)
+      curr->prev->next = curr->next;
+   else
+      head = curr->next;
+
+   if(curr->next != NULL)
+      curr->next->prev = curr->prev;
+   else
+      tail = curr->prev;
+
+   if(curr->prev != NULL)
+      curr = curr->prev;
+   else if(curr->next != NULL)
+      curr = curr->next;
+   else if(head == NULL && tail == NULL)
+      curr = NULL;      // list is now empty
+   else
+      {
+      cerr << "LIST::delete_curr() : deletion sequence error\n";
+      exit(99);
+      }
+
+   delete_data(lptr);
+   delete lptr;
+   }
+
+// The following three functions should be replaced in all derived classes.
+// create_data() should allocate and initialize space for a new instance of
+// the class being stored in the list (implying that you should derive a new
+// class for each type of object).  delete_data() should handle the destruction
+// of class instances stored in a list.  copy_data() must take care of copying 
+// a complete class instance from one place to another - it must properly 
+// handle the situation where a class being stored in a list has 
+// dynamically-allocated storage.  As written these functions should properly 
+// handle all simple types (that is, types which have no dynamic storage). 
+
+void LIST::create_data(struct listelem *lptr)
+   {
+   lptr->data = new char[lptr->size];
+   if(lptr->data == NULL)
+      exit(99);
+   }
+
+void LIST::delete_data(struct listelem *lptr)
+   {
+   if(lptr->data != NULL)
+      delete lptr->data;
+   }
+
+void LIST::copy_data(struct listelem *lptr, void *from)
+   {
+   memcpy(lptr->data,from,lptr->size);
+   }

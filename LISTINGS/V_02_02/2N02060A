@@ -1,0 +1,158 @@
+
+/* ---------------------------------------------------
+    TESTRELO.C  -  Microsoft C ver 5.1
+
+   A driver used to validate the assembly language
+   function relocate_pfht().
+
+   NOTE:
+      The routines open_file() and close_file() are
+      included here because the limit imposed by
+      Microsoft on the number of open streams and/or
+      handles using their library functions.
+
+   Commands to produce an executable from the code as
+   shown in the listings:
+       masm relocate;         (listing 5)
+       cl -c testrelo.c       (listing 6)
+       link testrelo relocate;
+   -------------------------------------------------- */
+#include <stdio.h>
+#include <stdlib.h>     /* errno definition */
+#include <dos.h>        /* file create attributes */
+
+/* define the maximum attempts to open NUL */
+#define MAX_TRIES 30
+
+               /* FUNCTION PROTOTYPES */
+void useage(void);
+int open_file(char far *, unsigned);
+int close_file(unsigned);
+extern int relocate_pfht(void);
+
+/* a place to store the handles returned by open_file() */
+int handles[MAX_TRIES];
+
+
+/* ----------------------------------------------------
+ *  MAIN()
+   ----------------------------------------------------  */
+int main( int argc, char *argv[] )
+{
+int i, num;
+                    /* handle some simple exceptions */
+  if( argc < 2 || *(argv[1]) == '?' )
+     {
+     useage();
+     exit(1);
+     }
+
+  num = atoi(argv[1]);
+  if( num > 30 )
+     {
+     useage();
+     exit(1);
+     }
+
+  relocate_pfht();  /* move the PFHT */
+
+                    /* attempt to open the NUL device */
+  for(i = 0; i < num; i++)
+     {
+     handles[i] = open_file((char far *)"nul", _A_NORMAL);
+     if( handles[i] == -1 )
+        {
+        printf("open not successful.  errno = %x hex\n",
+               errno);
+        printf("failed attempting to open #%d\n", i+1);
+        break;
+        }
+     }
+                    /* close what was opened */
+  while( i >= 0 )
+     close_file(handles[i--]);
+}
+
+/* ----------------------------------------------------
+ *  USEAGE()
+ * Let the user know what is expected as input and what
+ * the output will be.
+   ----------------------------------------------------  */
+void useage()
+{
+  printf("Pass a command line parameter less than or\n");
+  printf("equal to %d.  This driver will then attempt\n",
+         MAX_TRIES);
+  printf("to open the NUL device %d times.\n\n", MAX_TRIES);
+  printf("The driver will report the number on which\n");
+  printf("open failed.\n");
+}
+
+/* ----------------------------------------------------
+ *  OPEN_FILE()
+ * use function 0x3c, int 0x21 to open a file/device
+ * PARAMETERS:
+ *      name    - pointer to the file/device name
+ *      attr    - open mode attributes (same as MSC
+ *                function open())
+ * RETURNS:
+ *      success:  the handle to the file/device
+ *      failure:  -1 and global variable errno set to
+ *                the error code returned by DOS.
+ * NOTE the far pointer to the filespec.
+   ----------------------------------------------------  */
+int open_file( char far *name, unsigned attr )
+{
+union REGS inregs, outregs;
+struct SREGS segs;
+unsigned ret_val;
+                    /* setup for DOS open call */
+  segs.ds = FP_SEG(name);
+  inregs.x.dx = FP_OFF(name);
+  inregs.h.ah = 0x3c;
+  inregs.x.cx = attr;
+                    /* DOS open */
+  int86x(0x21, &inregs, &outregs, &segs);
+
+  if( outregs.x.cflag )
+     {              /* open failed */
+     errno = outregs.x.ax;
+     ret_val = -1;
+     }
+  else              /* open successful */
+     ret_val = outregs.x.ax;
+
+  return(ret_val);
+}
+
+/* ----------------------------------------------------
+ *  CLOSE_FILE()
+ * use function 0x3e, int 0x21 to close a file/device
+ * PARAMETERS:
+ *      handle  - the handle of the open file/device
+ * RETURNS:
+ *      success:  zero
+ *      failure:  -1 and global variable errno set to
+ *                the error code returned by DOS.
+   ----------------------------------------------------  */
+int close_file( unsigned handle )
+{
+union REGS inregs, outregs;
+unsigned ret_val;
+                    /* setup for the DOS close call */
+  inregs.h.ah = 0x3e;
+  inregs.x.bx = handle;
+                    /* DOS close */
+  int86(0x21, &inregs, &outregs);
+                    /* failed close */
+  if( outregs.x.cflag )
+     {
+     errno = outregs.x.ax;
+     ret_val = -1;
+     }
+  else              /* successful close */
+     ret_val = 0;
+
+  return(ret_val);
+}
+

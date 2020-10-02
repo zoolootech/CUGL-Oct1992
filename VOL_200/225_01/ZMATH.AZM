@@ -1,0 +1,1130 @@
+ LIST C,P        ;this line must be first
+                 ;C = COM file output, P = single pass
+;copyright 1986 by Neil R. Koozer
+;                  Kellogg Star Rt. Box 125
+;                  Oakland, OR 97462
+;This code is hereby released to the public domain for unrestricted usage.
+;The only thing you may not do is to copyright it as your own or
+;restrict its unlimited usage in any way.
+
+;This file assembles under Z1.COM (public domain assembler)
+;To assemble, type Z1 ZMATH
+;The 2-character symbols starting with $ are psuedo-labels used in the
+;single-pass assembler Z1.COM
+;The psuedo-labels $A thru $Z are re-usable local labels for
+;forward references only.  $_ is similar but with a nesting behavior.
+;The rest of the psuedo-labels ($1, $@, etc)
+;are for backward references only.
+
+;The three principal routines, MULT, DIV, and SQRT, illustrate fast
+;Z80 code for double precision floating point operations.  These routines
+;use more memory than is customary in order to achieve high speed.
+;The example drivers at the end of this file illustrate how to call
+;the floating point routines.
+
+ ORG 100H
+OPER1 DW 0       ;force the following DS's to be stored in COM file
+ DS 6
+OPER2 DS 8
+RESULT DS 8
+SIGN DS 1
+NORM DS 1
+SAVESP DS 2
+
+;the routines MUL8, MUL16, MUL32, DIV8, DIV16, DIV32, and DIV56 are for
+;multiplying and dividing binary fractions (as opposed to binary integers).
+MUL8
+ XOR A         ;H = H * D
+ LD B,8
+$1
+ RR H
+ JR NC,$A
+ ADD A,D
+$A
+ RRA
+ DJNZ $1
+ LD H,A
+ RET NC
+ INC H         ;round
+ RET
+
+MUL16
+ LD C,H        ;HL = HL * DE
+ LD A,L
+ LD HL,0
+ CALL $+4
+ LD A,C
+M1
+ LD B,8
+$1
+ RRA
+ JR NC,$+3
+ ADD HL,DE
+ RR H
+ RR L
+ DJNZ $1
+ RET NC
+ INC HL        ;round
+ RET
+
+MUL32
+ LD C,H        ;HL,HL' = HL,HL' * DE,DE'
+ LD A,L
+ EX AF,AF'
+ LD HL,0
+ EXX
+    LD C,H
+    LD A,L
+    LD HL,0
+    EXX
+ CALL M1
+ EXX
+    LD A,C
+    EXX
+ CALL $_
+ EX AF,AF'
+ CALL $_
+ LD A,C
+$_
+$_
+ LD B,8
+$2
+ RRA
+ JR NC,$A
+ EXX
+    ADD HL,DE
+    EXX
+ ADC HL,DE
+$A
+ RR H
+ RR L
+ EXX
+    RR H
+    RR L
+    EXX
+ DJNZ $2
+ RET NC
+ EXX
+    INC L
+    JR NZ,$A
+    INC H
+$A
+    EXX
+ RET NZ
+ INC HL
+ RET
+
+$1
+ SUB D
+$2
+ SCF
+ DEC B
+ RET Z
+D1
+ RL C
+ ADD A,A
+ JR C,$1
+ SUB D
+ JR NC,$2
+ ADD A,D
+ OR A
+ DJNZ D1
+ RET
+
+DIV8           ;H = H / D
+ LD A,H
+ LD B,9
+ CALL D1
+ LD H,C
+ RET NC
+ INC H         ;rounding
+ RET
+
+$1
+ OR A
+ SBC HL,DE
+$2
+ SCF
+ DEC B
+ RET Z
+D2
+ RLA
+ ADD HL,HL
+ JR C,$1
+ SBC HL,DE
+ JR NC,$2
+ ADD HL,DE
+ OR A
+ DJNZ D2
+ RET
+
+DIV16          ;HL = HL / DE
+ LD B,9
+ CALL D2
+ LD C,A
+ LD B,3
+ CALL D2
+ LD L,C
+ LD C,A
+ LD A,H
+ LD H,L
+ LD B,5
+ CALL D1
+ LD L,C
+ RET NC
+ INC HL        ;rounding
+ RET
+
+$1
+ OR A
+$2
+ EXX
+    SBC HL,DE
+$3
+    EXX
+ SBC HL,DE
+ SCF
+ DEC B
+ RET Z
+D4
+ RL C
+ EXX
+    ADD HL,HL
+    EXX
+ ADC HL,HL
+ JR C,$1
+ LD A,H
+ CP D
+ JR C,$_
+ JP NZ,$2
+ LD A,L
+ CP E
+ JR C,$_
+ JR NZ,$2
+ EXX
+    SBC HL,DE
+    JR NC,$3
+    ADD HL,DE
+    EXX
+$_
+$_
+ OR A
+ DJNZ D4
+ RET
+
+DIV32          ;HL,HL' = HL,HL' / DE,DE'
+ LD B,9
+ CALL D4
+ DB 0FDH
+ LD H,C
+ LD B,8
+ CALL D4
+ DB 0FDH
+ LD B,H
+ PUSH BC
+ LD B,3
+ CALL D4
+ LD A,C
+ LD B,5
+ CALL D2
+ EXX
+    LD H,A
+    EXX
+ LD B,3
+ CALL D2
+ LD C,A
+ LD A,H
+ LD B,5
+ CALL D1
+ POP HL
+ LD A,C
+ EXX
+    LD L,A
+    JR C,$A
+$1
+    EXX
+ RET
+$A
+    INC L      ;rounding
+    JR NZ,$1
+    INC H
+    EXX
+ RET NZ
+ INC HL
+ RET
+
+$1
+ EXX
+$2
+    LD A,B
+    DB 0FDH
+    SUB H
+$3
+    LD B,A
+    SBC HL,DE
+    EXX
+ SBC HL,DE
+ SCF
+ DEC B
+ RET Z
+D5
+ RL C
+ EXX
+    SLA B
+    ADC HL,HL
+    EXX
+ ADC HL,HL
+ JR C,$1
+ LD A,H        ;do a compare to see if we should subtract
+ CP D
+ JR C,$_
+ JP NZ,$1
+ LD A,L
+ CP E
+ JR C,$_
+ JR NZ,$1
+ EXX
+    LD A,H
+    CP D
+    JR C,$_
+    JR NZ,$2
+    LD A,L
+    CP E
+    JR C,$_
+    JR NZ,$2
+    LD A,B
+    DB 0FDH
+    SUB H
+    JR NC,$3
+$_
+$_
+    EXX
+$_
+$_
+ OR A
+ DJNZ D5
+ RET
+
+$1
+ EXX
+$2
+    LD A,C
+    DB 0FDH
+    SUB L
+$3
+    LD C,A
+    LD A,B
+    DB 0FDH
+    SBC A,H
+    LD B,A
+    SBC HL,DE
+    EXX
+ SBC HL,DE
+ SCF
+ DEC B
+ RET Z
+D6
+ RL C          ;do a left shift
+ EXX
+    SLA C
+    RL B
+    ADC HL,HL
+    EXX
+ ADC HL,HL
+ JR C,$1
+ LD A,H        ;do a compare to see if we should subtract
+ CP D
+ JR C,$_
+ JP NZ,$1
+ LD A,L
+ CP E
+ JR C,$_
+ JR NZ,$1
+ EXX
+    LD A,H
+    CP D
+    JR C,$_
+    JR NZ,$2
+    LD A,L
+    CP E
+    JR C,$_
+    JR NZ,$2
+    LD A,B
+    DB 0FDH
+    CP H
+    JR C,$_
+    JR NZ,$2
+    LD A,C
+    DB 0FDH
+    SUB L
+    JR NC,$3
+$_
+$_
+$_
+    EXX
+$_
+$_
+ OR A
+ DJNZ D6
+ RET
+
+$2
+    EXX
+$1
+ LD A,C
+ SUB B
+$3
+ LD C,A
+ EXX
+    LD A,C
+    DB 0FDH
+    SBC A,L
+    LD C,A
+    LD A,B
+    DB 0FDH
+    SBC A,H
+    LD B,A
+    SBC HL,DE
+    EXX
+ SBC HL,DE
+ EX AF,AF'
+ SCF
+ RET
+D7_8
+ CALL $+3
+ CALL $+3
+ CALL $+3
+D7_1
+ RLA
+ EX AF,AF'
+ SLA C
+ EXX
+    RL C
+    RL B
+    ADC HL,HL
+    EXX
+ ADC HL,HL
+ JR C,$1
+COMP
+ LD A,H        ;do a compare to see if we should subtract
+ CP D
+ JR C,$_
+ JP NZ,$1
+ LD A,L
+ CP E
+ JR C,$_
+ JR NZ,$1
+ EXX
+    LD A,H
+    CP D
+    JR C,$_
+    JR NZ,$2
+    LD A,L
+    CP E
+    JR C,$_
+    JR NZ,$2
+    LD A,B
+    DB 0FDH
+    CP H
+    JR C,$_
+    JR NZ,$2
+    LD A,C
+    DB 0FDH
+    CP L
+    JR C,$_
+    JR NZ,$2
+    EXX
+ LD A,C
+ SUB B
+ JR NC,$3
+ EXX
+$_
+$_
+$_
+$_
+    EXX
+$_
+$_
+ EX AF,AF'
+ OR A
+ RET
+
+RSHIFT
+ SRL H
+ RR L
+ EXX
+    RR H
+    RR L
+    RR B
+    RR C
+    EXX
+ RR C
+ RET
+
+DIV56          ;HL,HL',BC',C = HL,HL',BC',C / DE,DE',IY,B
+ CALL D7_1     ;   divisor is preserved
+DIV55
+ PUSH BC       ;save divisor lsbyte
+ CALL D7_8
+ DB 0DDH
+ LD H,A
+ LD B,8
+ CALL D6
+ DB 0DDH
+ LD L,C
+ PUSH IX
+ LD B,8
+ CALL D5
+ DB 0DDH
+ LD H,C
+ LD B,8
+ CALL D4
+ DB 0DDH
+ LD L,C
+ PUSH IX
+ LD B,8
+ CALL D4
+ DB 0DDH
+ LD H,C
+ LD B,8
+ CALL D2
+ DB 0DDH
+ LD L,A
+ LD A,H
+ LD B,8
+ CALL D1
+ EXX
+    DB 0DDH
+    LD C,L
+    DB 0DDH
+    LD B,H
+    POP HL
+    EXX
+ POP HL
+ LD A,C
+ POP BC        ;restore divisor lsbyte
+ LD C,A
+ RET NC
+ INC C         ;rounding
+ RET NZ
+RIPPLE
+ EXX
+    INC C
+    JR Z,$A
+$1
+    EXX
+ RET
+$A
+    INC B
+    JR NZ,$1
+    INC L
+    JR NZ,$1
+    INC H
+    EXX
+ RET NZ
+ INC L
+ RET NZ
+ INC H
+ RET
+
+DOVER
+ LD A,7FH
+ DB 0FEH
+DUNDER
+ XOR A
+ LD B,A
+ LD A,(SIGN)
+ OR B
+ LD (IX+7),A
+ RLA
+ SRA A
+ PUSH IX
+ POP HL
+ LD B,7
+$1
+ LD (HL),A
+ INC HL
+ DJNZ $1
+ RET
+
+;floating point divide, 53-bit mantissa, 11-bit exponent
+DIV
+ LD A,(DE)     ;dividend exponent lo
+ INC DE
+ SUB (HL)      ;divisor exponent lo
+ INC HL
+ DB 0FDH
+ LD L,A
+ EX AF,AF'     ;save carry flag
+ LD A,(HL)     ;divisor exponent hi
+ AND 7
+ LD B,A
+ LD A,(DE)     ;dividend exponent hi
+ AND 7
+ LD C,A
+ EX AF,AF'     ;retrieve carry flag
+ LD A,C
+ SBC A,B
+ DB 0FDH
+ LD H,A
+ PUSH IY       ;save exponent
+ LD A,(DE)     ;dividend mantissa lsbyte
+ INC DE
+ AND 0F8H
+ LD C,A
+ LD A,(HL)     ;divisor mantissa msbyte
+ INC HL
+ AND 0F8H
+ LD B,A
+ LD (SAVESP),SP
+ LD SP,HL
+ EX DE,HL
+ POP IY        ;now get rest of divisor mantissa
+ EXX
+    POP DE
+    EXX
+ POP DE
+ LD SP,HL
+ EXX           ;now get rest of dividend mantissa
+    POP BC
+    POP HL
+    EXX
+ POP HL
+ LD SP,(SAVESP)
+ LD A,D        ;sign of divisor
+ XOR H         ;sign of dividend
+ AND 80H       ;clean the sign bit
+ LD (SIGN),A   ;sign of result
+ SET 7,D       ;make the implicit 1 explicit
+ SET 7,H       ;ditto
+ ;begin the divide
+ CALL COMP
+ RLA
+ LD (NORM),A   ;save normalization flag
+ RRA
+ JR C,$A
+ CALL D7_1
+$A
+ PUSH IX
+ CALL DIV55
+ POP IX
+ LD A,C
+ ADD A,4       ;rounding bit
+ LD C,A
+ LD DE,400H    ;exponent correction
+ JR NC,$A
+ CALL RIPPLE   ;do ripple carry because of rounding
+ JR NZ,$B
+ INC DE        ;norm flag (no right shift needed because it's all 0's)
+$A
+$B
+ RES 7,H       ;remove msbit
+ LD A,(SIGN)
+ OR H          ;append sign bit
+ LD (IX+7),A
+ LD (IX+6),L
+ POP HL        ;exponent
+ ADD HL,DE
+ LD A,(NORM)
+ RRA
+ JR C,$A
+ DEC HL
+$A
+ BIT 7,H
+ JP NZ,DUNDER  ;negative means underflow
+ BIT 3,H       ;see if overflow
+ JP NZ,DOVER
+ LD A,C        ;get lsbyte
+ AND 0F8H
+ OR H          ;append 3 hi bits of exponent
+ LD (IX+1),A
+ LD (IX+0),L
+ EXX
+    LD (IX+2),C
+    LD (IX+3),B
+    LD (IX+4),L
+    LD (IX+5),H
+    EXX
+ RET
+
+MAXDE
+ LD DE,0FFFFH
+ EXX
+    LD DE,0FFFFH
+    EXX
+ RET
+
+MAXHL
+ LD HL,0FFFFH
+ EXX
+    LD HL,0FFFFH
+    LD B,H
+    LD C,L
+    EXX
+ LD C,H
+ RET
+
+SQRT           ;floating point square root, 53-bit mantissa, 11-bit exp.
+ LD (SAVESP),SP
+ LD SP,HL
+ POP BC
+ EXX
+    POP BC
+    POP HL
+    EXX
+ POP HL
+ LD SP,(SAVESP)
+ PUSH DE       ;dest. addr.
+ LD D,B        ;save mantissa lo byte
+ LD A,B        ;get exponent hi byte
+ AND 7         ;clean exponent
+ ADD A,4       ;fix offset
+ RRA           ;divide by 2
+ RR C          ;carry = 'odd exp.'
+ LD B,A
+ PUSH BC       ;save exponent
+ EX AF,AF'     ;save 'exp odd' flag
+ LD A,D        ;get mantissa lsb
+ AND 0F8H
+ LD C,A
+ SET 7,H       ;make the implicit 1 explicit
+ CALL RSHIFT   ;halfX
+ EX AF,AF'
+ LD D,0D7H     ;Y seed = 1.68...
+ JR C,$A
+ CALL RSHIFT
+ LD D,98H      ;Y seed = 1.189...
+$A
+ PUSH BC
+ PUSH HL
+ CALL DIV8     ;H = halfX / Y
+ SRL D         ;D = Y / 2
+ LD A,H
+ ADD A,D
+ LD D,A        ;D = new Y
+ CALL C,MAXDE
+ POP HL
+ PUSH HL       ;HL = halfX
+ CALL DIV16    ;HL = halfX / Y
+ SRL D
+ RR E          ;DE = Y/2
+ ADD HL,DE
+ EX DE,HL      ;DE = new Y
+ CALL C,MAXDE
+ POP HL
+ PUSH HL
+ EXX
+    PUSH HL
+    EXX
+ CALL DIV32    ;HL,HL' = halfX / Y
+ SRL D
+ RR E
+ EXX
+    RR D
+    RR E       ;DE,DE' = Y/2
+    ADD HL,DE
+    EX DE,HL
+    POP HL
+    EXX
+ ADC HL,DE
+ EX DE,HL      ;DE,DE' = new Y
+ CALL C,MAXDE
+ POP HL
+ POP BC
+ CALL DIV56
+ SRL D
+ RR E
+ EXX
+    RR D
+    RR E
+    DB 0FDH
+    LD A,H
+    RRA
+    DB 0FDH
+    LD H,A
+    DB 0FDH
+    LD A,L
+    RRA
+    DB 0FDH
+    LD L,A
+    EXX
+ LD A,B
+ RRA
+ ADD A,C
+ LD C,A
+ EXX
+    LD A,C
+    DB 0FDH
+    ADC A,L
+    LD C,A
+    LD A,B
+    DB 0FDH
+    ADC A,H
+    LD B,A
+    ADC HL,DE
+    EXX
+ ADC HL,DE
+ CALL C,MAXHL
+ LD A,C
+ ADD A,4       ;rounding
+ LD C,A
+ CALL C,RIPPLE
+ CALL Z,MAXHL
+ RES 7,H
+ LD A,C
+ POP BC        ;exponent
+ AND 0F8H
+ OR B
+ LD B,A
+ EX DE,HL
+ POP HL        ;dest. addr.
+ LD SP,HL
+ PUSH DE
+ EXX
+    PUSH HL
+    PUSH BC
+    EXX
+ PUSH BC
+ LD SP,(SAVESP)
+ RET
+
+M7_8
+ CALL $A
+M7_7
+ CALL $B
+ CALL $+6
+ CALL $+3
+ CALL $+3
+$B
+$A
+ RRA
+ JR NC,$A
+M7_0
+ EX AF,AF'
+ LD A,C
+ ADD A,B
+ LD C,A
+ EXX
+ LD A,C
+ DEFB 0FDH
+ ADC A,L
+ LD C,A
+ LD A,B
+ DEFB 0FDH
+ ADC A,H
+ LD B,A
+ ADC HL,DE
+ EXX
+ ADC HL,DE
+M72
+ RR H
+ RR L
+ EXX
+ RR H
+ RR L
+ RR B
+ RR C
+ EXX
+ RR C
+ EX AF,AF'
+ RET
+$A
+ SRL H
+ RR L
+ EXX
+ RR H
+ RR L
+ RR B
+ RR C
+ EXX
+ RR C
+ RET
+
+M4
+ LD B,8
+$1
+ RRA
+ JR NC,$A
+ EXX
+ ADD HL,DE
+ EXX
+ ADC HL,DE
+$A
+ RR H
+ RR L
+ EXX
+ RR H
+ RR L
+ EXX
+ DJNZ $1
+ RET
+
+UNDER
+ LD A,D
+ AND 80H
+ JR $A
+OVER
+ LD A,D
+ OR 7FH
+$A
+ POP HL          ;dest. addr.
+ DEC HL
+ LD (HL),A
+ RLA
+ SRA A
+ LD B,7
+$1
+ DEC HL
+ LD (HL),A
+ DJNZ $1
+ RET
+
+MULT           ;floating point multiply, 53-bit mantissa, 11-bit exp.
+ PUSH DE
+ LD (SAVESP),SP
+ LD SP,HL
+ LD L,(IX+0)
+ LD A,(IX+1)
+ AND 7
+ LD H,A
+ POP BC
+ LD E,C
+ LD A,B
+ AND 7
+ LD D,A
+ ADD HL,DE     ;new exponent
+ EXX
+ POP IY
+ POP DE
+ EXX
+ POP DE
+ LD SP,(SAVESP)
+ PUSH HL
+ LD A,B
+ AND 0F8H
+ LD B,A
+ LD A,(IX+7)
+ XOR D
+ AND 80H
+ LD (SIGN),A
+ SET 7,D       ;make implicit 1 explicit
+;zero the accumulator
+ XOR A
+ LD C,A
+ EXX
+ LD C,A
+ LD B,A
+ LD L,A
+ LD H,A
+ EXX
+ LD L,A
+ PUSH BC
+
+ LD A,(IX+1)
+ RRA
+ RRA
+ RRA
+ LD H,A
+ XOR A
+ LD B,5
+$1
+ RR H
+ JR NC,$+3
+ ADD A,D
+ RRA
+ DJNZ $1
+ LD H,A
+
+ LD A,(IX+2)
+ LD B,8
+$1
+ RRA
+ JR NC,$+3
+ ADD HL,DE
+ RR H
+ RR L
+ DJNZ $1
+
+ LD A,(IX+3)
+ CALL M4
+
+ LD A,(IX+4)
+ CALL M4
+
+ LD C,(IX+5)
+ LD B,8
+$1
+ RR C
+ JR NC,$A
+ EXX
+ LD A,B
+ DEFB 0FDH
+ ADD A,H
+ LD B,A
+ ADC HL,DE
+ EXX
+ ADC HL,DE
+$A
+ RR H
+ RR L
+ EXX
+ RR H
+ RR L
+ RR B
+ EXX
+ DJNZ $1
+
+ LD C,(IX+6)
+ LD B,8
+$1
+ RR C
+ JR NC,$A
+ EXX
+ LD A,C
+ DEFB 0FDH
+ ADD A,L
+ LD C,A
+ LD A,B
+ DEFB 0FDH
+ ADC A,H
+ LD B,A
+ ADC HL,DE
+ EXX
+ ADC HL,DE
+$A
+ RR H
+ RR L
+ EXX
+ RR H
+ RR L
+ RR B
+ RR C
+ EXX
+ DJNZ $1
+
+ POP BC
+ LD A,(IX+7)
+ CALL M7_7
+ CALL M7_0     ;skip the test because ms bit is always 1
+
+ LD B,1        ;normalization counter
+ BIT 7,H
+ JR NZ,$A
+ DEC B
+
+;shift left to normalize
+ SLA C
+ EXX
+ RL C
+ RL B
+ ADC HL,HL
+ EXX
+ ADC HL,HL
+
+$A    ;round it to 53-bit precision instead of truncating
+ LD A,4
+ ADD A,C
+ LD C,A
+ JR NC,$_
+ CALL RIPPLE
+ JR NZ,$_
+ INC B         ;right shift not needed because it's all 0's
+$_
+$_
+ EX DE,HL
+ LD HL,SIGN
+ LD A,D
+ AND 7FH
+ OR (HL)
+ LD D,A
+
+ LD A,C
+ AND 0F8H
+ LD H,A
+ LD A,B        ;norm flag
+ POP BC        ;get exponent
+ ADD A,C       ;correct for norm.
+ LD C,A
+ LD A,0FCH     ;fix offset
+ ADC A,B
+ JP NC,UNDER
+ BIT 3,A
+ JP NZ,OVER
+ OR H
+ LD B,A
+ POP HL          ;dest. addr.
+ LD (SAVESP),SP
+ LD SP,HL
+ PUSH DE
+ EXX
+ PUSH HL
+ PUSH BC
+ EXX
+ PUSH BC
+ LD SP,(SAVESP)
+ RET
+
+MULTEST   ;a driver to do 1000 multiplies for timing purposes
+ LD BC,1000
+$1
+ PUSH BC
+    ;here is a segment which representys compiled code for a high level
+    ;statement like a = b * c
+    LD IX,OPER1   ;addr of one operand
+    LD HL,OPER2   ;addr of other operand
+    LD DE,RESULT+8
+    CALL MULT
+ POP BC
+ DEC BC
+ LD A,B
+ OR C
+ JR NZ,$1
+ RET
+
+;Here is a driver to do 1000 divides for timing purposes
+DIVTEST
+ LD BC,1000
+$1
+ PUSH BC
+    ;here is a segment which represents compiled code for a high level
+    ;statement like a = b / c
+    LD DE,OPER1   ;addr of dividend
+    LD HL,OPER2   ;addr of divisor
+    LD IX,RESULT
+    CALL DIV
+ POP BC
+ DEC BC
+ LD A,B
+ OR C
+ JR NZ,$1
+ RET
+
+;Here is an empty loop for comparison.  It loops 65536 times.
+EMPTY
+ LD BC,0
+$1
+ PUSH BC
+ POP BC
+ DEC BC
+ LD A,B
+ OR C
+ JR NZ,$1
+ RET
+
+;Here is a driver to do 1000 square roots for timing purposes
+SQRTTEST
+ LD BC,1000
+$1
+ PUSH BC
+    ;here is a segment which represents compiled code for a high level
+    ;statement like a = sqrt(b)
+    LD HL,OPER2   ;addr of operand
+    LD DE,RESULT+8
+    CALL SQRT
+ POP BC
+ DEC BC
+ LD A,B
+ OR C
+ JR NZ,$1
+ RET
+

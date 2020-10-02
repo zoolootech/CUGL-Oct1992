@@ -1,0 +1,176 @@
+
+(*
+        GuiMenu  --  Unit to Manage a Graphical Radio-Button Menu
+
+        Turbo Pascal 4 Unit
+
+        **************************************************
+        NOTE:   All compilations should have the boolean
+                evaluation option set to "short-circuit"
+        **************************************************
+
+        June 26, 1990  --  Michael Kelly  --  Version 1.01      *)
+
+Unit GuiMenu;
+
+Interface
+
+Uses Panel, PanelDrv, Graph, Mouse, Crt;
+
+    Type
+        PanelMenu = Array[1..MaxButton] of ButtonTag; { option strings }
+
+    Var
+        Driver, Mode    : Integer;
+        InGraphicsMode  : Boolean;
+
+(*
+ *  high level function to create graphics radio-button menu
+ *  and return user menu selection
+ *
+ *  returns:
+ *              -1 on error
+ *
+ *              user choice in range 1 to MaxButton on success
+ *)
+Function MainMenu(Var MenuChoices : PanelMenu) : Integer;
+
+(*
+ *  calls CloseGraph to restore video if InGraphicsMode = True
+ *)
+Procedure CloseMenu;
+
+Implementation
+
+(*
+ *  sets up graphics mode and draws screen background
+ *
+ *  returns:
+ *              True on success and sets InGraphicsMode to True
+ *
+ *              False on error
+ *)
+Function PrepScreen : Boolean;
+    Var
+        MaxX, MaxY, counter : Integer;
+	Ok		    : Boolean;
+
+Begin
+  If not InGraphicsMode then
+  Begin
+    DetectGraph(Driver, Mode);
+    Ok := (Driver = EGA) and (Mode = EGAHi);
+    If (not Ok) or (RegisterBgiDriver(@EgaVgaDriverProc) < 0) then
+    Begin
+      PrepScreen := False;
+      Exit;
+    End;
+    InitGraph(Driver, Mode, '');
+    If GraphResult <> GrOk then
+    Begin
+      PrepScreen := False;
+      Exit;
+    End;
+    InGraphicsMode := True;
+  End;
+  SetVisualPage(1);
+  SetColor(Blue);
+  MaxY := GetMaxY;
+  MaxX := GetMaxX;
+  For counter := 0 to MaxY do
+    Line(0, counter, MaxX, counter);
+  PrepScreen := True;
+End;
+(* PrepScreen *)
+
+(*
+ *  loads PanelDescriptor with screen coordinates, colors
+ *  and other data to define the appearance and configuration 
+ *  of the radio-button panel
+ *)
+Procedure LoadButtons(Var MyPanel : PanelDescriptor);
+    Var
+        butlen, xcoord, ycoord, k   : Integer;
+
+Begin
+  butlen := 10;
+  With MyPanel do
+  Begin
+    UpperLeftX := 100;
+    UpperLeftY := 50;
+    LowerRightX := 540;
+    LowerRightY := 300;
+    NumButtons := MaxButton;
+    CurrentButton := 1;
+    xcoord := UpperLeftX + Gap;
+    ycoord := UpperLeftY + Gap;
+    For k := 1 to MaxButton do
+    Begin
+      With ButtonStyle do
+      Begin
+	RadioButton[k].State := Up;
+	RadioButton[k].UpperLeftX := xcoord;
+	RadioButton[k].UpperLeftY := ycoord;
+	ycoord := ycoord + butlen + butlen;
+      End;  { With ButtonStyle }
+    End;
+    With ButtonStyle do
+    Begin
+      SideLength := butlen;
+      BorderWidth := 3;
+      HighLightEdge := LightCyan;
+      ShadowEdge := DarkGray;
+      Normal := Cyan;
+      TagHighlight := White;
+      TagNormal := Black;
+    End;  { With ButtonStyle }
+  End;  { With MyPanel }
+End;
+(* LoadButtons *)
+
+Function MainMenu(Var MenuChoices : PanelMenu) : Integer;
+    Var
+        Panel   : PanelDescriptor;
+        k       : Integer;
+
+Begin
+  LoadButtons(Panel);
+  For k := 1 to MaxButton do
+    Panel.ButtonStyle.RadioButton[k].Tag := MenuChoices[k];
+  If (not PrepScreen) or (not DrawPanel(Panel)) then
+  Begin
+    MainMenu := -1;
+    Exit;
+  End;
+  SetVisualPage(0);
+  MouseInit;
+  If MouseOn then
+    ToggleMouseVisibility;
+  Repeat
+    k := ButtonPress(Panel);
+  Until (k <> 0) and (MenuChoices[k] <> '');
+  If MouseVisible then
+  Begin
+    ToggleMouseVisibility;
+    MouseReset;
+  End;
+  MainMenu := k;
+End;
+(* MainMenu *)
+
+Procedure CloseMenu;
+Begin
+  If InGraphicsMode then
+  Begin
+    CloseGraph;
+    InGraphicsMode := False;
+  End;
+End;
+(* CloseMenu *)
+
+{ Initialization }
+
+Begin
+  InGraphicsMode := False;
+End.
+

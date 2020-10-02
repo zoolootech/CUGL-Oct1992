@@ -1,0 +1,177 @@
+BIOSLB Routine to interface 'C' to 'BIOS'	MACRO-80 3.31	29-Jun-79	PAGE	1
+
+
+    1	                                	TITLE	BIOSLB Routine to interface 'C' to 'BIOS'
+    2	                                	;
+    3	                                	;
+    4	                                	;	Anyone may use this (or not as they please)
+    5	                                	;	for whatever purpose they wish
+    6	                                	;	H.R.Moran Jr. 1/31/80
+    7	                                	;
+    8	                                	;++ **************************************************
+    9	                                	;
+   10	                                	; TO USE THIS ROUTINE:
+   11	                                	;
+   12	                                	;	M80 BIOSLB,BIOSLB=BIOSLB	...Microsoft 'M80'
+   13	                                	;	L80 BIOSYB,BIOSLB/N/E		...Microsoft 'L80'
+   14	                                	;	REN BIOS.CRL=BIOS.COM
+   15	                                	;
+   16	                                	;	BIOS.CRL WILL BE A 'BDS C' COMPATIBLE RELOCATABLE FILE
+   17	                                	;	WHICH CAN BE REQUESTED AT CLINK OR INTEGRATED
+   18	                                	;	INTO YOUR LIBRARY WITH CLIB
+   19	                                	;
+   20	                                	;	'BDS C' calling sequence samples
+   21	                                	;
+   22	                                	;#define WARMBOOT 0
+   23	                                	;#define CONST 1
+   24	                                	;#define CONIN 2
+   25	                                	;#define CONOUT 3
+   26	                                	;#define LIST 4
+   27	                                	;#define PUNCH 5
+   28	                                	;#define READER 6
+   29	                                	;#define HOME 7
+   30	                                	;#define SELECT_DISK 8
+   31	                                	;#define SET_TRACK 9
+   32	                                	;#define SET_SECTOR 10
+   33	                                	;#define SET_DMA 11
+   34	                                	;#define READ_SECTOR 12
+   35	                                	;#define WRITE_SECTOR 13
+   36	                                	;
+   37	                                	;
+   38	                                	;char *dma_address;
+   39	                                	;char c;
+   40	                                	;int bios();  /* both B and C regs are loaded from 2'nd param */
+   41	                                	;	      /*            A reg  is  returned as fn value */
+   42	                                	;int track,sector;
+   43	                                	;	.
+   44	                                	;	.
+   45	                                	;	.
+   46	                                	;  bios(SELECT_DISK,disk-'A');
+BIOSLB Routine to interface 'C' to 'BIOS'	MACRO-80 3.31	29-Jun-79	PAGE	1-1
+
+
+   47	                                	;  bios(SET_TRACK,track);
+   48	                                	;  bios(SET_SECTOR,sector);
+   49	                                	;  bios(SET_DMA,dma_address);
+   50	                                	;
+   51	                                	;
+   52	                                	;	if( (c=bios(READ_SECTOR,DUMMY_ARGUMENT)) != 0 )
+   53	                                	;	  exit(puts("\nError in reading absolute sector"));
+   54	                                	;	.
+   55	                                	;	.
+   56	                                	;	.
+   57	                                	;
+   58	                                	;	while(1) {
+   59	                                	;	  if( (c=bios(CONST,DUMMY_PARAMETER) )	/* keystruck */
+   60	                                	;	    break;
+   61	                                	;	  .
+   62	                                	;	  .
+   63	                                	;	  .
+   64	                                	;	  } /* end while */
+   65	                                	;	c = bios(CONIN,DUMMY_PARAMETER);	/* get the char */
+   66	                                	;	if( c >= ' ' )				/* it is visable */
+   67	                                	;	  bios(CONOUT,c);
+   68	                                	;	else {			/* make it visable */
+   69	                                	;	  bios(CONOUT,'^');
+   70	                                	;	  bios(CONOUT,c +'A');
+   71	                                	;	  }
+   72	                                	;
+   73	                                	;
+   74	                                	;
+   75	                                	;-- **************************************************
+   76	                                	;
+   77	  03F7                          MAGIC	EQU	3F7H		;'BDS C' PARAMETER PASSING BUFFER
+   78	                                	;
+   79	  0000'                         	ASEG
+   80	                                	ORG	100H
+   81	                                	.PHASE	0
+   82	                                	;
+   83	  0000    42 49 4F D3           ZERO:	DC	'BIOS'		;MODULE NAME
+   84	  0004    0205                  	DW	BIOSHEAD	;LOCATION OF LABEL 'BIOSHEAD' IN FILE
+   85	  0006    80                    	DB	80H		;END OF DIRECTORY ENTRIES
+   86	  0007    022A                  	DW	FINIS - 100H	;POINTER TO NEXT AVAIL LOCATION IN FILE
+   87	  0009                          	DS	(512 -($-ZERO))	;PAD REST OF DIRECTORY
+   88	  0200                          	DS	5		;RESERVED FOR 'CLIB'
+   89	                                	;
+   90	                                	.DEPHASE
+   91	                                	;
+   92	                                	PAGE
+BIOSLB Routine to interface 'C' to 'BIOS'	MACRO-80 3.31	29-Jun-79	PAGE	1-2
+
+
+   93	  0305                          
+   94	                                	;
+   95	                                	; THE BIOS() CODE HEADER ENTRY
+   96	                                	;
+   97	                                	.PHASE	$-100H
+   98	                                	;
+   99	                                BIOSHEAD:
+  100	  0205    00                    	DB	0		;NO EXTERNAL 'BDS C' ROUTINES NEEDED
+  101	  0206    001E                  	DW	BIOSSTOP-BIOS	;LENGTH OF THIS ROUTINE
+  102	                                	;
+  103	                                	.DEPHASE
+  104	                                	;
+  105	                                	; THE BODY OF BIOS()
+  106	                                	;
+  107	                                	.PHASE	0
+  108	                                	;
+  109	  0000    C5                    BIOS:	PUSH	B		;SAVE TH 'BDS C' STACK POINTER
+  110	  0001    21 0019               	LXI	H,BIOSBACK	;INTERMEDIATE RETURN ADRESS
+  111	  0004    E5                    	PUSH	H		;STACK IT
+  112	  0005    2A 03F9               	LHLD	MAGIC + 2	;HL = PARAMETER TO PASS TO BIOS
+  113	  0008    44                    	MOV	B,H
+  114	  0009    4D                    	MOV	C,L		;BC = PARAMETER TO PASS TO BIOS
+  115	  000A    3A 03F7               	LDA	MAGIC		; A = FUNCTION NUMBER
+  116	  000D    57                    	MOV	D,A
+  117	  000E    87                    	ADD	A
+  118	  000F    82                    	ADD	D		; A = (FUNCTION NUMBER)*3
+  119	  0010    2A 0001               	LHLD	1		; HL = .(BIOS JUMP TABLE)
+  120	  0013    85                    	ADD	L
+  121	  0014    6F                    	MOV	L,A
+  122	  0015    8C                    	ADC	H
+  123	  0016    95                    	SUB	L
+  124	  0017    67                    	MOV	H,A		; HL = (BIOS JUMP TABLE)[FUNCTION NUMBER]
+  125	  0018    E9                    	PCHL			; GO TO BIOS ROUTINE, RETURN TO 'BIOSBACK'
+  126	                                	;
+  127	                                BIOSBACK:
+  128	  0019    26 00                 	MVI	H,0
+  129	  001B    6F                    	MOV	L,A
+  130	  001C    C1                    	POP	B		;RESTORE THE 'BDS C' STACK POINTER
+  131	  001D    C9                    	RET			;TO THE 'BDS C' ROUTINE WHICH INVOKED 'BIOS'
+  132	                                	;
+  133	                                BIOSSTOP:
+  134	                                	;
+  135	                                	; RELOCATION PARAMETERS
+  136	                                	;
+  137	  001E    0001                  	DW	1			;NUMBER OF NEEDED RELOCATION PARAMS
+BIOSLB Routine to interface 'C' to 'BIOS'	MACRO-80 3.31	29-Jun-79	PAGE	1-3
+
+
+  138	  0020    0002                  	DW	BIOS + 2		;POINTER TO ADDRESS NEEDING RELOC
+  139	                                	.DEPHASE
+  140	                                FINIS:	END	ZERO
+BIOSLB Routine to interface 'C' to 'BIOS'	MACRO-80 3.31	29-Jun-79	PAGE	S
+
+
+Macros:
+
+Symbols:
+BIOS	0000 	BIOSBA	0019 	BIOSHE	0205 	BIOSST	001E 
+FINIS	032A 	MAGIC	03F7 	ZERO	0000 	
+
+
+
+No  Fatal error(s)
+
+
+
+BIOS	  101	  109#	  138
+BIOSBA	  110	  127#
+BIOSHE	   84	   99#
+BIOSST	  101	  133#
+FINIS	   86	  140#
+MAGIC	   77#	  112	  115
+ZERO	   83#	   87	  140
+
+ ADDRESS NEEDING RELOC
+  139	                             

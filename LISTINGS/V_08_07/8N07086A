@@ -1,0 +1,179 @@
+#include <dos.h>
+#include <conio.h>
+
+void show_char();
+int	 poll_kb();
+int  readch();
+int  push_kb();
+int  kb_count();
+int  kb_peek();
+void kb_clear();
+
+/* testing the KB functions */
+void main(void)
+	{
+	int x, y;
+	for(x = 0; x < 12; x++)     /* Put some characters into the */
+		push_kb(1,32 + x);  /* buffer. For most applications */
+                                    /* the scan codes abre not important */
+				    /* but for extended char it must have */
+                                    /* the scan code and 0 for the char */
+	push_kb(59,0);
+
+	printf("\n%d key(s) in the buffer. \n\n",kb_count());
+	printf("Key number %d is '%c' \n\n", 5, kb_peek(5));
+	printf("Key number %d is '%c' \n\n", 7, kb_peek(7));
+
+	show_char();
+	}
+
+
+
+void show_char(void)     /* This is just a test function */
+	{
+	int c;
+	while((c = readch()) != 59 << 8)     /* 27 = ESC */
+		{
+		putch(c);
+		printf(" the code for this is %d \n",c);
+		}
+	putch(c);
+	printf(" the code for this is %d \n",c);
+
+	}
+
+
+
+
+int poll_kb(void)   /* returns 0 if the buffer is empty */
+       	{   /* else ascii code or scan codes * 256 for extended */
+	int head, tail;
+	unsigned int code;
+
+	head = peek(0x40, 0x1A);
+	tail = peek(0x40, 0x1C);
+
+	if(head == tail)
+		return(0);
+
+	code = (peek(0x40,head) & 0xFF);
+	if(code == 0)
+		code = (peek(0x40,head) & 0xFF00);		/* extended char */
+
+	if(head < 60)
+		poke(0x40,0x1A,(head += 2));
+	else
+		poke(0x40,0x1A,(head = 30));
+
+	return(code);
+	}
+
+
+
+int readch(void)   /* keep checking buffer until something is */
+	{          /* there can also be done with "kbhit()" */
+	int code;
+	while((code = poll_kb()) == 0)
+		{	/* can run any fast function here */
+		}
+	return(code);
+	}
+
+
+
+/* key = the key code	  ascii = asc code */
+int push_kb(int key, int ascii)
+	{
+	unsigned int code;
+	int head, tail;
+
+
+	head = peek(0x40, 0x1A);
+	tail = peek(0x40, 0x1C);
+
+	code = (key << 8) + ascii;
+    poke(0x40,tail,code);
+
+	if(tail < 60)
+		{
+		tail += 2;
+		if(tail == head)
+			return(0);
+		poke(0x40,0x1C,tail);
+		}
+	else
+		{
+		tail = 30;
+		if(tail == head)
+			return(0);
+		poke(0x40,0x1C,tail);
+		}
+	return(1);
+	}
+
+
+
+
+
+int kb_count(void)
+	{
+	int head, tail;
+	int count;
+
+	head = peek(0x40, 0x1A);
+	tail = peek(0x40, 0x1C);
+
+	if(head == tail)	/* buffer is empty */
+		return(0);
+
+	if(head > tail)     /* adjust for the roll over */
+		tail += 32;
+	count = (tail - head) / 2;
+
+	return(count);
+	}
+
+
+
+ /* "kb_peek" will return the ascii code of */
+ /* the number of keys back specified.      */
+ /* If it is an extended char the scan code */
+ /* will be left shifted 8 and returned     */
+int kb_peek(int key_number)	  
+	{                 
+	int head, tail, code;
+	/* see if key_number of items are in the buffer */
+	if(key_number > kb_count())
+		return(0);
+
+	head = peek(0x40, 0x1A);
+	tail = peek(0x40, 0x1C);
+
+	/* advance the desired number of words */
+	head += (key_number - 1) * 2;    
+	if(head > 60)
+		head -= 32;      /* if head needs to wrap around */
+
+	code = (peek(0x40,head) & 0xFF);
+	if(code == 0)
+		code = (peek(0x40,head) & 0xFF00);   
+		/* extended scan sent instead of ascii */
+
+	return(code);
+	}
+
+
+
+
+
+
+void kb_clear(void)  /* empty buffer data */
+	{
+	int head, tail;
+
+	head = peek(0x40, 0x1A);
+	tail = peek(0x40, 0x1C);
+
+	poke(0x40,0x1C,head);   /* set tail = head */
+	}
+

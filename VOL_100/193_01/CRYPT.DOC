@@ -1,0 +1,334 @@
+12/9/85
+INTRODUCTION
+
+The "Infinite Key Encryption System" article in issue #94 (August 
+1984)  of Dr.  Dobbs contains an excellent tutorial on Encryption 
+Systems.  At  the  time it was published,  I read  it  with  only 
+passing  interest.  About six months ago,  I developed a need for 
+this type of utility and so begins my story.  The  first thing  I 
+did was write a shell cypher program (cypher.c-Listing #1). Since 
+I  had already written a generic file copy utility which  allowed 
+modifications  during transfer,  it was a simple matter to modify 
+the argument passing to include multiple keys and add a  cypher() 
+function  call to encrypt the file with a simple exclusive-or'ing 
+algorithm (cypher1.c-Listing #2).  While this method did  encrypt 
+the  file  and  allowed for easy decryption (using the  same  run 
+string),   there   were  definite   detectable  patterns  in  the 
+resultant  file.  These patterns,  a function of the key  period, 
+were  easily found in areas of repetitive  characters.  (  eg.  a 
+string of asterisks or spaces, the hex 1A's at the end of a file, 
+etc  )  Another drawback to this scheme is the inability to  pass 
+nonprintable  characters in the runstring,  thereby limiting  the 
+number  of encryption tokens.  Sooooo it was back to the  drawing 
+board.
+
+Rereading  the aforementioned article with  renewed  interest,  I 
+gained  an  insight  into the methods and  schemes  of  practical 
+modern  cyphers.  I don't intend to cover these concepts,  so  if 
+you're  interested  or lacking in the basics,  avail yourself  of 
+that article, and those in its  bibliography.
+
+While the tutorial portion was excellent,  I disagreed with a few 
+points on implementation.  First,  there was the code itself  and 
+the intimation that assembly language was required for reasonable 
+speed.  The  MAC Assembler is only used with CP/M-80 and I wanted 
+more portable source,  so I decided to write it in C.  Second,  I 
+felt  that a random key  of some prime length could be  generated 
+solely from the original key (cypher2.c - Listing  #3).  Although 
+some  keys  may  work better than others,  a  means  to  evaluate 
+results  can  render this method very  functional.  And  last,  I 
+disagreed  with the need for passing information in the encrypted 
+file.  It  seemed  unnecessary and cumbersome.  My  goal  was  to 
+develop  a  method  that  worked entirely  from  the  run-string.  
+Overall  I  must commend the work done by John  Thomas  and  Joan 
+Thersites  for  presenting  such a complete  treatment  of  thier 
+topic.
+
+
+THE ULTIMATE CYPHER
+
+The  ultimate cypher is like the ultimate weapon.  No matter  how 
+sophisticated,  an  anti-weapon  (anti-cypher) can eventually  be 
+developed, IF there is a need. The user must make some judgements 
+regarding  needs  and  level  of  protection.  The  2  algorithms 
+mentioned  are relatively simple to implement and use.  The  same 
+keys  will  encypher  or decypher the file and  key  order  isn't 
+important.  The experts (and it becomes quite obvious) point  out 
+that  the  strongest  cypher  schemes utilize  a  combination  of 
+transposition and substitution.  However,  when  transposition is 
+added,  the  order  of decyphering must be the exact  reverse  of 
+encyphering.  The  last cypher  module contains an algorithm  for 
+transposing  the file tokens along with the random generated  key 
+encryption scheme (cypher3.c-Listing #4).  This is a small  price 
+to pay for the added security.
+
+
+THE NEED FOR TOOLS
+
+As  I  progressed in my quest of the   ultimate   cypher/decypher 
+algorithm,  I  became  aware of the deficiencies of the  standard 
+CP/M utilities at my disposal, so I developed my own.
+
+The first tool,  fv.c (file view - Listing #5),  replaced my CP/M 
+dump.com.  Dump provides a continual display on screen of the hex 
+contents of a file.   Since most encryption is performed on  text 
+files, it is most beneficial to include the ascii form along with 
+the  hex.  And,  since most algorithms use an exclusive-or as the 
+means of encryption it was easy enough to dump two files and  the 
+exclusive-ored difference between them.
+
+The next tool,  fstat.c (file statistics - Listing #6) calculates 
+and  display  the statistical characteristics of the  file.  This 
+tool scans the file, counting the occurances of each element, and 
+provides a 16 x 16 display of the distribution of characters.  It 
+calculates  mean,   median,  mode  and  range  of  the  character 
+distribution and displays it's histogram.  As one might  suspect, 
+each  file type  has a definite signature.  In fact after limited 
+use  of  this  utility the user will be  able  to  recognize  the 
+histogram patterns for text, Wordstar, and many other files.
+
+While experimenting with various schemes, it becomes obvious that 
+the most difficult file to disguise is one that contains a single 
+byte for every entry or some sequential scheme.  So the next task 
+was  developing a utility,  makef.c (make file - Listing #7),  to 
+generate  a known sequential or uni-character file of  some  user 
+defined length.
+
+Finally the last utility,  sp.c (search pattern - Listing #7),  I 
+needed  was  a  search scheme to look  for  repetitive   patterns 
+occuring  within  a file and provide some  information  regarding 
+location and depth of the repetition. Also included is the option 
+to   calculate the delta characteristics of a file to search  for 
+repetitive mathematical as well character sequences.
+
+
+CYPHER.C - LISTING #1
+
+The cypher shell program is provided for use as is,  or for  user 
+modification.  It contains the argument passing and file handling 
+source  code  needed to copy from an existing file to a new  file 
+via  a  16 Kbyte buffer with a cypher function  being  called  to 
+encrypt  the  file (If the file is less than 16k the  input  file 
+name  may be the same as the output thus destroying the  original 
+contents)  A  16K buffer was chosen because it should fit  easily 
+with  most  compilers.   This  value  may  be  adjusted  to  meet 
+individual  compiler needs.  Any of the 3 algorithms that  follow 
+may be included or linked with this shell. Caution is recommended 
+to  ensure that the function name is appropriate for  the  method 
+you  use.  The  keys  are  passed in the CP/M  command  line  and 
+therefore  limited by its length as well as the argument  passing 
+capability of the C-compiler.
+
+
+CYPHER1.C - LISTING #2
+
+This minimal cypher algorithm uses an exclusive-or'ing scheme  to 
+encrypt  the file with the keys passed.  If the user employs keys 
+of some prime length and performs multiple passes the results can 
+be  quite difficult to decypher.  It's quick and easy to use  and 
+provides  an excellent means to test the basics of  cryptography. 
+Since the keys are limited to only include printable  characters, 
+we  don't  take full advantage of the 256 codes available  for  a 
+byte.
+
+CYPHER2.C - LISTING #3
+
+Now  something a little more difficult for the code  breaker,  an 
+algorithm  which grew out of the previous listing and generates a 
+prime length key for each user key passed. One of 50 prime values 
+(betweem  1009  and 1999) is selected as a function  of  the  key 
+passed.  The  prime key is then generated using a simple summing-
+anding-exclusive oring algorithm and the file is encrypted  using 
+this  new  key.  If  two  or more  keys  are  used,  this  method 
+guarantees  a  cypher  period in excess of  1,000,000,  which  is 
+significantly larger than most text files.
+
+The  key generation scheme is based entirely on the original  key 
+length  and its contents and I fail to see how this can be worked 
+backwards to regain the original, especially if multiple keys are 
+used.  Some  keys will generate shorter periods within the  prime 
+length,  but  this is easily tested with the  tools  provided.  I 
+welcome feedback or suggestions for improving this algorithm.
+
+
+CYPHER3.C - LISTING #4
+
+Adding  chaos to disorder has probably driven many a code-cracker 
+to drink.  And this is just what we're trying to accomplish.  The 
+cypher2.c  algorithm  was  modified slightly to  test  the  first 
+character of each key passed.  If the key begins with a dash (-), 
+then  the  buffer is transposed by some value between 2  and  17. 
+Else,  it  encrypts  the file using the  algorithm  as  described 
+above.  This  simple but very effective method puts the icing  on 
+the  cake,  however it completely reverses the decryption method. 
+If the original runstring was
+
+          cypher file.txt file.new ABRAHAM -2 LINCOLN -3
+
+then the decryption runstring would be 
+
+          cypher file.new file.doc -3 LINCOLN -2 ABRAHAM
+
+
+FV.C - LISTING #5
+
+As I mentioned earlier,  this is my replacement for the CP/M dump 
+utility.  It  allows  the user to pass one or two  files  in  the 
+runstring  for  display.  If  one  file name  is  passed  in  the 
+runstring,  the output appears much like the CP/M dump.com output 
+with  the  addition of the ascii display.  If two file names  are 
+passed,  the output consists of a line from file one, a line from 
+file  two and a third line containing the exclusive oring of  the 
+two files (labeled "dif"). In all cases, non printable characters 
+are  replaced with a carrot ( ^ ) in the ascii portion and  nulls 
+are  replaced  with an  equal sign ( =  ),  to  readily  identify 
+comparisons between two files. The comparative output is purely a 
+byte  for  byte operation and no attempt is made to  realign  the 
+file  to comparing characters as in a compare utility.  The first 
+file length controls display length.  Figures 1 shows an  example 
+of  screen output from the runstring <fv cypher1.c>  and Figure 2 
+from the runstring <fv cypher1.c cypher2.c>
+
+
+FSTAT.C - LISTING #6
+
+Descriptive  statistics is the name of the game here and as  with 
+any statistical evaluation, one must be brutally honest (at least 
+with oneself) to draw an objective conclusion. The entire file is 
+read,  16Kbytes at a time. As we read, the occurrences of each of 
+the 256 tokens is accumulated and we obtain the sum of all  bytes 
+as well as the min and max token occurrences.  The sum is divided 
+by  the total characters to obtain the mean,  the max becomes the 
+mode  and the range is the difference between min and  max.  Next 
+the  256  byte array is copied to a second array  and  sorted  to 
+obtain the median.
+
+With   all  calculations  completed,   the  numerical  values  of 
+occurrences  are displayed in a 16 X 16 display  for  evaluation. 
+The  statistical  characteristics are displayed and  the  program 
+pauses  to  await some keyboard entry to display  the  histogram. 
+Depressing  the space bar prints a scaled horizontal histogram of 
+16 groups (0-15, 16-31, . . ., 241-256).
+
+The ideal random file (which is what we'd like to see) would have 
+the following characteristics:
+
+     mean      127.5
+     mode      not critical
+     range     < 20% of the total bytes divided by 256
+     median    at midpoint of range
+
+     histogram reasonably flat
+
+Remember I said ideal !  This is where judgement and self honesty 
+come  into  play.  A  sequential file will  display  these  ideal 
+characteristics as well as a true random file.  Also,  files that 
+look  too  good statistically should be just as suspect as  those 
+that don't. Figure 3 is the output produced by this article as is 
+and Figure 4 when its encrypted with the runstring
+
+    cypher crypt-tb.art new frederick -1 angelo -2 scacchitti -3
+
+In   all  fairness, I  must  state  that  other  possibly  better 
+statistical  methods  are better for  determining  randomness.  I 
+opted  to use descriptive statistic because they are more  easily 
+understood and implemented.
+
+
+MAKEF.C - LISTING #7
+
+A simple enough utility but an absolutely necessity if we are  to 
+evaluate  encryption schemes.  A filename of n 256 byte blocks is 
+created and if a value between 0 and 255 is passed the file  will 
+be  filled  with  this value.  If no value (or one that  is  non-
+numeric) is passed, each block contains a sequential count from 0 
+to 255.  An added benefit to this program is its ability to clean 
+a disk.  The user simply creates a file the size of the remaining 
+disk  space  and then erases it.  This results in all  free  disk 
+space being set as the user defined.
+
+
+SP.C - LISTING #8
+
+Along  with the fstat utility this one confirms or  denys  (maybe 
+even  questions) the statistical data we received.  A brute force 
+search  method is used to find matching character strings in  the 
+file.  By default,  the search starts at the first character  and 
+searches the first 128 bytes for a match of 4 or more characters. 
+If  the  match depth exceeds the block size it is  searching  the 
+program  will return to CP/M after displaying the match data.  If 
+not it will continue in its search. Block size to search, minimum 
+depth  of  comparison  and  starting  point  in  the  buffer  may 
+optionally be changed in the runstring. 
+
+Also  if  an  additional argument is passed ( one more  than  the 
+three mentioned) the software converts the data in the buffer  to 
+delta-form.  That is,  element[n] = element[n] - element[n+1] for 
+all data in the buffer.  After the conversion is made the  search 
+scheme  continues as before.  This feature allows us to  evaluate 
+the file for some mathematical sequence.
+
+One drawback to this program as it stands is the limiting  factor 
+of the buffer size.  No attempt is made to search beyond it. This 
+shouldn't matter for most text files.
+
+
+SMALL C, CP/M, AND MISCELLANEOUS
+
+chkkbd() is a function which enables us to stop display (program) 
+activity  if Control-S is depressed.  Following with a  Control-C 
+causes  a  return to CP/M and any other character will allow  the 
+program to continue. This function calls a bdos() function so the 
+user  may have to modify this for other  operating  systems.  The 
+getchx()  function  is a non-echoing version of  getchar()  which 
+uses BDOS function 6. getchar() may be substituted for getchx().
+
+calloc(), malloc() and cfree() functions are used for the dynamic 
+allocation and deallocation of memory. My allocation/deallocation 
+scheme  is  of the simple variety where the programmer  must  pay 
+heed to order or pay the consequences.  The source code contained 
+here should work with most implementations of these functions.
+
+Printer  output may be obtained from any of the programs by using 
+the  CP/M  Control  P function.  It was the  simplest  method  to 
+implement.
+
+Math  functions  (especially  floating point) are  difficult  for 
+Small-C.  There  are several routines in the fstat.c source  that 
+perform the necessary long and fractional calculations.  It's not 
+necessary  to  change these however,  if your  compiler  supports 
+floats and longs, have at it.
+
+Each program will display the usage if entered without the proper 
+number of arguments in the run string.  Also, since most software 
+users  begin  to feel uncomfortable when their  computer  is  off 
+somewhere  performing exotic calculations,  each program displays 
+status to the screen thus putting these fears at rest.  
+
+
+CYPHER BENCHMARKS
+
+My version, written in Small C, is generic enough to adapt to any 
+C  compiler.  Running   on  a  4 Mhz Z80 based  CP/M  system,  it 
+benchmarks  at less than 1K/sec for file I/O,  16K/sec  for  file 
+transposition  and  approximately 4K/sec per key for  encryption. 
+Key  encryption is difficult to benchmark since it  includes  the 
+time  to generate the prime length key which varies from 1009  to 
+1999 characters in length.
+
+
+AND FINALLY
+
+These tools should be employed with a measure of common sense.  A 
+strong  cypher  is  only indicated when  both  statistically  and 
+pattern-whise  indicated.  (And it doesn't hurt to view the  file 
+either) My intent in developing these utilities was to enable the 
+cryptographer-programmer  a means to evaluate the strength of  an  
+encryption  scheme  as  well as the  resistance  of   schemes  to 
+"cracking".  However  (like  most  tools) these can be  used  for 
+destructive as well as constructive purposes.  The author assumes 
+no  liability  for  illegal  use of  these  tools  and  sincerely 
+believes  they  can only result in  stronger  encryption  schemes 
+being developed.
+
+

@@ -1,0 +1,101 @@
+
+(*
+        TITLE:          Mouse Library Unit Test Driver;
+        FILENAME:       TRYMOUSE.PAS;
+        REQUIRES:       MOUSELIB.TPU;
+        COMPILER:       Turbo Pascal V.4.0+;
+
+        WARNINGS:       1)  It's important to check the interrupt
+                        vector used by the mouse driver.  If
+                        you call mouse_reset and no driver is
+                        loaded, the machine may hang!  See the
+                        Boolean Function MouseDriverLoaded for
+                        one way to do this.
+
+                        2)  Make sure to compile with the Boolean
+                        Evaluation Option set to "short-circuit"
+                        ( {$B-} ).
+
+*)
+
+Program TryMouse;
+{$B-}
+Uses Dos, Crt, MouseLib;
+
+    Const
+        MouseInterrupt : Byte = $33;
+
+    Var
+        Nbuttons,
+        x,
+        oldx,
+        y,
+        oldy,
+        count,
+        junk,
+        MouseButton,
+        ButtonStatus    : Integer;
+
+Function MouseDriverLoaded : Boolean;
+    Var
+        Vector      : Pointer;
+        OpCode      : ^Byte;
+
+Begin
+    GetIntVec(MouseInterrupt, Vector);
+    If (Vector = Nil) then  { if mouse vector empty then driver isn't loaded }
+    Begin
+        MouseDriverLoaded := False;
+        Exit;
+    End;
+    OpCode := Vector;
+    If OpCode^ = $CF then  { "IRET" opcode indicates no mouse driver loaded }
+    Begin
+        MouseDriverLoaded := False;
+        Exit;
+    End;
+    MouseDriverLoaded := True;
+End;
+
+Procedure TrackMouse;
+Begin
+    MouseButton := RightMouseButton;
+    clrscr;
+    WriteLn('   ... Click Right Mouse Button or Press Any Key ...');
+    mouse_show;
+
+    x := 0;
+    y := 0;
+    oldx := 0;
+    oldy := 0;
+
+    Repeat
+        ButtonStatus := mouse_get_pos(x, y);
+        x := x shr 3;
+        y := y shr 3;
+        If (x <> oldx) or (y <> oldy) then
+        Begin
+            GoToXY(1, 3);
+            mouse_hide;
+            WriteLn('X = ', x:2);
+            WriteLn('Y = ', y:2);
+            mouse_show;
+        End;
+        oldx := x;
+        oldy := y;
+    Until ((mouse_button_press(x,y,count,MouseButton) and RIGHT_BUTTON <> 0)
+    or (KeyPressed));
+
+    mouse_hide;
+    junk := mouse_reset(Nbuttons);
+End;
+
+        (*  MAIN  *)
+Begin
+    If (not MouseDriverLoaded) or (mouse_reset(Nbuttons) = 0) then
+    Begin
+        WriteLn('No Mouse!');
+        Halt;
+    End;
+    TrackMouse;
+End.

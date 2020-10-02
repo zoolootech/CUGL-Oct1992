@@ -1,0 +1,56 @@
+
+#include        <dos.h>
+#include        "netbios.h"
+
+/************************************************************
+* init_netbios - test NetBIOS presence & register application
+* Parameters: name (in) - application name for network use
+* Returns: Name table number if successful, else:
+*           NO_NETBIOS  if NetBIOS not installed or 
+*                       adapter failure
+*          INVALID_NAME if name is already in use or 
+*                      invalid
+* Notes: The name table number is required for datagram 
+*        support but not for connection oriented support.
+*        Application names longer than 15 characters are 
+*        truncated. The first three characters of the name 
+*        should not be "IBM".
+* History: Original code by William H. Roetzheim
+************************************************************/
+
+unsigned int init_netbios(char *name)
+{
+   int i;
+   unsigned long   int_vector;
+   struct net_control_block    ncb;
+
+   /***** start by testing for NetBIOS installation *****/
+   /* is interrupt vector initialized? */
+   int_vector = (unsigned long) getvect(0x5C);
+   if ((int_vector == 0x0000) || (int_vector == 0xF000))
+   {
+        /* no interrupt handler installed */
+        return NO_NETBIOS;
+   }
+   /* is NetBIOS responding? */
+   init_ncb(&ncb);
+   ncb.command = 0xFF;       /* an invalid command */
+   int_netbios(&ncb);
+   if (ncb.retcode != 0x03)  /* error, invalid command */
+   {
+      return NO_NETBIOS;
+   }
+   /* now attempt to register name on network */
+   init_ncb(&ncb);
+   for (i = 0; i < 15; i++)
+   {
+       if (name[i] == 0) break;
+       ncb.l_name[i] = name[i++];
+   }
+   ncb.command = NCB_ADD_NAME;
+   if (ncb.retcode != 00) return INVALID_NAME;
+   else return ncb.number;
+}
+
+
+

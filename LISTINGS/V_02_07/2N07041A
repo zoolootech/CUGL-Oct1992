@@ -1,0 +1,231 @@
+/*
+ * Support routines for the Animated Cursor Demo Program
+ * Written by Alex Leavens, for ShadowCat Technologies
+ *
+ * Created: 10/May/91
+ * Revised: 12/May/91
+ */
+
+
+#include <WINDOWS.H>
+#include "CURSOR.H"
+ 
+/*-------------------------- Local variables ----------------------*/
+    
+BOOL    whirling;               /* Cursor spinning or not */
+WORD    whichWatch;             /* Current watch value */
+
+WORD    speed;                  /* How fast to go... */
+
+/*-------------------------- Function prototypes ------------------*/
+
+void FAR PASCAL         Whirly(BOOL);
+void FAR PASCAL         SetCursorBusy(void);
+void NEAR PASCAL        DisableMenuEntries(HWND);
+void NEAR PASCAL        CheckSpeedMenu(HWND, WORD);
+
+/******************************
+ *
+ * Quit()
+ *   Quits the demo program
+ *
+ */
+ 
+    BOOL FAR PASCAL
+QuitFunc(HWND           hWnd,
+         unsigned       message,
+         WORD           wParam,
+         LONG           lParam)
+{
+    PostMessage(hWnd, WM_CLOSE, 0, 0L);
+    return TRUE;
+}
+
+/************************
+ *
+ * SetSpeed()
+ *   Sets the speed to the desired setting
+ *
+ */
+
+    BOOL FAR PASCAL
+SetSpeed(HWND hWnd, unsigned message,
+       WORD wParam, LONG lParam)
+{
+    static int speeds[4] = { 1000, 600, 400, 200 };
+    speed = speeds[wParam-IDM_Speed1];
+
+    DisableMenuEntries(hWnd);   /* Uncheck all speed entries */
+    CheckSpeedMenu(hWnd, wParam);
+    return TRUE;
+}
+
+/*******************************
+ *
+ * Animate()
+ *   Plays the cursor animation back at the currently
+ * selected speed.
+ */
+
+    BOOL FAR PASCAL
+Animate(HWND            hWnd,
+        unsigned        message,
+        WORD            wParam,
+        LONG            lParam)
+{
+    int         i;
+    WORD        j;
+    WORD        k;
+    WORD        foo;
+
+    Whirly(TRUE);
+
+    for (i = 0; i < 50; i++)
+    {
+        foo = 0;
+        
+        for (j = 0; j < speed; j++)
+        {
+            for (k = 0; k < speed; k++)
+            {
+                foo++;
+            }
+        }
+        Whirly(TRUE);
+    }
+
+    Whirly(FALSE);
+
+    return TRUE;
+}
+
+/***********************************
+ *
+ * HandleCursorSet()
+ *   Handles the message when Windows wants to set the cursor.
+ *
+ * Arguments:
+ *      hWnd    - handle to the window that the message is destined for
+ *      message - what the message is
+ *      wParam  - points to the window handle that contains the cursor
+ *      lParam  - in the loword: hit test code
+ *                in the hiword: mouse message number
+ *
+ * Returns:
+ *      TRUE if we processed the event
+ *      the return from DefWindowProc() if Windows handled the event
+ *  
+ */
+
+    long FAR PASCAL
+HandleCursorSet(HWND     hWnd,
+                unsigned message, 
+                WORD     wParam, 
+                LONG     lParam)
+{
+    int hitTest;
+    
+    if (wParam != MainhWnd)     /* If not our window, then don't change */
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    
+    hitTest = LOWORD(lParam);   /* Get cursor position within window */
+
+    if (hitTest != HTCLIENT)    /* If not in client area, let
+                                 * Windows handle it.
+                                 */
+        return DefWindowProc(hWnd, message, wParam, lParam);
+
+    if (whirling)               /* Are we spinning the stopwatch? */
+        return TRUE;            /* If yes, don't let Windows change the */
+    else                        /* cursor, otherwise, let Windows 
+                                 * handle the message.
+                                 */
+        return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+/************************
+ *
+ * Whirly()
+ *   Animates the busy cursor, and updates the index into which
+ * image we'll need to use next.
+ *
+ */
+
+    void FAR PASCAL
+Whirly(BOOL hitWhirly)
+{
+    if (hitWhirly)
+        whirling = TRUE;
+    else
+    {
+        whirling = FALSE;
+        return;
+    }
+
+    SetCursorBusy();
+
+    whichWatch++;
+
+    if (whichWatch > 7)
+        whichWatch = 0;
+}
+
+/*******************
+ *
+ * SetCursorBusy()
+ *   Sets the cursor to one of 8 possible images of a stopwatch;
+ * when done in sequence, the stopwatch appears animated.
+ *
+ */
+
+    void FAR PASCAL
+SetCursorBusy()
+{
+    HCURSOR     loadCur;
+    static char cursorName[] = "WATCH ";
+
+    if(whichWatch >= 8)
+        whichWatch  = 0;
+    cursorName[5]   = '1' + whichWatch;
+
+    loadCur = LoadCursor(hInst,cursorName);
+    if (loadCur != NULL)
+        SetCursor(loadCur);
+}
+/************************
+ *
+ * DisableMenuEntries()
+ *   Unchecks all of the speed settings in the menu
+ *
+ */
+
+    void NEAR PASCAL
+DisableMenuEntries(HWND hWnd)
+{
+    HMENU       hMenu;          /* Menu handle... */
+
+    hMenu = GetMenu(hWnd);      /* Get handle to the menu */
+
+    CheckMenuItem(hMenu, IDM_Speed1, MF_UNCHECKED);
+    CheckMenuItem(hMenu, IDM_Speed2, MF_UNCHECKED);
+    CheckMenuItem(hMenu, IDM_Speed3, MF_UNCHECKED);
+    CheckMenuItem(hMenu, IDM_Speed4, MF_UNCHECKED);
+}
+/**************************
+ *
+ * CheckSpeedMenu()
+ *   Checks the requested speed menu entry
+ *
+ */
+
+    void NEAR PASCAL
+CheckSpeedMenu(HWND     hWnd,
+               WORD     entry)
+{
+    HMENU       hMenu;          /* Menu handle... */
+
+    hMenu = GetMenu(hWnd);      /* Get handle to the menu */
+
+    CheckMenuItem(hMenu, entry, MF_CHECKED);
+}              
+

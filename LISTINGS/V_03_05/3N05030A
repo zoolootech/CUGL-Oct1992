@@ -1,0 +1,66 @@
+#define MAIN
+#include <dos.h>
+#include <string.h>
+#include "windows.h"    /* This isn't required ... It was convenient */
+/*
+******************************************************************
+Title:      PIPEDOS.C - DOS Component of Pipe Interface
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /AL /Gs /Zi /c PIPEDOS.C
+            cl /AL /Gs /Zi /c PIPEFUNC.C
+            link /CO PIPEDOS PIPEFUNC;
+******************************************************************
+*/
+
+BOOL PASCAL PipeSetup(void);
+WORD PASCAL PipeAllocateSelector(WORD segment);
+void PASCAL PipeFreeSelector(WORD selector);
+BOOL PASCAL PipeCallWindowsProc(WORD message, WORD wParam, LONG lParam);
+
+struct _AppInfo
+{
+    BOOL BusyFlag;
+    char Buffer[128];
+}
+AppInfo;
+
+int main(int argc, char *argv[])
+{
+    WORD  selector;
+    LPSTR protectedModePtr;
+    union REGS regs;
+
+    if (PipeSetup() == TRUE)  /* Find Version & Entrypoint of Pipe */
+    {
+        AppInfo.BusyFlag = TRUE;
+        strcpy(AppInfo.Buffer, "These are the contents of the real mode buffer!");
+
+        /* Windows cannot use real mode addresses ... so we need to allocate
+           a protected mode GDT selector */
+
+        selector         = PipeAllocateSelector(HIWORD(&AppInfo));
+        protectedModePtr = (LPSTR) MAKELONG(LOWORD(&AppInfo), selector);
+
+        PipeCallWindowsProc(WM_USER,                    /* This function calls the */
+                            _fstrlen(AppInfo.Buffer), /* Pipe ... which calls the */
+                            (LONG) protectedModePtr);   /* Windows Proc */
+
+        /* You cannot do a PipeFreeSelector() until you're certain that the
+           Windows proc has used it ... otherwise, you'll get a UAE. Have
+           the Windows proc set a flag in the buffer you're passing to it
+           which signifies completion. */
+
+        while (AppInfo.BusyFlag == TRUE)
+            {
+	   	kbhit();			/* Gotta do Something... */
+		regs.x.ax = 0x1680;		/* WINDOWS API */
+		int86(0x2F, &regs, &regs);	/* Release Time Slice */
+	    }
+
+        PipeFreeSelector(selector);
+    }
+    else
+        printf("Pipe Not Found\n");
+}

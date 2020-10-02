@@ -1,0 +1,165 @@
+
+/*
+** Small-C Compiler Version 2.0
+**
+** Portions Copyright 1982 J. E. Hendrix
+**
+** Converted to 8088/PCDOS by D. R. Hicks, et al
+** Symbol tables modified for up to 2-D  - D. Lang
+**
+** Macro Definitions
+*/
+ 
+/*
+** compile options
+*/
+#define SEPARATE    /* compile separately                 */
+/* #define NOCCARGC /* no calls to CCARGC                 */
+/* #define HASH     /* use hash search for macros         */
+#define CMD_LINE    /* comand line run option             */
+/* #define DYNAMIC  /* allocate memory dynamically        */
+#define TAB  9      /* put out tabs of this value         */
+#define UPPER       /* force symbols to upper case        */
+ 
+/*
+** machine dependent parameters
+*/
+#define BPW      2  /* bytes per word                     */
+#define LBPW     1  /* log2(BPW)                          */
+#define SBPC     1  /* stack bytes per character          */
+#define STKFRSZ  4  /* stack frame header size in bytes   */
+#define ERRCODE  errno /* I/O system error code           */
+ 
+/*
+**    symbol table format
+*/
+#define IDENT       0
+#define TYPE        1
+#define CLASS       2
+#define STATUS      3
+#define OFFSET      4
+#define NDIM        6    /* Number of dimensions if array */
+#define CDIM        7    /* Size of the column dimension  */
+#define NAME        9
+#define OFFSIZE     (NDIM-OFFSET)
+#define SYMAVG      14
+#define SYMMAX      18
+ 
+/*
+**    symbol table parameters
+*/
+#define NUMLOCS     50 /* room for 50 locals (up from 25) */
+#define STARTLOC    symtab
+#define ENDLOC      (symtab+(NUMLOCS*SYMAVG))
+#define NUMGLBS     210         /* was 200 */
+#define STARTGLB    ENDLOC
+#define ENDGLB      (ENDLOC+((NUMGLBS-1)*SYMMAX))
+#define SYMTBSZ     NUMLOCS*SYMAVG + NUMGLBS*SYMMAX
+ 
+/*
+** System wide name size   (for symbols )
+*/
+#define NAMESIZE    9
+#define NAMEMAX     8
+ 
+/*
+** possible entries for "IDENT"
+*/
+#define LABEL       0
+#define VARIABLE    1
+#define ARRAY       2
+#define POINTER     3
+#define FUNCTION    4
+ 
+/*
+** possible entries for "TYPE"
+**    low order 2 bits make type unique within length
+**    high order 2 bits give length of object
+*/
+/*      LABEL       0              */
+#define CCHAR       (1<<2)
+#define CINT        (BPW<<2)
+ 
+/*
+** possible entries for "CLASS"
+*/
+/*      LABEL       0              */
+#define STATIC      1
+#define PUBLIC      2
+#define EXTERNAL    3
+#define AUTOMATIC   4
+ 
+/*
+** possible entries for "STATUS" (bit significant)
+*/
+#define DECLARED    128  /* symbol is explicitly declared */
+#define USED        64   /* symbol is referenced */
+ 
+/*
+**  "switch" table
+*/
+#define SWSIZ       (2*BPW)
+#define SWTABSZ     (25*SWSIZ)
+ 
+/*
+** "while" statement queue
+*/
+#define WQTABSZ     30
+#define WQSIZ        3
+#define WQMAX       (wq+WQTABSZ-WQSIZ)
+ 
+/*
+** entry offsets in while queue
+*/
+#define WQSP        0
+#define WQLOOP      1
+#define WQEXIT      2
+ 
+/*
+**  literal pool
+*/
+#define LITABSZ     700
+#define LITMAX      (LITABSZ-1)
+ 
+/*
+**  input line
+*/
+#define LINEMAX     160
+#define LINESIZE    161
+ 
+/*
+** output staging buffer size
+*/
+#define STAGESIZE   1500
+#define STAGELIMIT  (STAGESIZE-1)
+ 
+/*
+**  macro (define) pool
+*/
+#ifdef HASH
+#define MACNBR      90
+#define MACNSIZE    990      /* 90*(NAMESIZE+2)  */
+#define MACNEND     (macn+MACNSIZE)
+#define MACQSIZE    450      /* 90*5             */
+#else
+#define MACQSIZE    1250
+#endif
+#define MACMAX      (MACQSIZE-1)
+ 
+/*
+**  statement types
+*/
+#define STIF        1
+#define STWHILE     2
+#define STRETURN    3
+#define STBREAK     4
+#define STCONT      5
+#define STASM       6
+#define STEXPR      7
+#define STDO        8    /* compile "do" logic      */
+#define STFOR       9    /* compile "for" logic     */
+#define STSWITCH    10   /* compile "switch/case/default" */
+#define STCASE      11
+#define STDEF       12
+#define STGOTO      13   /* compile "goto" logic    */
+

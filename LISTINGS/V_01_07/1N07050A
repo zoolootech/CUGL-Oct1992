@@ -1,0 +1,96 @@
+
+
+;********************************************************
+;* NBLIBA.ASM -- NETBIOS related assembly language code.
+;*
+;*    Copyright 1990 Tom Jensen
+;********************************************************
+
+DGROUP	GROUP	_DATA,STACK
+	ASSUME	CS:_TEXT,DS:DGROUP,SS:DGROUP
+
+_DATA	SEGMENT WORD PUBLIC 'DATA'
+	EXTRN	_IFlag:WORD
+_DATA	ENDS
+
+STACK	SEGMENT PARA STACK 'STACK'
+STACK	ENDS
+
+_TEXT	SEGMENT WORD PUBLIC 'CODE'
+
+;********************************************************
+;* NbCall -- Execute a NETBIOS call.
+;*
+;*  Entry:  ncb  = pointer to Network Control Block
+;********************************************************
+
+	PUBLIC	_NbCall
+_NbCall PROC	NEAR
+	push	bp
+	mov	bp,sp
+	push	es
+
+	mov	bx,[bp+4]	;Load es:bx with ncb
+	mov	ax,ds		;Assumes small model
+	mov	es,ax
+	int	5Ch		;Call NETBIOS
+	and	ax,0FFh 	;isolate error code (al)
+
+	pop	es
+	pop	bp
+	ret
+_NbCall ENDP
+
+;********************************************************
+;* IPost -- General purpose Post routine for NETBIOS
+;*
+;*  Not called directly, interrupt service routine
+;********************************************************
+
+	PUBLIC	_IPost
+_IPost	PROC	NEAR
+	push	ax
+	push	ds
+
+	mov	ax,DGROUP
+	mov	ds,ax
+	mov	ax,1
+	mov	_IFlag,ax
+
+	pop	ds
+	pop	ax
+	iret
+_IPost	ENDP
+
+;********************************************************
+;* SetPostAddr -- Store address of post routine in NCB
+;*		  and clear post interrupt flag.
+;*
+;*  Entry:  Far pointer to Post address within NCB
+;********************************************************
+
+		PUBLIC	_SetPostAddr
+_SetPostAddr	PROC	NEAR
+	push	bp
+	mov	bp,sp
+	push	es
+
+;	Load es:bx with post addr
+	les	bx,[bp+4]
+
+;	Store address of _IPost
+	lea	ax,cs:_IPost
+	mov	es:[bx],ax
+	mov	ax,cs
+	mov	es:[bx+2],ax
+
+	mov	_IFlag,0	;Clear interrupt flag
+
+	pop	es
+	pop	bp
+	ret
+_SetPostAddr	ENDP
+
+_TEXT	ENDS
+	END
+

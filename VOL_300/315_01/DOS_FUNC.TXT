@@ -1,0 +1,101 @@
+
+DOCUMENTATION OF DOS_FUNC.C
+
+Documentation dated, 6/89, updated 11/89.
+Program and documentation Copyright (c) 1989, E.R.I.  All rights reserved.
+
+INTRODUCTION
+     DOS_FUNC.C is my source file to support PC-DOS software interrupts or
+functions that were built up from PC-DOS interrupts.
+
+DOS_FUNC.C EXTERNALLY-VISIBLE FUNCTIONS
+     The externally-visible functions of DOS_FUNC.C are declared in DOS_FUNC.H.
+You may #include that file to declare these functions.
+
+FUNCTION: count_files()
+TYPE: int
+ARGUMENTS: one character string
+
+     count_files(filespec) counts the number of files that match the filespec
+template, which follows the standard DOS conventions.  For example,
+i=count_files("*.*"); would return the 	total number of files in the default
+directory.  It is useful for dynamically allocating string pointers for the
+get_dir() function below (q.v.).  See my WDIR.C for an example of this kind
+of program usage.
+
+
+FUNCTION: del_fhandle()
+TYPE: int
+ARGUMENTS: one character string
+
+     del_fhandle(filespec) deletes all files that conform to the filespec
+template, which follows standard DOS conventions.  Thus,
+del_fhandle("A:\FOO\*.C"); would delete all files with the extension ".C" from
+the A: drive subdirectory FOO.  The function returns a flag value 1 if a file
+could not be deleted, 0 if file(s) were deleted or no matching files were found.
+
+
+
+FUNCTION: disk_space()
+TYPE: long int
+ARGUMENTS: one int
+
+     disk_space(drive) returns the number of bytes available on the disk
+specified by drive.  drive is a flag variable with the following significance: 0
+means the default drive, 1 means drive A:, 2 means B:, etc.  This function was
+written to deal with a very unpleasant bug in the ITEX library function,
+saveim().  That function will tell you that an image file was successfully
+written, even if there was insufficient disk space to write the file.  That is,
+saveim() will only tell you whether an image file write was INITIATED
+sucessfully, not whether it was completed properly.  You should always verify
+that there is sufficient space on a disk before writing an image.  If you like,
+you can use safe_save() for that purpose (see FILEMAIN.C for details).
+
+
+FUNCTION: fget_time_date()
+TYPE: void
+ARGUMENTS: two character strings
+
+     fget_time_date(filespec,timedate); gets the time and date of creation
+(or last change) of the filespec file, and writes it into the timedate
+string. The format is: MM-DD-YY HH:MM.SS, where MM is month, DD is day, 
+YY is year, HH is hour, MM is minutes, and SS is seconds.  The timedate
+string length is <= 18 characters (only minutes and seconds are filled
+out to two characters if they are less than 10).  If the filespec file
+does not exist, timedate returns all 0s.  I use fget_time_date() to make
+sure that the image file associated with a scotoma map has not changed.
+That is, if a new file is created using the same file name, the time
+and date will be different, so I will be able to detect the error and
+not map a scotoma onto the wrong image.
+
+
+FUNCTION: fname_unused()
+TYPE: int
+ARGUMENTS: one character string
+
+     fname_unused(filespec) determines whether a file already exists that uses
+the name and path specified by filespec. This is useful for avoiding mistakenly
+creating a file that has the same name as an existing file, which automatically
+deletes the previous file under DOS.  I use this function in all my file writes
+(including safe_save() in FILEMAIN.C). fname_unused() returns 0 if the file
+already exists, 1 otherwise.
+
+
+
+FUNCTION: get_dir()
+TYPE: int
+ARGUMENTS: one character string, one pointer to an array of strings, and one
+int.
+
+     i=get_dir(filespec, fnames, max_files) gets a directory of files that 
+conform to the FILESPEC template, and writes their names into the FNAMES array.
+MAX_FILES is the size of the FNAMES array: this routine will not generate more
+than MAX_FILES file names.  This routine is used in the get_file() function of
+menu.c. NOTE WELL: get_dir() malloc()s space for the FNAMES pointers, depending
+on the actual length of the file names. IT DOES NOT free() that space after 
+usage. You must free() the space malloc()ed by get_dir() when you are through
+using the FNAMES strings. WARNING: make sure to free() only the space that was
+actually malloc()ed. That is, if you allow for 100 pointers and get_dir() only
+uses 20, only free() FNAMES[0] to FNAMES[19]. get_dir() returns the number of
+strings actually used: use that value to determine how many strings to free().
+

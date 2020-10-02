@@ -1,0 +1,217 @@
+/*
+ * Lexical Analyzer for C Library Driver
+ *    - evaluates C chars, strings, ints, and floats
+ *    - accepts unquoted chars and strings of printing characters
+ */
+
+ascii    = [\0-\177];          /* Any ASCII character */
+white    = [\n\r\t ];          /* The white spaces */
+sign     = [-+];			   /* Numeric signs */
+digit    = [0-9];              /* The digits */
+hexdigit = [0-9A-Fa-f];        /* The hexadecimal digits */
+hexflag  = [Xx];			   /* Inidcator of a hexadecimal constant */
+expflag  = [Ee];			   /* Inidcator of a floating exponent */
+
+t_atom = [!-~];                  /* All the printing characters */
+text   = [!#-&(-/:-~](t_atom)*;  /* Text can't start with a digit, " or ' */
+
+e_particle   = "\\" ascii;    /* An escaped ascii character */
+s_particle   = [^\\"];        /* Anything besides an escape or a quote */
+c_particle   = [^\\'];        /* Anything besides an escape or an apostrophe */
+
+c_atom = e_particle | c_particle; /* Anything but end of char */
+s_atom = e_particle | s_particle; /* Anything but end of string */
+
+string = '"' s_atom*  '"';
+char   = "'" c_atom*  "'";
+
+%{
+#include "std.h"
+#include "clib.h"
+
+TEXT yytext[100];
+INTEGER yyival;
+FLOAT yyfval, pow();
+%}
+%%
+
+ARG			   {return(ARG);}
+PRINTF		   {return(PTF);}
+ISLOWER        {return(ILO);}
+EXIT           {return(EXT);}
+
+[-]*(digit)(hexflag)*(hexdigit)* { 
+	   {register TEXT *p = yytext; 
+	    BOOLEAN minus = FALSE;
+	    INTEGER base;
+
+        gettoken(yytext, sizeof(yytext));
+        yyival = 0;
+        if(*p == '-') {
+            ++p;
+            minus = TRUE;
+        }
+		base = 10;
+		if(*p == '0') {
+			++p;
+	        if(*p == 'X' || *p == 'x') {
+				++p;
+				base = 16;
+	        } else
+	        	base =  8;
+		}
+        do {
+            yyival = base*yyival + hex(*p);
+        } while(*++p);
+        if(minus) yyival = -yyival;
+		printf("\nLEX/ICON: %s is %d (decimal)\n", yytext, yyival);
+        return(ICON);
+        }}
+
+[-]*(digit)*"."*(digit)*expflag*sign*digit* {{
+        register TEXT *p = yytext; 
+		FLOAT divisor = 10.0, multiplier = 0.0;
+		BOOLEAN minus = FALSE, expminus = FALSE;
+		BOOLEAN decimal = FALSE, exponent = FALSE;
+
+        gettoken(yytext, sizeof(yytext));
+        yyfval = 0.0;
+        if(*p == '-') {
+            ++p;
+            minus = TRUE;
+        }
+
+        do {
+            switch(*p) {
+            case '.': decimal = TRUE; 
+            		  break;
+
+			case 'e':
+			case 'E': exponent = TRUE;
+					  if(*(p+1) == '-' || *(p+1) == '+')
+					  	  expminus = (*++p == '-') ? TRUE : FALSE;
+					  break;
+
+            default : if(!decimal && ! exponent) {
+                          yyfval = 10. * (yyfval) + (*p - '0');
+                          break;
+                       } else if(!exponent) {
+                          yyfval = yyfval + (*p - '0')/divisor;
+                          divisor *= 10.;
+                          break;
+                       } else
+                    	  multiplier = 10. * multiplier + (*p - '0');
+            }
+        } while (*++p);
+
+            if(minus) yyfval = -yyfval;
+            if(expminus) multiplier = -multiplier;
+		    if(exponent) yyfval = yyfval * pow(10., multiplier);
+		    printf("\nLEX/FCON: %s is %f\n", yytext, yyfval);
+            return(FCON);
+        }}
+
+text  {
+       gettoken(yytext, sizeof(yytext));
+	   if(strlen(yytext) == 1) {
+	       printf("\nLEX/CCON: '%s'\n", yytext);
+           return(CCON);
+       } else {
+		  printf("\nLEX/SCON: \"%s\"\n", yytext);
+          return(SCON);
+	   }	
+      }
+
+string  {
+          gettoken(yytext, sizeof(yytext));
+          strcpy(yytext, yytext+1);
+          yytext[strlen(yytext)-1] = NULL;
+		  descape(yytext);
+		  printf("\nLEX/SCON: \"%s\"\n", yytext);
+          return(SCON);
+        }
+
+char  {
+       gettoken(yytext, sizeof(yytext));
+       strcpy(yytext, yytext+1);
+       yytext[strlen(yytext)-1] = NULL;
+	   descape(yytext);
+	   printf("\nLEX/CCON: '%s'\n", yytext);
+       return(CCON);
+      }
+
+white(white)*    {return(LEXSKIP);}
+
+%%
+
+lexgetc(){
+    static BOOLEAN newline = TRUE;
+    register int c;
+
+    if(newline)
+        printf("%s>", "C Lib");
+
+    if((c = getc(lexin)) == '\n')
+        newline = TRUE;
+    else
+        newline = FALSE;    
+
+    return(c);
+}
+
+/*
+** Translate escape sequences in a character string
+*/
+descape(str)
+register STRING str;
+{
+	    register STRING s;
+        COUNT i;
+
+	    for(s = str; *str; s++, str++) {
+
+			if(*str != '\\')
+			    *s = *str;
+            else if (0 <= (i = ndex("'\"bnrtf", *++str)))
+                *s = "'\"\b\n\r\t\f"[i];
+            else if (isdigit(*str)) { register BYTE d;
+                *s = *str - '0';
+                for (i=0; (d = *(str+1)) && isdigit(d) && i < 3; i++, str++)
+                        *s = (*s << 3) + d - '0';
+			}
+        }
+	    *s = '\0';
+}
+
+/*
+** Find the index of a character in a string
+*/
+INTEGER ndex(str, chr)
+register STRING str;
+CHARACTER chr;
+{
+	register COUNT i;
+
+	for(i = 0; *str; i++, str++)
+		if(*str == chr)	return(i);
+	return(-1);
+}
+
+/*
+** Convert a hex digit (ASCII)
+*/
+INTEGER hex(c)
+register CHARACTER c;
+{
+        if (isdigit(c))
+                return (c - '0');
+        else if ('a' <= c && c <= 'f')
+                return (c + 10 - 'a');
+        else if ('A' <= c && c <= 'F')
+                return (c + 10 - 'A');
+        else
+        		return(0);
+}
+         if (i == T_EOL && !is_eof
+                                        && *linep == 0) {
+        

@@ -1,0 +1,91 @@
+/*
+ *  LISTING 2
+ *
+ *  bcache.h
+ *
+ *  Header for block cache routines using
+ *  M/LFRU algorithm.
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ */
+
+#ifndef __BCACHE_H
+#define __BCACHE_H
+
+#ifndef __STDIO_H
+#include <stdio.h>
+#endif
+
+typedef unsigned long   ulong;
+typedef struct cchdr far chdr_t;  //block hdr object
+typedef void far bufp_t;          //buffer contents
+typedef void far idnt_t;          //cache id type
+
+/* Block buffer header. This immediately precedes each
+ * block buffer in memory. Total memory required for
+ * each block is therefore:
+ *       (sizeof(struct cchdr) + bsiz) bytes
+ */
+
+struct  cchdr {
+    chdr_t *next;   //next block header
+    chdr_t *prev;   //prev block header
+    size_t stat;    //block status
+    idnt_t *idnt;   //cache id for proc()
+    ulong  bnum;    //block number
+    ulong  acc;     //access count
+    char bufp;      //&bufp == buffer start
+    };
+
+/* Cache descriptor type. Storage for one of these is
+ * allocated by the application for each cache opened.
+ */
+typedef struct {
+    idnt_t *idnt;  //cache id (matches cchdr.idnt)
+    int bsiz;      //block length in bytes
+    int bmax;      //max number blocks in cache
+    ulong  hits;   //bc_search() finds
+    ulong  miss;   //bc_search() misses
+    ulong  adds;   //number calls to bc_addnew()
+                   //block processing function ...
+    void (*proc)(idnt_t *, ulong, bufp_t *);
+    chdr_t *mfru;  //mfru (newest) block
+    chdr_t *lfru;  //lfru (oldest) block
+    chdr_t *head;  //-> allocated cache memory
+    size_t user1;  //user-defined data areas
+    size_t user2;
+    } BCACHE;      //BCACHE object
+
+#define MARK    1      //mark blocks for processing
+#define RELEASE 0      //release (unmark) for reuse
+#define ALLOCATE    0  //allocate memory
+#define DEALLOCATE  1  //deallocate memory
+#define GROUND  ((chdr_t *) -1)     //end of chain
+#define BHDR_SIZE   sizeof(struct cchdr)
+#define BLOCK_PTR(type,hp) ((type *) &(hp->bufp))
+
+//Function return values ( >= 0 ) ....
+#define BC_NOTFOUND     1   //block not found
+#define BC_NOERROR      0   //no error
+
+//Function error values ( < 0 ) ....
+#define BC_NOBLOCKS     -1  //need >= 2 blocks
+#define BC_NOMEMORY     -2  //insufficient memory
+
+//prototypes ......
+int bc_open( BCACHE *c, int bmax,
+             int bsize, void (*proc)(), idnt_t *idnt);
+int bc_alloc( BCACHE *c, int flag );
+int bc_search( BCACHE *c, ulong bnum, bufp_t **bufptr);
+int bc_insert( BCACHE *c, chdr_t *p );
+int bc_addnew( BCACHE *c, ulong bnum, bufp_t **bufptr);
+int bc_mark( BCACHE *c, ulong bnum, size_t flag );
+int bc_flush( BCACHE *c );
+int bc_free( BCACHE *c );
+int bc_setalloc( int (*user_alloc)() );
+
+#endif   // __BCACHE_H
+
+/* ---- End of File -------------------------------- */

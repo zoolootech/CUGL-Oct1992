@@ -1,0 +1,511 @@
+;	BDS `C' Profiler - Assembly Language portion
+
+;	Copyright (c) 1983 by Kevin B. Kenny.
+;	Released to the BDS `C' Users' Group for non-commercial distribution.
+
+;	This file contains the assembly-language functions needed by the BDS
+; `C' profiler program.
+
+;	Functions included:
+
+;	superv	chain	nexecl
+
+	MACLIB	"BDS"
+
+SECSIZ	EQU	128			; Disk sector size in CP/M
+
+; SUPERV -- Run-time supervisor for profiler
+
+;	The folowing function must *NOT* be called from the 'C' program.  It
+; contains the code for the profiler which is loaded into high memory while
+; the profiled program is executing.  The code intercepts the RST 6 operations
+; that delineate the source statements, and accumulates the totals.  Upon any
+; attempt to warm-boot CP/M, the supervisor reloads CPROFILE and transfers to
+; it to do the analysis and print the results.
+
+	FUNCTION 	superv
+
+;	The following locations are fixed offsets from the beginning of SUPERV,
+; used for communication with CPROFILE itself.  Their order and size must not
+; be changed without changing CPROFILE as well.
+
+START	jmp	$-$			; Imitation BDOS entry to mark top of
+					; available memory.  Transfers to real
+					; BDOS for processing.
+
+	db	'cprofile', 0		; Signature, used by CPROFILE to detect
+					; that he's been reloaded.
+
+	jmp	preinit			; Transfer to preliminary init code.
+
+	jmp	fakeboot		; Transfer to artificial warmboot
+					; routine.
+
+	dw	suptop			; Size of the supervisor
+
+	dw	table			; Pointer to first profile table entry.
+tbnext:
+	dw	table			; Pointer to next available slot for
+					; profile table entry.
+
+realboot:
+	dw	$-$			; BIOS warm-boot entry before CPROFILE
+					; was invoked.
+
+cmdline:
+	ds	128			; CPROFILE command tail, used to reload
+					; CPROFILE.
+
+;	Come here on preliminary initialization after reading the target
+; program into the lower TPA.  Dummy up a CCP stack pointer, clobber the
+; "khack" portion of C.CCC initialization, and go re-initialize C.CCC for
+; the target program.
+
+preinit:
+	lxi	sp, preinit		; Fake a stack pointer for target
+	mvi	a, 0C9h	; (RET)		; Save a return instruction in "khack"
+	sta	khack
+	mvi	a, 0C3h	; (JMP)		; Set up the RST 6 vector for profiling
+	sta	00030h
+	lxi	h, rst6ent
+	shld	00031h
+
+	mvi	c, pstrng		; Print message that we got here.
+	lxi	d, entrmsg
+	call	start
+
+	call	tpa			; Go enter the user program.
+
+	jmp	fakeboot		; Reload profiler when program finishes
+
+;	Come here on a RST 6 instruction within the target program.  Accumulate
+; the profile data.
+
+rst6ent:
+	push	h			; Save all registers
+	push	d
+	push	b
+	push	psw
+
+	lxi	h, 8			; Increment return address around
+	dad	sp			; line and statement information.
+	mov	c,m
+	inx	h
+	mov	b,m
+	inx	b
+	inx	b
+	mov	m,b
+	dcx	h
+	mov	m,c
+	dcx	h
+	dcx	b
+	dcx	b			; Get original PC back
+
+	lhld	tbnext
+	xchg				; Get start and end of profile table
+	lxi	h, table
+
+ploop:	mov	a, d			; If at end of table, go to NOTFND
+	cmp	h
+	jnz	notdone
+	mov	a,e
+	cmp	l
+	jz	notfnd
+
+notdone:
+	mov	a,c			; If the PC in table doesn't match ours
+	cmp	m			; go to NOTHERE(2) to advance to next
+	jnz	nothere 		; table entry.
+	inx	h
+	mov	a,b
+	cmp	m
+	jnz	nothere2
+
+	lxi	b,4			; Point HL to least significant byte of
+	dad	b			; execution count
+
+	mov	a,m
+	adi	1			; Increment trip count
+	mov	m,a
+	dcx	h
+	mov	a,m
+	aci	0
+	mov	m,a
+	dcx	h
+	mov	a,m
+	aci	0
+	mov	m,a
+	dcx	h
+	mov	a,m
+	aci	0
+	mov	m,a
+
+	jmp	finis			; Done with this RST 6
+
+nothere:
+	inx	h			; Advance to next table entry
+nothere2:
+	inx	h
+	inx	h
+	inx	h
+	inx	h
+	inx	h
+	jmp	ploop
+
+notfnd:
+	lda	start+1
+	sui	6
+	sub	l			; Entry not found in table.  Make sure
+	lda	start+2			; there's space for it.
+	sbb	h
+	jnc	addent
+
+	mvi	c,pstrng		; There isn't; complain and abort.
+	lxi	d,fullmsg
+	call	start
+	jmp	base
+
+addent:
+	mov	m,c			; Add an entry to table; first the PC,
+	inx	h
+	mov	m,b
+	inx	h
+	xra	a			; then a count of 1.
+	mov	m,a
+	inx	h
+	mov	m,a
+	inx	h
+	mov	m,a
+	inx	h
+	inr	a
+	mov	m,a
+	inx	h
+
+	shld	tbnext			; Advance table end.
+
+finis:
+	pop	psw
+	pop	b
+	pop	d
+	pop	h
+	ret				; Return to target program
+
+;	Come here on a call to BIOS warmboot function or BDOS function 0.
+; Reload CPROFILE in the lower TPA, and perform the analysis of the profile
+; data gathered up in the TABLE area.
+
+fakeboot:
+	lhld	realboot		; Reset BIOS warm-boot transfer to
+	xchg				; its original value.
+	lhld	base+1
+	inx	h
+	mov	m,e
+	inx	h
+	mov	m,d
+
+	mvi	c, pstrng		; Print a message to announce what's
+	lxi	d, rlodmsg		; happening
+	call	bdos
+
+	lxi	d, tbuff		; Move command tail back in place
+	lxi	h, cmdline
+	mvi	c, 128
+mtail:	mov	a, m
+	stax	d
+	inx	h
+	inx	d
+	dcr	c
+	jnz	mtail
+
+	mvi	c, openc		; Re-open CPROFILE.COM
+	lxi	d, cprfcb
+	call	bdos
+	inr	a
+	jz	openerr
+	xra	a
+	sta	cprfcb+32		; Zero current record index.
+
+rloop:	lhld	loadorg			; Get present loading origin
+	xchg
+	lxi	h, secsiz		; Bump it by a sector for next time
+	dad	d
+	shld	loadorg
+	mvi	c, sdma			; Set DMA pointer to loading origin
+	call	bdos
+
+	mvi	c, reads		; Read in a sector of CPROFILE.COM
+	lxi	d, cprfcb
+	call	bdos
+	ora	a
+	jz	rloop			; Continue reading until EOF
+
+	mvi	c, closec		; Close CPROFILE.COM
+	lxi	d, cprfcb
+	call	bdos
+
+	mvi	c, sdma			; Reset default DMA address
+	lxi	d, tbuff
+	call	bdos
+
+	jmp	tpa			; Go enter reloaded copy of CPROFILE
+
+openerr:				; Couldn't reopen CPROFILE.COM
+	mvi	c, pstrng
+	lxi	d, opermsg
+	call	bdos
+	jmp	base
+
+entrmsg:
+	db	'<<< Executing target program. >>>', CR, LF, '$'
+fullmsg:
+	db	CR, LF, '<<< Profile table is full.  Abandoning program. >>>'
+	db	'$'
+rlodmsg:
+	db	CR, LF, '<<< Reloading CPROFILE. >>>', CR, LF, '$'
+opermsg:
+	db	'Can''t open CPROFILE.COM; CPROFILE abandoned.$'
+
+loadorg:
+	dw	tpa			; Loading origin of CPROFILE
+cprfcb:
+	db	0, 'CPROFILE', 'COM', 0, 0, 0, 0
+	dw	0, 0, 0, 0, 0, 0, 0, 0	; FCB for CPROFILE.COM
+	db	0, 0, 0, 0
+
+table:                        		; Profile table starts here.
+
+suptop:					; Top of the supervisor
+
+	ENDFUNC		superv
+
+; CHAIN
+
+;		The following function is used to chain to the program being
+;	analyzed.  It takes the following calling sequence:
+
+;		chain (argc, argv, entry);
+
+;	where argc and argv are the usual command parameters (argv [0] is the
+;	name of the .COM file to load), and entry is the entry address of the
+;	loaded program.  Entry would be 0x100 under normal circumstances, but
+;	the CPROFILE run-time supervisor has a few unusual entry tasks to do.
+
+	FUNCTION 	chain
+
+	EXTERNAL	nexecl
+
+	call	arghak			; Get the arguments
+	push	b
+
+	lhld	arg3
+	push	h			; Push the entry point address
+	lxi	h,0
+	push	h			; Push the argv fence
+	lhld	arg1
+	xchg				; Get DE = arg count, HL -> argv end
+	lhld	arg2
+	dad	d
+	dad	d
+
+loop:	dcx	h
+	mov	a,m
+	dcx	h			; Place an argument on stack
+	push	h
+	mov	l,m
+	mov	h,a
+	xthl
+
+	dcx	d			; Count down arguments until finished
+	mov	a, d
+	ora	e
+	jnz	loop
+
+done:	call	nexecl			; Go call NExecl to load the program
+	jmp	base			; NEXECL return is a disaster.
+
+	ENDFUNC	
+
+; NEXECL
+
+;		Derived from the EXECL function in the BDS `C' system library
+;	(DEFF2C.CSM) copyright (c) 1983 by Leor Zolman.  Used by permission.
+
+;		This function is identical to the EXECL function in the BDS 'C'
+;	system library with the single exception that it accepts an additional
+;	argument following the list of command line arguments and the zero
+;	terminator.  This argument is the address of a preinitialization entry
+;	point to which the loader will transfer instead of entering the TPA
+;	directly at 0x0100.
+
+	FUNCTION	nexecl
+
+	call	arghak
+	push	b
+	lhld	arg1                                              
+	xchg
+	lxi	h,-60	;compute &nfcb for use here
+	dad	sp
+	push	h	; save for much later (will pop	into BC)
+  	push	h	;make a few copies for local use below
+	push	h
+	call	setfcu	;set up COM file for execl-ing
+	lda	usrnum
+	call	setusr	;set destination user area
+	pop	h	;get new fcb addr
+	lxi	b,9	;set extension to COM
+	dad	b
+	mvi	m,'C'
+	inx	h
+	mvi	m,'O'
+	inx	h
+	mvi	m,'M'
+	pop	d	;get new fcb addr again
+	mvi	c,openc	;open the file for reading
+	call	bdos
+	call	rstusr	;reset user number to previous
+	cpi	errorv
+	jnz	noerrr
+err:	pop	h
+	pop	b
+	jmp	error
+
+noerrr:	lhld	arg2	;any first parameter?
+	mov	a,h
+	ora	l
+	jnz	excl0
+	lxi	d,arg2	;no...null out first default fcb slot
+	push	d
+	lxi	h,fcb
+	call	setfcb
+	pop	h
+	jmp	excl0a	;and go null out 2nd fcb slot
+
+excl0:	xchg		;yes.. place into first default fcb slot
+	lxi	h,fcb
+	call	setfcb
+	lhld	arg3	;any second parameter given?
+	mov	a,h
+	ora	l
+	jnz	excl0a
+	lxi	h,arg3
+
+excl0a:	xchg		;yes: stick it into second default fcb slot
+	lxi	h,fcb+16
+	call	setfcb	
+	lxi	d,tbuff+1   ;now construct command line:
+	xra	a	;  zero tbuff+1 just in case there
+	stax	d	;  are no arg strings
+	lxi	h,8	;get pointer to 1st arg string in HL
+	dad	sp	;   by offsetting 4 objects from the current SP
+	mvi	b,0	;char count for com. line buf.
+excl1:	push	h	;and construct command line
+	mov	a,m	;get addr of next arg string pointer
+	inx	h
+	mov	h,m
+	mov	l,a	;0000 indicates end of list.
+	ora	h	;end of list?
+	jz	excl3
+
+	mvi	a,' '	;no. install next string
+	dcx	h
+excl2:	call	mpuc	;convert to upper case for command line buffer
+	stax	d
+	inx	d
+	inr	b
+	inx	h
+	mov	a,m
+	ora	a	;end of string?
+	jnz	excl2
+	pop	h	;yes.
+	inx	h	;bump param pointer
+	inx	h	
+	jmp	excl1	;and go do next string
+
+excl3:	pop	h	;clean up stack
+	inx	h	; point to last arg == entry address
+	inx	h
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a
+	shld	enter+1	; put entry address into loader.
+	mov	a,b	;check for command buffer overflow
+	cpi	53h
+	jc	excl30	;if no overflow, go load file
+	lxi	d,errmsg
+	mvi	c,9	;else comlain and abort...
+	call	bdos
+	jmp	err
+
+errmsg:	db	7,'EXECL: Command line overflow',cr,lf,'$'
+
+excl30:	lxi	h,tbuff	;set length of command line
+	mov	m,b	;at location tbuff
+
+excl3a:	lxi	d,code0	;copy loader down to end of tbuff
+	lxi	h,tpa-42
+	mvi	b,42	;length of loader
+excl4:	ldax	d
+	mov	m,a
+	inx	d
+	inx	h
+	dcr	b
+	jnz	excl4
+
+	pop	b	;get fcb pointer in BC
+			;reset the SP:
+	lhld	base+6	;get BDOS pointer in HL
+	lda	tpa	;look at first op byte of run-time pkg
+	cpi	31h	;begin with "lxi sp,"?
+	jnz	go0	;if so, use the same value now...
+	lhld	tpa+1	;else get special SP value
+	jmp	go1
+
+go0:	cpi	21h	;begin with "lxi h" (the NOBOOT sequence?)
+	jnz	go1	;if not, just use the BDOS addr as top of memory
+	lxi	d,-2050	;for NOBOOT, subtract 2100 from BDOS addr
+	dad	d	;and make that the new SP
+go1:	sphl
+
+	lxi	h,base
+	push	h	;set base of ram as return addr
+	jmp	tpa-42	;(go to `code0:')
+
+mpuc:	cpi	61h	;convert character in A to upper case
+	rc
+	cpi	7bh
+	rnc
+	sui	32
+	ret
+
+;
+; This loader code is now: 42 bytes long.
+;
+
+code0:	lxi	d,tpa	;destination address of new program
+code1:	push	d	;push	dma addr
+	push	b	;push	fcb pointer
+	mvi	c,sdma	;set DMA address for new sector
+	call	bdos
+	pop	d	;get pointer to working fcb in DE
+	push	d	;and re-push	it
+	mvi	c,reads	;read a sector
+	call	bdos
+	pop	b	;restore fcb pointer into BC
+	pop	d	;and dma address into DE
+	ora	a	;end of file?
+	jz	tpa-8	;if not, get next sector (goto `code2:')
+	mvi	c,sdma	;reset DMA pointer
+	lxi	d,tbuff
+	call	bdos
+enter:	jmp	$-$	;and go invoke the program
+
+code2:	lxi	h,80h	;bump dma address
+	dad d
+	xchg
+	jmp	tpa-39 	;and go loop (at code1)
+
+	ENDFUNC
+
+	end
+	jnz	go1	;if no

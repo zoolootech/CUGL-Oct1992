@@ -1,0 +1,141 @@
+*****Listing 5*****
+
+const int forever = 1;
+class Editor {
+public:
+	Editor( char *fname) : b( fname), input(fname), output( "", "w")
+	{
+		strcpy( filename, fname);
+
+		rp = &reg;
+	}
+
+	void eval()
+	{
+		while( forever) {
+			int c = input.get();
+			(this->*action[c])( c);
+		}
+	}
+
+	void go( int c)     { rp->go( b, output); rp = &reg; }
+
+	void print( int c)  { rp->print( b, output); rp = &reg; }
+
+	void insert( int c) { rp->insert( b, input); rp = &reg; }
+
+	void del( int c)    { rp->del( b, kbuf, output); rp = &reg; }
+
+	void put( int c)    { rp->put( b, kbuf); rp = &reg; }
+
+	void info( int c)
+	{
+		char buf[128];
+		int point = b.lengthb();
+		b. go( point);
+		output.put( filename);
+		sprintf( buf, ":  point %d, length %d\n", point, b.length());
+		output.put( buf);
+	}
+
+	void write( int c)
+	{
+		output.put( "file? ");
+		char buf[128];
+		char *p = buf;
+
+		// candidate member function of File:  getline( char *buf)
+		while( (c = input.get()) != '\n' )
+			*p++ = c;
+		*p = 0;
+		if( !*p) 
+			p = filename;
+
+		File f( p, "w" );
+		if( f.isok() )
+			for( ; !b.isend(); b.next() )
+				f.put( b.geta() );
+		else
+			output.put( "cannot open file\n" );
+	}
+	
+	void quit( int c)   { exit(0); }
+
+	void isinteger( int c)
+	{
+		char buf[64];
+		char *p = buf;
+
+		for( *p = c; !input.iseof(); p++) {
+			c = input.get();
+			if( isdigit(c) )
+				*p = c;
+			else {
+				input.unget( c);
+				break;
+			}
+		}
+
+		*p = 0;  // null termination of string
+		ireg.load( atoi( buf));
+		rp = &ireg;
+	}
+
+	void eerror( int c) { output.put( "?\n"); } // error function
+
+	void donothing( int c)	{}
+private:
+	Buffer b;
+	File input;
+	File output;
+	char filename[128];
+
+	Register Editor::*rp;
+	Register reg;
+	Iregister ireg;
+	Buffer kbuf;  // kill buffer
+	static void (Editor::*action[128])( int character);
+};
+
+// here we initialize the action[] array
+// most entries are &Editor::eerror.  To save space, we show the 
+// non eerror entries
+
+void (Editor::*action[128])( int character) = {
+	&Editor::eerror,  // '\0'
+	...
+	&Editor::donothing,  // tab
+	&Editor::donothing,  // newline
+	...
+	&Editor::donothing,  // 0x20  blank
+	...
+	&Editor::isinteger,  // 0x30 '0'
+	&Editor::isinteger,  // '1'
+	&Editor::isinteger,  // '2'
+	&Editor::isinteger,  // '3'
+	&Editor::isinteger,  // '4'
+	&Editor::isinteger,  // '5'
+	&Editor::isinteger,  // '6'
+	&Editor::isinteger,  // '7'
+	&Editor::isinteger,  // '8'
+	&Editor::isinteger,  // '9'
+	...
+	&Editor::info,    // '?'
+	...
+	&Editor::del,    // 'd'
+	&Editor::eerror,
+	&Editor::eerror,
+	&Editor::go,     // 'g'
+	&Editor::eerror,
+	&Editor::insert, // 'i'
+	...
+	&Editor::print,  // 0x70 'p'
+	&Editor::quit,   // 'q'
+	...
+	&Editor::write,  // 'w'
+	&Editor::eerror,
+	&Editor::put,    // 'y'
+	...
+	&Editor::eerror  // 0x80
+};
+

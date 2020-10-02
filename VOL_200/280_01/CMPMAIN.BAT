@@ -1,0 +1,25 @@
+lc -d -n -w -ccu -k%1 -v   SORT
+lc -d -n -w -ccu -k%1 -v   CHANGE
+lc -d -n -w -ccu -k%1 -v   FIND0
+lc -d -n -w -ccu -k%1 -v   FIND1
+lc -d -n -w -ccu -k%1 -v   FRQNCY
+lc -d -n -w -ccu -k%1 -v   KWIC
+lc -d -n -w -ccu -k%1 -v   UNIQUE
+lc -d -n -w -ccu -k%1 -v   MACRO
+lc -d -n -w -ccu -k%1 -v   UNROT
+lc -d -n -w -ccu -k%1 -v   FORMAT
+lc -d -n -w -ccu -k%1 -v   MSORT
+lc -d -n -w -ccu -k%1 -v   ARCHIVE
+lc -d -n -w -ccu -k%1 -v   COMPARE
+lc -d -n -w -ccu -k%1 -v   COMPRESS
+lc -d -n -w -ccu -k%1 -v   CONCAT0
+lc -d -n -w -ccu -k%1 -v   CONCAT1
+lc -d -n -w -ccu -k%1 -v   COUNT
+lc -d -n -w -ccu -k%1 -v   CRYPT0
+lc -d -n -w -ccu -k%1 -v   CRYPT1
+lc -d -n -w -ccu -k%1 -v   DETAB
+lc -d -n -w -ccu -k%1 -v   ENTAB
+lc -d -n -w -ccu -k%1 -v   EXPAND
+lc -d -n -w -ccu -k%1 -v   OVERSTRK
+lc -d -n -w -ccu -k%1 -v   TRANSLIT
+

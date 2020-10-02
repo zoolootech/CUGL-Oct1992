@@ -1,0 +1,739 @@
+#include "bdscio.h"
+
+#define OPENCMNT   1
+#define HEADER     2
+#define ATTRIBUTE  3
+#define ENDCMNT    4
+#define TITLE      5
+#define VERSION    6
+#define DATE       7
+#define DESC       8
+#define KEYWD      9
+#define SYSTEM    10
+#define FNAME     11
+#define WARNING   12
+#define CRC       13
+#define ALSO      14
+#define AUTHOR    15
+#define COMP      16
+#define REF       17
+#define COMMA     18
+#define ENDREF    19
+#define REFAUTH   20
+#define REFTTL    21
+#define CITATION  22
+#define REFCIT    23
+#define COLON     24
+#define TOOLONG   25
+#define SEMI      26
+#define QUOTE     27
+#define FAULT     28
+
+#define LEXSIZE 250
+
+#define ON   1
+#define OFF  0
+
+FILE source, list;
+
+char restart[6];
+char catno[20];
+char lexval[LEXSIZE];
+int stoptoken;
+int debug, testonly;
+int parsing;
+int number;
+
+main(argc,argv)
+int argc;
+char **argv;
+
+{
+int fnumb, diskno;
+int i;
+char *lname;
+
+if (wildexp(&argc,&argv) == ERROR)
+   exit(puts("Wildexp Overflow\n"));
+
+number = debug = testonly = OFF;
+fnumb = diskno = 0;
+
+if (argc < 2) {
+    printf("USAGE:  header [-o<filespec>] [-t] [-d] [-nd] {<infilespec>} \n\n");
+    printf("   function:    Normally used to extract header information\n");
+    printf("                from the files in infilespec, reformatting the\n");
+    printf("                information in a fixed field format suitable\n");
+    printf("                for input to a relational database. The formatted\n");
+    printf("                output defaults to 'hdrout' on the current drive.\n\n");
+    printf("   options:     -o  use filespec for the list file name.\n");
+    printf("                -t  test only...checks syntax with no listing\n");
+    printf("                -n  number mode. Generates sequential file numbers\n");
+    printf("                    for all files on the disk. d is used as the\n");
+    printf("                    volume number. Headers consisting of only a \n");
+    printf("                    filename are generated for all files which don't\n");
+    printf("                    have a header. These are written to the list\n");
+    printf("                    file. Automatically sets -t, that is, since\n");
+    printf("                    the list file is being used to capture headers\n");
+    printf("                    no attempt is made to generate normal output.\n");
+    printf("                -d  debug...prints trace info to stdout.\n");
+    exit();
+    }
+lname="hdrout";
+for (i=1; i<argc; i++){
+   if (*argv[i] == '-'){
+      switch (*(argv[i]+1)){
+         case 'D': debug = ON; break;
+         case 'T': testonly = ON; break;
+         case 'N': sscanf(argv[i]+2,"%d",&diskno);
+                   number = ON;
+                   testonly = ON;
+                   if (diskno < 100){
+                      printf("\nCUG numbers start at 100!\n");
+                      exit();
+                      }
+                   break;
+         case 'O': lname= argv[i]+2;
+                   break;
+         default:  printf("\nUnrecognized option %s",argv[i]);
+                   break;
+         }
+      }
+   }
+
+if ((!testonly) || number) openlist(lname);
+if (debug) printf("\n open list passed");
+
+for (i=1; i<argc; i++){
+   if (*argv[i] != '-'){
+       printf("\n%-15s",argv[i]);
+       if (fopen(argv[i],source) == ERROR) printf(" ...Can't open ");
+       else {
+          if (number) {
+             fnumb++;
+             if (dofile() == OK) numfile(argv[i], diskno, fnumb);
+             else {
+                fclose(source);
+                fprintf(list,"/* HEADER: CUG%03d.%02d; FILENAME: %s; */\n",
+                             diskno,fnumb,argv[i]);
+                }
+             }
+          else {
+             dofile();
+             fclose(source);
+             }
+          }
+       }
+    }
+if ((!testonly) || number){
+   fprintf(list,"%c",0x1a);
+   fflush(list);
+   fclose(list);
+   }
+}
+
+/*
+   process a single file, adding results to output file
+*/
+int dofile()
+{
+int att;
+int laterpass;
+
+parsing = FAULT;
+laterpass = setjmp(restart);
+if (laterpass) return OK;
+
+if (scantoken() != OPENCMNT) {
+   printf(" ...File doesn't begin with comment");
+   return !OK;
+   }
+if (scantoken() != HEADER) {
+   printf(" ...First comment isn't header ");
+   return !OK;
+   }
+printf(" ...Processing header");
+if (scantoken() != COLON) {
+   printf(" ...No colon after header keywork");
+   return !OK;
+   }
+scancatno(); /* sets catno as sideeffect */
+if (scantoken() != SEMI) faterr(4,"Expecting semi after cat. no.");
+while (tokentype(att=scantoken())==ATTRIBUTE) scanatt(att);
+if (stoptoken != ENDCMNT) faterr(5,"Header must end with comment delimiter");
+while(dohdr()==OK);  /*do following headers */
+return OK;
+}
+
+int dohdr()
+{
+int att;
+int laterpass;
+
+parsing = FAULT;
+laterpass = setjmp(restart);
+if (laterpass) return !OK;
+
+if (scantoken() != OPENCMNT) {
+   return !OK;
+   }
+if (scantoken() != HEADER) {
+   return !OK;
+   }
+printf("\n                ...and another");
+if (scantoken() != COLON) {
+   printf(" ...No colon after header keywork");
+   return !OK;
+   }
+scancatno(); /* sets catno as sideeffect */
+if (scantoken() != SEMI) faterr(4,"Expecting semi after cat. no.");
+while (tokentype(att=scantoken())==ATTRIBUTE) scanatt(att);
+if (stoptoken != ENDCMNT) faterr(5,"Header must end with comment delimiter");
+/* always scans one token beyond end of attribute, leaves */
+return OK;
+}
+
+int scanatt(att)
+int att;
+
+{
+parsing = att;
+if (scantoken() != COLON)
+    faterr(10, "Attribute name must be followed by colon");
+
+switch(att){
+   case TITLE:
+          if (scanitem() != OK) faterr(10,"ITEM must follow TITLE");
+          generate(catno,TITLE,lexval);
+          scantoken();
+               break;
+   case VERSION:
+          if (scannumber() != OK) faterr(11,"version number needed");
+          generate(catno,VERSION,lexval);
+          scantoken();
+          break;
+   case DATE:
+          if (scandate() != OK) faterr(12,"date needed");
+          generate(catno,DATE,lexval);
+          scantoken();
+          break;
+   case DESC:
+          if (scanstring(DESC)==TOOLONG)
+              faterr(13,"string too long in description");
+               /*scanstring breaks its output into lines and outputs it
+                 as a side effect. More than 30 lines is treated as an
+                 error (TOOLONG) */
+          scantoken();
+          break;
+   case KEYWD:
+          if (scanlist(KEYWD)!= OK) faterr(14,"Bad keyword list ");
+          break;
+   case SYSTEM:
+          if (scanlist(SYSTEM)!= OK) faterr(15,"Bad System list");
+          break;
+   case FNAME:
+          if (scanfname() != OK) faterr(16,"Poorly formed filename");
+          generate(catno,FNAME,lexval);
+          scantoken();
+          break;
+   case WARNING:
+          if (scanstring(WARNING)==TOOLONG)
+              faterr(17,"string too long in warning field");
+          scantoken();
+          break;
+   case CRC:
+          if (scanhex() != OK) faterr(18,"poorly formed CRC number");
+          generate(catno,CRC,lexval);
+          scantoken();
+          break;
+   case ALSO:
+          if (scanlist(ALSO)!= OK) faterr(19,"Bad See-Also list"); break;
+   case AUTHOR:
+          if (scanlist(AUTHOR)!= OK) faterr(20,"Bad Author list");
+          break;
+   case COMP:
+          if(scanlist(COMP)!=OK) faterr(21,"Bad Compiler List"); break;
+   case REF:
+          scanreflist(); /*generates output as side-effect*/
+          break;
+   default: faterr(22,"Unrecognized attribute");
+   }
+if (stoptoken != SEMI) faterr(23,"semi-colons must terminate attributes");
+}
+
+int scanlist(type)
+int type;
+
+{
+do {
+    if (scanitem()!= OK) {
+        errmsg(30,"Item poorly formed");
+        return(!OK);
+        }
+    generate(catno,type,lexval);
+    } while (scantoken()==COMMA);
+return(OK);
+}
+
+scanreflist()
+
+{
+do{
+   if (scanref() != OK)
+      faterr(40,"Reference poorly formed");
+   /* generates output as side effect */
+   } while (scantoken()== SEMI);
+if (stoptoken!=ENDREF)
+    faterr(41,"List of references must end with ENDREF keyword");
+scantoken(); /*to load semicolon into stoptoken */
+}
+
+int scanref()
+
+{
+if (scantoken()!=AUTHOR) {
+    errmsg(50,"reference must begin with AUTHORS:");
+    return !OK;
+    }
+if (scantoken()!=COLON) {
+    errmsg(54,"AUTHOR keyword must be followed by colon");
+    return !OK;
+    }
+if (scanlist(REFAUTH)!=OK) {
+    errmsg(51,"Bad reference list");
+    return !OK;
+    }
+if (stoptoken!= SEMI){
+    errmsg(52,"Authors in reference must end with semicolon");
+    return !OK;
+    }
+if (scantoken() != TITLE) {
+    errmsg(52,"Title must follow authors in reference");
+    return !OK;
+    }
+if (scantoken() != COLON) {
+    errmsg(53,"TITLE keyword must be followed by colon");
+    return !OK;
+    }
+if (scanstring(REFTTL)==TOOLONG){
+    errmsg(55,"title in reference too long--missing end quote?");
+    return !OK;
+    }
+if (scantoken()!= SEMI){
+    errmsg(56,"title must end with semicolon in reference");
+    return !OK;
+    }
+if (scantoken()!=CITATION){
+    errmsg(57,"CITATION must follow title in reference");
+    return !OK;
+    }
+if (scantoken() != COLON){
+    errmsg(58,"Colon must follow keyword CITATION in reference");
+    return !OK;
+    }
+if (scanstring(REFCIT)==TOOLONG){
+    errmsg(59,"Citation too long -- missing end quote?");
+    return !OK;
+    }
+return OK;
+}
+
+generate(fileid,fldtype,str)
+char *fileid, *str;
+int fldtype;
+
+{
+if (!testonly)
+   fprintf(list,"%3d %9s %s\n",fldtype,fileid,ljust(str));
+}
+
+int scanstring(boss)
+int boss;
+
+{
+int i, lines;
+int tmp;
+char buff[120];
+char *tbuf;
+
+lines = 0;
+tmp = 0;
+
+if (scantoken() != QUOTE) errmsg(51,"missing opening quote");
+do {
+   i = 0;
+   lines += 1;
+   tbuf=buff;
+   while ((i++ < 80) && ((tmp = getc(source))!=0x0a)
+         && (tmp != '"'))
+         if (tmp != 0x0d)  *tbuf++ = tmp;
+   *tbuf = 0;
+   if (i >= 80) {
+      errmsg(52,"string line over 80 chars -- missing end quote??");
+      }
+   generate(catno,boss,buff);
+   } while ((tmp != '"') && (lines < 15));
+return (lines > 15)? TOOLONG: OK;
+}
+
+int scandate()
+{
+int i,n,mo,day,year;
+char buff[256];
+char *tbuf;
+
+n=mo=day=year=i=0;
+tbuf=buff;
+while (((*tbuf++ = getc(source)) != ';') && (i++ < 250));
+if (i > 250) {
+   errmsg(55,"unable to find date terminator");
+   return !OK;
+   }
+ungetc(';',source);
+*tbuf = 0;
+if (debug) printf("scanning /%s/ in date\n",buff);
+if ((n=sscanf(buff,"%d/%d/%d",&mo,&day,&year))!=3){
+   if (debug) printf("fscanf returns %d with %d %d %d\n",n,mo,day,year);
+   return !OK;
+   }
+if (debug) printf("fscanf returns %d with %d %d %d\n",n,mo,day,year);
+if ((mo < 1) || (mo > 12) || (day < 1) || (day > 31)){
+   return !OK;
+   }
+if ((year < 100) && (year >50)) year = 1900 + year;
+sprintf(lexval,"%02d/%02d/%04d",mo,day,year);
+return OK;
+}
+
+int scantoken()
+
+{
+int rval;
+
+fillex();
+if (debug) printf("at scantoken start, lexval=/%s/\n",lexval);
+switch (*lexval){
+   case '/': if (getc(source) == '*') rval =  OPENCMNT;
+             else rval = FAULT;
+             break;
+   case '*': if (getc(source) == '/') rval =  ENDCMNT;
+             else rval = FAULT;
+             break;
+   case ',': rval =  COMMA; break;
+   case '"': rval =  QUOTE; break;
+   case ':': rval =  COLON; break;
+   case ';': rval =  SEMI; break;
+   default:
+      if (!strcmp(lexval,"HEADER")) rval =  HEADER;
+      else if (!strcmp(lexval,"TITLE")) rval =  TITLE;
+      else if (!strcmp(lexval,"VERSION")) rval =  VERSION;
+      else if (!strcmp(lexval,"DATE")) rval =  DATE;
+      else if (!strcmp(lexval,"DESCRIPTION")) rval =  DESC;
+      else if (!strcmp(lexval,"KEYWORDS")) rval =  KEYWD;
+      else if (!strcmp(lexval,"SYSTEM")) rval =  SYSTEM;
+      else if (!strcmp(lexval,"FILENAME")) rval =  FNAME;
+      else if (!strcmp(lexval,"WARNINGS")) rval =  WARNING;
+      else if (!strcmp(lexval,"CRC")) rval =  CRC;
+      else if (!strcmp(lexval,"SEE-ALSO")) rval =  ALSO;
+      else if (!strcmp(lexval,"AUTHORS")) rval =  AUTHOR;
+      else if (!strcmp(lexval,"COMPILERS")) rval =  COMP;
+      else if (!strcmp(lexval,"REFERENCES")) rval =  REF;
+      else if (!strcmp(lexval,"ENDREF")) rval =  ENDREF;
+      else if (!strcmp(lexval,"CITATION")) rval =  CITATION;
+      else rval =  ERROR;
+      }
+stoptoken = rval;
+if (debug) printf("\nscantoken returns %d /%s/",rval,lexval);
+return rval;
+}
+
+scancatno()
+
+{
+int n,volume,file;
+char *tmp;
+char locbuf[512];
+char waste[512];
+char dot;
+
+tmp=locbuf;
+n=510;
+do {
+    *tmp=getc(source);
+    if (!n--) faterr(73,"no semicolon following cat no.");
+    }while ( *tmp++ != ';');
+ungetc(';',source);
+*(--tmp) = 0;
+if ((n=sscanf(locbuf,"%sCUG%d%c%d",waste,&volume,&dot,&file))!=4){
+    if (debug) printf("\nfscanf returns %d",n);
+    if (debug) printf("\nfscanf returns /%s/ %d %d %d",waste,volume,dot,file);
+    faterr(71,"Bad catalog number");
+    }
+if (volume < 100) errmsg(72,"CUG disks begin at 100!");
+if (file > 99) errmsg(74,"File number greater than 100.");
+if (dot != '.') errmsg(75,"Period separates disk and file no.");
+sprintf(catno,"CUG%03d.%02d",volume,file);
+}
+
+int tokentype(tkn)
+int tkn;
+
+{
+switch (tkn){
+   case TITLE:
+   case VERSION:
+   case DATE:
+   case DESC:
+   case KEYWD:
+   case SYSTEM:
+   case FNAME:
+   case WARNING:
+   case CRC:
+   case ALSO:
+   case AUTHOR:
+   case COMP:
+   case REF:
+        return ATTRIBUTE;
+   default:
+        return !ATTRIBUTE;
+   }
+}
+
+int scanitem()
+{
+int tmp;
+char *tpt;
+
+tpt=lexval;
+do {
+   stoptoken = *tpt++ = getc(source);
+   } while ((stoptoken != ',') && (stoptoken != ';'));
+*(--tpt) = 0;
+ungetc(stoptoken,source);
+tmp=strlen(lexval);
+if ((tmp>40)||(tmp<1)) return !OK;
+return OK;
+}
+
+fillex()
+{
+int i;
+char *pnt;
+
+if (debug) printf("\nfillex entered");
+pnt=lexval;
+i=0;
+do{
+   *pnt=getc(source);
+   if (debug) printf("\n  getc=%02.2x",*pnt);
+   } while (isspace(*pnt));
+if (debug) printf("\nwhitespace loop passed");
+stoptoken = *pnt;
+if (!isterm(*pnt)){
+    do{
+        *(++pnt) = getc(source);
+       }while (!isterm(*pnt) && (i++ < (LEXSIZE-3)));
+    stoptoken = *pnt--;
+    ungetc(stoptoken,source);
+    }
+*(++pnt)='\0';
+if (debug) printf("\nfillex exited lexval = /%s/",lexval);
+}
+
+faterr(id,str)
+int id;
+char *str;
+
+{
+char *parstask;
+switch (parsing){
+   case OPENCMNT:
+   case HEADER:
+   case ATTRIBUTE: parstask = "header beginning"; break;
+   case TITLE:     parstask = "title";break;
+   case VERSION:   parstask = "version"; break;
+   case DATE:      parstask = "date"; break;
+   case DESC:      parstask = "description"; break;
+   case KEYWD:     parstask = "keywords"; break;
+   case SYSTEM:    parstask = "operating systems"; break;
+   case FNAME:     parstask = "filename"; break;
+   case WARNING:   parstask = "warnings"; break;
+   case CRC:       parstask = "crck"; break;
+   case ALSO:      parstask = "see-also"; break;
+   case AUTHOR:    parstask = "authors"; break;
+   case COMP:      parstask = "compilers"; break;
+   case REF:       parstask = "references"; break;
+   default:        parstask = 0; break;
+   }
+
+if (parstask) printf("\n               %3d: %s in %s field",id,str,parstask);
+else          printf("\n               %3d: %s",id,str);
+longjmp(restart,1);
+}
+
+int readwd(pnt)
+char *pnt;
+
+{
+int i;
+
+i=0;
+while (isspace(*pnt = getc(source))) pnt++;
+while ((*pnt != '"') && (!isspace(*pnt))){
+	pnt++;i++;
+	*pnt = getc(source);
+	}
+ungetc(*pnt, source);
+*pnt ='\0';
+return i;
+}
+
+int scanhex()
+{
+int val;
+
+if (fscanf(source,"%x",&val)!= 1) return !OK;
+sprintf(lexval,"%04x",val);
+return OK;
+}
+
+int scannumb()
+
+{
+int fract;
+
+fillex();
+
+if (!isdigit(lexval[0])) {
+   errmsg(95,"version number must begin with digit");
+   return !OK;
+   }
+if (lexval[1] == '.'){
+   if (!isdigit(lexval[2])){
+      errmsg(90,"digit must follow '.' in version number");
+      return !OK;
+      }
+   if (isdigit(lexval[3]) && isdigit(lexval[4])){
+      errmsg(91,"only two digits may follow '.' in version number");
+      return !OK;
+      }
+   return OK;
+   }
+else if (lexval[2] == '.'){
+   if (!isdigit(lexval[3])){
+      errmsg(92,"digit must follow '.' in version number");
+      return !OK;
+      }
+   if (isdigit(lexval[4]) && isdigit(lexval[5])){
+      errmsg(93,"only two digits may follow '.' in version number");
+      return !OK;
+      }
+   return OK;
+   }
+else {
+   errmsg(94,"version number must contain period");
+   return !OK;
+   }
+}
+
+int scanfname()
+{
+fillex();
+return OK;
+}
+
+opensource(str)
+char *str;
+
+{
+fopen(str,source);
+}
+
+openlist(str)
+char *str;
+{
+fcreat(str,list);
+}
+
+int isspace(ch)
+char ch;
+
+{
+return (ch <= ' ');
+}
+
+int isterm(ch)
+char ch;
+
+{
+switch (ch) {
+   case 0x0d:
+   case 0x0a:
+   case ' ':
+   case ':':
+   case ',':
+   case '"':
+   case ';':
+   case '*':
+   case '/':
+             return TRUE;
+             break;
+   default: return FALSE;
+   }
+}
+
+char *ljust(str)
+char *str;
+
+{
+while ((*str) && (isspace(*str))) str++;
+return str;
+}
+
+numfile(name,disk,file)
+char *name;
+int disk, file;
+
+{
+char linebuf[512];
+FILE newfile;
+int ch,i;
+int st;
+
+i=0;
+st=fclose(source);
+if (debug) printf("\nnum: close source returns %d",st);
+st=fopen(name,source);
+if (debug) printf("\nnum: fopen source returns %d",st);
+st=fcreat("HDR.$$$",newfile);
+if (debug) printf("\nnum: fcreat newfile returns %d",st);
+while((ch = getc(source)) != ':') putc(ch,newfile);
+putc(ch,newfile);
+fprintf(newfile,"  CUG%03d.%02d;",disk,file);
+while ((getc(source) != ';') && (i++ < 200));
+if (i >= 200) {
+   printf(" ...volume number must end in semicolon");
+   st= fclose(newfile);
+   if(debug) printf("\nnum: fclose(newfile) returns %d",st);
+   st= unlink("HDR.$$$");
+   if (debug) printf("\nnum: unlink(temp) returns %d",st);
+   st=fclose(source);
+   if (debug) printf("\nnum: fclose source returns %d",st);
+   return;
+   }
+while(fgets(linebuf,source)) fputs(linebuf,newfile);
+fprintf(newfile,"\n%c",0x1a);
+st=fflush(newfile);
+if (debug) printf("\nnum: fflush newfile returns %d",st);
+st=fclose(newfile);
+if (debug) printf("\nnum: fclose newfile returns %d",st);
+st=fclose(source);
+if (debug) printf("\nnum: last fclose source returns %d",st);
+st=rename(name,"NUM.BAK");
+if (debug) printf("\nnum: rename source returns %d",st);
+st=rename("HDR.$$$",name);
+if (debug) printf("\nnum: rename temp returns %d",st);
+st=unlink("NUM.BAK");
+if (debug) printf("\nnum: unlink bak returns %d",st);
+}
+

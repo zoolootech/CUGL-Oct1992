@@ -1,0 +1,32 @@
+if   DOS16M
+mov   ax, alias_cs
+mov   es, ax              ; get cs's alias in es
+or    ax, ax              ; a valid selector will not be zero
+jnz   aliased             ; use it if valid
+                          ; else make it if not valid
+push  cs                  ; push cs for call
+xor   ax, ax              ; clear low word of passed pointer
+push  ax
+call  _D16SegDSAlias      ; D16SegDSAlias returns a data selector which
+                          ; points to the same physical memory address
+                          ; as the (code) selector which is passed to it
+add   sp, 4               ; clear stack
+mov   alias_cs, dx        ; store the alias selector
+mov   es, dx              ; move alias_cs into es to use it
+aliased:
+mov   ax, [bp].intno         ; get interrupt #
+mov   bx, offset doint
+mov   es:[bx+1], al          ; modify the code, this is ok now because
+                             ; es is a valid data selector that accesses
+                             ; the same memory as cs
+
+else  ;;;;;;;;;;;;;;;;; else OS/286
+
+mov   bx, cs
+xor   bx, 8h                 ; data selector has bit 3 set
+mov   es, bx
+mov   bx, offset doint       ; offset from start of selector
+mov   es: [bx+1],al          ; set the interrupt number
+
+endif
+

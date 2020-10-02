@@ -1,0 +1,111 @@
+#include	<stdio.h>
+#include	<mem.h>
+#include	<stdlib.h>
+#include	<graphics.h>
+#include	<ctype.h>
+
+extern	struct	menu	*m;
+extern	int		m_total;
+extern	FILE	*menu_amp;
+
+struct	menu
+{
+	char	level;	/* 0 (top) through 255 */
+	long	help;	/* location in menu.hlp where help starts */
+	int		action;	/* action to take place */
+};
+
+#define	NOT_FOUND	-1
+#define	LEFT		0
+#define	TOP			1
+#define	RIGHT		2
+#define	BOTTOM		3
+#define	KEY			4
+#define	ESC			27
+
+/*
+************************************************************************
+*	init_menu - initialize menu array
+*
+*	Global:
+*		struct	menu *m[] - menu array being initialized
+*		m_total - initialized to total number of menu choices
+*
+*	Files:
+*		menu.def - stores menu hierarchy
+*		menu.amp - menu element names
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+*		Copyright 1989 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************
+*/
+
+void	init_menu()
+{
+	int		i;
+	FILE	*fp;
+
+	m_total = 0;
+	menu_amp = fopen ("menu.amp","rb");
+	fp = fopen ("menu.def","rb");
+	if ((fp == NULL) || (menu_amp == NULL)) error(-10,"init_menu");
+	fread(&m_total, sizeof(int),1,fp);
+	m = malloc(m_total * sizeof(struct menu));
+	for (i = 0; i < m_total; i++)
+	{
+		if (fread(&m[i], sizeof(struct menu),1,fp) != 1) error(-30,"init_menu");
+	}
+	fclose(fp);
+}
+
+
+/*
+************************************************************************
+*	find - find x/y coordinate in array of rectangles
+*
+*	Parameters:
+*		x (in) - x position in absolute coordinates
+*		y (in) - y position in absolute coordinates
+*		edges (in) - array of left, top, right, bottom, key, and user for
+*			rectangles.
+*
+*	Returns:
+*		If x,y is within a rectangle defined by edges, or key matches,
+*		returns number
+*		of first match.  If not found, returns NOT_FOUND.
+*
+*	Notes:
+*		Converts x and y to relative position (relative to viewport)
+*		for comparison.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+*		Copyright 1989 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************
+*/
+
+int	find(int x, int y, int key, int edges[][6])
+{
+	int		i = 0;
+	struct	viewporttype v;
+
+	getviewsettings(&v);
+	x -= v.left;
+	y -= v.top;
+
+	while (edges[i][5] != -1)
+	{
+		if ((x >= edges[i][LEFT]) && (x <= edges[i][RIGHT]) &&
+			(y >= edges[i][TOP]) && (y <= edges[i][BOTTOM])) break;
+		if (toupper(key) == edges[i][KEY]) break;
+		/* ESC key acts like quit */
+		/* edges[i+1][LEFT] == -1 implies this is last entry */
+		if ((key == ESC) && (edges[i+1][LEFT] == -1)) break;
+		i++;
+	}
+	if (edges[i][LEFT] == -1) return NOT_FOUND;
+	else return i;
+}

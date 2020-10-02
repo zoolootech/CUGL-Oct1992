@@ -1,0 +1,246 @@
+/*  VERSION 0001    (DATE: 28.III.85)  (TIME: 9:54 am)                  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qeterm
+
+	FUNCTIONS: terminal,gotoxy,deleteline,linedelete,delpage,
+			insertline,begdim,enddim,keytranslate,displayhelp
+
+	PURPOSE: terminal dependent screen control functions
+
+	NOTE this file is specific to the TeleVideo range of terminals.
+	It may be used as a model for others
+*/
+
+#include "qe.h"
+
+/* control key codes, here for convenience in defining terminal sequences*/
+
+#define CTRLA	0x01	/*	SOH */
+#define CTRLB	0x02	/*	STX */
+#define CTRLC	0x03	/*	ETX */
+#define CTRLD	0x04	/*	EOT */
+#define CTRLE	0x05	/*	ENQ */
+#define CTRLF	0x06	/*	ACK */
+#define CTRLG	0x07	/*	BEL */
+#define CTRLH	0x08	/*	BS  */
+#define CTRLI	0x09	/*	HT  */
+#define CTRLJ	0x0a	/*	LF  */
+#define CTRLK	0x0b	/*	VT  */
+#define CTRLL	0x0c	/*	FF  */
+#define CTRLM	0x0d	/*	CR  */
+#define CTRLN	0x0e	/*	SO  */
+#define CTRLO	0x0f	/*	SI  */
+#define CTRLP	0x10	/*	DLE */
+#define CTRLQ	0x11	/*	DC1 */
+#define CTRLR	0x12	/*	DC2 */
+#define CTRLS	0x13	/*	DC3 */
+#define CTRLT	0x14	/*	DC4 */
+#define CTRLU	0x15	/*	NAK */
+#define CTRLV	0x16	/*	SYN */
+#define CTRLW	0x17	/*	ETB */
+#define CTRLX	0x18	/*	CAN */
+#define CTRLY	0x19	/*	EM  */
+#define CTRLZ	0x1a	/*	SUB */
+#define SOH	0x01
+#define STX	0x02
+#define ETX	0x03
+#define EOT	0x04
+#define ENQ	0x05
+#define ACK	0x06
+#define BEL	0x07
+#define BS 	0x08
+#define HT 	0x09
+#define LF 	0x0a
+#define VT 	0x0b
+#define FF 	0x0c
+#define RETURN 	0x0d
+#define SO 	0x0e
+#define SI 	0x0f
+#define DLE	0x10
+#define DC1	0x11
+#define DC2	0x12
+#define DC3	0x13
+#define DC4	0x14
+#define NAK	0x15
+#define SYN	0x16
+#define ETB	0x17
+#define CAN	0x18
+#define EM 	0x19
+#define SUB	0x1a
+#define ESC 	0x1b
+#define FS  	0x1c
+#define GS  	0x1d
+#define RS  	0x1e
+#define US  	0x1f
+#define DEL 	0x7f
+
+/*-------------------------OUTPUT TO SCREEN---------------------------*/
+
+
+
+/* screen control characters for TVI912C, ADM31 */
+#define BEGINDIM ')'
+#define ENDDIM '('
+#define CRSADDR '='
+#define INSLINE 'E'
+#define DELLINE 'T'	/*delete to spaces*/
+#define LINDEL 'R'	/*delete and close up*/
+#define PAGEDEL 'Y'
+
+terminal()	/*display name of terminal*/
+{
+	puts("|for Televideo 925 (WordStar)");
+}
+
+gotoxy(x,y)	/*move cursor to column x, line y {top left is (0,0) */
+int x,y;
+{
+	putch(ESC);
+	putch(CRSADDR);
+	putch(y+32);
+	putch(x+32);
+}
+
+deleteline(x,y)	/*clear to spaces all characters on line y from column x
+			to the right edge of the screen, inclusive.
+			Leave cursor on left most blank */
+int x, y;
+{
+	gotoxy(x,y);
+	putch(ESC);
+	putch(DELLINE);
+	gotoxy(x,y);
+
+}
+
+linedelete(y)	/*delete the line y.  All following lines move up one.
+			Leave cursor at start of line y */
+int y;
+{
+	gotoxy(0,y);
+	putch(ESC);
+	putch(LINDEL);
+}
+
+delpage(y)	/*clear to spaces line y and all following lines.  Leave
+			cursor at the start of line y */
+int y;
+{
+	gotoxy(0,y);
+	putch(ESC);
+	putch(PAGEDEL);
+}
+
+insertline()	/*move all lines below line on which cursor is, down one,
+			losing last line.  New cursor line is blank, with
+			cursor at start of line */
+{
+	putch(ESC);
+	putch(INSLINE);
+}
+
+begdim()	/*display all subsequent characters at half intensity*/
+{
+	putch(ESC);
+	putch(BEGINDIM);
+}
+
+enddim()	/* display all subsequent characters at full intensity */
+{
+	putch(ESC);
+	putch(ENDDIM);
+}
+
+
+/*----------------------INPUT FROM KEYBOARD-----------------------------*/
+
+
+keytranslate()	/*defines the terminal key codes which perform
+			the editor commands */
+{
+/* each tran[xxxx]= should be set to the code emitted by the terminal
+key which will perform the indicated action.  The recommended (control)
+key assignments are shown in round brackets.
+	Some terminals precede their codes by a lead-in character
+(eg the Hazeltine uses the tilde).  This char should be assigned to
+tran[LEADIN].  If there is no lead-in character, set tran[LEADIN] to zero.
+	'e' will ignore the leadin character if tran[LEADIN] is non-zero,
+but will set the parity bit on the next character. All other chars from the
+keyboard will already have any parity bits removed as they are read in.  Thus
+codes with lead-ins should be entered in the table below as code+0x80, or
+more clearly, as code+PARBIT.
+	For example, suppose that one is coding the Hazeltine 1420, which
+generates a tilde,^L (0x0d) sequence when the cursor up key is pressd.  To
+recognise this sequence, set tran[LEADIN] to tilde (0x7e) and set
+tran[UPKEY] to 0x0d+PARBIT.
+*/
+
+	tran[LEADIN]=0;		/*lead-in character, 0 if not used*/
+	tran[DOWNKEY]= CTRLX;	/*cursor down */
+	tran[UPKEY]= CTRLE;	/*cursor up*/
+	tran[LEFTKEY]= CTRLS;	/*cursor left*/
+	tran[RIGHTKEY]= CTRLD;	/*cursor right*/
+	tran[RIGHTWKEY]= CTRLF;	/*cursor right one word (F) */
+	tran[LEFTWKEY]= CTRLA;	/*cursor left one word (A) */
+	tran[EOLKEY]= CTRLP;	/*cursor to end of line (P) */
+	tran[BOLKEY]= CTRLO;	/*cursor to beginning of line (P) */
+	tran[UPPAGE]= CTRLR;	/*scroll up a page (R) */
+	tran[DOWNPAGE]= CTRLC;	/*scroll down a page (C) */
+	tran[BOFKEY]= CTRLU;	/*cursor to beginning of file (U) */
+	tran[HOMEKEY]= CTRLB;	/*cursor to end of file (B) */
+	tran[DELLEFT]= 0x7f;	/*delete char to left of cursor (DEL) */
+	tran[DELRIGHT]= CTRLG;	/*delete char under cursor (G) */
+	tran[DELLNKEY]= 0x1C;	/*delete cursor line (^\) */
+	tran[DELWDKEY]= CTRLT;	/*delete word to right of cursor (T) */
+	tran[JUMPKEY]= CTRLJ;	/*jump to (J) */
+	tran[CRSTILL]= CTRLN;	/*insert newline after cursor (N) */
+	tran[QWIKKEY]= CTRLQ;	/*quit (Q) */
+	tran[SCRLUPKEY]= CTRLW;	/*scroll up thru text (W) */
+	tran[TOPSCRKEY]= CTRLY;	/*top of screen (Y) */
+	tran[BOTSCRKEY]= CTRLV;	/*bottom of screen (V) */
+	tran[BLOCKKEY]= CTRLK;	/*block operations (K) */
+	tran[SCRLDNKEY]= CTRLZ;	/*scroll down thru text (Z) */
+	tran[REPKEY]= CTRLL;	/*repeat last find/alter (L) */
+	/*tran[HELPKEY]= 0x1e;*/	/*display help menu (^^) */
+	tran[UNDELINE]=0X1E;	/*restore deleted line*/
+	tran[OOPSKEY]= 0x1f;	/*restore unedited line (^_) */
+	tran[TAB]= CTRLI;		/*tab (I) */
+	tran[RETRIEVE]= CTRLL;	/*retrieve (L)*/
+	tran[CR]= 0x0d;		/*return*/
+	tran[ESCKEY]=0x1b;	/*escape, the magic key (ESC)*/
+}
+
+/*-------------------------------HELP MENU-------------------------------*/
+
+ 
+displayhelp()	/*display the help menu.  There must be (helplines-1)
+			lines of menu here (see terminal function,above) */
+/*  old help
+{
+	puts("CURSOR:  ^B|=beginning of line|  ^S|=left word|  ^D|=right word|  ^E|=end of line|\n");
+	puts("MOVE:    ^W|=up a screen|        ^Z|=down a screen|  ^U|=top,|  HOME|=bottom of file|\n");
+	puts("FIND:    ^F|=find|               ^R|=repeat last find/alter|    ^A|=alter|\n");
+	puts("DELETE:  DEL|=char left|         ^G|=char right|     ^T|=word|    ^Y|=line|  ^\\|=oops\n");
+	puts("   ^     ^Q|=quit|  ^P|=read file| ^O|=write,print,shift,move,copy,or delete blOck\n");
+	puts(" <- ->   ^X|=jump to line|  ^N|=iNsert a new line   |^C|=context |^V|=view menu off/on|\n");
+	puts("---v------------------------------------------------------------------------");
+}
+*/
+{
+	puts("LEFT:|   chr=|^S,^H| word=|^A| line=|^O     RIGHT:| chr=|^D|  word=|^F| line=|^P\n");
+	puts("UP:|     scroll=|^W| line=|^E| page=|^R     TOP:|   scrn=|^Y| file=|^U\n");
+	puts("DOWN:|   scroll=|^Z| line=|^X| page=|^C     BOT:|   scrn=|^V| file=|^B\n");
+	puts("DELETE:| chr-rt=|^G| chr-lf=|DEL| word=|^T| line=|^\\| EOL=|^QY      RESTORE: ^_\n");
+	puts("SEARCH:| find=|^QF| replace=|^QA   REPEAT: ^L  JUMP: ^J|n (repeat=|^KJ|)| REFORM:^QP\n");
+	puts("BLOCK:|  quit=|^KQ| save=|^KX| read=|^KR| moves=|^KB  STATUS:^QK  HELP:^QO\n");
+	puts("----------------------------------------------------------------------------\n");
+}
+/*---------------------------------END---------------------------------------*/
+[SCRLDNKEY]= CTRLZ;	/*scroll down thru text (Z) */

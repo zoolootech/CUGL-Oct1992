@@ -1,0 +1,396 @@
+                      B-Tree Library
+                       Developed by
+                        Ray Swartz
+
+    The programming routines that make up this b-tree library
+are hereby put into the public domain.  Any use, either
+private or commercial, is allowed upon the condition that
+a notice appear within the program documentation or on the terminal
+screen (during execution of the program)
+that these b-tree routines were developed by Ray Swartz.  Such notice
+must be clear and obvious, appearing at the beginning of written documentation
+or displayed on the terminal screen during the initial phases of the program.
+
+    Use of these routines without proper attribution is not allowed.
+This violates the spirit within which these routines were
+developed and put into the public domain.  The author reserves the right
+to charge royalties of 10% of the gross revenue of any computer program
+using these routines WITHOUT the required notice.
+
+
+    These routines create and manage a balanced binary tree.
+The advantages of these trees are well-known and will not be described
+here.  However, for an excellent discussion of this, and a number
+of related topics, see D. Knuth, The Art of Computer Programming -
+Volume 3  (Sorting and Searching) pages 422 - 471.  This book is
+published by Addison-Wesley, ISBN: 0-201-03803-X.  
+
+    The keyfile created to do this has two distinct parts.
+The first part holds the header information on the keyfile itself.
+This takes up the first 19 (DATA_LENGTH) bytes of the file and
+are arranged as follows:
+
+  1) A Tilde (~) - used to denote a keyfile
+  2) The length of this file's key field (2-byte integer (ascii))
+  3) Node number of next available key node (5-byte integer (ascii))
+  4) Node number of first node in list (5-byte integer (ascii))
+  5) Number of non-deleted nodes in the list (5-byte integer (ascii))
+  6) A Tilde
+
+This information is stored in the structure KEYINFO which is declared
+in the file BTREE.H.
+
+    The second part of a keyfile is the key nodes.  Each node holds:
+
+  1) A delete flag (YES if deleted, NO if active) (2 bytes)
+  2) A balance factor (-1 if unbalanced to left, 0 if balanced,
+         1 if unbalanced to right). (2 bytes)
+  3) The node number just to the left of this one. (5 bytes)
+  4) The node number just to the right of this one. (5 bytes)
+  5) The record number of the data containing this key. (5 bytes)
+  6) The key this node references (length depends on keyfile initialization)
+
+This information is stored in the structure NODE which is declared in the
+file BTREE.H.
+
+    Before information can be stored in a keyfile, the file must
+be initialized by the TREEINIT program included with this library.
+The user must declare the length of the keys this file will hold.
+This length is a maximum that must remain constant.  Changing the
+size of the key requires rebuilding the tree stored in the keyfile.
+
+    No provisions are made for managing the data records referenced by
+these keys.  This is the responsibility of the programmer using
+these routines.
+
+
+    The heart of this system is the INSERT routine which
+not only inserts new keys into the tree but maintains the tree's
+balance as well.  This routine, in it entirety, was implemented by
+following the algorithm in Knuth, The Art of Computer Programming
+Volume 3, Pages 455 - 457.  No attempt should be made to modify
+the INSERT function without a thorough understanding of this material.
+
+
+    The b-tree library consists of 3 program files:
+
+        BTREE1.C
+        BTREE0.C
+        TERMCTRL.C.
+
+The file BTREE1.C contains the INSERT, DELETE_KEY, GET_NEXT,
+GET_PREVIOUS, and FIND_KEY functions.  BTREE0.C contains support
+functions called by BTREE1.C.  TERMCTRL.C contains all the routines
+that use functions that directly manipulate the terminal.
+Generally, these terminal control functions are not required for
+proper usage, however the routines will not work without them.
+They are included for 2 reasons.  First, when the
+routines were written, I integrated them into the program.  Removing them
+would be a pain.  Second, once the appropriate changes are made to the
+CURSOR routine (addressing the cursor) and the CLEAR_END_OF_PAGE macro
+(in BTREE.H), an elementary screen driver is enabled for whatever terminal
+is used.
+
+    To create a linking library, these files should be organized so
+that BTREE1 can reference routines in BTREE0 and TERMCTRL and those
+in BTREE0 can reference routines in TERMCTRL.
+
+
+    Inserting keys into a balanced binary tree is a straight
+forward process.  Deleting keys from such a tree and maintaining
+the balance is another thing entirely.  In fact, deleting tree nodes
+may require several adjustments to maintain tree balance.  In an
+attempt to avoid all the complexities introduced by performing
+true node deletion, I opted for a conceptually simpler approach.
+Instead of actually deleting nodes from the tree, I mark them as
+deleted without removing them from the tree.  In this way, the tree's
+structure never changes except during insertion.  A "deleted" node
+remains in the tree except it can't be "found."
+
+    Like all shortcuts, this one has a cost.  As more and more
+nodes are deleted, the search to find an "active" node takes longer
+since an increase number of nodes are being read but "ignored."
+However, searching a binary tree is quite efficient.  Even if 10%
+of a tree was deleted, the search would not take much longer in
+real time.  The obvious solution is to re-build the tree when the
+performance slows unacceptability due to an overabundance of deleted nodes.
+
+
+    This set of routines uses three tricks.  The first one is relying on
+someone else's algorithm to design the insertion function.  The second
+one is to mark deleted nodes in place of actually removing them from the
+tree.  The last one is
+the use of a stack to find the next and previous nodes from the current
+one.  I call this a trick because how it works is not obvious.
+
+    The problem is this: Given that we have searched for and found
+a specific node, how do we get to the key that is just below
+(previous) or just above (next) this one?  Consider the balanced
+binary tree shown below that has 15 nodes - all active:
+
+
+                           8
+                         /   \
+                      /         \
+                    4             12
+                 /     \         /   \
+               2         6     10      14
+              / \       / \    / \     / \
+             1   3     5   7  9   11 13   15
+
+Suppose node 12 is the current node and we want to find the next larger
+key.  That key is the one at the end of the left branch of the node
+one to the right of the current node - in this case, node 13.  The
+exact opposite is true of the key that is the next smaller or previous
+node.  It is the one at the end of the right branch of the node
+one to the left of the current node - in this case node 11.  This is the
+easy possibility.  What happens if we go the the next one - making
+node 13 the current node - and now want to know what the next node is?
+The problem is that node 13 is the end of a tree branch and we
+can't go further "down" the tree.  Instead, we must go "up" a node
+to 14.  How do we keep treck of which node is up one from here?
+
+We do this by building a stack as we look through the tree.  In
+reality, we use two identical stacks - a right one and a left one.
+In the right stack we "push" values each time we move down and to the
+right in the tree.  We do the same on the left stack when we move
+down and to the left.  As an example, to search for node 13, we begin
+at the head of the list (node 8) and move to the right (since 13 > 8).
+After moving right, we push 8 onto the right stack.  At 12 we again move
+right (13 > 12) to node 14.  We then push 12 onto the right stack.
+At 14 we move left (13 < 14).  This time we push 14 onto the left stack
+since we moved left here.  The search now terminates since we are at node
+13.  The stacks look like:
+
+
+    Left      Right
+     14         8
+               12
+
+If we are asked to get the previous node, we determine that we can't
+go down and must go up.  Since it is the previous one, we "pop" the
+right stack (since this was the last place we found a node with
+a lower key value), and move to node 12.  The stacks now look like:
+
+    Left      Right
+     14         8
+
+But there is something wrong.  The left stack has bogus information in it.
+We went to 14 AFTER we went to 12.  Thus, if we pop 12 off the right
+stack (in effect going up 2 levels in the tree) then we should take
+14 off the left stack, as well.  How would the computer know this
+without some inherent knowledge of the tree structure which is impossible.
+We can do this if we include an additional piece of data in the stack -
+the tree level of the element number on the stack.  The tree level
+is defined as the number of nodes that exist between this node and
+the head of the tree.  The diagram below shows the same tree with the
+tree levels marked:
+
+level 0                    8
+                         /   \
+                      /         \
+level 1             4             12
+                 /     \         /   \
+level 2        2         6     10      14
+              / \       / \    / \     / \
+level 3      1   3     5   7  9   11 13   15
+
+Thus, the actual stacks look like this after 13 is found:
+
+     Left            Right
+  Node   Level    Node   Level
+   14      2        8      0
+                   12      1
+
+Now, when we pop 12 off the right stack, we see that we have gone up
+to tree level 1.  This means that any data on the left stack
+below level 1 is no longer of any use and should be removed.
+After jumping up to node 12 from node 13, the stacks look like this:
+
+     Left            Right
+  Node   Level    Node   Level
+                    8       0
+
+The stacks would return to their previous values if at 12 we moved
+to the next node (13).
+
+    If a stack is empty when we try to pop a value off of it, then
+we are at the end of the list.  As an example, if we search for node
+15, we move right 3 times leaving the left stack empty.  A request to
+go the next one fails since we can't move down and the left stack
+is empty.
+
+
+
+
+FILE *open_keyfile(filename, fileinfo)   /* used to open keyfile */
+char *filename;  /* name of file to open */
+struct keyinfo *fileinfo;  /* where to store file header info */
+
+
+close_keyfile(fileinfo)   /* write out header information and close file */
+struct keyinfo *fileinfo;
+
+
+write_node(nbr, nodeinfo, fileinfo)   /* write a node's info to file */
+long nbr;   /* node to write at */
+struct node *nodeinfo;  /* node info to write */
+struct keyinfo *fileinfo;
+
+print_node(node1)  /* display contents of a node on screen (debug) */
+struct node *node1;
+
+push_left_stack(nbr)  /* moved left in tree - record this in stack */
+long nbr;  /* number of node to push onto stack */
+
+push_right_stack(nbr)  /* moved right in tree - record this in stack */
+long nbr;  /* number of node to push onto stack */
+
+  /* return the next one on the stack and keep left stack at proper level */
+long pop_right_stack() 
+
+
+  /* return the next one on the stack and keep right stack at proper level */
+long pop_left_stack()
+
+
+get_node(nbr, nodeinfo, fileinfo)  /* read the info stored in node NBR */
+long nbr;     /* node to retrieve */
+struct node *nodeinfo;   /* where to store the node's information */
+struct keyinfo *fileinfo;
+
+
+insert(argkey, recnbr, fileinfo) /* insert key (argkey) into tree */
+struct keyinfo *fileinfo;  /* file to insert key into */
+char *argkey;    /* key to insert */
+long recnbr;     /* record number of corresponding data record */
+
+
+link(alpha1, node1, alpha2, node2)
+int alpha1, alpha2;
+struct node *node1, *node2;
+    /* see definition of LINK(a, P) on Knuth pg. 455 (Vol. 3) */
+
+
+nbr_link(nbr, alpha, node1) /* set a record number according to alpha */
+long *nbr;   /*  this routine is used in insert when a record number */ 
+int alpha;   /*  needs to be set with  nbr = LINK(alpha, node1) */
+struct node *node1;
+
+
+link_nbr(alpha, node1, nbr) /* set a link according to alpha */
+int alpha;    /* used in insert when  LINK(alpha, node1) = nbr */
+struct node *node1;
+long nbr;
+
+node_bal(alpha, node1, node2, node3)  /* node balancing in Step A9 */
+int alpha;
+struct node *node1, *node2, *node3;
+
+
+delete_key(node_nbr, current_node, fileinfo)  /* mark a node as deleted */
+long node_nbr;  /* node to delete */
+struct node *current_node;  /* deleted node's information */
+struct keyinfo *fileinfo;  /* keyfile */
+
+
+
+get_next(node_nbr, current_node, fileinfo)  /* retrieve next higher key */
+struct keyfile *fileinfo;
+struct node *current_node;  /* where to store node's info */
+long *node_nbr;    /* node to retrieve */
+
+
+
+find_key(key1, node_nbr, current_node, fileinfo) /* locate a key */
+char *key1;  /* key to find */
+struct keyinfo *fileinfo;
+long *node_nbr;  /* number of "found" node */
+struct node *current_node;  /* where "found" node is stored */
+
+
+get_previous(node_nbr, current_node, fileinfo) /* retrieve next lower key */
+long *node_nbr;  /* number of current node */
+struct node *current_node;  /* current node's information */
+struct keyinfo *fileinfo;   /* keyfile info */
+
+
+cursor(row, col)  /* cursor movement on a televideo 925 */
+int row;  /* row and column to more cursor to */
+int col;
+
+
+int main_prompt(prompt)   /* prompt used as database interface */
+char *prompt;
+
+/* prints "Find Delete Next Previous Insert Quit" and
+returns the corresponding token - only reacts to the first character
+entered */
+
+
+   /* prompt for and read the key to FIND (from keyboard) */
+get_key(prompt, key, fileinfo) 
+struct keyinfo *fileinfo;
+char *prompt;  /* prompt to print */
+char *key;     /* key entered */
+
+
+print_msg(prompt)  /* go to line 20, clear window, ring bell, prompt */
+char *prompt;
+
+
+delay() /* a delay loop (counts to 10000) */
+
+
+yes_or_no(prompt)  /* print prompt and return YES or NO */
+char *prompt;      /* loops until Y/y/N/n is entered */
+
+
+Contents of BTREE.H file:
+
+
+#define NOT_FOUND -1
+#define AT_END -2
+#define YES 1
+#define NO 0
+#define TOP -1   /* flag to show if top of list = rotate node */
+#define END 0    /* end pointer in a node */
+#define QUIT 0          /* menu options */
+#define FIND 1
+#define INSERT 2
+#define NEXT 3
+#define PREVIOUS 4
+#define DELETE 5
+#define CLEAR_END_OF_PAGE    printf("%cY",27); /* for televideo 925 */
+#define BELL                 putchar(7);
+#define DATA_LENGTH 19  /* characters in first record of key file */
+
+struct keyinfo {   /* Header information on each open keyfile */
+    FILE *file;          /* file pointer to keyfile */
+    int keylength;       /* Length of file key */
+    long next_avail;     /* Next free node in tree (nbr_in_list + 1) */
+    long list_head;      /* Node number at the head of the list */
+    long nbr_in_list;    /* Number of (active) nodes in the tree */
+};
+
+struct node {      /* The composition of a tree-node */
+    long rec_nbr;        /* The pointer to the data file record */
+    long left_link;      /* The node to this one's immediate left */
+    long right_link;     /* The node to this one's immediate right */
+    char *key;           /* Pointer to this record's key */
+    int delete_flag;     /* 1 if deleted, 0 if live */
+    int balance;         /* -1 left subtree longer, 0 even, +1 right bigger */
+};
+
+
+#define STACK_LENGTH 50    /* length of history stacks */  
+
+struct stack {    /* tree traversal stack */
+    long element[STACK_LENGTH];   /* Node number pushed onto history stack */
+    int level[STACK_LENGTH];      /* Stack level of this element */
+    int stack_cntr;               /* Top of stack */
+} right_history, left_history;
+
+int stack_level;   /* tree level at present */
+char instr[256];   /* general string input */
+

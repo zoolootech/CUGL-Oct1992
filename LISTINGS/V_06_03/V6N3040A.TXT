@@ -1,0 +1,125 @@
+;
+; peekpoke.asm -- peek and poke functions for Eco-C88 which function
+; like those in the Datalight library instead of those in the
+; Ecosoft library.
+;
+
+Include amodel.h
+Include c:\headers\pro.h
+
+If BIGCODE
+	ARG	Equ	6		; offset of first argument
+else
+	ARG	Equ	4
+endif
+
+; put the code in $b$prog even though it is big code
+; to save segments
+
+$b$prog	Segment	'code'
+
+;
+; peekbuf -- peek and return in buffer.  Peek at the location
+; specified by segment seg and offset off for numbytes bytes.
+; Place the data found in the buffer pointed to by buf.
+;
+; The C declration would look like:
+;
+;	void peekbuf(seg, off, buf, numbytes)
+;	int seg, off, numbytes;
+;	char *buf;
+;
+
+	Public	_peekbuf
+If	BIGCODE
+_peekbuf	Proc	Far
+else
+_peekbuf	Proc	Near
+endif
+
+	PUSH	BP
+	MOV	BP,SP
+	PUSH	DS
+	PUSH	ES
+	MOV	DS,[BP][ARG]		; source segment
+	MOV	SI,[BP][ARG+2]		; source pointer in DS:SI
+If	BIGDATA
+	LES	DI,[BP][ARG+4]		; get pointer to buf in ES:DI
+	MOV	CX,[BP][ARG+8]
+else
+	MOV	AX,SS
+	MOV	ES,AX
+	MOV	DI,[BP][ARG+4]		; get pointer to buf in ES:DI
+	MOV	CX,[BP][ARG+6]		; get byte count
+endif
+
+	SHR	CX,1		; convert bytes to words
+	JZ	mla		; jump if no full words to move
+REP	MOVSW			; move the words
+mla:	JNC	mlfin		; no bytes to move
+	MOVSB			; move the left over byte
+mlfin:
+
+	POP	ES			; restore es
+	POP	DS			; restore ds
+	POP	BP
+	RET
+_peekbuf	EndP
+
+
+;
+; pokebuf -- poke from buffer into memory.  Poke the contents of
+; buf into memory at the location specified by segment seg and
+; offset off for numbytes bytes.
+;
+; The C declaration would look like:
+;
+;	void pokebuf(seg, off, buf, numbytes)
+;	int seg, off, numbytes;
+;	char *buf;
+;
+
+	Public	_pokebuf
+If	BIGCODE
+_pokebuf	Proc	Far
+else
+_pokebuf	Proc	Near
+endif
+
+	PUSH	BP
+	MOV	BP,SP
+
+If	BIGDATA
+	PUSH	DS
+	MOV	ES,[BP][ARG]	;segment of destination
+	MOV	DI,[BP][ARG+2]	;ES:DI -> destination
+	LDS	SI,[BP][ARG+4]	;DS:SI -> buf (source pointer)
+	MOV	CX,[BP][ARG+8]	;# of bytes to move
+else
+	PUSH	ES
+	MOV	ES,[BP][ARG]	;segment of destination
+	MOV	DI,[BP][ARG+2]	;offset of destination
+	MOV	SI,[BP][ARG+4]	;buf (source offset)
+	MOV	CX,[BP][ARG+6]	;# of bytes to move
+endif
+
+	SHR	CX,1		; convert bytes to words
+	JZ	mlb		; jump if no full words to move
+REP	MOVSW			; move the words
+mlb:	JNC	mldone		; no bytes to move
+	MOVSB			; move the left over byte
+mldone:
+
+If	BIGDATA
+	POP	DS
+else
+	POP	ES
+endif
+
+	POP	BP
+	RET
+_pokebuf	EndP
+
+$b$prog	EndS
+	End
+

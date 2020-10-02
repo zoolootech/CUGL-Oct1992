@@ -1,0 +1,79 @@
+#include "ciao.h"        /* screen & keyboard i/o, supporting fns & macros */
+#include "fafnir.h"      /* magic forms macros, etc. */
+#include <stdarg.h>
+
+static char title[] = "Fafnir ver. 2.0 - elysian fields and forms nirvana by d.c.oshel";
+
+/* functions to construct data -- defined elsewhere   */
+static int difference( char *p, int x, int y, int len );
+static int concatname( char *p, int x, int y, int len );
+
+/* Name the fields -- with a fafnir macro   */
+
+FIELDS last, first, conam, addr1, addr2, city, state, zip, homef, workf,
+       today, name, dues, paid, blnc, saltn, rem;
+    
+/* Set the attributes -- again using fafnir macros */
+/* This display uses two pages or screens          */
+
+DEFINE_FIELDS( fafnir )
+
+    TODAY(      today,                              17, 15     )   /* 0 */
+    TEXT_SET(   last,   "Oshel",                    17,  3, 30 )   /* 1 */
+    TEXT_SET(   first,  "David C.",                 17,  4, 30 )   /* 2 */
+    TEXT_SET(   conam,  "MicroConsulting Services", 17,  5, 30 )   /* 3 */
+    TEXT_SET(   addr1,  "1219 Harding Avenue",      17,  6, 30 )   /* 4 */
+    TEXT(       addr2,                              17,  7, 30 )   /* 5 */
+    TEXT_SET(   city,   "Ames",                     17,  8, 30 )   /* 6 */ 
+    STATE_SET(  state,  "IA",                       17,  9     )   /* 7 */
+    TENZIP_SET( zip,    "50010",                    17, 10     )   /* 8 */
+    PHONE_SET( workf, "(515) 292-    ",             17, 11     )   /* 9 */
+    TEXT_SET(     rem,   title,   17, 17, SLIDE(15)            )   /* 10 */
+
+END_FIELDS; /* a macro to close the specification */
+
+#define ALL 10
+
+main()
+{
+
+    static char *dialogue[] = {
+        "Continue demonstration",
+        "Exit program"
+    };
+
+    vid_init(0);  /* *** MUST *** */
+
+    AllocateFields( fafnir, ALL );  /* *** MUST *** */
+
+    /* a real application would move the data record 
+       into form fields at this point       */
+
+    do
+    {
+        zoo:
+        switch ( OnePageForm( "FAF1.S", fafnir, ALL, UPDATE ))
+        {
+        case SAVE_FORM:
+            /* would normally move the form fields 
+               back into the data record at this point */
+            boxmsg( "Pretending to save this form!" );
+            break;
+        case DELETE_FORM: 
+            boxmsg( "You can't delete a demonstration form!");
+        case SKIP_FORM:
+            nboxmsg( "Searching..." );  /* fake search */
+            goto zoo;
+            break;
+        case STOP_SEARCH: 
+            boxmsg( "What, just like that?!" );
+            break;
+        }
+    }
+    while ( (blopbloop(),select( 25,1,dialogue,2 )) == 0 );
+
+    vid_exit();  /* restore sign-on screen */
+    ReleaseFields( fafnir, ALL );
+    exit (0);
+}
+

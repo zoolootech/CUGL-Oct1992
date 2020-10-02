@@ -1,0 +1,309 @@
+/*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	FILE: e6
+
+	FUNCTIONS: blockpos,blockops,putpart,listfile
+
+	PURPOSE: performs block commands
+
+*/
+
+#include "e.h"
+
+blockpos(oldpos)
+int oldpos;
+{
+	char c, getkey();
+	int to;
+
+	if (oldpos) puts("| or |P|rev.");
+	do {
+		putlineno(cline);
+		resetcursor();
+		switch ((c=getkey())) {
+		case DOWNKEY	:
+			moveline(1);
+			break;
+		case UPKEY	:
+			moveline(-1);
+			break;
+		case LEFTKEY	:
+			movechar(-1);
+			break;
+		case RIGHTKEY	:
+			movechar(1);
+			break;
+		case LEFTWKEY	:
+			moveword(-1);
+			break;
+		case RIGHTWKEY	:
+			moveword(1);
+			break;
+		case BOLKEY	:
+			sync(0);
+			break;
+		case EOLKEY	:
+			sync(strlen(text));
+			break;
+		case UPPAGE	:
+			movepage(-1);
+			break;
+		case DOWNPAGE	:
+			movepage(0);
+			break;
+		case HOMEKEY	:
+			if (jumpline(lastl-cline)) sync(strlen(text));
+			break;
+		case BOFKEY	:
+			if (jumpline(1-cline)) sync(0);
+			break;
+		case JUMPKEY	:
+			putmess("Jump to? ");
+			scans(ans,6);
+			if ((to=atoi(ans)))
+				jumpline(to-cline);
+			break;
+		case FINDKEY	:
+			replace=NO;
+			findorrep();
+			break;
+		case REPKEY	:
+			repeat=YES;
+			dofindrep(1);
+			repeat=NO;
+			break;
+		case 'p'	:
+		case 'P'	:
+			if (oldpos) return PREV;
+			break;
+		case ESCKEY	:
+			return FAIL;
+		default		:
+			;
+			}
+		}
+	while (c != CR);
+	return cline;
+}
+
+blockops()
+{
+	int oldcline, oldcharn, oldto, oldfrom, op;
+	int l, ll, line, *t, shifts, shiftx, cp, y;
+	char  *txt, c, shift[LLIM], *getline(), getlow(), getkey();
+
+	puttext();
+	oldcline=cline;
+	oldcharn=charn;
+	oldfrom=from;
+	oldto=to;
+	putmess("W|rite to file, |P|rint, |S|hift, |M|ove, |C|opy, or |D|elete block ? ");
+	while (YES) {
+		switch ((op=getlow())) {
+		case ESCKEY :
+			return;
+		case 'w':
+			puts("Write");
+			break;
+		case 'p':
+			puts("Print");
+			break;
+		case 's':
+			puts("Shift");
+			break;
+		case 'm':
+			puts("Move");
+			break;
+		case 'c':
+			puts("Copy");
+			break;
+		case 'd':
+			puts("Delete");
+			break;
+		default:
+			continue;
+			}
+		break;
+		}
+	from=cline;
+	to=0;
+	blocking=YES;
+	putmess("|Put cursor on line |end|ing block and press [return]");
+	if ( (to=blockpos(oldto)) == FAIL) {
+		to=cline;
+		goto abort;
+		}
+	if (to == PREV) {
+		moveline(oldfrom-cline);
+		to=loc(oldto,0);;
+		for (l=from=cline, y=cursory, ll= (oldto < plast ? oldto : plast);
+			l <= ll; l++, y++) putline(l,y);
+		}
+	if (to < from) {
+		l=to;
+		to=from;
+		from=l;
+		}
+	switch (op) {
+	case 'w':
+		putmess("File to write to? ");
+		if (scans(name,15) != ESCKEY)
+			if (exists(name)) writefile(from,to,name,name,NO);
+		break;
+	case 'p':
+		listfile(from,to);
+		break;
+	case 's':
+		putmess("Delete/insert spaces/tabs| to shift line, and press [return]");
+		moveline(from-cline);
+		sync(0);
+		resetcursor();
+		for (shifts=0; (c=getkey()) != CR; ) {
+			switch (c) {
+			case DELRIGHT:
+				if (text[0] == ' ' || text[0] == '\t')
+					deletechar(0);
+				break;
+			case ' ':
+				insertchar(' ');
+				break;
+			case TAB:
+				insertchar('\t');
+				break;
+			case ESCKEY:
+				goto abort;
+			default:
+				continue;	 /*ignore other characters*/
+				}
+			shift[shifts++]=c;
+			sync(0);
+			resetcursor();
+			}
+		puttext();
+		for (l=from+1; l <= to; l++) {
+			gettext(l);
+			for (shiftx=0; shiftx < shifts; shiftx++) {
+				switch((c=shift[shiftx])) {
+				case DELRIGHT:
+					if (*(txt=&text[0]) == ' ' || *txt == '\t')
+						while ( (*txt=*(txt+1))) txt++;
+					break;
+				case ' ':
+				case TAB:
+					if ((cp=strlen(text)) < (LLIM-1)) {
+						for (; cp >= 0; cp--)
+							text[cp+1]=text[cp];
+						text[0]= (c == ' ' ? ' ':'\t');
+						}
+					break;
+					}
+				}
+			altered=YES;
+			puttext();
+			}
+		break;
+	case 'd':
+		for (l=from; l <= to; l++) delete(from);
+		gettext(loc(from,0));
+		adjustc(cursorx);
+		from=to=0;
+		break;
+	case 'm':
+	case 'c':
+		putmess("|Put cursor on |line under which  block is to go |and press [return]");
+		if ( (cline=line=blockpos(0)) == FAIL) {
+			cline=oldcline;
+			break;
+			}
+		for (l=from; l <= to; l++) {
+			if ((line=inject(line,getline(l))) == FAIL) break;
+			if (op == 'm') {
+				delete( (l<line?l:l+1) );
+				if (to < line) {
+					to--;
+					l--;
+					line--;
+					cline--;
+					}
+				}
+			else {
+				if (to >= line) to++;
+				if (l >= line) l++;
+				if (l == cline) l=line;
+				}
+			}
+		from=cline+1;
+		to=line;
+		break;
+		}
+abort:
+	blocking=NO;
+	switch (op) {
+	case 'w':
+	case 'p':
+	case 's':
+		cline=oldcline;
+		charn=oldcharn;
+		putpart(from,to);
+		break;
+	case 'd':
+		putpart(cline,cline+SHEIGHT);
+		break;
+	case 'm':
+	case 'c':
+		putpage();
+		break;
+		}
+}
+
+putpart(start,fin)
+int start,fin;
+{
+	int l, y;
+
+	if (start < pfirst) putpage();
+	else
+	for (l=start, y=topline+(start-pfirst); l <= fin && y <= SHEIGHT;
+			l++, y++) {
+		    if (l == cline) cursory=y;
+		putline(l,y);
+		}
+	gettext(cline);
+}
+
+listfile(from,to)
+int from,to;
+{
+	int l,cp,i;
+	char *t;
+
+	puttext();
+	for (l=from; l<=to; l++) {
+		if (l%10 == 0) putlineno(l);
+		for (cp=0, t=getline(l); *t; t++)
+			if (*t == '\t') for (i=tabwidth-cp%tabwidth; i>0 ; cp++, i--)
+				bdos(LSTOUT,' ');
+			else {
+				if (*t > CTRL) bdos(LSTOUT,*t);
+				else {
+					bdos(LSTOUT,'^');
+					bdos(LSTOUT,*t+64);
+					}
+				cp++;
+				}
+		bdos(LSTOUT,'\r');
+		bdos(LSTOUT,'\n');
+		if (testkey() == ESCKEY) {
+			error("Listing aborted");
+			return;
+			}
+		}
+}
+'\t')
+						while ( (*txt=*(txt+1))) txt++;
+					break;

@@ -1,0 +1,423 @@
+;                -----  LISTING 1  -----
+
+;    File:  CTRL_C.ASM
+
+title Ctrl-C handler   -   Ctrl-Break handler
+
+COMMENT @
+  ----------------------------------------------------
+
+  Microsoft MASM 5.0
+  Standard C calling conventions
+
+  Author:  David Burki
+  ----------------------------------------------------
+
+               -----  SUMMARY  -----
+
+ Traps Ctrl-C keystrokes utilizing a "back-end"
+ filtering process attached to the BIOS keyboard I/O
+ routine (INT 16h) and traps Ctrl-Break keystrokes by
+ replacing INT 1bh.  INT 23h is also be replaced in
+ order to trap the undocumented Ctrl-2 Alt-3 key
+ combinations.
+
+ There are two callable entry points to this code:
+    _capture()
+        Installs the new interrupt vectors and stores
+        the address of the calling programs variable
+        (an int) in the code segment addressable variable
+        "flag".  Sets the local cs referenced variable
+        "replaced" to true to prevent _release() from
+        trying to restore vectors from garbage.
+    _release()
+        Checks the cs referenced "replaced" flag to
+        avoid restoring vectors never saved. Restores
+        the replaced vectors to their original values
+        once _capture() has been called, this procedure
+        MUST be executed before the application terminates,
+        or INT 16h & 1bh will be left pointing to random
+        code and a reboot will be necessary.
+        The application may capture and release as many
+        times as necessary during it's execution.
+
+    Sample call from C:
+        int b_flag = 0;
+        main()
+          {        /* NOTE: b_flag cast as a far ptr */
+          capture( (far *)&b_flag );
+          .
+          .
+          release();
+          }
+  ----------------------------------------------------
+END COMMENT @
+
+;match the model directive with the application model
+.model large
+
+
+
+; ----------------------------------------------------
+;  MACROs and EQUATES
+; ----------------------------------------------------
+sim_int macro  num
+    pushf
+    call    cs:orig_&num
+endm
+
+TRUE    equ     1
+FALSE   equ     0
+
+;       large model flag parameter equates
+if @CODESIZE
+   FLG_OFF equ  [bp+6]
+   FLG_SEG equ  [bp+8]
+;       small model flag parameter equates
+else
+   FLG_OFF equ  [bp+4]
+   FLG_SEG equ  [bp+6]
+endif
+
+
+.code
+
+; ----------------------------------------------------
+;The replaced address and the flag pointer are in the
+;code segment so they will be accessable to the
+;interrupt replacement code.
+; ----------------------------------------------------
+
+; far address of application program's Ctrl-C/Break
+; detected flag
+flag      dd    0
+
+orig_16h  dd    0           ;far addresses of
+orig_1bh  dd    0           ;   the original
+orig_23h  dd    0           ;       vectors
+
+; flag to let capture() & release() know there are
+; valid addresses in org_??h
+replaced  db    FALSE
+
+
+assume ds:@curseg
+
+; ----------------------------------------------------
+;the following "installation" procedure is a near call
+;even in the large model environment
+; ----------------------------------------------------
+install_vectors proc near
+
+;get current int 16h vector
+    mov     ax,3516h
+    int     21h
+    mov     word ptr orig_16h,bx
+
+;save the vector we found
+    mov     word ptr orig_16h+2,es
+
+;get address of new handler
+    lea     dx,sixteen_handler
+
+;set the vector to point
+;to our routine
+    mov     ax,2516h
+    int     21h
+
+; ----------------------------------------------------
+;replacement of 1bh is mandatory if you want to prevent
+;int 1bh (Ctrl-Break) from setting the flag DOS looks at
+; ----------------------------------------------------
+
+;get current int 1bh vector
+    mov     ax,351bh
+    int     21h
+    mov     word ptr orig_1bh,bx
+
+;save the vector we found
+    mov     word ptr orig_1bh+2,es
+
+;get address of new handler
+    lea     dx,int1b_handler
+
+;set the vector to point
+;to our routine
+    mov     ax,251bh
+    int     21h
+
+; ----------------------------------------------------
+;replacement of 23h is *not* necessary to trap Ctrl-C
+;or Ctrl-Break, however, if you want to break from your
+;code using Ctrl-2 or Alt-3, int 23h is where we'll make
+;a call to release() so the installed interrupt handlers
+;will be un-installed, thus preventing a system hang on
+;return to DOS.
+; ----------------------------------------------------
+
+;get current int 23h vector
+    mov     ax,3523h
+    int     21h
+    mov     word ptr orig_23h,bx
+
+;save the vector we found
+    mov     word ptr orig_23h+2,es
+
+;get address of new handlers
+    lea     dx,int23_handler
+
+;set the vector to point
+;to our routine
+    mov     ax,2523h
+    int     21h
+    ret
+install_vectors endp
+
+
+; ----------------------------------------------------
+;_capture uses the ".model" memory model near/far proc
+;  NOTE: The parameter "flag" is ALWAYS passed as a far
+;        pointer.
+; ----------------------------------------------------
+public  _capture     
+_capture proc  
+
+;establish the stack frame
+    push    bp
+    mov     bp,sp
+
+;save the application programs ds & es registers
+    push    ds
+    push    es
+
+;make ds point to the code segment for vector swaps
+    push    cs
+    pop     ds
+
+;check if already installed
+    cmp     replaced,TRUE
+    jz      capture_exit
+
+;get the offset and segment of application "break_flag"
+    mov     ax,word ptr FLG_OFF
+    mov     word ptr flag,ax
+    mov     ax,word ptr FLG_SEG
+    mov     word ptr flag+2,ax
+
+;install the replacements
+; NOTE:  near overides for when large model
+    call    near ptr install_vectors
+
+;flag that things have changed
+    mov     byte ptr replaced,TRUE
+
+;restore registers and stack frame
+capture_exit:
+    pop     es
+    pop     ds
+    pop     bp
+    ret
+_capture endp
+
+assume cs:@curseg, ds:nothing, es:nothing
+
+
+; ----------------------------------------------------
+;_release uses the default memory model near/far proc
+;restores interrupt 16h, 1bh & 23h to what they were
+;before capture changed them
+; ----------------------------------------------------
+public _release
+_release proc
+
+;save regs used locally
+    push    ds
+    push    dx
+
+;save the flags in case this routine has been called
+;by the int 23h handler
+    pushf
+
+;check that _capture() has installed the handlers
+    cmp     cs:replaced,TRUE
+    jnz     release_exit
+
+;ds:dx gets the address of the saved original
+;interrupt 16h vector
+    lds     dx,cs:orig_16h
+
+;reset the int 16h vector
+    mov     ax,2516h
+    int     21h
+
+;ds:dx gets the address of the saved original
+;interrupt 1bh vector
+    lds     dx,cs:orig_1bh
+
+;reset the int 1bh vector
+    mov     ax,251bh
+    int     21h
+
+;ds:dx gets the address of the saved original
+;interrupt 23h vector
+    lds     dx,cs:orig_23h
+
+;reset the int 23h vector
+    mov     ax,2523h
+    int     21h
+
+;indicate that vectore are no longer replaced
+    mov     cs:replaced, FALSE
+
+release_exit:
+;restore flags, dx & ds
+    popf
+    pop     dx
+    pop     ds
+    ret
+_release endp
+
+
+assume cs:@curseg, ds:nothing, es:nothing
+
+;place to store the int 16h function parameter
+;re-entrancy is not a problem
+save_funct      db      ?
+
+
+; ----------------------------------------------------
+;sixteen_handler is a far proc regardless of the memory
+;model specified in the ".model" directive since it is
+;an interrupt replacement routine
+; ----------------------------------------------------
+sixteen_handler proc far
+
+;save the function value
+    mov     cs:save_funct,ah
+
+;convert to the non-extended numbers
+    and     ah,11101111b
+
+;is it a shift status request
+    cmp     ah,2
+
+;lower than shift status request, we'll take care of it
+    jb      not_shift_status_req
+
+;put back the callers function, pass it to the BIOS &
+;   don't come back here
+    mov     ah,cs:save_funct
+    jmp     cs:orig_16h
+
+not_shift_status_req:
+;if it is it a "is_keyready" call handle it in the
+;keyready_call block of code
+    cmp     ah,1
+    jz      keyready_call
+
+;must be a "get_key" request
+get_key_call:
+
+;restore the callers original function value
+    mov     ah,cs:save_funct
+
+;simulate an interrupt
+    sim_int 16h
+
+;did the BIOS return the Ctrl-C keycode
+    cmp     ax,2e03h
+
+;no, so we can return to caller
+    jnz     iret_back
+
+;the BIOS returned a Ctrl-C keycode, so
+;set the flag in the application program
+    call    near ptr set_flag
+
+;the Ctrl-C key is thrown away so go back and get
+;another key
+    jmp     get_key_call
+
+keyready_call:
+;restore the callers original function value
+    mov     ah,cs:save_funct
+
+;simulate an interrupt
+    sim_int 16h
+
+;if the zero flag is set (by the BIOS), the keyboard
+;buffer is empty - ok to return to caller
+    jz      ok_to_go_back
+
+;compare the key at the head of the keyboard buffer with
+;the Ctrl-C keycode.  This compare will leave the Z flag
+;indicating a key is available.
+    cmp     ax,2e03h
+    jnz     ok_to_go_back
+
+;key was Ctrl-C, set the application program flag
+    call    near ptr set_flag
+
+;remove Ctrl-C keycode from the keyboard buffer
+    mov     ah,0
+    sim_int 16h
+
+;loop back to see if a non Ctrl-C key is ready
+    jmp     keyready_call
+
+ok_to_go_back:
+;throw away flags of our caller and return
+    ret     2
+
+iret_back:
+;restore callers flags on return
+    iret
+sixteen_handler endp
+
+
+; ----------------------------------------------------
+;int1b_handler is a far proc regardless of memory model
+;   set the application program flag and return
+; ----------------------------------------------------
+int1b_handler proc far
+    call    near ptr set_flag
+    iret
+int1b_handler endp
+
+
+; ----------------------------------------------------
+;int23_handler is a far proc regardless of memory model
+;  used here to allow Ctrl-2 or Alt-3 to "break" the
+;  program execution
+;
+;restore the original vectors and execute the original
+;Ctrl-C interrupt handler
+; ----------------------------------------------------
+int23_handler proc far
+    call    _release
+    jmp     cs:orig_23h
+int23_handler endp
+
+
+; ----------------------------------------------------
+;set_flag is a near procedure regardless of memory model
+;
+; Use the address passed to _capture() and set the
+; integer refrenced to one.
+; ----------------------------------------------------
+set_flag proc near
+    push    ds
+    push    si
+
+;get the address of the application break flag
+    lds     si,cs:flag
+
+;set the flag to one
+    mov     word ptr [si],1
+    pop     si
+    pop     ds
+    ret
+set_flag endp
+
+end
+

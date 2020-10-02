@@ -1,0 +1,300 @@
+/* subs.c - misc functions used by the c to c++ program - cdh */
+
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include "ctocxx.h"
+
+#define PROTO_SIZE 2000
+#define WINDOW_SIZE 2000
+#define STACK_SIZE 200
+#define ROOTSIZE 100
+#define DECL_SIZE 200
+
+extern char *yytext;
+extern FILE *pfd;
+extern FILE *efd;
+int proto_flag = FALSE;
+static char b[WINDOW_SIZE];
+static char *pb = b;
+static char cstack[STACK_SIZE]={0};
+static int stkptr = 0;
+static char func_proto[PROTO_SIZE];
+static int fp = 0;
+static int i = 0;
+int lineno = 0;
+void push();
+void ed_flush();
+int pop();
+SYMPTR findsym();
+extern struct symbol *storesym();
+/*---------------------------------------------------------------------*/
+static int last_line_deleted = 0;
+static int start = 0;
+static int stop = 0;
+
+/* ed_delete - add cmd to delete the current line number to sed script */
+/* This function may be called with the same line to be deleted */
+/* in which case it is ignored */
+void ed_delete()
+    {
+    if ( !efd || ( lineno == stop) )
+        return;
+
+    if ( start == 0 )
+        {
+        start = stop = lineno;
+        return;
+        }
+
+    if ( lineno == stop+1 )
+        {
+        stop += 1;
+        return;
+        }
+
+    ed_flush();   /* may get here with lineno way beyond start,stop */
+    start = stop = lineno; 
+    }
+
+void ed_flush()
+    {
+    if ( !efd || start == 0 )
+        return;
+    if ( start == stop )
+        fprintf(efd,"%dd\n",stop);
+    else
+        fprintf(efd,"%d,%dd\n",start,stop);
+/*    last_line_deleted = stop; */
+    start = stop = 0;
+    }
+
+/*---------------------------------------------------------------------*/
+/* stuff - this is called by the lexer to remember a lot of prior text */
+void stuff()
+    {
+    char c;
+    static int send_comma = FALSE;
+    static int skip_white = TRUE;
+    static char last_char = 0;
+    static int save_root = TRUE; /* the root part of a parameter decl */
+    static char root[ROOTSIZE];  /* for comma lists -  struct foo *p,a,*t; */
+    static int rp;      /* index into root char array e.g. 'struct foo '*/
+    int k;
+
+    i = 0;
+    while ( (c = yytext[i++]) != '\0'  && i < BUFSIZ )
+        {
+        if ( pb >= &b[WINDOW_SIZE-1] )
+            pb = b;
+        *pb++ = c;
+        if ( proto_flag  )  /* save the param decls in func_proto buffer */
+            {
+            if ( strcmp(yytext,"register") == 0 )  /* slow, fix up later */
+                continue;
+            if ( c == '\t' )   /* change all tabs to spaces */
+                c = ' ';
+            if ( c == ' ' && (last_char == ' ' || last_char == '(') )
+                continue;
+            if ( c == ',' ) /* handling comma lists was added almost last */
+                {
+                func_proto[fp++] = c;
+                if ( save_root )
+                    {
+                    save_root = FALSE;
+                    while ( root[rp] != ' ' && rp != 0 )
+                        rp--;
+                    root[rp+1] = '\0';
+                    }
+                strcat(func_proto,root);
+                fp += strlen(root);
+                continue;
+                }
+            if ( c == '\n' )
+                continue;  /* heuristic, ignore during func proto output */
+            if ( skip_white && c == ' ' )
+                continue;  /* heuristic, ignore during func proto output */
+            if ( c == ' ' && send_comma )
+                continue;
+            if ( c == '{' )   /* we have moved into the compound statement */
+                {
+                c = ')';
+                send_comma = FALSE;
+                proto_flag = FALSE; 
+                skip_white = TRUE;
+                }
+            else if ( c == ';' )
+                {
+                ed_delete();  /* sed script delete param decl lines */
+                    /* may be the same line if mult decls on same line */
+                skip_white = TRUE;
+                send_comma = TRUE;
+                last_char = c;
+                save_root = TRUE;
+                for ( rp = 0 ; rp < ROOTSIZE ; rp++ )
+                    root[rp] = 0;
+                rp = 0;
+                continue;
+                }
+            if ( send_comma && c != ')' )
+                {
+                func_proto[fp++] = ',';
+                func_proto[fp++] = c;
+                if ( save_root )
+                    root[rp++] = c;
+                send_comma = FALSE;
+                }
+            else
+                {
+                func_proto[fp++] = c;
+                if ( save_root )
+                    root[rp++] = c;
+                skip_white = FALSE;
+                }
+            if ( c == ')' )
+                {
+                func_proto[fp++] = '\0';
+                if ( efd )
+                    {
+                    ed_flush(); /* write out any existing delete lines */
+                    fprintf(efd,"%di\\\n%s\n",lineno,func_proto);
+                    }
+                if ( pfd )
+                    {
+                    char decl[DECL_SIZE];
+
+                    fp = 0;
+                    while ( ( c = func_proto[fp]) != ' ' && c !='(' 
+                          && c != '\t' && c != '\n' && fp < DECL_SIZE-1 )
+                        decl[fp++] = c;
+                    decl[fp] = '\0';
+                    if ( strcmp(decl,"static") == 0
+                        || strcmp(decl,"main") == 0)
+                        ;  /* no func protos for static funcs or main */
+                    else
+                        {
+                        if ( findsym(decl) ) /* NIL if not found */
+                            fprintf(pfd,"extern %s;\n",func_proto);
+                        else
+                            fprintf(pfd,"extern int %s;\n",func_proto);
+                        for ( k = 0 ; k < PROTO_SIZE ; k++ )
+                            func_proto[k] = 0;
+                        }
+                    }
+                }
+            last_char = c;
+            }
+        }      /* end of while loop */
+    if ( i == BUFSIZ )
+        {
+        printf("Something went wrong! yytext[i] where i is %d\n",i);
+        exit(1);
+        }
+    }
+
+/*----------------------------------------------------------------------*/
+/* write_proto - called by grammar to write out start of function proto */
+void write_proto(mode)
+    int mode;
+    {
+    char c;
+    char *p = pb;
+    int ch;
+    int save_chars = FALSE;
+    int first_one = TRUE;    /* new lines backed up over */
+
+    if ( mode == NOARGS )
+        {
+        ch = lex_input();  /* problem if whitespace? Maybe skip white? */
+        lex_unput(ch);
+        if ( ch == ';' || ch == ',' )
+            return;      /* not a func prototype, an extern func decl */
+        }
+
+    proto_flag = TRUE;
+    fp = 0;             /* index into func_proto char buffer */
+
+    /* search back thru saved text for  form feed, ';' or } */
+    /* actually want to search back past the func type decl */
+    /* which may actually be on a previous line. */
+    if ( --p < &b[0] )   /* test for wrap around */
+        p = &b[WINDOW_SIZE-1];
+    c = *p;
+    first_one = TRUE;
+    while (  c != '\0'  && c != '\014' && c != ';' && c != '}' )
+        {
+        if ( c == '\n' )   /* allow it to back up over new lines */
+            {
+            c = ' ';
+            if ( efd && first_one ) /* assumes decl on 1st preceding line */
+                {
+                lineno -= 1;
+                ed_delete();
+                lineno += 1;
+                first_one = FALSE;
+                }
+            }
+        if ( c == '(' )  /* we have backed over the original param list */
+            {
+            save_chars = TRUE;  /* so start saving chars */
+            if ( mode == NOARGS )
+                {
+                push('d'); push('i');push('o'); push('v');
+                }
+            }
+        if ( save_chars )
+            {
+            if ( c == '\t' )
+                push(' ');
+            else if ( c == '\n' )
+                ;       /* do nothing, ignore new lines */
+            else
+                push(c); 
+            }
+        if ( --p < &b[0] )
+            p = &b[WINDOW_SIZE-1];
+        c = *p;
+        }
+
+    while ( ((ch = pop()) == ' ') || ch == '\t' || ch == '\n')
+        ;       /* skip over initial spaces and tabs and newlines */
+    push(ch);  /* restore the last character */
+    while ( (ch = pop() ) != EOF )
+        func_proto[fp++] = ch;
+    }
+
+/*---------------------------------------------------------------------*/
+
+void push(c)
+    char c;
+    {
+    if ( stkptr < STACK_SIZE )
+        cstack[stkptr++] = c;
+    else
+        {
+        yyerror("stack push overflow\n");
+        exit(1);
+        }
+    }
+
+int pop()
+    {
+    if ( stkptr > 0 )
+        return( cstack[--stkptr] );
+    else
+        return EOF;
+    }
+/*------------------------------------------------------------------------*/
+/* preloadsyms - store the basic function decl types into the symbol table */
+preloadsyms()
+    {
+    storesym("int",0);
+    storesym("float",0);
+    storesym("double",0);
+    storesym("unsigned",0);
+    storesym("long",0);
+    storesym("struct",0);  /* not a basic type but it serves our purpose */
+    storesym("char",0);
+    storesym("void",0);
+    }
+

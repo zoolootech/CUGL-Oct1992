@@ -1,0 +1,482 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dos.h>
+#include <conio.h>
+#include "defs.h"
+
+#define YES    1
+#define NO     0
+#define ESCAPE 0x1B
+#define EGM    0x10
+#define VGM    0x12
+#define BYTESPERLINE 80
+
+UCHAR _far *BiosData       = (UCHAR _far *) 0;
+UCHAR _far *BiosFontPtr    = (UCHAR _far *) 0;
+UCHAR _far *GraphicsBuffer = (UCHAR _far *) 0;
+UCHAR _far *BottomOfMemory = (UCHAR _far *) 0;
+UINT  DOS_Extender         = DOS_REALMODE;
+UINT  SelectorAliasMask    = 0;
+
+USHORT  VideoSelectors[] = 
+    {
+    0xA000,  /*DOS VGA segment  */
+    0x001C,  /*PHARLAP selector */
+    0x00D0,  /*OS/286  selector */
+    0x00D0,  /*OS/386  selector */
+    };
+
+typedef struct
+   {
+   int   Xul;            /* Upper Left X coordinate */
+   int   Yul;	         /* Upper Left Y coordinate */
+   int   Xlr;	         /* Lower Left X coordinate */
+   int   Ylr;	         /* Lower Left Y coordinate */
+   int   BorderWidth;	 /* Border Width            */
+   int   LeftEdgeColor;  /* Left/Top Edge Color     */
+   int   RightEdgeColor; /* Right/Bottom Edge Color */
+   int   InteriorColor;	 /* Interior Window Color   */
+   int   BorderFillColor;/* Border Surface Color    */
+   int   BorderFillWidth;/* Border Surface Width    */
+   int   TitleBarColor;  /* Title Bar Color         */
+   int   TitleBarWidth;  /* Title Bar Width         */
+   char  Title[129];     /* Title String            */
+   }WIN, *WINPTR;
+
+WIN  Win = {        200, /* Xul             _A */
+   	             50, /* Yul             _B */
+   	            440, /* Xlr             _C */
+   	            300, /* Ylr             _D */
+   	              3, /* BorderWidth     _E */
+   	             15, /* LeftEdgeColor   _F */
+   	              8, /* RightEdgeColor  _G */
+   	              3, /* InteriorColor   _H */
+   	              7, /* BorderFillColor _I */
+   	              6, /* BorderFillWidth _J */
+   	              7, /* TitleBarColor   _K */
+   	             15, /* TitleBarWidth   _L */
+	   "Clock Demo"};/* Title	    _M */
+
+#define _A W->Xul             
+#define _B W->Yul             
+#define _C W->Xlr             
+#define _D W->Ylr             
+#define _E W->BorderWidth     
+#define _F W->LeftEdgeColor   
+#define _G W->RightEdgeColor  
+#define _H W->InteriorColor   
+#define _I W->BorderFillColor 
+#define _J W->BorderFillWidth 
+#define _K W->TitleBarColor   
+#define _L W->TitleBarWidth   
+#define _M W->Title           
+
+char timedisplay[12] = "  :  :   PM";
+UINT last_sec  = 3601;
+int  clock_x   = 240;
+int  clock_y   = 100;
+int  clock_f   =   3; /* Win.InteriorColor */
+int  clock_b   =   7; /* Win.TitleBarColor */
+int  inputc    = (char) 0xFF;
+int  Red       = 0;
+int  Green     = 30;
+int  Blue      = 30;
+int  VideoMode = EGM;
+int  VideoModeAtEntry;
+
+void   main(void);
+void   Initialize(void);
+void   KeyStrokeLoop(void);
+void   Terminate(void);
+void   DrawWin(WINPTR W);
+void   SetDAC(int regnum, int red, int green, int blue);
+void   WriteTime(void);
+UINT   CalcTime(void);
+void   UpdateClock(void);
+UCHAR  SavRegVGAController(UCHAR IndexReg);
+void   SetRegVGAController(UCHAR IndexReg, UCHAR Value);
+void   DisplayChar(int c, int x, int y, int fgd, int bkgd);
+void   VerticleLine(int x1, int y1, int y2, int n);
+void   HorizontalLine(int x1, int y1, int x2, int n);
+
+extern void SetVideoMode(int mode);
+extern int  GetVideoMode(void);
+extern UINT GetExtender(void);
+extern void HookTimer(void);
+extern void UnHookTimer(void);
+
+void main(void)
+{
+   Initialize();
+   KeyStrokeLoop();
+   Terminate();
+}
+
+void Initialize(void)
+{
+   union REGS regs;
+
+   switch (DOS_Extender = GetExtender())
+      {
+      case ERGO_OS286:
+           FP_MAK(BiosData, 0x0000, 0x0040);
+	   regs.x.AX = 0xE803;/* OS/286 create real window  */
+           regs.x.BX = 0x00;  /* SI:BX points to DOS zero   */
+           regs.x.CX = 0xFFFF;/* 64K segment length         */
+           regs.x.DX = 0x00;  /* high word of window length */
+           regs.x.SI = 0x00;
+           int86(0x21, &regs, &regs);
+           FP_MAK(BottomOfMemory, 0x0000, regs.x.AX);
+           regs.x.AX = 0xE803;/* OS/286 create real window  */
+           regs.x.BX = 0x00;  /* SI:BX VGA BIOS segment     */
+           regs.x.CX = 0xFFFF;/* 64K segment length         */
+           regs.x.DX = 0x00;  /* high word of window length */
+           regs.x.SI = 0x0C;
+           int86(0x21, &regs, &regs);
+           FP_MAK(BiosFontPtr, 0x0000, regs.x.AX);
+	   SelectorAliasMask = 0x0008;
+           break;
+      #if defined(_I386) || defined(_I486) || defined(__386__)
+      case ERGO_OS386:
+           FP_MAK(BiosData, 0x0000, 0x0040);
+           FP_MAK(BottomOfMemory, 0x0000, 0x0037);
+	   SelectorAliasMask = 0x0018;
+           break;
+      case PHARLAP_386:
+           FP_MAK(BiosData, 0x0400, 0x0034);
+           FP_MAK(BottomOfMemory, 0x0000, 0x0034);
+	   SelectorAliasMask = 0x0018;
+           break;
+      #endif
+      default:
+           FP_MAK(BiosData, 0x0000, 0x0040);
+           FP_MAK(BottomOfMemory, 0x0000, 0x0000);
+	   SelectorAliasMask = 0x0000;
+           break;
+      }
+   FP_MAK(GraphicsBuffer, 0, VideoSelectors[DOS_Extender]);
+   VideoModeAtEntry = GetVideoMode();
+   SetVideoMode(VideoMode);
+   CalcTime();
+   HookTimer();
+}
+
+void KeyStrokeLoop(void)
+{
+   while(inputc != 'X' && inputc != 'x' && inputc != ESCAPE)
+      {
+      switch(inputc)
+         {
+         case 0:
+              inputc = getch();
+              break;
+         case 'R':
+         case 'r':
+              Red++;
+              Red %= 64;
+              break;
+         case 'G':
+         case 'g':
+              Green++;
+              Green %= 64;
+              break;
+         case 'B':
+         case 'b':
+              Blue++;
+              Blue %= 64;
+              break;
+         case 'M':
+         case 'm':
+              SetVideoMode(VideoMode ^= (VGM-EGM));
+              break;
+         case 'L':
+         case 'l':
+              Win.Xul--;
+              Win.Xul = max(Win.Xul, 0);
+              Win.Yul--;
+              Win.Yul = max(Win.Yul, 0);
+              Win.Xlr++;
+              Win.Xlr = min(Win.Xlr, 639);
+              Win.Ylr++;
+              Win.Ylr = min(Win.Ylr, 479);
+              break;
+         case 'S':
+         case 's':
+              VerticleLine(Win.Xul, Win.Yul, Win.Ylr, 0);
+              Win.Xul++;
+              Win.Xul = min(Win.Xul, 200);
+	      HorizontalLine(Win.Xul, Win.Yul, Win.Xlr, 0);
+              Win.Yul++;					   
+              Win.Yul = min(Win.Yul, 200);
+	      VerticleLine(Win.Xlr, Win.Yul, Win.Ylr, 0);
+              Win.Xlr--;
+              Win.Xlr = max(Win.Xlr, 440);
+	      HorizontalLine(Win.Xul, Win.Ylr, Win.Xlr, 0);
+              Win.Ylr--;
+              Win.Ylr = max(Win.Ylr, 280);
+              break;
+         }
+      SetDAC(Win.InteriorColor, Red, Green, Blue);
+      DrawWin(&Win);
+      inputc = getch();
+      }	
+}
+
+void Terminate(void)
+{
+   SetVideoMode(VideoModeAtEntry);
+   UnHookTimer();
+}
+
+void DrawWin(WINPTR W)
+{
+   int i, CrossLineStart, CrossHatchStart;
+   int TitleLength, TitleStart_x, TitleStart_y;
+
+   for (i=0; i< _E; i++)
+      {
+      VerticleLine(_A+i, _D-i, _B+i,  _F);
+      HorizontalLine(_A+i, _B+i, _C-i, _F);
+      VerticleLine(_A+_E+_J+i, _D-_E-_J-i, _B+_E+_J+_L+i, _G);
+      HorizontalLine(_A+_E+_J+i, _B+_E+_J+_L+i, _C-_E-_J-i, _G);
+      VerticleLine(_C-i, _B+i+1, _D-i, _G);
+      HorizontalLine(_C-i, _D-i, _A+i+1, _G);
+      VerticleLine(_C-_E-_J-i, _B+_E+_J+_L+i+1, _D-_E-_J-i, _F);
+      HorizontalLine(_C-_E-_J-i, _D-_E-_J-i, _A+_E+_J+i+1, _F);
+      }
+   for (i=0; i< _J; i++)
+      {
+      VerticleLine(_A+_E+i, _D-_E-i, _B+_E+_L+i, _I);
+      HorizontalLine(_A+_E+i, _B+_E+_L+i, _C-_E-i, _I);
+      VerticleLine(_C-_E-i, _B+_E+_L+i+1, _D-_E-i, _I);
+      HorizontalLine(_C-_E-i, _D-_E-i, _A+_E+i+1, _I);
+      }
+   for (i=_B+_E; i<_B+_E+_L; i++)
+       HorizontalLine(_A+_E, i, _C-_E, _K);  
+   TitleLength   = min((_C-_A-2*_E)/16, (signed int)strlen(_M));
+   TitleStart_x  = _A + _E + ((_C-_A-2*_E)/2 - 8*TitleLength)/2;
+   TitleStart_y  = _B + _E + (_L - 8)/2;
+   clock_x       = _A + _E + (_C-_A-2*_E)/2 + ((_C-_A-2*_E)/2 - 11*7)/2;
+   clock_y       = TitleStart_y;
+   for (i=0; i<TitleLength; i++)
+      DisplayChar(_M[i], TitleStart_x+8*i, TitleStart_y, _H, _K);
+   WriteTime();
+   CrossLineStart = _B + _E + _J + _L;
+   CrossHatchStart = _E / 2;
+   HorizontalLine(CrossHatchStart+_A, CrossLineStart, _A+_E+_J, _G);
+   HorizontalLine(CrossHatchStart+_A, CrossLineStart+1, _A+_E+_J, _F);
+   HorizontalLine(_C-CrossHatchStart, CrossLineStart, _C-_E-_J, _G);
+   HorizontalLine(_C-CrossHatchStart, CrossLineStart+1, _C-_E-_J, _F);
+   CrossLineStart = _C - _E - _J - _L;
+   VerticleLine(CrossLineStart, _D-_E-_J, _D-CrossHatchStart, _G);
+   VerticleLine(CrossLineStart+1, _D-_E-_J, _D-CrossHatchStart, _F);
+   CrossLineStart = _A + _E + _J + _L;
+   VerticleLine(CrossLineStart, _D-_E-_J, _D-CrossHatchStart, _G);
+   VerticleLine(CrossLineStart+1, _D-_E-_J, _D-CrossHatchStart, _F);
+   CrossLineStart = _D - _E - _J - _L;
+   HorizontalLine(CrossHatchStart+_A, CrossLineStart, _A+_E+_J, _G);
+   HorizontalLine(CrossHatchStart+_A, CrossLineStart+1, _A+_E+_J, _F);
+   HorizontalLine(_C-CrossHatchStart, CrossLineStart, _C-_E-_J, _G);
+   HorizontalLine(_C-CrossHatchStart, CrossLineStart+1, _C-_E-_J, _F);
+   for (i=_B+2*_E+_J+_L; i<=_D-2*_E-_J; i++)
+       HorizontalLine(_A+2*_E+_J, i, _C-2*_E-_J, _H);  
+}
+
+void SetDAC(int regnum, int red, int green, int blue)
+{
+   union REGS regs;
+
+   regs.x.AX = 0x1010;
+   regs.x.BX = regnum;
+   regs.h.dh = (char)red;
+   regs.h.ch = (char)green;
+   regs.h.cl = (char)blue;
+   int86(0x10, &regs, &regs);
+}
+
+void WriteTime(void)
+{
+   int i;
+
+   for(i=0;i<11;i++)
+      DisplayChar(timedisplay[i], clock_x+8*i, clock_y, clock_f, clock_b);
+}
+
+UINT CalcTime(void)
+{
+    USHORT  hour, min, sec, TempMinSec;
+    int     AMPM = 0;
+
+    TempMinSec = *(USHORT _far *)(BiosData + 0x6c);
+    sec = (USHORT)((ULONG)TempMinSec * (ULONG)3600 / (ULONG)65536);
+    if (sec == last_sec)
+      return((UINT) NO);
+    else
+      {
+      last_sec = sec;
+      min      = sec / 60;
+      sec     %= 60;
+      hour     = *(USHORT _far *)(BiosData + 0x6e);
+      if (hour >= 12) {hour -= 12; AMPM = 1;}
+      if (hour == 0) hour = 12;
+      timedisplay[0] = (char)((hour < 10) ? ' ' :(hour / 10) + '0');
+      timedisplay[1] = (char)((hour % 10) + '0');
+      timedisplay[3] = (char)((min  / 10) + '0');
+      timedisplay[4] = (char)((min  % 10) + '0');
+      timedisplay[6] = (char)((sec  / 10) + '0');
+      timedisplay[7] = (char)((sec  % 10) + '0');
+      timedisplay[9] = (char)((AMPM == 0) ? 'A' : 'P');
+      return((UINT) YES);
+      }
+}
+
+void UpdateClock(void)
+{
+   if (CalcTime())
+      WriteTime();
+}
+
+void DisplayChar(int c, int x, int y, int fgd, int bkgd)
+{
+   UCHAR  _far *PixelLocation;
+   UCHAR  _far *Font;
+   UCHAR  BitMaskRegister, ModeRegister, DataRotateRegister;
+   UCHAR  ColorDCRegister, LeftShiftBits, RightBitMask, PixRows;
+   USHORT TempShort;
+
+   PixelLocation = GraphicsBuffer + y * BYTESPERLINE + x / 8;
+   LeftShiftBits = (UCHAR) ((x & 7 ^ 7 + 1) & 7);    
+   RightBitMask  = (UCHAR) (0xFF << LeftShiftBits);
+   PixRows       = *(BiosData + 0x85);
+   Font          = BiosFontPtr + c * PixRows;
+   BitMaskRegister    = SavRegVGAController(8);
+   ModeRegister       = SavRegVGAController(5);
+   DataRotateRegister = SavRegVGAController(3);
+   ColorDCRegister    = SavRegVGAController(7);
+   SetRegVGAController(5, 0xA);
+   SetRegVGAController(3, 0);
+   SetRegVGAController(7, 0);
+   if (LeftShiftBits == (UCHAR) 0)
+      while(PixRows > 0)
+         {
+         SetRegVGAController(8, *Font);
+         *PixelLocation &= (UCHAR) fgd;
+         SetRegVGAController(8, (UCHAR) ~*Font);
+         *PixelLocation &= (UCHAR) bkgd;
+         Font++;
+         PixelLocation += BYTESPERLINE;
+         PixRows--;
+         }
+   else
+      while(PixRows > 0)
+         {
+         TempShort = (USHORT) *Font << LeftShiftBits;
+         SetRegVGAController(8, HIGH_BYTE(TempShort));
+         *PixelLocation &= (UCHAR) fgd;
+         SetRegVGAController(8, (UCHAR) \
+				(((UCHAR)~RightBitMask)^HIGH_BYTE(TempShort)));
+         *PixelLocation &= (UCHAR)bkgd;
+         PixelLocation++;
+         SetRegVGAController(8,  LOW_BYTE(TempShort));
+         *PixelLocation &= fgd;
+         SetRegVGAController(8, (UCHAR) (RightBitMask^LOW_BYTE(TempShort)));
+         *PixelLocation &= bkgd;
+         Font++;
+         PixelLocation += BYTESPERLINE - 1;
+         PixRows--;
+         }
+   SetRegVGAController(8, BitMaskRegister);
+   SetRegVGAController(5, ModeRegister);
+   SetRegVGAController(3, DataRotateRegister);
+   SetRegVGAController(7, ColorDCRegister);
+}
+
+void SetRegVGAController(UCHAR IndexReg, UCHAR Value)
+{
+   outpw(0x3CE, MAKE_WORD(Value, IndexReg));
+}
+
+UCHAR SavRegVGAController(UCHAR IndexReg)
+{
+   outp(0x3CE, IndexReg);
+   return(LOW_BYTE(inp(0x3CF)));
+}
+
+void VerticleLine(int x1, int y1, int y2, int n)
+{
+   UCHAR _far *PixelLocation;
+   int  dy = y2 - y1;
+   UCHAR LeftShiftBits, BitMask;
+
+   SetRegVGAController(0, (UCHAR) n);
+   SetRegVGAController(1, 0x0F);
+   SetRegVGAController(3, 0);
+   if (dy < 0)
+      {
+      dy *= -1;
+      y1  = y2;
+      }
+   dy++;
+   PixelLocation = GraphicsBuffer + y1 * BYTESPERLINE + x1 / 8;
+   LeftShiftBits = (UCHAR) ((x1 & 7) ^ 7);    
+   BitMask       = (UCHAR) (1 << LeftShiftBits);
+   SetRegVGAController(8, BitMask);
+   while ( dy-- > 0 )
+     {
+     *PixelLocation |= 0x08;
+     PixelLocation  += BYTESPERLINE;
+     }
+   SetRegVGAController(0, 0);
+   SetRegVGAController(1, 0);
+   SetRegVGAController(3, 0);
+   SetRegVGAController(8, 0xFF);
+}
+
+void HorizontalLine(int x1, int y1, int x2, int n)
+{
+   volatile UCHAR _far *PixelLocation;
+   int   BytesInLine, temp, dx = x2 - x1;
+   UCHAR LeftShiftBits, BitMask, FirstByteBitMask, LastByteBitMask;
+   
+   SetRegVGAController(0, (UCHAR) n);
+   SetRegVGAController(1, 0x0F);
+   SetRegVGAController(3, 0);
+   if (dx < 0)
+      {
+      dx  *= -1;
+      temp = x1;
+      x1   = x2;
+      x2   = temp;
+      }
+   PixelLocation    = GraphicsBuffer + y1 * BYTESPERLINE + x1 / 8;
+   LeftShiftBits    = (UCHAR) ((x1 & 7) ^ 7);    
+   BitMask          = (UCHAR) 1;
+   FirstByteBitMask = (UCHAR) ~((~BitMask) << LeftShiftBits);
+   LastByteBitMask  = (UCHAR) (0xFF << (7 ^ (7 & LOW_BYTE(x2))));
+   BytesInLine      = (x2 >> 3) - (x1 >> 3);
+   if (FirstByteBitMask != (UCHAR) 0)
+      if (BytesInLine == 0)
+         LastByteBitMask &= FirstByteBitMask;
+      else
+         {
+         SetRegVGAController(8, FirstByteBitMask);
+         *PixelLocation += 1;
+         BytesInLine--;
+         PixelLocation++;
+         }
+   SetRegVGAController(8, 0xFF);
+   while (BytesInLine-- > 0)
+      {
+      *PixelLocation += 1;
+      PixelLocation++;
+      }
+   SetRegVGAController(8, LastByteBitMask);
+   *PixelLocation += 1;
+   SetRegVGAController(0, 0);
+   SetRegVGAController(1, 0);
+   SetRegVGAController(3, 0);
+   SetRegVGAController(8, 0xFF);
+}
+
+

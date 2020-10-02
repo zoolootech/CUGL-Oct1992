@@ -1,0 +1,503 @@
+/*
+CUG-HEADER:
+   TITLE: "e screen editor"
+   VER: 4.8
+   AUTHOR: G.N. GILBERT
+   O.S.: CP/M 2.2  CP/M 3.0
+   DESC: a complete screen editor for programmers, with lots
+         of useful features, an easy to use interface,
+         virtual memory management, 'undo' facility etc.
+   KEYWORDS: editor, programming environment, tool
+   DATE: 1/30/1985
+*/
+
+/*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+	licensed for private non-profitmaking use 1983
+
+	August-December 1981
+
+	FILE: e
+
+	FUNCTIONS: main, initialise, edit, finish, seldisk, askforfile,
+		   xit, startstop
+
+	PURPOSE: initialise; process commands, finish
+
+*/
+
+#include "e.h"
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+	int argn, i, startline;
+	char *dig, cpmversion;
+
+/**************************Default option settings***************************/
+
+	autoin=YES;	/*auto indent  [YES/NO]*/
+	backup=NO;	/*make ".BAK" file [YES/NO]*/
+	trail=NO;	/*don't strip trailing blanks [YES/NO]*/
+	helpon=NO;	/*start with help menu on [YES/NO]*/
+	tabwidth=8;	/*tab stops every n cols [number]*/
+	displaypos=YES;	/*display line:column at top of screen*/
+	blockscroll=NO;	/*don't scroll whole page, just current line*/
+	pagingdisk=0;	/*create buffer file on this disk -
+				set to either 0 (for currently logged-in disk)
+				or to desired disk letter  (eg 'B') */
+	wboot=NO;	/*do a warm boot at end of edit [YES/NO]
+				(ignored for non CP/M 2.x systems)
+				SET THIS OPTION TO YES if you do not have an
+				entirely standard CP/M 2.x system */
+	hilight=YES;	/*highlight current line*/
+
+/***********************End of default option settings***********************/
+
+	switch(bdos(VERNO,0) & 0xf0) {
+		case 0x20 :	/* CP/M 2.x */
+			cpm2x=YES;
+			break;
+		case 0x31 :	/* CP/M 3.1 [CP/M Plus] */
+			bdos(CPM3ERRORMODE, 0xfe);   /*set error mode to
+							return and display
+							error */
+			cpm2x=NO;			/*disable fast
+							re-boot option*/
+			break;
+		default:	/*weird CP/M*/
+			cpm2x=NO;
+			break;
+		}
+
+	/*initialisations only done once at start of all editing: */
+
+	inbufp=0;
+	startline=1;
+	filename[0]=name[0]=ans[0]=patt[0]=changeto[0]=opts[0]='\0';
+
+
+	argn=0;
+	while (++argn < argc)
+		if (*argv[argn] == '-') {
+			dig=argv[argn]+1;
+			switch(*dig) {
+			case 'A' :
+				autoin=!autoin;
+				break;
+			case 'B' :
+				backup=!backup;
+				break;
+			case 'L' :
+				displaypos=!displaypos;
+				break;
+			case 'H' :
+				blockscroll=!blockscroll;
+				break;
+			case 'I' :
+				hilight=!hilight;
+				break;
+			case 'T' :
+				tabwidth=0;
+				while (*++dig) tabwidth=tabwidth*10+*dig-'0';
+				break;
+			case 'S' :
+				trail=!trail;
+				break;
+			case 'V' :
+				helpon=!helpon;
+				break;
+			case 'X' :
+				wboot=!wboot;
+				break;
+			case 'D' :
+				pagingdisk=*(dig+1);
+				if (pagingdisk >= 'A' && pagingdisk <= 'P') break;
+			default  :
+				if (isdigit(*dig)) {
+					for (startline=0; *dig; dig++)
+						startline=startline*10 + *dig - '0';
+					break;
+					}
+				puts("Illegal option: ");
+				puts(argv[argn]);
+				exit();
+				}
+			}
+		else strcpy(filename[0] ? name : filename,argv[argn]);
+
+	terminit();
+	keytranslate();
+
+	startstop(YES);
+
+	do {
+		initialise(startline);
+		edit();
+		startline=1;
+		}
+	while (YES);
+}
+
+initialise(startline)
+int startline;
+{
+	/*initialisations that are done before editing each new file: */
+
+	cursorx=charn=offset=lastoff=from=to=histptr=histcnt=ncommand=0;
+	cursory=topline=lastread=lastl=findir=1;
+	isdim=replace=repeat=blocking=blankedmess=storehist=NO;
+	pfirst=-100;
+	goteof=YES;
+	errmess=NULL;
+
+	curdsk=bdos(CURDSK);
+
+	initvm();
+
+	text[0]='\0';
+	cline=1;
+	altered=YES;
+	puttext();
+
+	if (filename[0]) {
+		putclr();
+		gotoxy(8,11);
+		puts("e  screen editor  version ");
+		puts(VERSION);
+		puts("  MICROLOGY 1983");
+		gotoxy(20,12);
+		terminal();
+		while (opentext(filename) == FAIL) {
+			askforfile();
+			if (!filename[0]) goto newfile;
+			}
+		lastl=UNKNOWN;
+		lastread=0;
+		goteof=NO;
+		if (name[0]) {
+			strcpy(filename,name);
+			name[0]='\0';
+			}
+		format(filename);
+		}
+newfile: errmess=NULL;
+	gettext(startline);
+	cline=loc(startline,0);
+	putclr();
+	if (helpon) dohelp();
+	putpage();
+}
+
+edit()		/*command processor*/
+{
+	char c;
+	int to;
+
+	setjmp(mainmenu);
+
+	while (YES) {
+		goodline=cline;
+		unmess();
+		putlineno(cline);
+		resetcursor();
+		c=getkey();
+		if (errmess != NULL) {
+			errmess=NULL;
+			putstatusline(cline);
+			}
+		ncommand++;
+		storehist=YES;
+		switch(c) {
+		case DOWNKEY	:
+			moveline(1);
+			break;
+		case UPKEY	:
+			moveline(-1);
+			break;
+		case LEFTKEY	:
+			movechar(-1);
+			break;
+		case RIGHTKEY	:
+			movechar(1);
+			break;
+		case LEFTWKEY	:
+			moveword(-1);
+			break;
+		case RIGHTWKEY	:
+			moveword(1);
+			break;
+		case BOLKEY	:
+			sync(0);
+			break;
+		case EOLKEY	:
+			sync(strlen(text));
+			break;
+		case UPPAGE	:
+			movepage(-1);
+			break;
+		case DOWNPAGE	:
+			movepage(0);
+			break;
+		case HOMEKEY	:
+			if (jumpline(lastl-cline)) sync(strlen(text));
+			break;
+		case BOFKEY	:
+			if (jumpline(1-cline)) sync(0);
+			break;
+		case DELLEFT	:
+			deletechar(-1);
+			break;
+		case DELRIGHT	:
+			deletechar(0);
+			break;
+		case DELLNKEY	:
+			text[0]='\0';
+			crdelete((cline == lastl ? -1 : 0));
+			break;
+		case DELWDKEY	:
+			deleteword();
+			break;
+		case JUMPKEY	:
+			putmess("Jump to? ");
+			scans(ans,6);
+			if ((to=atoi(ans))) jumpline(to-cline);
+			break;
+		case FINDKEY	:
+			replace=NO;
+			findorrep();
+			break;
+		case ALTERKEY	:
+			replace=YES;
+			findorrep();
+			break;
+		case REPKEY	:
+			repeat=YES;
+			dofindrep(1);
+			repeat=NO;
+			break;
+		case BLOCKKEY	:
+			blockops();
+			break;
+		case RDFILEKEY	:
+			putmess("File to read? ");
+			scans(name,FILELEN);
+			if (strlen(name) > 0) {
+				readfile(name);
+				putpage();
+				}
+			break;
+		case HELPKEY	:
+			if (helpon) {
+				helpon=NO;
+				unmess();
+				}
+			else {
+				helpon=YES;
+				dohelp();
+				}
+			break;
+		case CR		:
+			crinsert(0);
+			break;
+		case CRSTILL	:
+			crinsert(-1);
+			break;
+		case ENVIRKEY   :
+			envir();
+			break;
+		case QUITKEY	:
+			if (finish()) return;
+			break;
+		case UNDOKEY	:
+			undo();
+			break;
+		case TAB:
+			insertchar('\t');
+			break;
+		case ESCKEY	:
+			resetcursor();
+			c=inchar();
+		default		:
+			insertchar(c);
+			break;
+			}
+		}
+}
+
+finish()	/*return YES to edit another file; NO to return to current file
+		  or don't return, but exit if finished altogther */
+{
+	int abandon;
+	char c, tempname[FILELEN], namebak[FILELEN], *strcpy(), getlow();
+
+	putmess("W|rite edited text to file, |A|bandon all edits, or |R|eturn? ");
+	while ( (c=getlow()) != 'w' && c != 'a' && c != 'r');
+	putch(c);
+	if (c == 'r') return NO;
+	abandon= c == 'a';
+	if (c == 'w') {
+		if (!filename[0]) {
+			putmess("File to write to? ");
+			scans(filename,FILELEN);
+			format(filename);
+			if (filename[0] <= ' ' || (!backup && !exists(filename)))
+			{
+				filename[0]='\0';
+				return NO;
+				}
+			}
+		if (backup) {	/*delete old bak file*/
+			retag(strcpy(namebak,filename),"BAK");
+			if (checkexists(namebak) && funlink(namebak) == FAIL) {
+				error("Can't delete backup file");
+				return NO;
+				}
+			}
+		strcpy(tempname,filename); /*keep old name in 'filename'*/
+		retag(tempname,"$$$"); /*new file called'.$$$'*/
+		if (writefile(1,lastl,tempname,filename,YES) == FAIL) return NO;
+		/*check original file still exists - may have been deleted or
+		   renamed by user */
+		if (checkexists(filename)) {
+			if (backup) {
+				/*orig. file becomes '.bak' */
+				if (frename(filename,namebak) == FAIL) {
+					error("Can't rename old file to .BAK");
+					goto failed;
+					}
+				}
+			else {
+				/*delete orig file*/
+				if (funlink(filename) == FAIL) {
+					error("Can't delete old file");
+	failed: 			/*if can't delete/rename old file, change
+						new name to '.$$$'*/
+					strcpy(filename,tempname);
+					goto nowrite;
+					}
+				}
+			}
+		frename(tempname,filename); /*new file goes from '$$$' to orig name*/
+		}
+nowrite:
+	putmess("E|xit to CP/M, |R|eturn to this file, or edit |A|nother file? ");
+	while ( (c=getlow()) != 'e' && c!='a' && c!='r');
+	putch(c);
+	switch(c) {
+	case 'e' :
+		if (pagefd != NOFILE) {
+			close(pagefd);
+			funlink(pagingfile);
+			}
+		xit();
+	case 'a' :
+		fclose(textbuf);
+		if (pagefd != NOFILE) {
+			close(pagefd);
+			funlink(pagingfile);
+			}
+		askforfile();
+		return YES;
+
+	case 'r' :
+		if (!abandon) {
+			gotoxy(WAITPOS,0);
+			opentext(filename);
+			lastl=UNKNOWN;
+			lastread=0;
+			goteof=NO;
+			initvm();
+			gettext(cline);
+			errmess=NULL;
+			putstatusline(cline);
+			}
+		return NO;
+		}
+}
+
+xit()		/*leave the editor, either by returning to CCP or by
+		warm booting, according to X option*/
+{
+	unsigned *cpm;
+
+	deleteline(0,23);
+	gotoxy(0,22);
+
+	termfini();	/*close down terminal*/
+	startstop(NO);
+
+	if (!cpm2x || wboot) exit();
+	else {
+		cpm=6;
+		/*call the standard return address within CCP - this is
+		just after where CCP calls a user program to start it off -
+		to avaoid having to do a warm boot */
+		call(*cpm-6-CCP+0x75f);
+		}
+}
+
+askforfile()	/*get another file to edit into 'filename' */
+{
+	int drive, n;
+
+	while(YES) {
+		printdirectory(curdsk);
+		puts("Name of file to edit     |or [return] to create a new file,\n");
+		puts(" |A:-P: to change drive,     0/-15/ to change user area,\n");
+		puts(" |[escape] to exit)|          ? ");
+		if (scans(filename,FILELEN) == ESCKEY) xit();
+		for (n=0; isdigit(filename[n]); n++);
+		if (filename[n] == '/' && !filename[n+1]) {
+			bdos(USERCODE,atoi(filename));
+			continue;
+			}
+		if (filename[1] == ':' && !filename[2] &&
+			(drive=toupper(filename[0])-'A') >= 0 && drive < 16) {
+				if (seldisk(drive)) continue;
+				bdos(RESETDRV,1 << (curdsk=drive));
+				continue;
+				}
+		name[0]='\0';
+		return;
+		}
+}
+
+seldisk(drive)		/*log in 'drive', returning 0 for success, else FAIL */
+int drive;
+{
+	if (dskcheck(setjmp(dskerr))) return FAIL;
+	bdos(SELDSK,drive);
+	return 0;
+}
+
+startstop(sw)		/*set up system to catch BDOS errors - or close
+				it down*/
+int sw;
+{
+	char *bdosbase;
+	int i,*six,*errbase,err1(),err2(),err3(),err4();
+
+	if (!cpm2x) return;	/*only works for CP/M 2.x */
+
+	six=6;
+	bdosbase=*six;
+	errbase=bdosbase+3;
+
+	if (sw) {
+		for (i=0; i < 4; i++) errold[i]=*(errbase+i);
+		*(errbase)=err1;
+		*(errbase+1)=err2;
+		*(errbase+2)=err3;
+		*(errbase+3)=err4;
+		}
+	else for (i=0; i < 4; i++) *(errbase+i)=errold[i];
+}
+,0);
+			opentext(filename);
+			lastl=UNKNOWN;
+			lastread=0;
+			goteo

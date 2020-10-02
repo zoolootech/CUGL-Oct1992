@@ -1,0 +1,136 @@
+/* sketchpad.c - Interactively draw on the Apple II high resolution display,
+ * demonstrating the library hr_apple2.lib.  Print a menu of valid commands
+ * which will remain in the text page and can be redisplayed by returning to
+ * text mode.  Until the QUIT command is received, execute the command then
+ * wait for the next valid command.  The user specifies the color and then
+ * uses the cursor control keys to draw in that color.
+ */
+
+#include <stdio.h,d1>
+#include <math.h,d1>
+#include <kbctl.h,d1>
+#include <hr_apple2.h>
+
+main()
+{	int x = 0;					/* column number - initially 0 */
+	int y = 0;					/* row number - initially 0 */
+	int clr = HR_BLACK;			/* color  - initially black */
+	int sop = HR_PG1BGN;		/* start of page  - initially page 1 */
+	int eop = HR_PG1END;		/* end of page - initially page 1 */
+	char cmd;					/* user command */
+
+	cmd = ioctl( stdin , KB_CLEAR );		/* clear the screen */
+	cmd = ioctl( stdin , KB_ECHO , 0 );		/* disable keyboard echo */
+
+	/* Print the 'help' menu */
+
+	printf( "DRAW ON THE HIGH RESOLUTION DISPLAY\n" );
+	printf( "\nUSE THE CURSOR KEYS TO DRAW AND THE FOLLOWING KEYS:\n" );
+	printf( "\nH = DISPLAY THIS HELP MENU\n" );
+	printf( "Q = QUIT\n" );
+	printf( "C = CLEAR PAGE TO CURRENT COLOR\n" );
+	printf( "0 = BLACK\n" );
+	printf( "1 = PURPLE\n" );
+	printf( "2 = BLUE\n" );
+	printf( "3 = GREEN\n" );
+	printf( "4 = ORANGE\n" );
+	printf( "5 = WHITE\n" );
+	printf( "\nPRESS ANY KEY TO CONTINUE (Q=QUIT)\n" );
+
+	cmd = getc( stdin );						/* get first command */
+
+	hr_init();									/* switch to graphics */
+	hr_clear( sop , eop , HR_BLACK );			/* clear page to black */
+
+	/* until QUIT, execute the command and get next command.
+	   Each command is identified as its ASCII decimal value */
+
+	while ( cmd != 81 )							/* quit on ASCII Q */
+
+	{	switch ( cmd )
+
+		{	case 72:							/* ASCII H - help */
+			{	hr_quit();						/* switch to text */
+				cmd = getc( stdin );			/* wait for key press */
+				hr_init();						/* switch to graphics */
+				break;
+			}
+
+			case 8:								/* ASCII left arrow */
+			{	x = ( x > 0 ) ? --x : x;		/* decrement column, not < 0 */
+				hr_pixel( x , y , clr , sop , eop );		 /* set pixel */
+				break;
+			}
+
+			case 21:							/* ASCII right arrow */
+			{	x = ( x < 279 ) ? ++x : x;		/* increment col, not > 279 */
+				hr_pixel( x , y , clr , sop , eop );		/* set pixel */
+				break;
+			}
+
+			case 10:							/* ASCII down arrow */
+			{	y = ( y < 191 ) ? ++y : y;		/* incrment row, not > 191 */
+				hr_pixel( x , y , clr , sop , eop );		/* set pixel */
+				break;
+			}
+
+			case 11:							/* ASCII up arrow */
+			{	y = ( y > 0 ) ? --y : y;		/* decrement row, not < 0 */
+				hr_pixel( x , y , clr , sop , eop );		/* set pixel */
+				break;
+			}
+
+			case 67:							/* ASCII C - clear page */
+			{	hr_clear( sop , eop , clr );	/* current page and color */
+				break;
+			}
+
+			case 48:							/* ASCII zero */
+			{	clr = HR_BLACK;					/* set color to black */
+				break;
+			}
+
+			case 49:							/* ASCII one */
+			{	clr = HR_PURPLE;				/* set color to purple */
+				break;
+			}
+
+			case 50:							/* ASCII two */
+			{	clr = HR_BLUE;					/* set color to blue */
+				break;
+			}
+
+			case 51:							/* ASCII three */
+			{	clr = HR_GREEN;					/* set color to green */
+				break;
+			}
+
+			case 52:							/* ASCII four */
+			{	clr = HR_ORANGE;				/* set color to orange */
+				break;
+			}
+
+			case 53:							/* ASCII five */
+			{	clr = HR_WHITE;					/* set color to white */
+				break;
+			}
+
+			default:
+				break;							/* disregard other values */
+
+		}										/* end switch( cmd ) */
+
+		cmd = getc( stdin );					/* get next command */
+
+	}											/* end while */
+
+	 hr_quit();									/* make sure we will exit
+												   the program in text mode */
+
+	cmd = ioctl( stdin , KB_CLEAR );			/* clear the screen */
+	cmd = ioctl( stdin , KB_ECHO , 1 );			/* enable keyboard echo */
+
+	exit();
+}
+
+

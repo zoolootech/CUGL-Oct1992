@@ -1,0 +1,195 @@
+/* Lowest level file routines for Software Tools
+ * Used by File primitives
+ *
+ * source:  rawfile.bds
+ * version: July 23, 1981
+ */
+
+#include tools.h
+
+/* make calls to raw BDS file routines more visible */
+
+#define BDS_close   _close
+#define BDS_creat   _creat
+#define BDS_flush   _flush
+#define BDS_open    _open
+#define BDS_read    _read 
+#define BDS_seek    _seek
+#define BDS_unlink  _unlink
+#define BDS_write   _write
+
+/* routines on this file:
+
+	_creat
+
+	_fcreat		_fclose
+	_fflush		_fopen
+	_getc		_putc
+*/
+
+/* The following routines are replacements for routines
+ * on STDLIB2.CRL
+ */
+	
+BDS_creat (filename)
+char *filename;
+{
+	_unlink (filename);
+	/* call BDOS create function */
+	if (bdos (22,0x5c) == 255) {
+		return(ERR);
+	}
+	else {
+		/* open for writing */
+		return(BDS_open(filename,1));
+	}
+}
+
+/* The following routines came from STDLIB1.C
+   They all use this stucture:
+
+#define NSECTS 8	Number of sectors to buffer in ram
+
+note:  (NSECTS * SECSIZ + 6) = sizeof(struct_buf)
+
+#define BUFSIZ (NSECTS * SECSIZ + 6 )	Don't touch this
+
+struct _buf {				Or this...
+	int _fd;			returned by BDS_open
+	int _nleft;
+	char *_nextp;
+	char _buff[NSECTS * SECSIZ];
+};
+
+*/
+
+
+int _fopen(filename,iobuf)
+struct _buf *iobuf;
+char *filename;
+{
+	
+	if ((iobuf -> _fd = BDS_open(filename,0)) < 0) {
+		return(ERROR);
+	}
+	iobuf -> _nleft = 0;
+	return iobuf -> _fd;
+}
+
+
+int _getc (iobuf)
+struct _buf *iobuf;
+{
+	int nsecs;
+
+
+	/* comment out -----
+	if (iobuf == 0) return getchar();
+	if (iobuf == 3) return bdos(3);
+	----- end comment out */
+
+	if (iobuf -> _nleft--) {
+		 return *iobuf -> _nextp++;
+	}
+
+	nsecs = BDS_read(iobuf -> _fd, iobuf -> _buff, NSECTS);
+	if (nsecs <= 0) {
+		return iobuf -> _nleft++;
+	}
+
+	iobuf -> _nleft = nsecs * SECSIZ - 1;
+	iobuf -> _nextp = iobuf -> _buff;
+	return *iobuf->_nextp++;
+}
+
+
+int _fcreat(name,iobuf)
+char *name;
+struct _buf *iobuf;
+{
+	if ((iobuf -> _fd = BDS_creat(name)) < 0 ) {
+		return ERROR;
+	}
+	iobuf -> _nextp = iobuf -> _buff;
+	iobuf -> _nleft = (NSECTS * SECSIZ);
+	return iobuf -> _fd;
+}
+
+
+int _putc (c,iobuf)
+char c;
+struct _buf *iobuf;
+{
+
+	int nsecs;
+
+
+	/* comment out -----
+	if (iobuf == 1) return putchar(c);
+	if (iobuf == 2) return (bdos(5,c));
+	if (iobuf == 3) return (bdos(4,c));
+	----- end comment out */
+
+	if (iobuf -> _nleft--) {
+		return *iobuf -> _nextp++ = c;
+	}
+	nsecs = BDS_write(iobuf->_fd, iobuf->_buff, NSECTS);
+	if (nsecs != NSECTS) {
+		return ERROR;
+	}
+	iobuf -> _nleft = (NSECTS * SECSIZ - 1);
+	iobuf -> _nextp = iobuf -> _buff;
+	return *iobuf -> _nextp++ = c;
+}
+
+
+int _fflush(iobuf)
+struct _buf *iobuf;
+{
+	int i;
+
+	/* comment out -----
+	if (iobuf < 4) return OK;
+	----- end comment out */
+
+	if (iobuf -> _nleft == (NSECTS * SECSIZ)) {
+		return OK;
+	}
+
+	i = NSECTS - iobuf->_nleft / SECSIZ;
+	if (BDS_write(iobuf -> _fd, iobuf -> _buff, i) != i) {
+			return ERROR;
+	}
+
+	i = (i-1) * SECSIZ;
+
+	if (iobuf -> _nleft) {
+		movmem(iobuf->_buff + i, iobuf->_buff, SECSIZ);
+		iobuf -> _nleft += i;
+		iobuf -> _nextp -= i;
+		return BDS_seek(iobuf->_fd, -1, 1);
+	 }
+
+	iobuf -> _nleft = (NSECTS * SECSIZ);
+	iobuf -> _nextp = iobuf -> _buff;
+	return OK;
+}
+
+int _fclose(iobuf)
+struct _buf *iobuf;
+{
+	/* comment out -----
+	if (iobuf < 4) return OK;
+	----- end comment out */
+
+	return BDS_close(iobuf -> _fd);
+}
+
+ *iobuf -> _nextp++ , i) != i) {
+			return ERROR;
+	}
+
+	i = (i-1) * SECSIZ;
+
+	if (iobuf -> _nleft) {
+		movmem(iobuf->_buff + i, iobuf->_buff,

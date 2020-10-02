@@ -1,0 +1,45 @@
+//  Listing 6 - Functions to write records 
+//  (See Listing 3 for the class definition)
+
+//  =============================================
+//  For a file opened in Append or Recreate modes this
+//      appends new records to the end of the file.
+//  For a file opened in Update or AnyWrite modes this
+//	rewrites the current record.
+//
+int binaryfile::filewrite () { 
+    int ret;
+    if (mode == Readonly) return -2;  // Error trap
+    if (mode == Update || mode == AnyWrite) {
+       return filewrite (recnbr); // rewrite current record
+    }
+    if ((ret = write (handle, record, length)) != -1) {
+       recnbr = (share == WriteShared ? countrecords() : (count += 1L));
+    }
+    return ret;
+}
+
+//  =============================================
+//  Function to write out a specific record in class
+//      binaryfile.  This function can only be used if
+//      the file was opened in Update or AnyWrite modes.
+//  To append to a file (AnyWrite mode only) use any 
+//      very large record number
+//
+int binaryfile::filewrite (long number) { 
+    int ret;
+    if ((mode != Update && mode != AnyWrite) || 
+	number <= 0 ||
+        (mode == Update && number > count)) 
+	return -2;  // Parameter error trap
+    if (number > count) number = countrecords() + 1;
+    if (number != locked && share == WriteShared) {
+       if (lockrecord (number)) return -10;
+    }
+    lseek (handle, ((number - 1) * length) + header, SEEK_SET);
+    if ((ret = write (handle, record, length)) != -1L &&
+       number > count) count += 1L; // new record at end of file
+    unlockrecord ();
+    recnbr = number;
+    return ret;
+}

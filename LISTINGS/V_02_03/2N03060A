@@ -1,0 +1,58 @@
+10 '******************************************************************
+20 'Speech demo - demonstrate ASCII text to synthesized speech
+30 '              synthesis using the COVOX Sound Master and its
+40 '              supporting programs SPEECHV2 and STALK.
+50 '*****************************************************************
+60 '
+70 'Initialize variables
+75 DEFINT T
+76 DEFINT V
+77 DEFINT P
+78 DEFINT S
+80 PROG.NAME$ = "STALK.EXE"
+90 ENGLISH$ = "Hello there.  What would you like me to say?"
+100 COVOX.INIT = 0
+110 SET.SPEECH = 6
+120 SPEAK = 3
+130 TONE = 1
+140 VOLUME = 9
+150 PITCH = 5
+160 SPEED = 5
+170 '
+180 'Set the DEF SEG value for the COVOX TSR software
+190 '
+200 CLS: PRINT: PRINT "One moment please . . . "
+210 ' Search vectors 64 through 127 for the COVOX program address
+220 FOR VECTOR = (64 * 4) TO (127 * 4) STEP 4
+230     DEF SEG = 0: 'So we can access the vector table
+240     'Get the segment and offset values for the vector
+250     TEMP! = 256 * PEEK (VECTOR + 1)
+260     OUR.OFFSET = PEEK (VECTOR + 0) + TEMP!
+270     OUR.SEGMENT = PEEK (VECTOR + 2) + (256 * PEEK (VECTOR + 3))
+280     '
+290     ' If the value for the segment is not valid, look at the next vector
+300     IF OUR.SEGMENT = 0 OR OUR.SEGMENT > 65024! THEN 410
+310     '
+320     'A segment value was found.  Look for program name.
+330     DEF SEG = OUR.SEGMENT
+340     PROG.FOUND = 1
+350     FOR C = 0 TO LEN (PROG.NAME$) -1
+360             IF PEEK (OUR.OFFSET + C) <> ASC(MID$(PROG.NAME$,C+1,1)) THEN PROG.FOUND = 0
+370     NEXT C
+380     '
+390     ' This is the correct vector, so continue
+400     IF PROG.FOUND = 1 THEN 460
+410 NEXT VECTOR
+420 PRINT:PRINT:PRINT PROG.NAME$; " has not been installed in memory."
+430 PRINT "You must exit BASIC and load "; PROG.NAME$; " from the DOS prompt."
+440 PRINT "Then RUN this program again."
+450 END
+460 CALL COVOX.INIT
+470 CALL SET.SPEECH (TONE, VOLUME, PITCH, SPEED)
+480 CALL SPEAK (ENGLISH$)
+490 CLS: PRINT "Type an English word or sentence and press RETURN"
+500 PRINT "Type 'Q' and press RETURN to exit."
+510 LINE INPUT ">"; ENGLISH$: IF ENGLISH$ = "Q" THEN 530
+520 GOTO 480
+530 END
+

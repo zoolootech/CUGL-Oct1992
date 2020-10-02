@@ -1,0 +1,262 @@
+Reprinted from: Micro/Systems Journal, Volume 2. No. 2. March/April 1986
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Subscriptions are $20/yr, $35/2yrs domestic (published bimonthly)
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+March '86 C Forum
+
+GETOPT - A Subroutine For Parsing Command-Line Arguments
+
+     One of the stumbling blocks of every C programmer is 
+figuring out how to get the command-line arguments for a C 
+program so that they are usable inside the program.
+     Most MS-DOS C compilers follow the UNIX convention that the 
+main program has the parameters argc and argv.  argc and argv are 
+a strange representation of what was on the command line that 
+invoked the program.
+     argv is an array of string pointers, each string being one 
+of the tokens of the command that the main was invoked with.  (A 
+token is a group of characters delimited by "white space".)  
+Since the first token is just the name of program, argv[0] is not 
+usually examined (and in fact, is hard to get from MS-DOS).  argc 
+is the number of pointers in argv.  This layout provides the 
+ability to pass a variable number of arguments to a program.  
+     However, this layout is unwieldy when one considers it in 
+relation to how "command-line arguments" are used in a typical 
+program.  
+     Command-line arguments are usually single-character flags 
+that may or may not have a following value which may or may not 
+be separated by white space.  Ugh.  Flags with no values may 
+appear consecutively in one argv string.  Some programs are 
+generous and allow all of these argument passing styles and more.  
+Other programs are more idiosyncratic and will only accept, for 
+example, arguments that are separated by white space.  Worst of 
+all are programs that insist on having the arguments in a 
+particular order.
+     Writing argument parsing routines is always a headache 
+because you have to think of all the ways a user could reasonably 
+enter the input and expect it to be accepted.  Archetypal argv 
+parsing code consists of a while loop to look at each argument, 
+enclosing a switch which actually determines what code is 
+executed for the different argument flags.  Finally, there may be 
+a loop to pick up a number of files to be processed.  (Files 
+usually appear after flags.)  Such archetypal code also usually 
+has bugs in it, since it is confusing writing code that can 
+handle all of these possibilities.  
+     There have been several efforts to clean up the user 
+interface.  Some of them are quite innovative (and would break 
+existing programs).  For example, one suggestion has been to use 
++ as well as - as a flag introducer.  For example, to compile 
+with optimization, you might then say "cc +opt" and to compile 
+with no optimization, "cc -opt".  
+     Others are not as earth-shattering but useful nonetheless.  
+Included in this month's column is a the source code to getopt, 
+an argument parser.  This code was first introduced in UNIX III 
+and later put in the public-domain by AT&T as an encouragement 
+for uniformity and consistency in the way arguments are formed 
+from one UNIX command to another.
+     getopt is available directly from AT&T via their Toolchest 
+system [1].  It is also available via Usenet or Arpanet by 
+copying the file ~ftp/pub/mod.std.unix.v3 on sally.UTEXAS.EDU.  I 
+have seen numerous versions of getopt, although this one is based 
+on the version given out at the 1985 UNIFORUM conference in 
+Dallas.  I have made minor modifications to it, including adding 
+some comments.  However, it still conforms to the AT&T standard.  
+Oddly, the page describing getopt in the System V Release 2 
+manual is licensed, so I will simply describe in my own words how 
+to use it.  
+     getopt is very simple to use and will make your programs 
+simpler to use; the interfaces simpler to write.  Further, it is 
+an example of a well-written program that is portable among any C 
+compiler that uses these argc/argv conventions.  
+     Each time getopt is called, it returns the next argument 
+from the command-line.  Additionally, it sets a number of 
+external variables (such as the argument value).  If you need to 
+reference these, be sure to include extern declarations for them.  
+     getopt takes three arguments.  The first two are the same 
+argc and argv arguments in main.  The third argument is a string 
+containing the characters that are used as argument flags.  A 
+character followed immediately by a colon indicates that the flag 
+takes a value.  (Hence, ":" can not be used as a flag character.)  
+For example, 
+
+getopt(argc,argv,"i:n:ab")
+
+indicates that the program takes flag arguments of i, n, a and b 
+and that the i and n flags will have values immediately after 
+them.  Flags are restricted to one character.  For example, 
+
+program -i 12 -n hello -a
+
+would be validly parsed by the above getopt call.  12 is the 
+argument to the i flag.  "hello" is the argument to the n flag.  
+a has no argument.  b is not used in this call.  Flags need not 
+have any space separating them, as long as the first character of 
+the token is a hyphen.  For example, we could rewrite the above 
+call as 
+
+program -ai 12 -n hello
+
+An excerpt of the getopt calling code is as follows:
+
+int getopt();
+extern char *optarg; /* current argv string */
+extern int optind;   /* current argv index */
+extern char optchar; /* option character */
+
+...
+{
+    ....
+    while (EOF != (optchar =
+getopt(argc,argv,"i:n:ab"))) {
+switch (optchar) {
+    case 'i':
+i_flag = TRUE;
+i = atoi(optarg);
+break;
+    case 'n':
+n_flag = TRUE;
+n = optval;
+break;
+    case 'a':
+a_flag = TRUE;
+break;
+    case 'b':
+b_flag = TRUE;
+break;
+}
+
+    /* rest of arguments are */
+    /* files, so pick them up, too */
+    for (;optind < argc; optind++) {
+if (stat(argv[optind]) ...
+...
+    }
+}
+
+     Notice that the flags that have values pick up their string 
+values in "optarg".  For the i flag to convert it to an integer, 
+all this requires is the call atoi(optarg), to convert the string 
+to an integer.
+     To complete the documentation of getopt, here are some other 
+things you should know about it.
+     When all the flags have been scanned, getopt returns EOF.  
+The token "--" may also be used to terminate getopt processing.  
+It is not necessary to supply this as a flag, although it could 
+be useful when you want to specify a file named, say, "-f"!  (It 
+is not a very smart idea to have file names that look like 
+flags.)  When "--" is scanned, getopt returns EOF.  (For this 
+reason, it is impossible to have a hyphen by itself as an 
+argument.)
+     After EOF is returned there may be more data on the command 
+line (such as files).  optind is the index of the next argv 
+string after the last token successfully read by getopt.  
+     "?"  is returned when an unknown flag is encountered, or a 
+flag that requires a value does not have one.  Thus, you should 
+include a case for "?"  (or "default:"  will do) that prints out 
+the standard calling sequence to indicate that the user has 
+called your program incorrectly.  It is possible to get the 
+actual incorrect flag the user specified by examining the 
+character variable optopt.  
+     When "?" is returned, getopt will print error messages about 
+unexpected arguments or missing argument values if the value of 
+"opterr" is 1.  If it is 0, no messages will be printed.  
+     This code assumes the use of strchr.  Some systems call this 
+index.  If you don't have either, you can easily write it 
+yourself.  strchr (or index) takes arguments of a string and a 
+character, in that order.  It returns a pointer to the first 
+occurrence of the character in the string.  If the character does 
+not appear in the string, NULL is returned.  
+
+References:
+[1] "Experiences with Electronic Software Distribution", Brooks, 
+Catherine A., USENIX Association 1985 Summer Conference 
+Proceedings, Portland, Oregon, pp.  433-436.  
+
+
+
+/* optarg - parse command-line arguments */
+/* Author: AT&T */
+
+#define NULL0
+#define EOF(-1)
+#define ERR(s, c)if(opterr){\
+extern int strlen(), write();\
+char errbuf[2];\
+errbuf[0] = c; errbuf[1] = '\n';\
+(void) write(2, argv[0], (unsigned)strlen(argv[0]));\
+(void) write(2, s, (unsigned)strlen(s));\
+(void) write(2, errbuf, 2);}
+
+extern int strcmp();
+extern char *strchr();
+
+intopterr = 1;  /* getopt prints errors if this is on */
+intoptind = 1;  /* token pointer */
+intoptopt;     /* option character passed back to user */
+char*optarg;     /* flag argument (or value) */
+
+int  /* return option character, EOF if no more or ? if problem */
+getopt(argc, argv, opts)
+intargc;
+char**argv;
+char*opts;    /* option string */
+{
+static int sp = 1;  /* character index in current token */
+register char *cp;  /* pointer into current token */
+
+if(sp == 1)
+     /* check for more flag-like tokens */
+     if(optind >= argc ||
+argv[optind][0] != '-' || argv[optind][1] == '\0')
+     return(EOF);
+     else if(strcmp(argv[optind], "--") == 0) {
+     optind++;
+     return(EOF);
+}
+optopt = argv[optind][sp];
+if(optopt == ':' || (cp=strchr(opts, optopt)) == NULL) {
+ERR(": illegal option -- ", optopt);
+/* if no chars left in this token, */
+                /* move to next token */
+if(argv[optind][++sp] == '\0') {
+optind++;
+sp = 1;
+}
+return('?');
+}
+
+if(*++cp == ':') {   /* if a value is expected, get it */
+if(argv[optind][sp+1] != '\0')
+     /* flag value is rest of current token */
+     optarg = &argv[optind++][sp+1];
+else if(++optind >= argc) {
+     ERR(": option requires an argument -- ", optopt);
+     sp = 1;
+     return('?');
+} else
+     /* flag value is next token */
+     optarg = argv[optind++];
+sp = 1;
+} else {
+/* set up to look at next char in token, next time */
+if(argv[optind][++sp] == '\0') {
+/* no more in current token, */
+                        /* so setup next token */
+sp = 1;
+optind++;
+}
+optarg = NULL;
+}
+return(optopt);/* return current flag character found */
+}
+

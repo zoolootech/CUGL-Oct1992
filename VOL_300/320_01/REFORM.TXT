@@ -1,0 +1,191 @@
+Image Manipulation by Convolution
+
+Several months ago, some work of mine required me to learn a little
+about image processing. The project led to a dead end, but not before
+a particularly interesting image manipulation algorithm had come to my
+attention. The algorithm is called convolution and is capable of
+finding edges, horizontal lines, vertical lines, and even diagonal
+lines in an image.
+
+Convolution is a fancy word for a reasonably simple process. The
+underlying philosophy of convolution is that when analyzing a picture,
+we interpret pixels in terms of how they fit with their neighbors,
+rather than as little specs of color. What this translates into in the
+computer world is an image whose pixels represent some function of
+their original neighbors. This is all fine and dandy, but still a
+little hard to code, even in C, until the following pseudocode becomes
+apparent:
+
+For every pixel in the original image:
+
+Place a pixel on the new image whose color is a function of the colors
+of the original pixel's neighbors.
+
+Keep going until the original image has been completely "convolved"
+into the new image.
+
+Well, this certainly sounds reasonable to code. Now, what function of
+the original neighbors do we choose?  One of the simplest functions
+turns out to be one of the best: a weighted sum, including the original
+pixel. Let's look at a simple 1D example:
+
+Consider the row of pixels (1 2 3 4), with the pixel colored (2) being
+the pixel of interest. Assume we have a "convolution matrix" of (-5 0
+6). The new pixel's color will be (1)(-5)+(2)(0)+(3)(6) or (13). The
+convolved value for the original pixel colored (3) will be
+(2)(-5)+(3)(0)+(4)(6) or (14). The two end pixels of (1) and (4)
+cannot be convolved since there are no left or right points to apply
+the convolution matrix to, and are assigned a value of (0). The new
+row of pixels now looks like (0 13 14 0).
+
+The 2D case is similar, involving 2D regions of pixels and a 2D
+convolution matrix.
+
+
+Choosing a Convolution matrix
+
+
+The convolution matrix you choose determines what the final picture
+will look like. The program in Listing 1 accepts a file named
+matrix.dat that has the following format:
+
+
+
+<matrix width> <matrix height>
+
+<row 1,col 1 factor> ... <row 1,col w factor>
+
+...                ...                ...
+
+<row h,col 1 factor> ... <row h,col w factor>
+
+
+
+Note that both the width and height must be odd, as the matrix needs to
+have a center point.
+
+Some sample matrices will give you a feel for what convolution can do. 
+For example, the matrix file of:
+
+
+
+3 3
+
+-1 0 1
+
+-1 0 1
+
+-1 0 1
+
+
+
+will generate pixels only on the edge of a dark-to-light transition
+going left-to-right on the screen. Reversing the 1's and -1's will
+generate pixels on the edge of a light-to-dark transition (i.e. the
+"right" side of an object). Likewise, the matrix file of:
+
+
+
+3 3
+
+ 1  1  1
+
+ 0  0  0
+
+-1 -1 -1
+
+
+
+will generate pixels only on the edge of a dark-to-light transition
+going from top to bottom of the screen. Switching the 1's and -1's
+here allows for the detection of topside lines. To generate a picture
+that consists of only the edges of objects, use the matrix file of:
+
+
+
+3 3
+
+-1 -1 -1
+
+-1  8 -1
+
+-1 -1 -1
+
+
+
+Diagonal lines can be detected by using matrices like:
+
+
+
+3 3
+
+ 0  1 0
+
+-1  0 1
+
+ 0 -1 0
+
+
+
+In choosing your own matrix, follow these simple rules for best
+results: 1) Make sure the factors in the matrix add up to zero or more.
+ A zero sum will help to eliminate extraneous pixels, while a small net
+positive sum can help fill in missing pixels. A negative sum usually
+filters out too many pixels (especially on a monochrome screen). 2) Use
+a zero in matrix locations where you don't care what is in that spot.
+3) Use negative numbers for locations that you strongly desire not to
+have any color. 4) Use positive numbers for locations that you strongly
+desire to have a non- zero value.
+
+
+The program
+
+
+The program in Listing 1 accepts images in the CUT file format used by
+the Dr.Halo products. I use a hand scanner for acquiring images and
+this was the format that was easiest to use, however, you can
+substitute any other means of getting a picture onto the screen. If
+you should replace the present routine for loading images
+(load_cut(...)), be sure to set the global variables minx, miny, maxx,
+maxy to the image's location on the screen but do not change the
+display page. To keep the convolution code reasonably clean, the
+program also requires that you leave at least <matrix height+1>/2 and
+<matrix width+1 >/2 gap on the top and left side of the image
+respectively.
+
+The program was written in Turbo C 2.0 and the graphics calls should be
+fairly portable to other C's. Pointers are used frequently to minimize
+the time that several hundred thousand array accesses would normally
+take. Though somewhat optimized, the program could still use a good
+kick, perhaps by forcing it to ignore matrix entries of zero.
+
+When run, the program asks for the name of a CUT file to load and some
+information about image cleanup. Enter the path to the file, if the
+file is not in the same directory, and the name of the file (including
+the .CUT on the end). The image cleanup option will let the computer
+delete stray pixels before convolution. A single pixel with zero
+neighbors usually does not belong to a surface of interest and can be
+deleted before convolution by answering 0 at the cleanup prompt. The
+cleanup process is disabled by a response of -1.
+
+Once the image has been convolved, press the space bar to flip between
+the original image (or cleaned image) and the convolved image. The
+effects of convolution become very apparent by just holding down the
+space bar!  Should you be fortunate enough to be using the program on a
+color system, you can toggle colors by pressing the letters A-P
+(A=black, B=blue, etc...). Finally, the ESC key will get you out (as
+will pressing any key during convolution).
+
+
+Conclusion
+
+
+The program works fine now, though you may wish to consider working on
+a method of saving convolved images, further optimization (assembly?)
+of the convolution routine, and the use of other image file formats.
+
+Convolution is an amazingly straight forward algorithm for image
+manipulation and can serve as the starting point for AI programs,
+contour analysis, image recognition, etc. I hope you find it as
+interesting as I did.
+

@@ -1,0 +1,49 @@
+
+        buf[0] = '\0';
+
+        for (;;) {
+                if (rc == buf_size) {
+                        memcpy(buf,buf+buf_size/2,buf_size/2);
+                        rc = buf_size/2;
+                }
+
+                cc = i_read(stream,buf+rc,buf_size-rc,timeout);
+
+                if (cc == 0) {          /* normal EOF */
+                        eof = TRUE;
+                        fclose(stream);
+                        break;
+                } else if (cc == -1) {  /* abnormal EOF */
+                        if (i_read_errno == EBADF) {
+                                tcl_error("bad spawn_id (process died earlier?)");
+                        } else {
+                                tcl_error("i_read(spawn_id=%d): %s",
+                                        stream,sys_errlist[errno]);
+                                fclose(stream);
+                        }
+                        error = TRUE;
+                        break;
+                } else if (cc == -2) break; /* timed out */
+
+                oldrc = rc;
+                rc += cc;
+
+                if (loguser) {
+                        fwrite(buf+oldrc,1,cc,stdout);
+                        fflush(stdout);
+                }
+
+                rc -= rm_nulls(&buf[oldrc],cc);
+                buf[rc] = '\0';
+
+                for (p=pairs;p<&pairs[pairs_inuse];p++) {
+                        if (p->type == keyword) continue;
+                        if (patternmatch(buf,p->pattern)) {
+                                match = TRUE;
+                                goto done;
+                        }
+                }
+        }
+
+        Listing 8
+

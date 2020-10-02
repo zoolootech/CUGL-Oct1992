@@ -1,0 +1,81 @@
+/*
+	listing 2 - type_check.c
+*/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "common.h"
+
+FUNC type_check(struct field_definition *definitions, 
+		struct record *tran_start,
+		int transaction_size, 
+		char *user_keyword, 
+		char *user_value)
+{
+
+  int i;			/* loop control  */
+  BOOL found=OFF;		/* switch if key was matched */
+
+  int   integer;		/* integer value */
+  float floater;		/* float value */
+  char  *string;		/* string pointer */
+
+
+  /*
+    Loop through the tran_start array to match the 
+    key and obtain subject location.
+  */
+                                                           
+  for (i=0; strcmp(definitions[i].keyword, "last"); i++) {
+
+	if ( !strcmp(definitions[i].keyword, user_keyword))
+		break;
+
+  }
+	
+  if ( !strcmp(definitions[i].keyword, "last") ) {
+	printf ("Error: keyword '%s' not legal.\n", user_keyword);
+	return FAIL;
+  }
+
+  /* 
+     Switch on the type of the subject. For each type, 
+     convert the user_value to the proper type and set 
+     the proper pointer. Then call the lookup routine. 
+  */
+
+  switch (definitions[i].type) {
+
+    case INT:
+	integer = atoi(user_value);		
+	if ( (lookup (INT, definitions[i].position_ptr, 
+		tran_start, transaction_size, 	
+		(void *) &integer) ) == FAIL) {
+		printf ("No match\n");
+	}
+        break;
+   
+    case FLOAT:
+	floater = atof(user_value);		
+	if ( (lookup (FLOAT, definitions[i].position_ptr, 
+		tran_start, transaction_size, 
+		(void *) &floater) ) == FAIL) { 
+		printf ("No match\n");
+	}
+        break;
+
+    case STRING:
+	string = user_value;
+	if ( (lookup (STRING, definitions[i].position_ptr, 
+		tran_start, transaction_size, 
+		(void *) string) ) == FAIL) { 
+		printf ("No match\n");
+	}
+        break;
+
+  }
+
+  return SUCCEED;
+
+}
+

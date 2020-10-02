@@ -1,0 +1,36 @@
+#include <dos.h>
+
+unsigned _stklen = {0};
+void exit(int i) { extern void _exit(int); _exit(i); }
+void _setargv() {}
+void _setenvp() {}
+void tsr(int);
+void interrupt int7e();
+
+/* p8514 - load tsr to service interrupt 0x7E */
+
+void main()
+{
+      int kt;
+
+      /* do nothing if int 0x7E already in use */
+      _AX = 0x3500+0x7E;
+      geninterrupt(0x21);
+      if (_BX != 0 || _ES != 0) exit(1);
+
+      /* set interrupt pointer */
+      asm push ds
+      _DS = FP_SEG(int7e);
+      _DX = FP_OFF(int7e);
+      _AX = 0x2500+0x7E;
+      geninterrupt(0x21);
+      asm pop ds
+
+      /* say we are done */
+      for (kt = 0;; kt++) {
+        _AX = 0x0E00+"p8514 ready\r\n"[kt];
+        if ((_AX & 0x00FF) == 0) break;
+        geninterrupt(0x10);
+      }
+      tsr(0); /* terminate and stay resident */
+}

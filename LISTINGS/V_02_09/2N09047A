@@ -1,0 +1,71 @@
+
+/*******************************************************
+ *  readonly.c: Test program for Tony Ingenoso's
+ *              method for created "Read only"
+ *              data under OS/2.
+ *
+ *  The idea is that a code segment in OS/2 can't be
+ *  written to, and any attempt to do so will cause
+ *  an instant Trap-D.  Since debugging traps is
+ *  *MUCH* easier than debugging memory overwrite
+ *  problems, we use OS/2's ability to give a code
+ *  segment "alias" for data segments to make read
+ *  only pointers we pass to functions that should
+ *  not modify their data.
+ ******************************************************/
+
+
+#define INCL_DOSMEMMGR
+#include <os2.h>
+#include <stdio.h>
+#include <process.h>
+
+void WriteOK(USHORT FAR *ptr)
+    {
+    *ptr = 10;    /* This reference will be OK */
+    printf("Read/Write assignment complete\n\n");
+    }
+
+void WriteNotOK(USHORT FAR *ptr)
+    {
+    printf("About to do R/O assignment(will Trap-D)\n");
+    printf("Strike a key to cause the trap\n");
+    getch();
+    *ptr = 10;    /* This reference will cause a Trap-D */
+    }
+
+SEL MakeReadOnly(SEL data)
+    {
+    SEL       CodeSel;   /* Code alias for read only data */
+
+    /*
+      Note that DosCreateCSAlias() gives back a ring 2
+      conforming selector.  We'll frob it into a normal
+      ring 3 selector like any other normal data selector.
+    */
+    if (DosCreateCSAlias(data, &CodeSel))
+        {
+        printf("Can't make alias\n");
+        exit(-1);
+        }
+            /* Force ring 2 conforming alias into ring 3 */
+    return (CodeSel | 0x0003);
+    }
+
+void main(void)
+    {
+    SEL       DataSel;        /* Selector for read/write data   */
+
+    /*
+      Allocate a bit of memory to play with(4 bytes).
+    */
+    if (DosAllocSeg(4, &DataSel, 0))
+        {
+        printf("Can't get memory\n");
+        exit(-1);
+        }
+
+    WriteOK(MAKEP(DataSel, 0));
+
+    WriteNotOK(MAKEP(MakeReadOnly(DataSel), 0));
+    }

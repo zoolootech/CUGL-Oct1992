@@ -1,0 +1,218 @@
+File Difference Utilities
+Ralph E. Brendler (1988)
+===============================================
+DIFF	- a file differencer
+DELTA	- a delta script creation utility
+APPLY	- a delta script application utility
+===============================================
+
+These three utilities can be used for detecting the differences between
+similar text files, such as different revisions of the same piece of source
+code.
+
+These programs were developed to offset the severe lack of development
+tools for OS/2 in the early stages of the operating system's availability.
+My years of experience with DOS based UNIX utilties like DIFF made it very
+uncomfortable to develop without them when I changed operating systems.
+For a while, I was using the compatability box (which I soon began referring
+to as the Chernyobel box) to run my old DOS utilities, but this soon became
+cumbersome.  After much unsuccessful searching I finally determined that the
+only way to get quality tools in a timely fashion was to write them myself.
+
+My goals in writing these utilities was to provide myself with portable
+utilities (so that when I change OS's again I won't be stuck), which could 
+be run under both OS/2 and DOS 3.X.   Each of these programs compiles without
+any warnings under warning level 3 on the MS C 5.1 compiler, and can be bound
+(using the MS BIND utility) to run under either DOS or OS/2.
+
+No OS specific calls are made in this program, and it should compile under any
+memory model on an ANSI standard compiler which supports function prototypes.
+
+............................................................................
+............................................................................
+
+
+DIFF
+=============
+
+DIFF is a plain-vanilla file difference reporting utility based on the
+program of the same name found on UNIX systems.  It will compare two files
+(supplied on the command line) and display any lines which are different in
+the two files.  DIFF is invoked using the command:
+
+		DIFF FILE1 FILE2
+
+	where FILE1 and FILE2 are the names of the files to compare.
+
+All output is to stdout, and can be redirected using the standard '<'
+and '|' piping characters.
+
+File differences are displayed in the following manner:
+
+	Description of change
+	.
+	.
+	text lines different
+	.
+	.
+	.
+
+The description of change is in a style similar to that used by the UNIX
+editor 'ed'.  The three basic type of file differences are:
+
+	Lines in FILE1 not present in FILE2		(DELETE)
+	Lines in FILE2 not present in FILE1		(ADD)
+	Lines in FILE1 different from lines in FILE2	(CHANGE)
+
+These are represented in the change description as:
+
+	L1, L2, c L3, L4	(changed range of lines)
+	L1 a L3, L4		(added range of lines)
+	L1, L2 d L3		(deleted range of lines)
+
+	Where:	L1 and L2 are line numbers in FILE1
+		L3 and L4 are line numbers in FILE2
+
+The actual lines of text which differ are output after the change description
+in the following format:
+
+	Any line in FILE1 and not in FILE2 is preceded with a '<'
+	Any line in FILE2 and not in FILE1 is preceded with a '>'
+
+Thus, given the following two text files:
+
+	FILE1.TXT
+	---------
+	The quick brown fox jumped over the lazy dog.
+	Now is the time for all good men to come to the
+		aid of their country.
+	All work and no play makes Jack a dull boy.
+
+	FILE2.TXT
+	---------
+	The quick brown fox jumped over the lazy dog.
+	Ars longa, vitae brevis.
+	Now is the time for all good men to come to the
+		aid of their company.
+
+The resulting file difference would be reported as such:
+
+	DIFF FILE1.TXT FILE2.TXT
+	-------------------------
+	1a2
+	> Ars longa, vitae brevis.
+	3c4
+	< 	aid of their country.
+	< All work and no play makes Jack a dull boy.
+	---
+	> 	aid of their company.
+
+
+............................................................................
+............................................................................
+
+DELTA
+=============
+
+DELTA is a variation of DIFF which can be used to create 'delta scripts'.
+A delta script is a series of commands which can be used to create one
+text file from another.  Delta scripts are the basis for most Source Code
+Control Systems (SCCS's) used to maintain several related versions of a 
+software system.  SCCS's work by saving the most current version of a file, 
+and a delta script which will create the previous version.  This can be
+carried on through multiple versions by maintaining a delta script to
+create each revision from its successor.  Thus any version can be recreated
+by applying the proper delta script(s).
+
+The average SCCS is much more complex than DELTA, however.  A good SCCS will
+maintain all delta scripts in one special file, and be able to recreate any
+version with a single command by applying the proper sequence of delta scripts.
+DELTA is, however, a sound basis for further work in developing a true SCCS,
+and this was my initial reason for writing it.  Eventually (but alas, probably
+not very soon), I will finish the work started by DELTA and write a SCCS of
+my own.
+
+DELTA is invoked using the following command:
+
+		DELTA FILE1 FILE2
+
+	where FILE1 and FILE2 are the names of the files to compare.
+
+All output is to stdout, and can be redirected using the standard '<'
+and '|' piping characters.
+
+
+This program's output is in a form like the UNIX editor 'ed' would understand.  
+There are three actions which can be taken on a file.  These are as follows:
+	
+	CHANGE: Change a range of lines in a file.
+	
+		This command lists a range of lines to delete in the
+		original file, and text for the new lines to insert in
+		their place.  The list of lines is terminated by a line
+		consisting of a single period character ('.').
+	
+		Example:	
+		--------------------------------------
+		40,42c
+		Insert these four lines
+		where the lines 40, 41, and 42
+		were in the
+		orignal file
+		.
+		--------------------------------------
+		
+	DELETE:	Delete a range of lines in a file.
+	
+		This command lists a range of lines to delete in the
+		original file.  No new lines are added to the new file.
+		
+		Example:
+		--------------------------------------
+		40,42d
+		--------------------------------------
+		this command would delete lines 40, 41, and 42 from the
+		original file.
+		
+	ADD:	Add new lines to the file.
+	
+		This command lists a location in the file, and a range of
+		lines to add at this location.  As in the change command,
+		the list of lines to add is terminated with a line with a
+		single period character.
+		
+		Example:
+		--------------------------------------
+		40a
+		These lines are inserted after
+		line 40 in the original file
+		.
+		--------------------------------------
+
+
+............................................................................
+............................................................................
+
+APPLY
+=============
+
+APPLY is a simple utility to apply a delta script created by DELTA to a 
+text file.  In a simplistic sense, this 'un-deltas' a file.
+
+APPLY is invoked using the following command:
+
+		APPLY FILE DELTA
+
+	where	FILE is the name of the file to apply the changes to and
+		DELTA is the name of the delta script.
+
+For instance, if the file FILE1.DTA were created using the following commands:
+
+	DELTA FILE2.TXT FILE1.TXT > FILE1.DTA
+	DELETE FILE1.TXT
+
+FILE1.TXT could be re-created by applying the delta script to FILE2.TXT as
+follows:
+
+	APPLY FILE2.TXT FILE1.DTA > FILE1.TXT
+

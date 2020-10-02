@@ -1,0 +1,250 @@
+
+/*
+ *  To link the VESAINFO program, issue the following command:
+ *  LINK VESADEMO VESA;
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "vesa.h"
+#include "vesa.fd"
+
+extern  int main(int argc,char * *argv);
+extern  void DisplaySVGAInfo(struct vga_info_block *vesa_info);
+extern  void DisplaySVGAModeInfo(short svga_mode,
+             struct mode_info_block *mode_info,short vesa_ver);
+extern  void DisplayAttributes(struct attr_list *attr_ptr,
+             short attr_count,short source_info);
+extern  void strcpy_from_far_away(char *here_str,char far *far_str);
+
+
+struct attr_list {
+   short attr_val;      /* Bitmask value for "AND" comparison  */
+   char *attr_true;     /* Display this string if masked true  */
+   char *attr_false;    /* Display this string if masked false */
+      } AttrList;
+
+struct attr_list mode_attrs[] = {
+   { SVGA_MODE_HARDWARE,
+       "Mode is supported in hardware",
+       "Mode is not supported in hardware" },
+   { SVGA_MODE_EXTENDED,
+       "Extended mode information is available",
+       "Extended mode information is not available" },
+   { SVGA_MODE_BIOS,
+       "Output functions are supported by BIOS",
+       "Output functions are not supported by BIOS" },
+   { SVGA_MODE_COLOR,
+       "This is a color mode",
+       "This is a monochrome mode" },
+   { SVGA_MODE_GRAPHICS,
+       "This is a graphics mode",
+       "This is a text mode" }
+   };
+
+struct attr_list win_attrs[] = {
+   { SVGA_WIN_SUPPORTED,
+       "Window is supported",
+       "Window is not supported" },
+   { SVGA_WIN_READABLE,
+       "Window is readable",
+       "Window is not readable" },
+   { SVGA_WIN_WRITEABLE,
+       "Window is writeable",
+       "Window is not writeable" },
+   };
+
+#define NUM_MODE_ATTRS (sizeof(mode_attrs) / sizeof(AttrList))
+#define NUM_WIN_ATTRS  (sizeof(win_attrs) / sizeof(AttrList))
+
+char *model_names[] = {
+   "Text mode", "CGA graphics", "Hercules graphics",
+   "4-plane planar", "Packed pixel", "non-chain 4, 256 color"
+   };
+
+#define NOT_AVAILABLE "Not available (needs VESA v1.1)"
+
+
+int main(argc, argv)
+int argc;
+char **argv;
+{
+   VgaInfoBlock *vesa_info;
+   ModeInfoBlock *mode_info;
+   short far *temp_mode_ptr;
+   short VgaStat;
+   short num_blocks;
+
+   printf("VESA Information Reporter v1.30, by Victor R. Volkman\n");
+
+   /* If either of the first two "sizeof" tests fail, then your compiler
+      has added filler bytes between the struct fields.  Recompile with
+      appropriate structure packing option */
+
+   if (sizeof(VgaInfoBlock) != SVGA_INFO_BLOCK)
+      {
+      printf("error:  VgaInfoBlock must be %d bytes!\n",SVGA_INFO_BLOCK);
+      exit(-1);
+      }
+   if (sizeof(ModeInfoBlock) != SVGA_INFO_BLOCK)
+      {
+      printf("error:  ModeInfoBlock must be %d bytes!\n",SVGA_INFO_BLOCK);
+      exit(-1);
+      }
+
+   if ((vesa_info=(VgaInfoBlock *) calloc(1,sizeof(VgaInfoBlock))) == NULL)
+      {
+      printf("error:  unable to allocate SVGA Info Block\n");
+      exit(-1);
+      }
+   if ((mode_info=(ModeInfoBlock *) calloc(1,SVGA_INFO_BLOCK)) == NULL)
+      {
+      printf("error:  unable to allocate Mode Info Block\n");
+      exit(-1);
+      }
+
+   printf("Testing for presence of VESA support...\n");
+   VgaStat = GetSVGAInfo(vesa_info);
+   if (VgaStat == ERROR_VESA_NOT_SUPPORTED)
+      {
+      printf("error: VESA support has not been installed!\n");
+      return VgaStat;
+      }
+   else if (VgaStat == ERROR_VESA_NO_SIGNATURE)
+      {
+      printf("error: bad VESA signature, VESA Support disabled\n");
+      return VgaStat;
+      }
+
+   DisplaySVGAInfo(vesa_info);
+   GetSVGAStateBufferSize(0x0F, &num_blocks);
+   printf("Bytes required to save/restore total video state: %d\n",num_blocks*64);
+   temp_mode_ptr = vesa_info->VideoModePtr;
+
+   while (*temp_mode_ptr != -1)
+      {
+      GetSVGAModeInfo(*temp_mode_ptr, mode_info);
+      DisplaySVGAModeInfo(*temp_mode_ptr, mode_info, vesa_info->VESAVersion);
+      temp_mode_ptr++;
+      }
+
+   free((char *) vesa_info);
+   free((char *) mode_info);
+   return 0;
+}
+
+
+void DisplaySVGAInfo(vesa_info)
+VgaInfoBlock *vesa_info;
+{
+   char oem_str[80];
+   char total_mem_str[80];
+   short far *temp_mode_ptr;
+
+   printf("VESA Version Number %d.%02d\n", vesa_info->VESAVersion / 256,
+           vesa_info->VESAVersion % 256);
+
+   /* Fetch string regardless of near/far memory model */
+   strcpy_from_far_away(oem_str, vesa_info->OEMStringPtr);
+   printf("SuperVGA OEM manufacturing code: \"%s\".\n", oem_str);
+   printf("SuperVGA Capabilities: %08lXh (normally 00000000h)\n", vesa_info->capabilities);
+
+   if (vesa_info->VESAVersion >= VESA_VER_110)
+      sprintf(total_mem_str, "%dK bytes\n", vesa_info->TotalMemory * 64);
+   else
+      strcpy(total_mem_str, NOT_AVAILABLE);
+
+   printf("Total Memory on VGA card:  %s\n", total_mem_str);
+   printf("Video Mode List:  ");
+   temp_mode_ptr = vesa_info->VideoModePtr;
+   while (*temp_mode_ptr != -1)
+      printf("%03Xh ",*temp_mode_ptr++);
+   printf("\n");
+}
+
+
+void DisplaySVGAModeInfo(svga_mode,mode_info,vesa_ver)
+short svga_mode;
+ModeInfoBlock *mode_info;
+short vesa_ver;
+{
+   char model_str[40];
+   char image_page_str[80];
+   short mode_no;
+
+   printf("\nReport for mode %03Xh:\n", svga_mode);
+
+   printf("\tMode Attributes: %04Xh\n",mode_info->ModeAttributes);
+   DisplayAttributes(mode_attrs,NUM_MODE_ATTRS,mode_info->ModeAttributes);
+   printf("\tWindow A Attributes:\n");
+   DisplayAttributes(win_attrs,NUM_WIN_ATTRS,mode_info->WinAAttributes);
+   printf("\tWindow B Attributes:\n");
+
+   DisplayAttributes(win_attrs,NUM_WIN_ATTRS,mode_info->WinBAttributes);
+   printf("\tWindow Granularity: %dK\n",mode_info->WinGranularity);
+   printf("\tWindow Size: %dK\n",mode_info->WinSize);
+   printf("\tWindow A Segment: %04Xh\n", mode_info->WinASegment);
+   printf("\tWindow B Segment: %04Xh\n", mode_info->WinBSegment);
+   printf("\tWindow Function Pointer: %p\n", mode_info->WinFuncPtr);
+   printf("\tBytes Per Scan Line: %d\n", mode_info->BytesPerScanLine);
+
+   if (mode_info->ModeAttributes & SVGA_MODE_EXTENDED)
+      {
+      printf("\tExtended mode information:\n");
+      printf("\t\tX Resolution: %d\n",mode_info->XResolution);
+      printf("\t\tY Resolution: %d\n",mode_info->YResolution);
+      printf("\t\tX Char Size: %d pixels\n",mode_info->XCharSize);
+      printf("\t\tY Char Size: %d pixels\n",mode_info->YCharSize);
+      printf("\t\tNumber of Planes: %d\n",mode_info->NumberOfPlanes);
+      printf("\t\tBits per Pixel: %d\n",mode_info->BitsPerPixel);
+      printf("\t\tNumber of Banks: %d\n",mode_info->NumberOfBanks);
+      mode_no = mode_info->MemoryModel;
+      if (mode_no > 0 && mode_no < 6)
+         strcpy(model_str,model_names[mode_no]);
+      else if (mode_no >= 0x06 && mode_no <= 0x0F)
+         strcpy(model_str,"Reserved, to be defined by VESA");
+      else
+         strcpy(model_str,"To be defined by OEM");
+      printf("\t\tMemory Model: %s\n",model_str);
+      printf("\t\tBank Size: %dK\n",mode_info->BankSize);
+      if (vesa_ver >= VESA_VER_110)
+         itoa(mode_info->NumberOfImagePages, image_page_str, 10);
+      else
+         strcpy(image_page_str, NOT_AVAILABLE);
+      printf("\t\tNumber of Image Pages: %s\n",image_page_str);
+      }
+
+   printf("\n");
+}
+
+
+void DisplayAttributes(attr_ptr, attr_count, source_info)
+struct attr_list *attr_ptr;
+short attr_count;
+short source_info;
+{
+   int i;
+   char *use_str;
+   for (i=0; i<attr_count; i++)
+      {
+      if (attr_ptr[i].attr_val & source_info)
+         use_str = attr_ptr[i].attr_true;
+      else
+         use_str = attr_ptr[i].attr_false;
+
+      printf("\t\t%s.\n",use_str);
+      }
+}
+
+
+/* copy string from far (32-bit) source, regardless of memory model */
+void strcpy_from_far_away(here_str,far_str)
+char *here_str;
+char far *far_str;
+{
+   while (*far_str)
+      *here_str++ = *far_str++;
+   *here_str = '\0';
+}

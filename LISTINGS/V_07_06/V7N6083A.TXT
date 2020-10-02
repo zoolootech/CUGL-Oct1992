@@ -1,0 +1,361 @@
+=========================================================================
+EXAMPLE PROGRAM LISTING 1
+=========================================================================
+
+/*==============================================*/
+/* EXAMPLE 1                                    */
+/* Using slope intercept method to plot a line. */
+/* Very simplified.                             */
+/*==============================================*/
+#define swap(x,y) {register int temp; temp = x; x = y; y = temp;}
+
+drawline( x1, y1, x2, y2)
+int x1, y1, x2, y2;
+{
+    float slope, intercept;
+    float x,y;
+
+    if(x1 > x2){
+        swap(x1, x2);
+        swap(y1, y2);
+    }
+    slope = (float)(y1 - y2)/(float)(x1 - x2);
+    intercept = (float)y1 - (slope * (float)x1);
+
+    for( x = (float)x1; x <= (float)x2; x+=1.0){
+        y = ((slope * x) + intercept);
+        plot((int)x, (int)y);
+    }
+}
+
+
+=========================================================================
+EXAMPLE PROGRAM LISTING 2
+=========================================================================
+/*=====================================================*/
+/* EXAMPLE 2                                           */
+/* Using slope intercept method to plot a line.        */
+/* Improved by not using floats.                       */
+/* Very simplified.                                    */
+/*=====================================================*/
+#define swap(x,y) {register int temp; temp = x; x = y; y = temp;}
+
+drawline( x1, y1, x2, y2)
+int x1, y1, x2, y2;
+{
+    long delta_x, delta_y;
+    long intercept;
+    long x,y;
+
+    delta_x = x1 - x2;
+    delta_y = y1 - y2;
+    intercept = y1 - (delta_y * x1)/delta_x;
+
+    if(x1 > x2){
+        swap(x1, x2);
+        swap(y1, y2);
+    }
+    for( x = (long)x1; x <= (long)x2; x++){
+        y = (x * delta_y)/delta_x + intercept;
+        plot((int)x, (int)y);
+    }
+}
+
+
+=========================================================================
+EXAMPLE PROGRAM LISTING 3
+=========================================================================
+/*==============================================*/
+/* EXAMPLE 3                                    */
+/* Using slope intercept method to plot a line. */
+/* Improved by not using floats.                */
+/* Further improved by checking for Horizontal  */
+/* and verticle lines, and by incrementing on   */
+/* the axis which changes most.                 */
+/*==============================================*/
+#define swap(x,y) {register int temp; temp = x; x = y; y = temp;}
+
+drawline( x1, y1, x2, y2)
+int x1, y1, x2, y2;
+{
+    long delta_x, delta_y;
+    long intercept;
+    long x,y;
+
+    delta_x = x1 - x2;
+    delta_y = y1 - y2;
+
+    if(delta_x == 0){
+        v_line(x1, y1, y2); /* draw a verticle line */
+        return;
+    }
+    if(delta_y == 0){
+        h_line(x1, x2, y1); /* draw a horizontal line */
+        return;
+    }
+
+    intercept = y1 - (delta_y * x1)/delta_x;
+
+    if(delta_y > delta_x){ /* X increases faster than Y */
+        if(x1 > x2){
+            swap(x1, x2);
+            swap(y1, y2);
+        }
+        for( x = (long)x1; x <= (long)x2; x++){
+            y = (x * delta_y)/delta_x + intercept;
+            plot((int)x, (int)y);
+        }
+    }
+    else{                  /* Y increases faster than X */
+        if(y1 > y2){
+            swap(x1, x2);
+            swap(y1, y2);
+        }
+        for( y = (long)y1; y <= (long)y2; y++){
+            x = ((y - intercept) * delta_x)/ delta_y;
+            plot((int)x, (int)y);
+        }
+    }
+}
+
+=========================================================================
+EXAMPLE PROGRAM LISTING 4
+=========================================================================
+
+/*----------------------------------------------------------------*/
+/*  Program Listing 4                                             */
+/*                                                                */
+/*    MODULE: line.c                                              */
+/*  CONTENTS: drawline(), h_line(), v_line(), clip_chk()          */
+/*    AUTHOR: John T. Bell                                        */
+/*      DATE: 03 June, 1989                                       */
+/*----------------------------------------------------------------*/
+#include "graph.h"
+
+/*----------------------------------------------------------------*/
+/* This macro swaps the value of integer X with integer Y.        */
+/*----------------------------------------------------------------*/
+#define swap(x,y) {register int temp; temp = x; x = y; y = temp;}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: drawline(int strt_x, int strt_y, int end_x, int end_y);      */
+/*    Purpose: Draw a line from the starting coordinates to the             */
+/*             ending coordinates.                                          */
+/*    Returns: 0 if line can be drawn, -1 if error.                         */
+/*      Setup: Computer must be in graphics mode.                           */
+/* Attributes: NONE                                                         */
+/*      Notes: Uses the "Octantal Digital Differential Analizer" method     */
+/*             to draw the line.                                            */
+/*             Ref: Artwick, "Microcomputer Displays, Graphics,             */
+/*                  and Animation",Prentice Hall, 1985. pp 20-30            */
+/*--------------------------------------------------------------------------*/
+int drawline(strt_x,strt_y,end_x,end_y)
+int strt_x,strt_y,end_x,end_y;
+{
+    int dx,dy;              /* delta x and delta y */
+    int err,count;          /* error value, and point counter */
+
+    /* test for data in range */
+    if(clip_chk(strt_x,strt_y) || clip_chk(end_x,end_y))
+        return(0);
+
+    if(strt_x == end_x)     /* if verticle line do faster v_line() */
+        return(v_line(strt_x,strt_y,end_y));
+
+    if(strt_y == end_y)     /* if horizontal line do faster h_line() */
+        return(h_line(strt_x,end_x,strt_y));
+
+    if(end_x < strt_x){     /* swap points to map octants 3-6 into 1,2,7,8 */
+        swap(strt_x,end_x);
+        swap(strt_y,end_y);
+    }
+    dx = end_x - strt_x; /* calc change in x (delta x) */
+    dy = end_y - strt_y; /* calc change in y (delta y) */
+
+    if(dy < 0){             /* Select Octant 7,8 or 1,2 */
+        if( -dy > dx){      /* Octant 7 Line */
+            err = dy/2;
+            for(count = -dy+1; count >= 0; count--){
+                plot(strt_x,strt_y);
+                strt_y--;
+                err += dx;
+                if(err >= 0){
+                    strt_x++;
+                    err += dy;
+                }
+            }
+        }
+        else{           /* Octant 8 Line */
+            err = -dx/2;
+            for(count = dx+1; count >= 0; count--){
+                plot(strt_x,strt_y);
+                strt_x++;
+                err -= dy;
+                if(err >= 0){
+                    strt_y--;
+                    err -= dx;
+                }
+            }
+        }
+    }
+    else{               /* Octant 1 or 2  */
+        if(dy > dx){    /* Octant 2 Line */
+            err = -dy/2;
+            for(count = dy+1; count >= 0; count--){
+                plot(strt_x,strt_y);
+                strt_y++;
+                err += dx;
+                if(err >= 0){
+                    strt_x++;
+                    err -= dy;
+                }
+            }
+        }
+        else{           /* Octant 1 Line */
+            err = -dx/2;
+            for(count = dx+1; count >= 0; count--){
+                plot(strt_x,strt_y);
+                strt_x++;
+                err += dy;
+                if(err >= 0){
+                    strt_y++;
+                    err -= dx;
+                }
+            }
+        }
+    }
+    return(1);
+}
+
+int v_line(x, strt_y, end_y)
+int x;
+int strt_y, end_y;
+{
+    if(strt_y > end_y){
+        swap(strt_y, end_y);
+    }
+
+    for(; strt_y <= end_y; strt_y++)
+        plot(x, strt_y);
+    return(1);
+}
+
+int h_line(strt_x, end_x, y)
+{
+    if(strt_x > end_x){
+        swap(strt_x, end_x);
+    }
+    for(;strt_x <= end_x; strt_x++)
+        plot(strt_x, y);
+    return(1);
+}
+
+/*--------------------------------------------------------------------*/
+/* clip_chk(int x, int y);                                            */ 
+/* returns TRUE if x or y is out of the screen plotting range.        */
+/* This needs the globals G_maxx and G_maxy which correspond to       */
+/* the maximum X and Y axis values.                                   */
+/*--------------------------------------------------------------------*/
+clip_chk(x,y)
+int x,y;
+{
+    return((((x < 0) || (x > G_maxx) || (y < 0) || (y > G_maxy)) ? 1 : 0));
+}
+
+=========================================================================
+LISTING 5 graph.h
+=========================================================================
+
+#ifndef EXTRN
+extern int G_maxx, G_maxy;
+
+#else
+int G_maxx, G_maxy;
+#endif
+
+#define AZTEC
+#ifdef AZTEC
+extern int _maxx;
+extern int _xaspect, _yaspect;
+extern _oldx, _oldy;
+#endif
+
+=========================================================================
+LISTING 6 demo.c
+=========================================================================
+
+/*----------------------------------------------------------------*/
+/*                Copyright 1989 by John T. Bell                  */
+/*                                                                */
+/*    MODULE: DEMO.C                                              */
+/*   PURPOSE: DEMO program for line drawing routines.             */
+/*  CONTENTS:                                                     */
+/*    AUTHOR: John T. Bell                                        */
+/*   HISTORY: Created 05/31/89                                    */
+/*----------------------------------------------------------------*/
+#include <stdio.h>
+
+#define EXTRN
+#include "graph.h"
+
+/*--------------------------------------------------------------------------*/
+/* Here we need to define;                                                  */
+/*                                                                          */
+/* G_maxx - Maximum value for the X axis.                                   */
+/* G_maxy - Maximum value for the Y axis.                                   */
+/*                                                                          */
+/* We should also put the screen into graphics mode and clear the screen    */
+/* to our background color.                                                 */
+/*                                                                          */
+/* The following implemenation was written for Aztec C and an IBM CGA card. */
+/*--------------------------------------------------------------------------*/
+graph_init()
+{
+    mode('H'); /* sets the graphic mode to 640 by 200 */
+    G_maxx = _maxx;
+    G_maxy = 200;
+    color('W'); /* sets plotting color to white */
+}
+
+/*--------------------------------------------------------------------------*/
+/* This just undoes what graph_init did.                                    */
+/*--------------------------------------------------------------------------*/
+graph_restore()
+{
+    mode(0);
+}
+
+/*-------------------------------------------*/
+/* use Aztec point() function to plot points */
+/*-------------------------------------------*/
+int plot(x,y)
+{
+    return(point(x, G_maxy - y));
+}
+
+main()
+{
+    int x, y;
+    int cx, cy;
+
+    graph_init();
+
+    cx = G_maxx/2;
+    cy = G_maxy/2;
+
+    for(x = 0; x <= G_maxx; x += (G_maxx/30))
+        drawline(cx, cy, x, 0);
+
+    for(y = 0; y <= G_maxy; y += (G_maxy/20))
+        drawline(cx, cy, G_maxx, y);
+
+    for(x = G_maxx; x >= 0; x -= (G_maxx/30))
+        drawline(cx, cy, x, G_maxy);
+
+    for(y = G_maxy; y >= 0; y -= (G_maxy/20))
+        drawline(cx, cy, 0, y);
+
+    getchar();	/* pause for keypress */
+    graph_restore();
+}
+

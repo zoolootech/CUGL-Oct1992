@@ -1,0 +1,24 @@
+/* sender.c - Sender task for synchronous communication */
+
+#define REPLY 0
+
+static handler Reply(msg_t *msg_ptr) { /* for synchronization only */
+}
+
+task Sender(void) {
+    task_t self = task_self();
+    msg_t  msg;
+
+    task_setHandler(1, Reply); /* this task has one handler called Reply */
+
+    loop {
+        /* interrupt Receiver and wait on Reply */
+        msg.srcTid = self;
+        msg.dstTid = task_idOf("Receiver");
+        msg.dstHid = 0; /* Sync = Handler Id #0 */
+        msg.type   = msg_type_DATA;
+        msg.value.a = /* address of DATA */
+        task_interruptEnableWait(&msg, NO_TIMEOUT, 1, REPLY);
+        /* ... */
+    }
+}

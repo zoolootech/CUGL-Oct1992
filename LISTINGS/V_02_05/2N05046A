@@ -1,0 +1,803 @@
+
+TITLE   MicroSoft Mouse Library Module
+PAGE    60,132
+
+
+COMMENT !
+
+TITLE:          MicroSoft Mouse Library Module;
+FILENAME:       MOUSELIB.ASM;
+AUTHOR:         Michael Kelly
+                254 Gold Street
+                Boston, MA 02127;
+
+COPYRIGHT:  May be distributed freely if not modified;
+ASSEMBLER:  Tasm V.2.0;
+ASSEMBLY NOTES:
+
+Utilizes Turbo Assembler-specific directives 
+( TASM V.2.0 ) to enable assembly for Turbo Pascal or 
+Turbo C/C++
+For Turbo Pascal Module:  
+ ( All routines are "far" calls )
+    tasm mouselib
+
+For C/C++ Module:   
+ ( Memory Model dependencies auto-adjusted )
+    tasm /dCPROG /d__MODEL__ /ml mouselib
+
+   where __MODEL__ is one of:
+                __TINY__
+                __SMALL__
+                __MEDIUM__
+                __COMPACT__
+                __LARGE__
+                __HUGE__
+
+if not  specified, __MODEL__ defaults to __SMALL__
+
+Note:   Leading and trailing underlines consist 
+        of two underscore characters each.
+
+You will notice that many procedures have conditional-
+assembly directives determining which ARG directive 
+and block of code to use.  The IFE FAR_PTRS block will 
+be assembled if FAR_PTRS is defined as 0, otherwise 
+the ELSE block will be assembled.
+
+This accomodates the size of pointer arguments passed 
+to the procedure.  Also the "ret" instruction at the 
+close of each procedure does not specify the number 
+of bytes to discard from the stack on return.  Turbo 
+Assembler uses the ARG directive to determine the 
+number of bytes to discard if the Pascal calling 
+convention is used, and assembles the proper "ret n" 
+instruction. Underbars are automatically prepended 
+to the public and extrn declarations if the C calling 
+convention is in effect.  Using these features, one 
+source file can produce an object module for either
+Turbo Pascal or Turbo C/C++.
+
+!
+
+;****************************************
+; Set up calling convention and memory 
+; model for Turbo Pascal or Turbo C/C++.
+;****************************************
+
+IFNDEF  CPROG
+    .MODEL  TPASCAL
+    FAR_PTRS EQU 1
+ENDIF
+
+IFDEF CPROG
+
+IFDEF    __TINY__
+
+    .MODEL  TINY,C
+    FAR_PTRS EQU 0
+
+ELSEIFDEF   __MEDIUM__
+
+    .MODEL  MEDIUM,C
+    FAR_PTRS EQU 0
+
+ELSEIFDEF   __COMPACT__
+
+    .MODEL  COMPACT,C
+    FAR_PTRS EQU 1
+
+ELSEIFDEF   __LARGE__
+
+    .MODEL  LARGE,C
+    FAR_PTRS EQU 1
+ELSEIFDEF   __HUGE__
+
+    .MODEL  HUGE,C
+    FAR_PTRS EQU 1
+ELSE
+    .MODEL  SMALL,C
+    FAR_PTRS EQU 0
+ENDIF
+ENDIF
+
+;****************************************
+; Make procedures visible to the linker.
+;****************************************
+
+public mouse_reset
+public mouse_show
+public mouse_hide
+public mouse_get_pos
+public mouse_set_pos
+public mouse_button_press
+public mouse_button_rel
+public mouse_limit_x
+public mouse_limit_y
+public mouse_set_graphcursor
+public mouse_set_textcursor
+public mouse_get_movement
+public mouse_set_eventhandler
+public mouse_start_pen_emul
+public mouse_stop_pen_emul
+public mouse_set_movement_ratio
+public mouse_conditional_off
+public mouse_set_speed
+public mouse_swap_vector
+public mouse_get_bufsize
+public mouse_save_state
+public mouse_restore_state
+public mouse_set_alt_handler
+public mouse_get_alt_handler
+public mouse_set_sens
+public mouse_get_sens
+public mouse_set_crt_page
+public mouse_get_crt_page
+public mouse_disable_drvr
+public mouse_enable_drvr
+public mouse_soft_reset
+
+
+    LOCALS      ;enable local procedure labels
+
+    .CODE
+
+;****************************************
+; mouse_reset   PROC:
+;    Description:   initialize the mouse driver
+; int mouse_reset(int *num_buttons);
+; Function mouse_reset(Var num_buttons : Integer) : Integer;
+;****************************************
+
+mouse_reset PROC
+    xor ax,ax
+    int 33h
+    ret
+mouse_reset ENDP
+
+;****************************************
+; mouse_show    PROC:
+;    Description:   display the mouse cursor
+; void mouse_show(void);
+; Procedure mouse_show;
+;****************************************
+
+mouse_show  PROC
+    mov ax,1
+    int 33h
+    ret
+mouse_show  ENDP
+
+;****************************************
+; mouse_hide    PROC:
+;    Description:   hide the mouse cursor
+; void mouse_hide(void);
+; Procedure mouse_hide;
+;****************************************
+
+mouse_hide  PROC
+    mov ax,2
+    int 33h
+    ret
+mouse_hide  ENDP
+
+;****************************************
+; mouse_get_pos PROC:
+;    Description:   get the mouse cursor position
+; int mouse_get_pos(int *x, int *y);
+; Function mouse_get_pos(Var x, y : Integer) : Integer;
+;****************************************
+
+mouse_get_pos   PROC    USES ES     ;preserve ES segment register
+
+IFE FAR_PTRS
+    ARG x:NEAR PTR, y:NEAR PTR
+
+ELSE
+    ARG x:FAR PTR, y:FAR PTR
+ENDIF
+    mov ax,3
+    int 33h
+    mov ax,bx
+
+IFE  FAR_PTRS
+
+    mov bx,x
+    mov [bx],cx
+    mov bx,y
+    mov [bx],dx
+ELSE
+    les bx,x
+    mov word ptr es:[bx],cx
+    les bx,y
+    mov word ptr es:[bx],dx
+ENDIF
+    ret
+mouse_get_pos   ENDP
+
+;****************************************
+; mouse_set_pos PROC:
+;    Description:   set the mouse cursor position;
+; void mouse_set_pos(int x, int y);
+; Procedure mouse_set_pos(x, y : Integer);
+;****************************************
+
+mouse_set_pos   PROC
+    ARG x, y
+
+    mov ax,4
+    mov cx,x
+    mov dx,y
+    int 33h
+    ret
+mouse_set_pos   ENDP
+
+;****************************************
+; mouse_button_press    PROC:
+;    Description:   get mouse button press information
+; int mouse_button_press(int *x, int *y, int *count, int button);
+; Function mouse_button_press
+;   (Var x, y, count : Integer; button : Integer)   : Integer;
+;****************************************
+
+mouse_button_press  PROC    USES ES
+
+IFE FAR_PTRS
+        ARG x:NEAR PTR, y:NEAR PTR, count:NEAR PTR, button
+ELSE
+        ARG x:FAR PTR, y:FAR PTR, count:FAR PTR, button
+ENDIF
+        mov ax,5
+        mov bx,button
+        int 33h
+        push    bx
+
+IFE FAR_PTRS
+
+        mov bx,count
+        pop [bx]
+        mov bx,y
+        mov [bx],dx
+        mov bx,x
+        mov [bx],cx
+
+ELSE
+        les bx,count
+        pop word ptr es:[bx]
+        les bx,y
+        mov word ptr es:[bx],dx
+        les bx,x
+        mov word ptr es:[bx],cx
+ENDIF
+        ret
+mouse_button_press  ENDP
+
+;****************************************
+; mouse_button_rel  PROC:
+;    Description:   get mouse button release information
+;
+; int mouse_button_rel(int *x, int *y, int *count, int button);
+; Function mouse_button_rel
+;   (Var x, y, count : Integer; button : Integer)   : Integer;
+;****************************************
+
+mouse_button_rel    PROC    USES ES
+
+IFE FAR_PTRS
+        ARG x:NEAR PTR, y:NEAR PTR, count:NEAR PTR, button
+ELSE
+        ARG x:FAR PTR, y:FAR PTR, count:FAR PTR, button
+ENDIF
+        mov ax,6
+        mov bx,button
+        int 33h
+        push    bx
+
+IFE FAR_PTRS
+
+        mov bx,count
+        pop [bx]
+        mov bx,y
+        mov [bx],dx
+        mov bx,x
+        mov [bx],cx
+
+ELSE
+        les bx,count
+        pop word ptr es:[bx]
+        les bx,y
+        mov word ptr es:[bx],dx
+        les bx,x
+        mov word ptr es:[bx],cx
+ENDIF
+        ret
+mouse_button_rel    ENDP
+
+;****************************************
+; mouse_limit_x PROC:
+;    Description:   limit mouse cursor movement on 
+;                   the x axis (column)
+; void mouse_limit_x(int min_x, int max_x);
+; Procedure mouse_limit_x(min_x, max_x : Integer);
+;****************************************
+
+mouse_limit_x   PROC
+    ARG min_x, max_x
+    mov ax,7
+    mov cx,min_x
+    mov dx,max_x
+    int 33h
+    ret
+mouse_limit_x   ENDP
+
+;****************************************
+; mouse_limit_y PROC:
+;    Description:   limit mouse cursor movement on 
+;                   the y axis (row)
+; void mouse_limit_y(int min_y, int max_y);
+; Procedure mouse_limit_y(min_y, max_y : Integer);
+;****************************************
+
+mouse_limit_y   PROC
+    ARG min_y, max_y
+    mov ax,8
+    mov cx,min_y
+    mov dx,max_y
+    int 33h
+    ret
+mouse_limit_y   ENDP
+
+
+;****************************************
+; mouse_set_graphcursor   PROC    USES ES:
+;    Description:   set mouse graphics cursor shape
+; void mouse_set_graphcursor(int xspot,int yspot,void far *masks);
+; Procedure mouse_set_graphcursor(xspot, yspot : Integer; 
+;          masks : pointer);
+;****************************************
+
+mouse_set_graphcursor   PROC    USES ES
+        ARG xspot, yspot, masks:FAR PTR
+        mov ax,9
+        mov bx,xspot
+        mov cx,yspot
+        les dx,masks
+        int 33h
+        ret
+mouse_set_graphcursor   ENDP
+
+
+;****************************************
+; mouse_set_textcursor  PROC:
+;    Description:   set mouse text cursor shape
+; void mouse_set_textcursor(int cursor_type,int scr_mask,
+;           int curs_mask);
+; Procedure mouse_set_textcursor(cursor_type, scr_mask, 
+;           curs_mask : Integer);
+;****************************************
+
+mouse_set_textcursor    PROC
+        ARG cursor_type, scr_mask, curs_mask
+
+        mov ax,0Ah
+        mov bx,cursor_type
+        mov cx,scr_mask
+        mov dx,curs_mask
+        int 33h
+        ret
+mouse_set_textcursor    ENDP
+
+;****************************************
+; mouse_get_movement    PROC:
+;    Description:   get mouse cursor movement information
+; void mouse_get_movement(int *x,int *y);
+; Procedure mouse_get_movement(Var x, y : Integer);
+;****************************************
+
+mouse_get_movement  PROC    USES ES
+
+IFE FAR_PTRS
+        ARG x:NEAR PTR, y:NEAR PTR
+ELSE
+        ARG x:FAR PTR, y:FAR PTR
+ENDIF
+        mov ax,0Bh
+        int 33h
+
+IFE FAR_PTRS
+
+        mov bx,x
+        mov [bx],cx
+        mov bx,y
+        mov [bx],dx
+ELSE
+        les bx,x
+        mov word ptr es:[bx],cx
+        les bx,y
+        mov word ptr es:[bx],dx
+ENDIF
+        ret
+mouse_get_movement  ENDP
+
+;****************************************
+; mouse_set_eventhandler    PROC:
+;    Description:   set up a mouse event handler to be called by
+;            by the mouse driver.
+; void mouse_set_eventhandler(int event_mask, 
+;                             void far (*mhandler)());
+; Procedure mouse_set_eventhandler(event_mask : Integer; 
+;                             mhandler : pointer);
+;****************************************
+
+mouse_set_eventhandler  PROC    USES ES
+        ARG event_mask, mhandler:FAR PTR
+
+        mov ax,0Ch
+        mov cx,event_mask
+        les dx,mhandler
+        int 33h
+        ret
+mouse_set_eventhandler  ENDP
+
+;****************************************
+; mouse_start_pen_emul  PROC:
+;    Description:   start mouse light-pen emulation
+; void mouse_start_pen_emul(void);
+; Procedure mouse_start_pen_emul;
+;****************************************
+
+mouse_start_pen_emul    PROC
+        mov ax,0Dh
+        int 33h
+        ret
+mouse_start_pen_emul    ENDP
+
+;****************************************
+; mouse_stop_pen_emul   PROC:
+;    Description:   stop mouse light-pen emulation
+; void mouse_stop_pen_emul(void);
+; Procedure mouse_stop_pen_emul;
+;****************************************
+
+mouse_stop_pen_emul PROC
+        mov ax,0Eh
+        int 33h
+        ret
+mouse_stop_pen_emul ENDP
+
+;****************************************
+; mouse_set_movement_ratio  PROC:
+;    Description:   set mouse cursor movement ratio
+; void mouse_set_movement_ratio(int x_ratio,int y_ratio);
+; Procedure mouse_set_movement_ratio(x_ratio, y_ratio : Integer);
+;****************************************
+
+mouse_set_movement_ratio    PROC
+            ARG x_ratio, y_ratio
+
+            mov ax,0Fh
+            mov cx,x_ratio
+            mov dx,y_ratio
+            int 33h
+            ret
+mouse_set_movement_ratio    ENDP
+
+;****************************************
+; mouse_conditional_off PROC:
+;    Description: conditionally turn the mouse cursor off
+; void mouse_conditional_off(int left,int top,int right,int bottom);
+; Procedure mouse_conditional_off(left, top, right, 
+;                                 bottom : Integer);
+;****************************************
+
+mouse_conditional_off   PROC    USES SI DI
+
+        ARG left, top, right, bottom
+
+        mov ax,10h
+        mov cx,left
+        mov dx,top
+        mov si,right
+        mov di,bottom
+        int 33h
+        ret
+mouse_conditional_off   ENDP
+
+;****************************************
+; mouse_set_speed   PROC:
+;    Description:   set mouse cursor speed
+; void mouse_set_speed(int threshold);
+; Procedure mouse_set_speed(threshold : Integer);
+;****************************************
+
+mouse_set_speed PROC
+    ARG threshold
+
+    mov ax,13h
+    mov bx,threshold
+    int 33h
+    ret
+mouse_set_speed ENDP
+
+;****************************************
+; mouse_swap_vector PROC:
+;    Description:   swap mouse interrupt vectors
+; void far *mouse_swap_vector(int new_mask,int *old_mask,
+;                             void far *new_vector);
+; Function mouse_swap_vector
+; (new_mask : Integer; Var old_mask : Integer; 
+;                            new_vector : pointer) : pointer;
+;****************************************
+
+mouse_swap_vector   PROC USES ES
+
+IFE FAR_PTRS
+
+    ARG new_mask, old_mask:NEAR PTR, new_vector:FAR PTR
+ELSE
+    ARG new_mask, old_mask:FAR PTR, new_vector:FAR PTR
+ENDIF
+
+        mov ax,14h
+        mov cx,new_mask
+
+IFE FAR_PTRS
+
+        mov bx,old_mask
+        mov [bx],cx
+ELSE
+        les bx,old_mask
+        mov word ptr es:[bx],cx
+ENDIF
+        les dx,new_vector
+        int 33h
+        mov ax,es
+        xchg    ax,dx
+        ret
+mouse_swap_vector   ENDP
+
+;****************************************
+; mouse_get_bufsize PROC:
+;   Description: get buffer size needed to store mouse state info
+; int mouse_get_bufsize(void);
+; Function mouse_get_bufsize : Integer;
+;****************************************
+
+mouse_get_bufsize   PROC
+        mov ax,15h
+        int 33h
+        mov ax,bx
+        ret
+mouse_get_bufsize   ENDP
+
+;****************************************
+; mouse_save_state  PROC:
+;    Description:   save the "state" of the mouse driver
+; void mouse_save_state(void far *state_buf);
+; Procedure mouse_save_state(state_buf : pointer);
+;****************************************
+
+mouse_save_state    PROC    USES ES
+        ARG state_buf:FAR PTR
+
+        mov ax,16h
+        les dx,state_buf
+        int 33h
+        ret
+mouse_save_state    ENDP
+
+;****************************************
+; mouse_restore_state   PROC:
+;    Description:   restore the mouse driver "state"
+; void mouse_restore_state(void far *state_buf);
+; Procedure mouse_restore_state(state_buf : pointer);
+;****************************************
+
+mouse_restore_state PROC    USES ES
+        ARG state_buf:FAR PTR
+
+        mov ax,17h
+        les dx,state_buf
+        int 33h
+        ret
+mouse_restore_state ENDP
+
+;****************************************
+; mouse_set_alt_handler PROC:
+;    Description:   set an alternate mouse event handler
+; void mouse_set_alt_handler(int alt_mask,void far (*func)());
+; Procedure mouse_set_alt_handler(alt_mask : Integer; 
+;                                 func : pointer);
+;****************************************
+
+mouse_set_alt_handler   PROC    USES ES
+        ARG alt_mask, func:FAR PTR
+
+        mov ax,18h
+        mov cx,alt_mask
+        les dx,func
+        int 33h
+        ret
+mouse_set_alt_handler   ENDP
+
+;****************************************
+; mouse_get_alt_handler PROC:
+;    Description:   get address of alternate mouse event handler
+; int mouse_get_alt_handler(int alt_mask,void far *handler);
+; Function mouse_get_alt_handler
+;   (alt_mask : Integer; handler : pointer) : pointer;
+;****************************************
+
+mouse_get_alt_handler   PROC    USES ES DI
+        ARG alt_mask, handler:FAR PTR
+
+        mov ax,19h
+        mov cx,alt_mask
+        int 33h
+        les di,handler
+        mov word ptr es:[di],dx
+        mov word ptr es:[di+2],bx
+        mov ax,cx
+        ret
+mouse_get_alt_handler   ENDP
+
+;****************************************
+; mouse_set_sens    PROC:
+;    Description:   set mouse sensitivity
+; void mouse_set_sens(int x_ratio,int y_ratio,int threshold);
+; Procedure mouse_set_sens(x_ratio, y_ratio, 
+;                          threshold : Integer);
+;****************************************
+
+mouse_set_sens  PROC
+    ARG x_ratio, y_ratio, threshold
+
+    mov ax,1Ah
+    mov bx,x_ratio
+    mov cx,y_ratio
+    mov dx,threshold
+    int 33h
+    ret
+mouse_set_sens  ENDP
+
+;****************************************
+; mouse_get_sens    PROC:
+;    Description:   get mouse sensitivity
+; void mouse_get_sens(int *x_ratio,int *y_ratio,
+;                     int *threshold);
+; Procedure mouse_get_sens(Var x_ratio, y_ratio, 
+;                     threshold : Integer);
+;****************************************
+
+mouse_get_sens  PROC    USES ES
+
+IFE FAR_PTRS
+
+ARG x_ratio:NEAR PTR, y_ratio:NEAR  PTR, threshold:NEAR PTR
+ELSE
+ARG x_ratio:FAR PTR, y_ratio:FAR PTR, threshold:FAR PTR
+ENDIF
+    mov ax,1Bh
+    int 33h
+    push    bx
+
+IFE FAR_PTRS
+
+    mov bx,x_ratio
+    pop [bx]
+    mov bx,y_ratio
+    mov [bx],cx
+    mov bx,threshold
+    mov [bx],dx
+ELSE
+    les bx,x_ratio
+    pop word ptr es:[bx]
+    les bx,y_ratio
+    mov word ptr es:[bx],cx
+    les bx,threshold
+    mov word ptr es:[bx],dx
+ENDIF
+    ret
+mouse_get_sens  ENDP
+
+;****************************************
+; mouse_set_crt_page    PROC:
+;    Description:   set mouse crt page (video page)
+; void mouse_set_crt_page(int crt_page);
+; Procedure mouse_set_crt_page(crt_page : Integer);
+;****************************************
+
+mouse_set_crt_page  PROC
+        ARG crt_page
+        mov ax,1Dh
+        mov bx,crt_page
+        int 33h
+        ret
+mouse_set_crt_page  ENDP
+
+;****************************************
+; mouse_get_crt_page    PROC:
+;    Description:   get mouse crt page (video page)
+; int mouse_get_crt_page(void);
+; Function mouse_get_crt_page : Integer;
+;****************************************
+
+mouse_get_crt_page  PROC
+        mov ax,1Eh
+        int 33h
+        mov ax,bx
+        ret
+mouse_get_crt_page  ENDP
+
+;****************************************
+; mouse_disable_drvr    PROC:
+;    Description:   disable mouse driver
+; int mouse_disable_drvr(void far *vector_33h);
+; Function mouse_disable_drvr(vector_33h : pointer) : Integer;
+;****************************************
+
+mouse_disable_drvr  PROC    USES ES
+        ARG vector_33h:FAR PTR
+
+        mov ax,1Fh
+        int 33h
+        cmp ax,-1
+        je  @@exit
+        mov dx,es
+        mov cx,bx
+        les bx,vector_33h
+        mov word ptr es:[bx],cx
+        mov word ptr es:[bx+2],dx
+    @@exit:
+        ret
+mouse_disable_drvr  ENDP
+
+;****************************************
+; mouse_enable_drvr PROC:
+;    Description:   enable mouse driver
+; void mouse_enable_drvr(void);
+; Procedure mouse_enable_drvr;
+;****************************************
+
+mouse_enable_drvr   PROC
+        mov ax,20h
+        int 33h
+        ret
+mouse_enable_drvr   endp
+
+;****************************************
+; mouse_soft_reset  PROC:
+;    Description:   mouse software reset
+; int mouse_soft_reset(int *nbuttons);
+; Function mouse_soft_reset(Var nbuttons : Integer):Integer;
+;****************************************
+
+mouse_soft_reset    PROC    USES ES
+
+IFE FAR_PTRS
+        ARG nbuttons:NEAR PTR
+ELSE
+        ARG nbuttons:FAR PTR
+ENDIF
+        mov ax,21h
+        int 33h
+        cmp ax,-1
+        jne @@exit
+        push    bx
+
+IFE FAR_PTRS
+
+        mov bx,nbuttons
+        pop [bx]
+
+ELSE
+        les bx,nbuttons
+        pop word ptr es:[bx]
+
+ENDIF
+
+    @@exit:
+        ret
+mouse_soft_reset    ENDP
+
+        END

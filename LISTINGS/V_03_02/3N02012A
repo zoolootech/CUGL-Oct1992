@@ -1,0 +1,90 @@
+#include <stdlib.h>
+#include <assert.h>
+#include <stdio.h>
+#include <time.h>
+#include "challoc.h"
+
+int Random(int num)
+    {
+    int     Result  = int(long(rand())*num/(RAND_MAX+1));
+    return Result < 0 ? -Result : Result;
+    }
+
+class   IntSet : public ChunkAllocated
+    {
+public:
+    IntSet();
+    int     Foo[4];
+    };
+IntSet::IntSet()
+    {
+    Foo[0] = Foo[1] = Foo[2] = Foo[3] = 0;
+    };
+
+class   IntSet2
+    {
+public:
+    IntSet2();
+    int     Foo[4];
+    };
+IntSet2::IntSet2()
+    {
+    Foo[0] = Foo[1] = Foo[2] = Foo[3] = 0;
+    };
+
+const   int MAXPOINTERS     = 1024;
+const   int MAXITERATIONS   = 2048;
+
+IntSet  *Pointers[MAXPOINTERS];
+IntSet2 *Pointers2[MAXPOINTERS];
+
+int     main(int /*argc*/, char **/*argv*/)
+    {
+    int i, j, k;
+    printf("Begin Benchmark\n");
+    time_t StartTime   = time(NULL);
+    for(j = 0; j < MAXITERATIONS; ++j)
+        for(i = 0; i < MAXPOINTERS; ++i)
+            if(Pointers[k=Random(MAXPOINTERS)])
+                Pointers[k] = NULL;
+    float   EmptyTime   = difftime(time(NULL), StartTime);
+    printf( "empty loop time is %5.2f seconds\n", EmptyTime);
+
+    StartTime   = time(NULL);
+    for(j = 0; j < MAXITERATIONS; ++j)
+        for(i = 0; i < MAXPOINTERS; ++i)
+            if(Pointers2[k=Random(MAXPOINTERS)])
+                {
+                delete Pointers2[k];
+                Pointers2[k] = NULL;
+                }
+            else
+                {
+                Pointers2[k] = new IntSet2;
+                assert(Pointers2[k] != NULL);
+                }
+    float StandardTime = difftime(time(NULL), StartTime);
+    printf( "Standard allocation time %5.2f seconds\n", StandardTime);
+
+    StartTime   = time(NULL);
+    for(j = 0; j < MAXITERATIONS; ++j)
+        for(i = 0; i < MAXPOINTERS; ++i)
+            if(Pointers[k=Random(MAXPOINTERS)])
+                {
+                delete Pointers[k];
+                Pointers[k] = NULL;
+                }
+            else
+                {
+                Pointers[k] = new IntSet;
+                assert(Pointers[k] != NULL);
+                }
+    float ChunkTime = difftime(time(NULL), StartTime);
+    printf( "Chunk allocation time %5.2f seconds\n", ChunkTime);
+
+    printf( "Improvement = %5.2f %%\n", 100.0
+        * ((StandardTime-EmptyTime) - (ChunkTime-EmptyTime))
+        / (StandardTime-EmptyTime));
+    return 0;
+    }
+

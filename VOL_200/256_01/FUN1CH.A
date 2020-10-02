@@ -1,0 +1,60 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     FUN1CH.A     Get Drive Data
+;	----------
+;	WRITTEN:        26/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int FUN1CH(drv,&_rbx, &rcx, &rdx, &_carryf)
+;	-----           int drv; /* A = 1, B = 2.....DEFAULT = 0
+;	                char *_rbx, *_rcx, *_rdx, *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC FUN1CH_
+
+FUN1CH_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	byte dl,[bp+4]	; the specified drive
+	mov	ah,1ch	; the Function No.
+	int	21h
+	cmp	al,0ffh	; this is the error check
+	je	FUN1CH_ERROR
+	mov	si,[bp+6]
+	mov	word [si],bx	; pointer to FAT Table in _rbx
+	mov	si,[bp+8]
+	mov	word [si],cx	; bytes per sector in _rcx
+	mov	si,[bp+10]
+	mov	word [si],dx	; clusters per drive in _rdx
+	xor	ah,ah	; sectors per cluster in AL on return
+	jmp	FUN1CH_QUIT
+FUN1CH_ERROR:
+	mov	si,[bp+12]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+	xor	ax,ax
+	mov	al,15	; "invalid drive" error message
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+FUN1CH_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

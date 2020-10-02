@@ -1,0 +1,123 @@
+
+
+Listing 1
+
+/* The following declarations are excerpted from my Mandelbrot
+program's header file; since practically the whole program
+consists of specialized functions useful in this task only, all
+variables related to the screen and to the map are global and
+there is relatively little ``information hiding'' and parameter
+passing. */
+
+struct pt target, center;
+struct {double x, y;} orig;	/* this is a pixel, but it is
+				stored as a double because it can easily get
+				bigger than a long integer */	
+double a_step, b_step, a, b, xbeg, ybeg;
+int make_frame, imported;
+unsigned int scrwid, scrht, times, step, disc, pelrow, pelcol;
+unsigned int maxx, maxy, scrx0, scry0, discrim;
+unsigned long mag, ncalcs;
+#define VIEWAR 1.33  /* screen aspect ratio */
+
+int iter(a,b,t,d)
+
+double a, b;
+int t, d;
+
+{
+register int n = 0, tt;
+double x, y, xx, yy, xxx;
+extern int chkkbd();
+
+	x = y = 0;
+	tt = t;
+	while (n < tt && (xx = x*x) + (yy = y*y) < d)
+	{	xxx = xx - yy + a;
+		y = 2*x*y + b;
+		x = xxx;
+		n++;
+	}
+     if (chkkbd() == 27)
+		return -1;
+	if (n == t) return 0;
+	else return n;
+}	
+
+#include <conio.h>
+
+int chkkbd()
+
+{
+extern int kbhit(), getch();
+
+	return kbhit() ? getch() : 0;
+}
+
+
+
+Listing 2
+
+void makemap()
+
+{
+register int n;
+
+	for (;pelrow<scrht;pelrow++)
+	{    a = xbeg;
+		for (pelcol=0;pelcol<scrwid;)
+		{    n = iter(a,b,times,discrim);
+			ncalcs += n == 0 ? times : n;
+			if (n)
+			   pset(scrx0+pelcol,scry0+pelrow,(n/step)%15+1);
+		     a += a_step;
+			pelcol++;
+		}
+	     b += b_step;
+	}
+}
+
+
+Listing 3
+
+int setparms() 
+ 
+{ 
+double half_width, half_height, xend, yend; 
+ 
+	if (scrwid != maxx)		 
+	{	scrht = (int)(maxy * (double)scrwid/maxx); 
+		make_frame = 1; 	/* draw a line around it */
+	} 
+	else scrht = maxy; 	/* maxx by maxy would be full screen */
+	scrx0 = (maxx - scrwid)/2; /* upper left corner of map in
+							pixel positions */
+	scry0 = (maxy - scrht)/2; 
+	center.x = target.x; 
+	center.y = target.y; 
+	discrim = disc * disc; 
+	half_width = (double)3.0/(2*mag);	/* total length of M is
+								3; mag == 1 shows whole
+								set */ 
+	xend = center.x + half_width; 	/* I don't think this
+							sequence of events is actually
+							as silly as it looks */
+	half_height = half_width / VIEWAR; 
+	yend = center.y - half_height; 
+	xbeg = center.x - half_width; 
+	ybeg = center.y + half_height; 
+	a_step = (xend - xbeg) / scrwid; /* Mandelunits per pixel */
+	b_step = (yend - ybeg) / scrht;   /* ditto, y axis */
+	orig.x = scrx0 + scrwid/2 + (-center.x/a_step);	/* pixel
+					location of M's origin <197> used in the
+					aim-and-frame routine */
+	orig.y = scry0 + scrht/2 - (center.y/b_step);   
+     if (!imported) 
+	{	b = ybeg; 
+		pelrow = 0; 
+		ncalcs = 0; 
+	} 
+	else b = ybeg + b_step * pelrow; /* resume incomplete map */
+	imported = 0; 
+	return make_frame; 
+}	 

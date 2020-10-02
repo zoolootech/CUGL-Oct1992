@@ -1,0 +1,215 @@
+UNIT PutEnv;
+  {$F+}                        (* for TP 5.0--force far procs *)
+  {Copyright (c) 1990 by Dennis Revie.  All rights reserved.
+
+   This code may be used in any program, as long as the author
+   is credited either in the program or in the documentation.}
+
+INTERFACE
+
+
+PROCEDURE PutEnvString(envirname : String; newenvirstrg : String);
+  (* envirname = 'ENVIRONMENTSTRING', etc....
+     newenvirstrg = 'add text'; etc
+     NOTES: --newenvirstrg REPLACES the old envirstrg.
+            --if newenvirstrg = '', then envirname is removed.
+  *)
+
+PROCEDURE FreeEnvString;
+  (* returns environment to its original state *)
+
+IMPLEMENTATION
+
+
+USES DOS;
+
+TYPE
+  Environment = ARRAY[0..MaxInt] OF Char;
+  envptr = ^Environment;
+  Str255 = String[255];
+CONST
+  nul = #0;
+VAR
+  ExitSave: Pointer;     (* saves old ExitProc *)
+  oldenvplace : envptr;  (* pointer to the env *)
+  originalenvplace: Word;  (* segment of original environment *)
+  oldenvptrsize : Word;  (* size of the pointer *)
+
+  PROCEDURE PutEnvString(envirname : String; newenvirstrg : String);
+
+    FUNCTION StrUpCase(s : String) : String;
+      (* returns uppercase of string *)
+    VAR
+      i : WORD;
+    BEGIN
+      FOR i := 1 TO LENGTH(s) DO
+        s[i] := UPCASE(s[i]);
+      StrUpCase := s;
+    END;   (* StrUpCase *)
+
+    FUNCTION GetEnvSize(envseg: WORD): WORD;
+      (* returns size of the environment *)
+    VAR
+      size: WORD;
+      newchar: CHAR;
+    BEGIN
+      IF (oldenvplace <> NIL) THEN
+        GetEnvSize := oldenvptrsize
+      ELSE BEGIN (* find end of environment *)
+        size := $0;
+        REPEAT
+          newchar := Chr(Mem[envseg:size]);
+          IF newchar = nul THEN BEGIN
+            Inc(size);
+            newchar := Chr(Mem[envseg:size]);
+          END ;
+          Inc(size);
+        UNTIL (newchar = nul); (* two consecutive #0 *)
+        GetEnvSize := size;
+      END;
+    END; (* GetEnvSize *)
+
+  VAR
+    echar: Char;
+    ct, envofs, envtop, eptrct, envptrsize, currentenvsize : Word;
+    currentenvstrg : Str255;
+    eptr : envptr;
+    envpointer : envptr;
+    nextenvname : Str255;
+    envseg : Word;
+  BEGIN
+    envseg := MemW[PrefixSeg:$2C];  (* where the environment is *)
+    envirname := StrUpCase(envirname);
+
+    envofs := GetEnvSize(envseg);   (* get the size of the environment *)
+    currentenvsize := envofs;       (* save the size *)
+
+    currentenvstrg := GetEnv(envirname); (* get old environment *)
+    Inc(envofs, Length(newenvirstrg) + 15 + Length(envirname) + 2);
+    (* 15 to round up to next 16 bytes; 2  for '=' & nul *)
+    Dec(envofs, Length(currentenvstrg) + 1 (* #0 *));
+    IF (Length(newenvirstrg) = 0) AND (envofs > Length(envirname)) THEN
+      Dec(envofs, Length(envirname));
+    IF envofs > currentenvsize THEN
+      envptrsize := envofs
+    ELSE
+      envptrsize := currentenvsize;
+
+    IF envptrsize > MaxAvail THEN
+      EXIT; (* not enough memory *)
+    GetMem(envpointer, envptrsize);
+    IF envpointer = NIL THEN
+      EXIT; (* not enough memory *)
+
+    IF Ofs(envpointer^) <> 0 THEN
+      (* to force an ofs of 0, move to the next segment *)
+      eptr := Ptr(Succ(Seg(envpointer^)), 0)
+    ELSE
+      eptr := envpointer;
+
+    (* now, copy the old to the new env, and change "envirname" *)
+    envtop := 0;
+    eptrct := 0;
+    IF Length(currentenvstrg) = 0 THEN BEGIN
+      (* not previously there, add new string *)
+      IF Length(newenvirstrg) > 0 THEN BEGIN (* add it *)
+        FOR ct := 1 TO Length(envirname) DO BEGIN
+          (* copy current env to the beginning *)
+          eptr^[eptrct] := envirname[ct];
+          Inc(eptrct);
+        END;
+        eptr^[eptrct] := '='; (* add the equals sign *)
+        Inc(eptrct);
+
+        FOR ct := 1 TO Length(newenvirstrg) DO BEGIN (* add new string *)
+          eptr^[eptrct] := newenvirstrg[ct];
+          Inc(eptrct);
+        END;
+        eptr^[eptrct] := nul; (* ends in nul *)
+        Inc(eptrct);
+      END;
+
+      FOR ct := 0 TO currentenvsize-1 DO (* move rest of env *)
+        eptr^[eptrct + ct] := Chr(Mem[envseg:ct]);
+      Inc(eptrct, currentenvsize);
+    END ELSE BEGIN  (* change old string *)
+      WHILE envtop <= currentenvsize DO BEGIN
+        nextenvname := '';
+        REPEAT (* copy next env name *)
+          echar := Chr(Mem[envseg:envtop]);
+          nextenvname := nextenvname + Upcase(echar);
+          eptr^[eptrct] := echar;
+          Inc(envtop);
+          Inc(eptrct);
+        UNTIL (echar = nul) OR (echar = '=');
+        IF nextenvname = envirname + '=' THEN BEGIN (* substitute new one *)
+          WHILE echar <> nul DO BEGIN (* skip over old string *)
+            echar := Chr(Mem[envseg:envtop]);
+            Inc(envtop);
+          END;
+
+          IF Length(newenvirstrg) = 0 THEN (* delete it *)
+            DEC(eptrct, Length(nextenvname))
+          ELSE BEGIN
+            FOR ct := 1 TO Length(newenvirstrg) DO BEGIN (* add new one *)
+              eptr^[eptrct] := newenvirstrg[ct];
+              Inc(eptrct);
+            END;
+            eptr^[eptrct] := nul; (* nul at end *)
+            Inc(eptrct);
+          END;
+        END ELSE BEGIN
+          WHILE (echar <> nul) AND (envtop <= envofs) DO BEGIN
+            echar := Chr(Mem[envseg:envtop]);
+            eptr^[eptrct] := echar;
+            Inc(eptrct);
+            Inc(envtop);
+          END;
+        END (* if *);
+
+      END (* while *);
+    END (* if *);
+    eptr^[eptrct] := nul; (* end with double nul *)
+    Inc(eptrct);
+    eptr^[eptrct] := nul;
+
+    (* now, reassign the environment pointer to new strings *)
+    IF currentenvsize >= eptrct THEN BEGIN
+      (* it's shrunk, put into old env *)
+      FOR ct := 0 TO eptrct DO
+        Mem[envseg:ct] := Ord(eptr^[ct]);
+      FreeMem(envpointer, envptrsize);
+    END ELSE BEGIN (* repoint to new pointer *)
+      IF (oldenvplace <> NIL) THEN
+        FreeMem(oldenvplace, oldenvptrsize);
+      oldenvplace := envpointer;
+      oldenvptrsize := envptrsize;
+      (* reassign envseg *)
+      MemW[PrefixSeg:$2C] := Seg(eptr^);
+    END;
+  END;  (* PutEnvString *)
+
+
+  PROCEDURE FreeEnvString;
+  BEGIN
+    IF (oldenvplace <> NIL) THEN BEGIN
+      FreeMem(oldenvplace, oldenvptrsize);
+      oldenvplace := NIL;
+    END;
+    MemW[PrefixSeg:$2C] := originalenvplace;
+  END; (* FreeEnvString *)
+
+  {$F+}
+  PROCEDURE PutEnvExit;
+  BEGIN
+    FreeEnvString;
+    ExitProc := ExitSave;
+  END; (* PutEnvExit *)
+
+BEGIN (* PutEnv *)
+  ExitSave := ExitProc;
+  ExitProc := @PutEnvExit;
+  oldenvplace := NIL;
+  originalenvplace := MemW[PrefixSeg:$2C];
+END. (* PutEnv *)
+

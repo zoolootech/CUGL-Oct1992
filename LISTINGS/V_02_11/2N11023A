@@ -1,0 +1,247 @@
+/* ----------------------------------------------------
+ *  LISTING 3
+ *
+ *  Filename:           bfile.c
+ *  Summary:            extended file i/o interface
+ *  Author:             T.W. Nelson
+ *  Compile options:    
+ *  Version:            1.00
+ *  Date:               12-Sep-1991
+ *  Notes:
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ * ------------------------------------------------- */
+
+#include <stdio.h>
+#include <io.h>
+#include <fcntl.h>
+#include <sys\stat.h>
+#include <alloc.h>
+#include <string.h>
+#include <errno.h>
+#include <assert.h>
+#include "bfile.h"
+
+//Utility function prototypes (in dos.c) .......
+void move_mem( bufp_t *dest, bufp_t *src,
+                                     size_t nbytes );
+int read_file(  int fd, bufp_t *buf, size_t nbytes );
+int write_file( int fd, bufp_t *buf, size_t nbytes );
+
+/* ------------------------------------------------- */
+static void fproc(idnt_t *idnt,     //cache id
+                  ulong bnum,       //block number
+                  bufp_t *p)        //-> cache buffer
+{
+   /* Free block processing (writing) routine. Called
+    * when cache buffer space must be reused for a new
+    * block.  'idnt' was set up by open_b() as a
+    * pointer to a BFILE object for the file. If the
+    * file was not pre-existent, one will be created
+    * here when (and if) the data overflows the cache.
+    */
+
+    BFILE *ff = (BFILE *) idnt;
+
+    if( ff->fd == -1 )  {    //file doesn't exist ....
+        if((ff->fd = open(ff->fname,O_CREAT+O_BINARY,
+                         S_IREAD+S_IWRITE)) == -1)
+                return;         //error
+    }
+
+    lseek( ff->fd, (long) (bnum * ff->cac.bsiz),
+                                        SEEK_SET );
+    write_file( ff->fd, p, ff->cac.bsiz );
+}
+
+BFILE *open_b( const char *path,    //file pathname
+               int bmax,            //#blocks in cache
+               int bsize,           //blocksize, bytes
+               int mode   )         //caching mode
+{
+   /* Open a block-cached file. Pathname is saved in
+    * the BFILE descriptor; the file need not be pre-
+    * existent. Cache id is set up as a pointer to the
+    * malloced BFILE object. Returns pointer to BFILE
+    * object or null if we're out of memory.
+    */
+
+    BFILE *ff;
+
+    if( (ff = (BFILE *) malloc( sizeof(BFILE) ))
+                                   == (BFILE *) 0 ) {
+            errno = ENOMEM;
+            return (BFILE *) 0;
+    }
+
+    assert( strlen(path) < MAXPATHNAME );
+    strcpy( ff->fname, path );
+    ff->fd = -1;
+    ff->mode = mode;
+
+    #ifdef COMPILE_EMM
+    if( emm_check() == 0 )
+            bc_setalloc( emm_allocate );
+    #endif
+
+    if( bc_open( &(ff->cac), bmax,
+        bsize, fproc, (idnt_t *) ff ) == BC_NOMEMORY) {
+            free( (void *) ff );
+            ff->mode = 0;
+            errno = ENOMEM;
+            return (BFILE *) 0;
+    }
+
+    ff->mode |= IS_OPEN;
+    ff->fd = open( ff->fname, O_RDWR + O_BINARY );
+
+    return ff;
+}
+
+int read_b( BFILE *ff,          //-> BFILE descriptor
+            void *buf,          //destination buffer
+            ulong blockno )     //block# to read
+{
+   /* Read a block from a cached file. The cache is
+    * checked for the block; if found, it's copied
+    * directly to 'buf'.  Otherwise, the lfru block
+    * is re-used for the new block, to be read from
+    * disk.
+    */
+
+    bufp_t *bufptr;
+
+    if( !(ff->mode & IS_OPEN) )     {
+            errno = EBADF;
+            return -1;
+    }
+
+    #ifdef COMPILE_EMM
+    emm_map_pages( &(ff->cac) );
+    #endif
+
+    if( bc_search( &(ff->cac), blockno,
+                         &bufptr) == BC_NOTFOUND )  {
+        bc_addnew( &(ff->cac), blockno, &bufptr);
+
+        //read block from file into cache ......
+        lseek( ff->fd, (long) (blockno *
+                           ff->cac.bsiz), SEEK_SET );
+        if( read_file( ff->fd, bufptr,
+                               ff->cac.bsiz ) == -1 )
+                return -1;
+    }
+
+    //move block from cache to application buffer ....
+    move_mem( (bufp_t *) buf, bufptr, ff->cac.bsiz );
+
+    #ifdef COMPILE_EMM
+    emm_unmap_pages( &(ff->cac) );
+    #endif
+
+    return 0;
+}
+
+int write_b( BFILE *ff,         //-> BFILE descriptor
+             void *buf,         //source buffer
+             ulong blockno )    //block# to write
+{
+   /* Write a data block to a cached file. If using a
+    * write-through strategy, the block is written
+    * immediately to the file after copying to the
+    * cache. Otherwise, the block is marked for
+    * delayed processing.
+    */
+
+    bufp_t *bufptr;
+
+    if( !(ff->mode & IS_OPEN) )     {
+            errno = EBADF;
+            return -1;
+    }
+
+    #ifdef COMPILE_EMM
+    emm_map_pages( &(ff->cac) );
+    #endif
+
+    if( bc_search( &(ff->cac),
+            blockno, &bufptr) == BC_NOTFOUND )  {
+            bc_addnew( &(ff->cac), blockno, &bufptr);
+    }
+
+    //move block from application buffer to cache ....
+    move_mem( bufptr, (bufp_t *) buf, ff->cac.bsiz );
+
+    if( ff->mode & WRITE_THRU )
+            fproc( (idnt_t *) ff, blockno, bufptr );
+    else
+            bc_mark( &(ff->cac), blockno, MARK );
+
+    #ifdef COMPILE_EMM
+    emm_unmap_pages( &(ff->cac) );
+    #endif
+
+    return 0;
+}
+
+int close_b( BFILE *ff )
+{
+       /* Close down a block-cached file, freeing
+        * all cache memory.  The file is not
+        * deleted.
+        */
+
+        if( !(ff->mode & IS_OPEN) )     {
+                errno = EBADF;
+                return -1;
+        }
+
+        #ifdef COMPILE_EMM
+        emm_map_pages( &(ff->cac) );
+        #endif
+
+        bc_flush( &(ff->cac) );
+        close( ff->fd );
+        ff->mode &= ~IS_OPEN;
+
+        #ifdef COMPILE_EMM
+        emm_unmap_pages( &(ff->cac) );
+        #endif
+
+        bc_free( &(ff->cac) );
+        free( (void *) ff );
+
+        return 0;
+}
+
+int remove_b( BFILE *ff )
+{
+       /* Close and delete a cached file */
+
+        if( !(ff->mode & IS_OPEN) )     {
+                errno = EBADF;
+                return -1;
+        }
+
+        #ifdef COMPILE_EMM
+        emm_map_pages( &(ff->cac) );
+        #endif
+
+        bc_flush( &(ff->cac) );
+        close( ff->fd );
+        remove( ff->fname );
+        ff->mode &= ~IS_OPEN;
+
+        #ifdef COMPILE_EMM
+        emm_unmap_pages( &(ff->cac) );
+        #endif
+
+        bc_free( &(ff->cac) );
+        free( (void *) ff );
+
+        return 0;
+}
+
+/* ---- End of File -------------------------------- */

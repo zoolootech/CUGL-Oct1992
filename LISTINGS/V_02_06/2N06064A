@@ -1,0 +1,129 @@
+/*********************************************************/
+/*  note:           This program is intended to be a demo
+					for the DOS to Windows interface code
+**********************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <malloc.h>
+#include <fcntl.h>
+#include <io.h>
+#include <string.h>
+#include <graph.h>
+
+static  char FileBuffer[4097];;
+
+#ifdef WINDOWS
+#include <windows.h>
+char *argv[50];
+
+main()
+{
+	int argc;
+
+#else
+/* DOS version */
+main(argc,argv)
+int argc;
+char **argv;
+{
+#endif
+
+	char *linestart, *linestop;
+	char srchstr[80],outputbuffer[512];
+	long filesize;
+	int lineno,offset;
+	short fd,bytesread,readsize;
+#ifdef WINDOWS
+	memset(argv,0,sizeof(argv));
+	argc = CommandLine(argv);
+	if(argc < 2) {
+		printf("grep: Invalid arguments.");
+		return;
+	}
+#endif
+
+
+while(argc > 2)
+	{
+	argc--;
+	if((fd = open(argv[argc], O_RDONLY | O_BINARY ))
+		== -1) {
+		printf("grep: I/O error, cannot open %s\n",
+			argv[argc]);
+		continue;
+		}
+	filesize = filelength(fd);
+	lineno = offset = 0;
+	/* lower case search string */
+	strncpy(srchstr, argv[1],sizeof(srchstr) -1);
+	strlwr(srchstr);
+
+	readsize = sizeof(FileBuffer) -1;
+	while((filesize-offset) > 0)
+		{
+		if((long)readsize > filesize)
+			readsize = (short)filesize;
+		if((bytesread = read(fd,FileBuffer + offset,
+			readsize - offset)) != readsize - offset) {
+			printf("grep: I/O error");
+			close(fd);
+			continue;
+			}
+		FileBuffer[sizeof(FileBuffer) -1] = 0;
+
+		strlwr(FileBuffer);        /* lower case file */
+
+		linestop = FileBuffer;
+
+		while(*linestop && (linestop <
+				FileBuffer + filesize))
+			{
+			linestart = strstr(linestop,srchstr);
+			if(!linestart) break;
+			/* if we found the string,
+					back up to a line start */
+			while((linestart > FileBuffer) &&
+				((*linestart != 0x0a) &&
+					(*linestart != 0x0d)))
+					linestart--;
+			linestart++;
+			/* find the end of the line */
+			while(linestop < linestart)
+				{
+				linestop = strchr(linestop,0x0d);
+				if(!linestop) break;
+				linestop++;
+				lineno++;
+				}
+			if(!linestop) linestop = strchr(linestart,0x0a);
+			if(!linestop) linestop = linestart +
+				strlen(linestart);
+			while((*linestop == 0x0a) ||
+				(*linestop == 0x0d))
+				linestop--;
+			/* increment to the start of the next line */
+			linestop++;
+			if(*linestop) *linestop++ = 0;
+			strcpy(outputbuffer,argv[argc]);
+			strcat(outputbuffer,":");
+			itoa(lineno,
+				&outputbuffer[strlen(outputbuffer)],10);
+			strcat(outputbuffer,":  ");
+			strcat(outputbuffer,linestart);
+			puts(outputbuffer);
+			}
+		filesize -= readsize - offset;
+		/* re-search the last characters in case the
+			search pattern fell across the last few
+			bytes of the file */
+		offset = strlen(srchstr);
+		memmove(FileBuffer,FileBuffer + sizeof(FileBuffer)
+			- offset,offset);
+		while(!FileBuffer[offset-1] && offset) offset--;
+		}
+
+	close(fd);
+  }/* while(argc > 2) */
+
+}

@@ -1,0 +1,157 @@
+/* C device driver header */
+
+#ifndef I8086D
+int x = WRONG_MEMORY_MODEL;
+#endif
+
+/* byte has been misspelled to prevent a conflict with DOS.H */
+
+typedef unsigned char bite;
+typedef unsigned int word;
+
+#ifndef NULL
+#define NULL 0L
+#endif
+
+/* format of device header */
+
+struct device_header {
+  struct device_header *next;
+  word attributes;
+  word strategy_entry;
+  word interrupt_entry;
+  char name[8];
+  };
+
+/* device header attributes */
+
+#define CHAR_DEVICE_ATTRIBUTE     0x8000
+#define STI_DEVICE_ATTRIBUTE      0x0001
+#define STO_DEVICE_ATTRIBUTE      0x0002
+#define NUL_DEVICE_ATTRIBUTE      0x0004
+#define CLOCK_DEVICE_ATTRIBUTE    0x0008
+#define SPECIAL_ATTRIBUTE         0x0010
+#define IOCTL_ATTRIBUTE           0x4000
+#define NON_IBM_FORMAT_ATTRIBUTE  0x2000
+
+/* format of BPB (block devices only) */
+
+struct bpb {
+  word bytes_per_sector;
+  bite sectors_per_allocation_unit;
+  word reserved_sectors;
+  bite FATs;
+  word root_directory_entries;
+  word total_sectors;
+  bite media_descriptor;
+  word sectors_per_FAT;
+  word sectors_per_track;
+  word heads;
+  word hidden_sectors;
+  };
+  
+/* format of request header and functional data */
+
+struct request_header {
+  bite length;
+  bite unit_code;
+  bite command_code;
+  int status;
+  bite reserved[8];
+  union {
+    struct {
+      bite number_of_units;
+      char *end_of_driver;
+      union {
+        char *command_line;
+        struct bpb **bpb_table;
+        } pointer;
+      } init ;
+    struct {
+      bite media_descriptor;
+      bite returned;
+      } media_check ;
+    struct {
+      bite media_descriptor;
+      char *transfer_address;
+      struct bpb *bpb;
+      } build_bpb ;
+    struct {
+      bite media_descriptor;
+      char *transfer_address;
+      word count;
+      word starting_sector;
+      } io ; /* for ioctl_input
+                    input
+                    output
+                    output_with_verify
+                    ioctl_output        */
+    struct {
+      bite character;
+      } nondestructive_input ;
+    } x;
+  };
+
+/* structure used by date_and_time() function */
+
+struct date_and_time {
+  word days;
+  bite minutes;
+  bite hours;
+  bite hundredths;
+  bite seconds;
+  };
+
+/* status bits returned by driver */
+
+#define ERROR_STATUS  0x8000
+#define BUSY_STATUS   0x0200
+#define DONE_STATUS   0x0100
+
+/* error numbers added to ERROR_STATUS */
+
+#define WRITE_PROTECT_VIOLATION             0
+#define UNKNOWN_UNIT                        1
+#define DRIVE_NOT_READY                     2
+#define UNKNOWN_COMMAND                     3
+#define CRC_ERROR                           4
+#define BAD_DRIVE_REQUEST_STRUCTURE_LENGTH  5
+#define SEEK_ERROR                          6
+#define UNKNOWN_MEDIA                       7
+#define SECTOR_NOT_FOUND                    8
+#define PRINTER_OUT_OF_PAPER                9
+#define WRITE_FAULT                         10
+#define READ_FAULT                          11
+#define GENERAL_FAILURE                     12
+
+/* functions that must be defined in driver */
+
+extern void init(void);
+extern void media_check(void);
+extern void build_bpb(void);
+extern void ioctl_input(void);
+extern void input(void);
+extern void nondestructive_input(void);
+extern void input_status(void);
+extern void input_flush(void);
+extern void output(void);
+extern void output_with_verify(void);
+extern void output_status(void);
+extern void output_flush(void);
+extern void ioctl_output(void);
+
+/* external items defined in startup code */
+
+extern void bad_device_driver_function(void);
+extern struct request_header *request_header;
+extern struct device_header *device_header;
+extern void exit(void);
+
+/* external items defined in other modules */
+
+extern int date_and_time(struct date_and_time *);
+extern void call_driver(struct device_header *, struct request_header *);
+extern char *argument(int);
+extern void putchar(int);
+extern void puts(char *);
+

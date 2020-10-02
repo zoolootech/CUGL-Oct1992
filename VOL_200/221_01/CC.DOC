@@ -1,0 +1,312 @@
+                     C Compiler Documentation
+
+
+ 
+INTRODUCTION:
+ 
+This compiler is the small C compiler written by Ron
+Cain and published in Dr. Dobb's #45 (May '80). The compiler
+was modified for the 6809 CPU and also enhanced by 
+Dieter H. Flunkert.  Some help was taken from J. E. Hendrix's
+version of the small C compiler and articles from DDJ.
+ 
+This compiler accepts a subset of standard C. 
+ 
+
+
+DATA TYPES:
+ 
+The data types are...
+ 
+char c  character 
+char *c  pointer to character 
+char c[n]; character array 
+int i;  16 bit integer 
+int *i;  pointer to integer 
+int i(); function returning integer 
+int i[n]; integer array 
+ 
+
+
+STORAGE CLASSES:
+
+automatic:  This class is the default.  It is possible to
+            specify it explicit, but the preprocessor will
+            strip it out (it is #define automatic).
+static:     Supported!
+register:   This class is also only known by the preprossesor
+            who strips it out.
+extern:     Supported!
+typedef:    Not supported.
+
+
+
+Structures, multidimensional arrays, unions,
+and more complex types like "int **i" are not included.
+ 
+ 
+
+
+PRIMARIES:
+ 
+ array[expression] 
+ function(arg1,arg2,...,argn) 
+ constant 
+  decimal integer 
+  quoted string    ("sample string") 
+  primed character ('a'  or  'Z')
+  also literals like '\n', '\b' etc. 
+ local variable 
+ global variable 
+ 
+Each variable must be declared before it is used.
+ 
+  
+
+
+UNARY INTEGER OPERATORS:
+ 
+ - minus 
+ * indirection (points to object)
+ & address of 
+ ++ increment, either prefix or suffix 
+ -- decrement, either prefix or suffix 
+ ~  complement
+ !  not
+  
+ 
+
+
+BINARY INTEGER OPERATORS:
+ 
+ + addition 
+ - subtraction 
+ * multiplication 
+ / division 
+ % mod, remainder from division 
+ | inclusive or 
+ ^ exclusive or 
+ & logical and 
+ == equal 
+ != not equal 
+ < less than 
+ <= less than or equal 
+ > greater than 
+ >= greater than or equal 
+ << left shift 
+ >> arithmetic right shift 
+ 
+ 
+
+LOGICAL OPERATORS:
+
+ && logical and operator
+ || logical or operator
+
+
+
+
+CONDITIONAL OPERATOR:
+
+ ?: Supported
+
+
+
+
+ASSIGNMENT OPERATORS:
+
+ lvalue = expression
+ lvalue += expression
+ lvalue -= expression
+ lvalue *= expression
+ lvalue /= expression
+ lvalue %= expression
+ lvalue >>= expression
+ lvalue <<= expression
+ lvalue &= expression
+ lvalue ^= expression
+ lvalue |= expression
+
+
+ 
+COMMA OPERATOR:
+
+ supported!
+
+
+
+
+PROGRAM CONTROL
+ 
+ if(expression) statement; 
+ if(expression) statement; else statement; 
+ while(expression) statement; 
+ do statement; while(expression);
+ for(expression_1;expression_2;expression_3) statement;
+   (where the expressions _1,_2,_3 are optional)
+ switch(expression) statement;
+ case constant-expression : expression;
+ default: expression;
+ break; 
+ continue; 
+ return;
+ return expression; 
+ ;        /* null statement */
+ {statement;statement;   ...   statement;}
+     /* compound statement */ 
+   
+
+
+not included: goto and labels.
+
+
+
+INITIALIZATION:
+
+ Global and static variables are per default initialized
+ with zero.  It is possible to give this variables a init
+ value.
+
+ For example:     char c = 'a'   /* c has now the value of 'a' */
+                  int i = 1;     /* i contains now the value 1 */
+
+                  char c[80] = "this is a string";
+                                 /* the array of characters are
+                                    inityialized with the text and
+                                    the rest of the array is zero */
+
+      int i[10] = 1,2,3;
+                                 /* i[0] = 1
+                                    i[1] = 2
+                                    i[2] = 3
+                                    the rest will be zero */
+
+                  int i[] = 1,2,3;
+                                 /* same as above, but the length of
+                                    the array will be 4
+                                    it is the same as: 
+                                                int i[4] = 1,2,3,0 */
+
+  All mentioned above is also valid for static variables.
+
+
+
+
+
+EMBEDDED COMPILER COMMANDS:
+ 
+ #define name [string]
+ 
+"name" is replaced by "string" hereafter. If no "string" is given
+only the MACRO name is defined (usefull for conditional compile).
+
+   #ifdef name
+
+checks whether the name is currently defined in the preprocessor;
+that is, whether it has been defined with #define name.  A control
+line of the form
+
+   #ifndef name
+
+checks whether the identifier is currently undefined in the pre-
+processor.
+  All forms are followed by an arbitrary number of lines, possibly
+containing a control line
+
+   #else
+
+and the by a control line
+
+   #endif
+
+ 
+ 
+ #include filename 
+ 
+compiler gets source code from another file (can't be nested) 
+ 
+ #asm 
+ ... 
+ ... 
+ #endasm 
+ 
+code between these is passed directly to the assembler.  
+ 
+
+
+ 
+COMMAND LINE:
+ 
+When the compiler is run, it reads one or more C source files
+and produces one assembly language file. The assembly language
+files are separately assembled by RELASMB, then are combined into
+a single executable file by LLOAD. The format of the compiler
+command line is:
+ 
+ cc <input-file [>output_file] [options]  
+Each option is a minus sign followed by a letter:
+ 
+ -C to include the C source code as comments in
+  the compiler-generated assembly code.
+ 
+ -P pause after an error is encountered.
+ 
+ -M monitor function header.
+ 
+ -T trace function enabled.
+ 
+
+
+LIBRARY FILES: 
+ 
+CC.LIB  This is the small-C runtime library
+ 
+If one of the runtime modules are used, the file STDIO.H 
+must be included (This means nearly always).
+
+
+
+SAMPLE COMPILATION:
+ 
+ +++cc <test.c >test.asm -m -c -p
+
+This line causes the compile to compile the input file
+test.c and write the generated code withe the c-text
+interleaved to the output file test.asm.  The functions
+will be monitored and on error a question mark will
+appear on the screen.  Control C will abort the compile,
+any other character causes the compiler to continue.
+At compile end, a summary of error messages are shown.
+
+
+   +++RELASMB TEST.ASM +LSY
+
+This command calls the relocatable assembler.  The file
+TEST.ASM will be assembled, no listing and no symbol
+table are generated.
+
+   +++LLOAD CCROOT TEST +L=CC.LIB +A=0 +MYCO=TEST
+
+This command invokes the linking loader which links the 
+program TEST.REL with the root module and the run time
+library.  The root module is essential.  The linking
+loader will create an absolute module with starting adr
+of 0 (+A=0).  The resulting program is named TEST.CMD
+and a linking map is displayed (+MYCO=TEST).
+
+
+
+
+OPTIMIZATION:
+
+ The compiler will not produce an optimized code.  Therefore
+ I wrote a small peephole optimizer which reduces the compiler
+ output code by 15% to 20%.
+
+ The optimizer is invoked by:
+
+   PEEPHOLE <inputfile [>outputfile]
+
+ If you omit the output file specification, the output will be
+ directed to the terminal.
+

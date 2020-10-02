@@ -1,0 +1,406 @@
+/*
+ *    EASYFAX.C:  A simple FaxBios demonstration program to
+ *                send plain ASCII files as faxes.
+ *
+ *    Designed to work in both Large AND Small models in MSC 6.00A
+ *
+ *    cl -W3 -AS -Zp -F 2000 easyfax.c /link /NOE >errs
+ */
+
+
+/* Standard C and DOS header files */
+#include <stdio.h>
+#include <dos.h>
+#include <process.h>
+#include <string.h>
+#include <io.h>
+#include <ctype.h>
+#include <time.h>
+#include <conio.h>
+#include <fcntl.h>
+#include <malloc.h>
+
+/* These definitions are required for FaxBios Developer's Kit */
+typedef unsigned int       WORD;
+typedef unsigned char      BYTE;
+typedef long               DWORD;
+typedef void far *         POINTER;
+
+/* FaxBios Development Kit expects hardcoded path names */
+#include "\fax\api\enum\fbenum.h"
+#include "\fax\api\struct\fbstruct.h"
+
+#include "easyfax.h"  /* My function protos & etc. */
+FaxTheFile(char *filename, char *dest_name, FB_STATE *fb_state);
+
+main(int argc, char **argv)
+{
+   BYTE mux;
+   WORD err;
+   struct PC_LOGIN_REC pc;
+   FB_STATE fb_state;
+
+   if (argc != 3) {
+      printf("Usage:   EASYFAX filename \"destination\"  \n");
+      return -1;
+      }
+
+   if ( (mux = FAXB_Find() ) == 0) {
+      printf("Error:   FaxBios not loaded\n");
+      return -2;
+      }
+   printf("Using FaxBios at Multiplex address 0x%2X\n",mux);
+
+   if ((err=FAXB_SysLogin(&pc, mux)) != SUCCESS)
+      return err;
+
+   fb_state.mux_num = mux;
+   fb_state.client_id = pc.login.client_id;
+   fb_state.retry = INF_RETRY;
+
+   printf("Logged into %s FaxBios V%d.%02d\n",pc.login.mfg_id,
+      pc.login.api_ver_major, pc.login.api_ver_minor);
+
+   /* make sure SEND is possible */
+   if (pc.login.FaxBios_cap & ACM_XMIT_BIT)
+      FaxTheFile(argv[1], argv[2], &fb_state);
+   else
+      printf("FaxBios does not allow sending files.\n");
+
+   FAXB_SysLogout(&fb_state);
+   printf("Logged out of FaxBios\n");
+   return SUCCESS;
+}
+
+
+FaxTheFile(char *filename, char *dest_name, FB_STATE *fb_state)
+{
+   int err;
+   int found = 0;
+   struct PDIR_PERSON_REC person;
+   struct SYS_FAXAPP_INFO_REC app_info;
+   WORD cur_person = 0;
+   WORD envelope_id;
+   WORD file_support_cap;
+   WORD file_type;
+   WORD num_persons;
+   WORD pdir_handle;
+   WORD sched_handle;
+
+   if ((err=FAXB_SysGetFaxAppInfo(&app_info, fb_state)) != SUCCESS)
+      return err;
+
+   if ((err=FAXB_SchedOpen(&sched_handle, fb_state)) != SUCCESS)
+      return err;
+
+   if ((err=FAXB_GraphGetFileType(filename, &file_type,
+         &file_support_cap, fb_state)) != SUCCESS)
+      return err;
+
+   if (! (file_support_cap & 0x03) ) {
+      printf("FaxBios cannot send or convert this file\n");
+      return -1;
+      }
+
+   if ((err=FAXB_SchedAddFile(sched_handle, filename, file_type,
+        app_info.def_usrfont_tok, fb_state)) != SUCCESS)
+      return err;
+
+   if ((err=FAXB_PdirOpen(&pdir_handle, app_info.def_pdir_tok,
+        0, &num_persons, fb_state)) != SUCCESS)
+      return err;
+
+   while ( (!found) && (cur_person < num_persons) ) {
+      person.retrieve_by_ndx = 1;
+      person.personid_or_ndx = cur_person++;
+      FAXB_PdirReadPerson(pdir_handle, &person, fb_state);
+      if (stricmp(dest_name, (char *)&person.record.name) == 0) {
+         found = 1;
+         }
+      }
+
+   if ((err=FAXB_PdirClose(pdir_handle, fb_state)) != SUCCESS)
+      return err;
+
+   if (found)
+      FAXB_SchedAddDest(sched_handle, &person.record, fb_state);
+   else
+      {
+      printf("Error:  person <%s> not found in phone directory.\n",
+         dest_name);
+      return -3;
+      }
+
+   if ((err=FAXB_SchedSetParam(sched_handle, fb_state)) !=
+        SUCCESS)
+      return err;
+
+   if ((err=FAXB_SchedClose(sched_handle, &envelope_id,
+         fb_state)) != SUCCESS)
+      return err;
+
+   return SUCCESS;
+}
+
+/*
+ * This function returns the FaxBios multiplex number.  The code
+ * was adapted from a similar function in SENDFAX.C in the FaxBios
+ * Developer's Kit.
+*/
+
+BYTE  FAXB_Find()
+{
+static char far FB_Signature[]="FaxBiosjpc";
+BYTE mux_num = 0x80;
+char far *FaxBios_ID;
+union REGS regs;
+
+   do {
+      /* Looking for FaxBios Multiplex */
+       memset((char *)&regs, 0, sizeof(regs));
+       regs.h.ah = mux_num;
+       int86(MULTIPLEX, &regs, &regs);
+
+       /* Check [DX:DI] for signature */
+       if ( regs.h.al == 0xFF ) {
+           /* needs to be far pointer */
+           FaxBios_ID = (char far *)(((long)regs.x.dx << 16) +
+              regs.x.di);
+
+           if (far_strncmp(FaxBios_ID, FB_Signature,
+                  sizeof(FB_Signature)-1) == 0 )
+               /* FaxBios was found! */
+               return mux_num;
+               }
+
+       /* FaxBios not found, keep trying */
+   } while ( mux_num++ < 0xFF );
+
+  return 0;   /* FaxBios was not found */
+}
+
+
+WORD FAXB_GraphGetFileType(char *filename, WORD *file_type,
+    WORD *file_support_cap, FB_STATE *fb_state)
+{
+   struct GRAPH_FILE_TYPE_REC gr_file_type;
+   int err;
+
+   strcpy(gr_file_type.fname, filename);
+   err = FAXB_Func(GRAPH_GET_FILE_TYPE, &gr_file_type,
+      sizeof(struct GRAPH_FILE_TYPE_REC), fb_state);
+
+   *file_type = gr_file_type.file_type;
+   *file_support_cap = gr_file_type.file_support_cap;
+   return err;
+}
+
+
+WORD FAXB_SysLogin(struct PC_LOGIN_REC *login_info, BYTE mux_num)
+{
+   FB_STATE fb_state = {mux_num, 0, INF_RETRY};
+   return FAXB_Func(SYS_LOGIN, login_info,
+     sizeof(struct PC_LOGIN_REC), &fb_state);
+}
+
+WORD FAXB_SysLogout(FB_STATE *fb_state)
+{
+   struct SYS_LOGOUT_REC logout_info;
+
+   return FAXB_Func(SYS_LOGOUT, &logout_info,
+     sizeof(struct SYS_LOGOUT_REC), fb_state);
+}
+
+WORD FAXB_SysGetFaxAppInfo(struct SYS_FAXAPP_INFO_REC *info,
+   FB_STATE *fb_state)
+{
+   return FAXB_Func(SYS_GET_FAXAPP_INFO, info,
+     sizeof(struct SYS_FAXAPP_INFO_REC), fb_state);
+}
+
+
+WORD FAXB_SchedOpen(WORD *sched_handle, FB_STATE *fb_state)
+{
+   struct SCHED_OPEN_REC sched_open;
+   int err;
+
+   err = FAXB_Func(SCHED_OPEN, &sched_open,
+      sizeof(struct SCHED_OPEN_REC), fb_state);
+   *sched_handle = sched_open.sched_handle;
+   return err;
+}
+
+
+WORD FAXB_SchedClose(WORD sched_handle, WORD *envelope_id,
+    FB_STATE *fb_state)
+{
+   struct SCHED_CLOSE_REC sched_close;
+   int err;
+
+   sched_close.sched_handle = sched_handle;
+   err = FAXB_Func(SCHED_CLOSE, &sched_close,
+      sizeof(struct SCHED_CLOSE_REC), fb_state);
+   *envelope_id = sched_close.envelope_id;
+   return err;
+}
+
+
+WORD FAXB_SchedSetParam(WORD sched_handle, FB_STATE *fb_state)
+{
+   struct SCHED_SET_PARAMS_REC sched_param;
+
+   memset((char *) &sched_param, 0, sizeof(sched_param));
+   sched_param.sched_handle = sched_handle;
+   /* time(&sched_param.params.sched_time); */
+   return FAXB_Func(SCHED_SET_PARAMS, &sched_param,
+     sizeof(struct SCHED_SET_PARAMS_REC), fb_state);
+}
+
+WORD FAXB_SchedAddFile(WORD sched_handle, char *filename,
+    WORD file_type, char* use_font, FB_STATE *fb_state)
+{
+   struct SCHED_ADD_FILE_REC add;
+   int err;
+
+   memset((char *) &add, 0, sizeof(add));
+   add.sched_handle = sched_handle;
+   add.file_info.file_type = file_type;
+   if (add.file_info.file_type == TYPE_UNIDENTIFIED)
+       add.file_info.file_type = TYPE_ASCII;
+
+   strcpy(add.file_info.fname, filename);
+   strcpy(add.file_info.conv_params.font_tok, use_font);
+   add.file_info.conv_params.resolution = STD_RESOLUTION;
+   add.file_info.conv_params.page_length = LEN_US_LETTER;
+   add.file_info.conv_params.page_width = WIDTH_A4;
+
+   err = FAXB_Func(SCHED_ADD_FILE, &add,
+      sizeof(struct SCHED_ADD_FILE_REC), fb_state);
+   return err;
+}
+
+
+WORD FAXB_SchedAddDest(WORD sched_handle,
+    struct PDIR_CANONICAL_REC *can_person, FB_STATE *fb_state)
+{
+   struct DEST_INFO_REC dest_info;
+   int err;
+
+   memset((char *) &dest_info, 0, sizeof(dest_info));
+   dest_info.sched_handle = sched_handle;
+   dest_info.pdir = *can_person;
+
+   err = FAXB_Func(SCHED_ADD_DEST, &dest_info,
+      sizeof(struct DEST_INFO_REC), fb_state);
+   return err;
+}
+
+
+WORD FAXB_PdirOpen(WORD *pdir_handle, char *dir_filename,
+    WORD rw_mode, WORD *num_persons, FB_STATE *fb_state)
+{
+   struct PDIR_OPEN_REC pdir_open;
+   int err;
+
+   pdir_open.mode = rw_mode;
+   pdir_open.sort_tok[0] = '\0';
+   strcpy(pdir_open.pdir_tok, dir_filename);
+
+   err = FAXB_Func(PDIR_OPEN, &pdir_open,
+      sizeof(struct PDIR_OPEN_REC), fb_state);
+   *pdir_handle = pdir_open.pdir_handle;
+   *num_persons = pdir_open.num_persons;
+   return err;
+}
+
+WORD FAXB_PdirReadPerson(WORD pdir_handle,
+   struct PDIR_PERSON_REC *person, FB_STATE *fb_state)
+{
+   person->pdir_handle = pdir_handle;
+   return FAXB_Func(PDIR_READ_PERSON, person,
+      sizeof(struct PDIR_PERSON_REC), fb_state);
+}
+
+WORD FAXB_PdirClose(WORD pdir_handle, FB_STATE *fb_state)
+{
+   struct PDIR_CLOSE_REC pdir_close;
+
+   pdir_close.pdir_handle = pdir_handle;
+   return FAXB_Func(PDIR_CLOSE, &pdir_close,
+     sizeof(struct PDIR_CLOSE_REC), fb_state);
+}
+
+
+/*  Retry values for BUSY status:
+   -1 == Infinite retry, 0 == No retry, N == Retry "N" times */
+
+unsigned int FAXB_Func( int function, void far *rec, int size,
+    FB_STATE *fb_state)
+{
+   union REGS regs;
+   int status;
+   BYTE mux_num = fb_state->mux_num;
+   int my_client_id = fb_state->client_id;
+   int retry = fb_state->retry;
+
+   /* store rec size twice for overrun testing */
+   *((int far *)rec) = size;
+   *((int far *)((char far *)rec + size - 2)) = size;
+
+    /* All structs, except SYS_LOGIN, need the client_id */
+   if ( function != SYS_LOGIN )
+       ((struct SYS_LOGOUT_REC far *)rec)->client_id = my_client_id;
+
+    /* put the Function number in, always at the same offset */
+   ((struct PC_LOGIN_REC far *)rec)->function_num = function;
+
+   while (retry) {
+      regs.h.ah = mux_num;
+      regs.h.al = 0xFB;
+      regs.x.bx = function;
+      regs.x.dx = FP_SEG(rec);
+      regs.x.di = FP_OFF(rec);
+      int86(MULTIPLEX, &regs, &regs);
+
+      if (*((int far *)rec) ==
+          *((int far *)((char far *)rec + size - 2)) ==
+              size ) {
+          printf("FaxBios has overrun data struct.\n");
+          return -4;
+          }
+
+      if (regs.h.al != 0xFF) {
+          printf("FaxBios no longer present.\n");
+          return -5;
+          }
+
+      status = (int) regs.x.cx;
+      if ( (function != SYS_LOGOUT) &&
+           ( (status == BUSY) || (status == LOCKED) ) ){
+         printf("FaxBios BUSY or LOCKED:  retrying\n");
+         if (retry > 0)
+            retry--;
+         }
+      else
+         retry = 0;     /* successful call */
+      }
+
+   if (status >= NOT_IMPLEMENTED)
+      printf("FaxBios function %02XH failed with status %XH.\n",
+         function, status);
+   return status;
+}
+
+
+
+/* Based on the Kernighan & Ritchie algorithm */
+int far_strncmp(char far *s, char far *t, int length)
+{
+   for (; *s == *t; s++, t++)
+      if ((*s == '\0') || !(--length))
+         return 0;
+
+   return *s - *t;
+}
+
+

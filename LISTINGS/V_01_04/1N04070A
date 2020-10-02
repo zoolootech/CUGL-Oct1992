@@ -1,0 +1,59 @@
+        page    55, 132
+
+;
+;  READISK.ASM
+;
+;  Corrects readisk function in Figure 1 of July Tech Specialist
+;  "Exploiting DOS" column.
+;
+;  Requires MASM 5.1 or later
+;
+
+%       .MODEL  memodel,C               ;Add model support via
+                                        ;command line macro,
+                                        ;e.g. MASM /Dmemodel=LARGE
+        extrn _osmajor:BYTE
+
+        .DATA
+start   dw      ?
+fill    dw      0
+number  dw      ?
+buf     dw      ?,?
+
+        .CODE
+readisk PROC USES SI DI, drive:WORD, num_sec:WORD, start_sec:WORD, buffer:PTR
+        mov     AX,drive        ;Get drive number in AL
+        mov     AH,_osmajor     ;Load OS version in AH
+        mov     CX,num_sec      ;Set up regs for DOS 3 call
+        mov     DX,start_sec
+    IF  @DataSize
+        push    DS              ;Save DS in L & C models
+        lds     BX,buffer
+    ELSE
+        mov     BX,buffer
+    ENDIF
+        cmp     AH,4            ;DOS 4+?
+        jb      doint           ;No, skip it
+        mov     start,DX        ;Yes, fill in DCB structure
+        mov     number,CX
+        mov     buf,BX
+        mov     buf+2,DS
+        mov     cx,-1
+    IF  @DataSize               ;Point to DCB
+        mov     BX,@Data
+        mov     DS,BX
+    ENDIF
+        mov     bx,OFFSET start
+doint:  int     25h             ;Read sector
+        mov     AX,0            ;Set up no error return
+        jnc     bye             ;Error?
+        dec     AX              ;Yes, flag it
+bye:    add     SP,2            ;Int 25h leave the flags on the stack
+    IF  @DataSize
+        pop     DS              ;Restore DS in L & C models
+    ENDIF
+        ret
+
+readisk ENDP  
+
+        end

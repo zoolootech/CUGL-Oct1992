@@ -1,0 +1,188 @@
+/*
+ *  browse.c - Very simple file browser.
+ *
+ *  Syntax:
+ *      browse file1 file2 ...
+ */
+
+#include <stdio.h>
+
+#define MAX_LINE    (80)
+#define PAGE_SIZE   (20)
+
+
+    main(argc, argv)
+char    **argv;
+{
+int     i, c;
+FILE    *fin;
+
+    s_init();       /* initialize screen package */
+
+    for(i = 1; i < argc; ++i)
+        if((fin=fopen(argv[i], "r")) == NULL)
+            {
+            c   = toupper(
+                pause( "Can't open file for input. Continue (Y/n)? ", "yYnN" )
+                         );
+            if(c == 'N')
+                break;
+            }
+        else if(!browse(fin))
+            break;
+
+    s_fini();       /* wrap up screen package */
+}
+
+int     browse(fin)
+FILE    *fin;
+{
+char    line[MAX_LINE];
+int     c, nlines = 1, eof = 0, addlines = PAGE_SIZE;
+
+    s_clear();  /* clear screen */
+
+    for(;;)
+        {
+        if(addlines)    /* wants to see more    */
+            if(eof)
+                putchar( 7 );   /* beep */
+            else
+                {
+                while(fgets(line, MAX_LINE, fin))
+                    {
+                    if(nlines > PAGE_SIZE)
+                        s_scroll();
+                    else
+                        ++nlines;
+                    s_move(nlines-1, 0);
+                    s_puts(line);
+                    if(--addlines <= 0)
+                        break;
+                    }
+                if(addlines)    /* hit end of file  */
+                    {
+                    eof = 1, addlines = 0;
+                    s_hilite(1);
+                    s_puts("End-of-File");
+                    s_hilite(0);
+                    }
+                }
+
+        c   = pause("BROWSE: next File, Page, Line, or Quit (F,P,L,Q)? ",
+                    "fFpPlLqQ");
+        c   = toupper(c);
+        if(c == 'F')
+            {
+            fclose(fin);
+            return( 1 );
+            }
+        else if(c == 'P')
+            addlines    = PAGE_SIZE;
+        else if(c == 'L')
+            addlines    = 1;
+        else if(c == 'Q')
+            {
+            fclose(fin);
+            return( 0 );
+            }
+        else
+            putchar( 7 );   /* beep */
+        }
+}
+
+int     pause(prompt, chars)
+char    *prompt, *chars;
+{
+int     c, row, col;
+
+    s_getpos(&row, &col);
+
+    s_move(0, 0);
+    s_hilite(1);
+    s_puts(prompt);
+    s_flush();
+    while( !strchr(chars, (c=s_getc())) )
+        putchar(7); /* beep */
+    s_hilite(0);
+    s_move(row, col);
+    return( c );
+}
+
+#ifdef __ZTC__
+#include <disp.h>
+/*
+ *  Most of these could be macros, if efficiency were paramount.
+ */
+int     s_init()    { disp_open(); }
+int     s_fini()    { disp_close(); }
+int     s_move(r,c) { disp_move(r,c); }
+int     s_flush()   { disp_flush(); }
+int     s_scroll()  { disp_scroll(1,0,0,PAGE_SIZE,79,DISP_NORMAL); }
+int     s_getc()    { return(getch()); }
+
+int     s_puts(s)
+char    *s;
+{
+disp_printf("%s", s);
+}
+
+int     s_getpos(rowp, colp)
+int     *rowp, *colp;
+{
+extern  int     disp_cursorrow, disp_cursorcol;
+
+    *rowp   = disp_cursorrow;
+    *colp   = disp_cursorcol;
+}
+
+int     s_hilite(on)
+{
+    if(on)
+        disp_setattr(DISP_REVERSEVIDEO);
+    else
+        disp_setattr(DISP_NORMAL);
+}
+
+int     s_clear()
+{
+    disp_move(0, 0);
+    disp_eeop();
+}
+#else
+#include <curses.h>
+/*
+ *  Most of these could be macros, if efficiency were paramount.
+ */
+int     s_init()    { initscr(); noecho(); raw(); scrollok(stdscr, 1); }
+int     s_fini()    { endwin(); }
+int     s_move(r,c) { move(r,c); }
+int     s_flush()   { refresh(); }
+int     s_scroll()  { scroll(stdscr); }
+int     s_getc()    { return(getch()); }
+
+int     s_puts(s)
+char    *s;
+{
+printw("%s", s);
+}
+
+int     s_getpos(rowp, colp)
+int     *rowp, *colp;
+{
+    getyx(stdscr, *rowp, *colp);
+}
+
+int     s_hilite(on)
+{
+    if(on)
+        standout();
+    else
+        standend();
+}
+
+int     s_clear()
+{
+    clear();
+}
+#endif

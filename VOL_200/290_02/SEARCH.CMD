@@ -1,0 +1,27 @@
+egrep %1 ccl.c
+egrep %1 dfa.c
+egrep %1 ecs.c
+egrep %1 fastskel.c
+egrep %1 main.c
+egrep %1 misc.c
+egrep %1 nfa.c
+egrep %1 parse.c
+egrep %1 scan.c
+egrep %1 skeleton.c
+egrep %1 sym.c
+egrep %1 tblcmp.c
+egrep %1 yylex.c
+egrep %1 ccl.h
+egrep %1 dfa.h
+egrep %1 ecs.h
+egrep %1 fastskel.h
+egrep %1 flexdef.h
+egrep %1 main.h
+egrep %1 misc.h
+egrep %1 nfa.h
+egrep %1 parse.h
+egrep %1 skelcom.h
+egrep %1 skeleton.h
+egrep %1 sym.h
+egrep %1 tblcmp.h
+

@@ -1,0 +1,469 @@
+/*----------------------------------------------------------------*/
+/*    MODULE: AUDIR.C                                             */
+/*  CONTENTS: main()...                                           */
+/*    AUTHOR: John T. Bell                                        */
+/*   HISTORY: Last modified on 9/14/88                            */
+/*                                                                */
+/*  Copyright 1988, by John T. Bell, All Rights Reserved.         */
+/*----------------------------------------------------------------*/
+#include <stdio.h>
+#include <errno.h>
+#include "bios.h"
+
+typedef unsigned char byte;
+typedef unsigned short word;
+/* turn off redefinitions in header files */
+#define BYTE_DEF
+
+#include "prodir.h"
+#include "ados33.h"
+#include "cpmdir.h"
+
+/*---------------------------------------------------*/
+/* Note: Slot 6, Drive 1, is the C: CP/M drive on my */
+/*       system. Drive C: is is referenced by the    */
+/*       Number 2 to the CP/M BIOS.                  */
+/*       A: == Drive 0                               */
+/*       B: == Drive 1                               */
+/*       C: == Drive 2                               */
+/*       Etc...                                      */
+/* Change as appropiate for your system.             */
+/*---------------------------------------------------*/
+#define DRIVE 2
+
+/*----------------------------------------------------------*/
+/* This is a table of the first 4 bytes which should        */
+/* appear at track 0 sector 0 of each disk format           */
+/* expected. This is used to determine which                */
+/* operating system the disk was written with. The          */
+/* fifth byte in each row should identify the OS in         */
+/* the following manner;                                    */
+/*                                                          */
+/* CP/M  is 0x00                                            */
+/* AppleDOS is 0x01                                         */
+/* and ProDOS is 0x02                                       */
+/*                                                          */
+/* Note: The second CP/M entry is for a disk which has      */
+/* formatted but the CP/M boot tracks were not written.     */
+/*----------------------------------------------------------*/
+#define MAX_TYPE 4
+byte disk_id[ MAX_TYPE ][5] = {
+    { 0x01, 0xea, 0xa6, 0x2b, 0x00}, /* CP/M format */
+    { 0xe5, 0xe5, 0xe5, 0xe5, 0x00}, /* CP/M Disk w/o system */
+    { 0x01, 0xa5, 0x27, 0xc9, 0x01}, /* Apple Dos 3.3 Disk */
+    { 0x01, 0x38, 0xb0, 0x03, 0x02}  /* ProDOS 1.1.1 Disk  */
+};
+
+/*---------------------------------------------------*/
+/* The following is the sector conversion table      */
+/* for converting DOS sectors to CP/M sectors.       */
+/*---------------------------------------------------*/
+int dos2cpm[] = {0,15,9,3, 13,7,1,11, 10,4,14,8, 2,12,6,5};
+int pro2cpm[] = {0,6,12,2, 8,14,4,10, 11,1,7,13, 3,9,15,5};
+
+main()
+{
+    int type;
+    int err;
+
+    type = disktype();
+    switch(type){
+    case 0: /* CP/M disk */
+        printf("*** CP/M Directory ***\n\n");
+        cpmdir();
+        break;
+
+    case 1:
+        printf("*** Apple DOS 3.3 Directory ***\n\n");
+        dosdir();
+        break;
+
+    case 2:
+        printf("*** ProDOS Directory ***\n\n");
+        prodir();
+        break;
+
+    default:
+        printf("udir: Can't identify disk type\n");
+        break;
+    }
+/*--------------------------------------------------------*/
+/* The following, skips the Aztec CP/M exit code.         */
+/*--------------------------------------------------------*/
+#asm
+    .z80
+    jp 0
+    .8080
+#endasm
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: int disktype();                                              */
+/*    Purpose: Identify a diskette as being CP/M, AppleDOS, or ProDOS.      */
+/*    Returns: 0 for CP/M, 1 for AppleDOS, 2 for ProDOS,                    */
+/*             -1 for unidentified, and -2 for error.                       */
+/*    Globals: Uses the disk_id[][] table to compare the first four         */
+/*             bytes of the disk and make an identification.                */
+/*      Notes: Disk idents were determined by trial and error. There may    */
+/*             be others (ie; NON-Bootable AppleDOS) which have not been    */
+/*             included in the table.                                       */
+/*--------------------------------------------------------------------------*/
+int disktype()
+{
+    byte buff[128]; /* buffer for first track and sector */
+    byte *bptr;
+    int i,j;
+    int err;
+
+    if((err = readsect(DRIVE,0,0,buff)) != 0){ /* disk error */
+        errno = err;
+        return(-2);
+    }
+
+    for(i = 0; i < MAX_TYPE; i++){
+        bptr = buff;
+        for(j = 0; j < 4; j++){
+            if(disk_id[i][j] != *bptr++)
+                break;
+        }
+        if(j >= 4)
+            return(disk_id[i][4] & 0x00ff);
+    }
+    return(-1);
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: cpmdir()                                                     */
+/*    Purpose: Do a low level (without CP/M BDOS assistance) read of the    */
+/*             CP/M directory. A low level directory read is needed here    */
+/*             to enable future porting to other Apple Operating Systems.   */
+/*    Returns: NONE                                                         */
+/*      Notes: Disk is currently hard coded and should be given as an arg   */
+/*             in the future.                                               */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+cpmdir()
+{
+    char buff[128];  /* disk sector buffer */
+    int i,err;
+    int disk;
+    int track,sect;
+    struct cpm_entry *dir;
+    int user,j;
+
+    track = 3; /* track for apple cp/m directory */
+
+    for(sect = 0; sect < 12; sect++){
+        err = readsect(DRIVE,track,sect,buff);
+        if(!err){
+            dir = (struct cpm_entry *)buff;
+            for(j = 0; j < 4; j++){
+                if((dir->user_no != 0xe5) /* skip erased file */
+                  &&(dir->extent == 0)){   /* and extra extents */
+                    user = dir->user_no & 0x1f;
+                    printf("C%d:%8.8s.%3.3s\n",user,dir->name,dir->ext);
+                }
+                dir++;
+            }
+        }
+    }
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: prodir()                                                     */
+/*    Purpose: This routine reads the Apple DOS directory from              */
+/*             a Pro Dos disk and prints it to the display.                 */
+/*    Returns: 0 if no error, -1 otherwise.                                 */
+/*      Notes: Requires PRODIR.H to define the structures.                  */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+prodir()
+{
+    byte buff[513];  /* disk sector buffer */
+    byte fname[32];  /* space for filename */
+    int i,err;
+    int block;
+    struct pro_block *dir;
+    int entry_type;
+    int name_len;
+
+    dir = (struct pro_block *)buff;
+    block = 2;
+/*---------------------------------------------------*/
+/* read sectors until no further catalog links       */
+/*---------------------------------------------------*/
+    do{
+        err = getproblock(block,buff); 
+        if(err){
+            fprintf(stderr,"error %d reading block %d\n",err,block);
+            return(-1);
+        }
+
+/*---------------------------------------------------*/
+/* Print the directory entries                       */
+/*---------------------------------------------------*/
+        for(i = 0; i < 13; i++){
+            entry_type = (dir->dir[i].typ_len & 0x00f0) / 16;
+            name_len = (dir->dir[i].typ_len & 0x000f);
+            setmem(fname,32,'\0'); /* clear the filename space */
+            strncpy(fname, dir->dir[i].fname, name_len);
+            fixstr(fname);
+
+#ifdef xyzzy
+            printf("INFO:%d entry %d len %d name %15.15s\n",
+              i,entry_type,name_len,fname);
+#endif
+
+            switch(entry_type){
+            case 0x0f:      /* Volume entry */
+                printf("VOLUME NAME: %s\n\n", fname);
+                break;
+
+            case 0x0e:      /* Subdirectory header */
+                break;
+
+            case 0x0d:      /* Subdirectory */
+                printf("\nSUB-DIRECTORY: %s\n\n", fname);
+                break;
+
+            case 0:         /* Deleted entry */
+                break;
+
+            case 1:
+            case 2:
+            case 3:
+                printf("%s\n", fname);
+                break;
+
+            default:
+                printf("Unknown entry type %d\n",entry_type);
+                break;
+            }
+        }
+/*---------------------------------------------------*/
+/* Get the next Catalog Block                        */
+/*---------------------------------------------------*/
+        block = dir->next;
+    }while(block > 2);
+    return(0);
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: getproblk( block, buff)                                      */
+/*             unsigned int block; - ProDOS block number to read.           */
+/*             byte *buff; - Location to store the data read.               */
+/*                           Must be 512 bytes long or greater.             */
+/*    Purpose: Read a ProDOS disk block.                                    */
+/*    Returns: -1 for error, 0 otherwise.                                   */
+/*    Globals: Uses the pro2cpm[] sector translation table.                 */
+/*      Notes: Calculates CP/M tracks and sectors and does all              */
+/*             ProDOS to CP/M sector translation. Reads 4 CP/M sectors.     */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+int getproblock(block,buff)
+int block;
+byte *buff;
+{
+    int cpmsect;
+    int err;
+    int track;
+    int sect;
+    int i,j;
+
+/*---------------------------------------------------*/
+/* Do ProDOS to CP/M sector translation              */
+/*---------------------------------------------------*/
+    track = block/8;
+    sect = (block % 8) * 2;
+    cpmsect = pro2cpm[sect] * 2;
+
+/*---------------------------------------------------*/
+/* Read 4 CP/M sectors and copy into buff            */
+/*---------------------------------------------------*/
+    for(i = 0; i < 2; i++){
+        for(j = 0; j < 2; j++){
+            err = readsect(DRIVE,track,cpmsect,buff);
+            if(err < 0)
+                return(err);
+            cpmsect++;
+            buff+=128;
+        }
+        sect++;
+        cpmsect = pro2cpm[sect] * 2;
+    }
+    return(0);
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: dosdir()                                                     */
+/*    Purpose: This routine reads the Apple DOS directory from              */
+/*             a DOS 3.3 disk and prints it to the display.                 */
+/*    Returns: -1 if error, 0 otherwise.                                    */
+/*      Notes: Requires ADOS33.H.                                           */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+dosdir()
+{
+    char buff[257];  /* disk sector buffer */
+    char fname[32];  /* space for filename */
+    int i,err;
+    int disk;
+    int track,sect;
+    struct dir_blk *dblk; /* pointer to directory block */
+
+    dblk = (struct dir_blk *)&buff[0];
+    setmem(fname,32,'\0'); /* clear the filename space */
+
+/*---------------------------------------------------*/
+/* get VTOC sector                                   */
+/*---------------------------------------------------*/
+    track = 17; /* VTOC begins at track 17  sector 0 */
+    sect = 0;
+    err = rd_dos_blk(track,sect,buff); /* read the VTOC sector */
+    if(err){
+        fprintf(stderr,"error %d track %d sector %d\n",err,track,sect);
+        return(-1);
+    }
+
+/*---------------------------------------------------*/
+/* get catalog track, sector links                   */
+/*---------------------------------------------------*/
+    track = dblk->track_lnk;
+    sect = dblk->sect_lnk;
+
+/*---------------------------------------------------*/
+/* read sectors until no further catalog links       */
+/*---------------------------------------------------*/
+    while(track && sect){
+        err = rd_dos_blk(track,sect,buff);
+        if(err){
+            fprintf(stderr,"error %d track %d sector %d\n",err,track,sect);
+            return(-1);
+        }
+
+/*---------------------------------------------------*/
+/* Print the directory entries                       */
+/*---------------------------------------------------*/
+        for(i=0;i<7;i++){
+            if((dblk->dir[i].track != (char)0xff)&&
+              (dblk->dir[i].track != (char)0)){
+                movmem(&dblk->dir[i].fname,fname,30);
+                fixstr(fname);
+                printf("%s\n",fname);
+            }
+        }
+/*---------------------------------------------------*/
+/* Get the next Catalog track and sector             */
+/*---------------------------------------------------*/
+        if(track||sect){
+            track = dblk->track_lnk;
+            sect = dblk->sect_lnk;
+        }
+    }
+    return(0);
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: rd_dos_blk(track, sect, buff);                               */
+/*             int track; - track of block to be read;                      */
+/*             int sect;  - AppleDOS sector to be read;                     */
+/*             byte *buff; - Destination for block data, must be at least   */
+/*                           256 bytes long.                                */
+/*                                                                          */
+/*    Purpose: read an AppleDOS disk block.                                 */
+/*    Returns: readsect() error value if error, 0 if no errors occurs.      */
+/*    Globals: Uses the dos2cpm[] sector translation table.                 */
+/*      Notes: Does sector translation and reads 2 CP/M sectors.            */
+/*             (DOS sectors are 256 bytes CP/M sectors are 128 bytes.)      */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+int rd_dos_blk(track,sect,buff)
+int track;
+int sect;
+char *buff;
+{
+    int dsect;
+    int err;
+    int i;
+
+/*---------------------------------------------------*/
+/* Do DOS 2 CP/M sector translation                  */
+/*---------------------------------------------------*/
+    dsect = dos2cpm[sect]*2;
+
+/*---------------------------------------------------*/
+/* Read 2 CP/M sectors and copy into buff            */
+/*---------------------------------------------------*/
+    for(i = 0; i < 2; i++){
+        err = readsect(DRIVE,track,dsect,buff);
+        if(err < 0)
+            return(err);
+        dsect++;
+        buff+=128;
+    }
+    return(0);
+}
+
+/*--------------------------------------------------------------------------*/
+/*   Function: readsect(drive, track, sect, buff)                           */
+/*             int drive; - disk drive indentifier. A:=0, B:=1, ..., P:=15  */
+/*             int track; - track of sector to be read.                     */
+/*             int sect;  - sector number of sector to be read.             */
+/*             byte *buff; - where to put the data read.                    */
+/*                                                                          */
+/*    Purpose: To read a sector from a disk using the low level BIOS calls. */
+/*    Returns:  0 if everything is AOK.                                     */
+/*             -1 if a select disk error occurs.                            */
+/*             -2 if a sector read error occurs.                            */
+/*      Setup: NONE                                                         */
+/*    Globals: NONE                                                         */
+/*      Notes: Use BIOS.H to compile.                                       */
+/*                                                                          */
+/*--------------------------------------------------------------------------*/
+int readsect(drive,track,sect,buff)
+int drive;
+int track;
+int sect;
+byte *buff;
+{
+    int skew;           /* internal CP/M skew table */
+    int tru_sect;       /* translated physical sector value  */
+    int err;
+/*---------------------------------------------------*/
+/* Get address of disk parameter block.              */
+/*---------------------------------------------------*/
+    skew = bioshl(SELDSK,drive,0);
+    if(skew == 0){
+        return(-1);
+    }
+/*---------------------------------------------------*/
+/* Select the track                                  */
+/*---------------------------------------------------*/
+    bios(SETTRK,track,0);
+/*---------------------------------------------------*/
+/* Select the sector                                 */
+/*---------------------------------------------------*/
+    tru_sect = bioshl(SECTRAN,sect,skew);
+    bios(SETSEC,tru_sect,0);    
+/*---------------------------------------------------*/
+/* Assign destination address (DMA Address)          */
+/*---------------------------------------------------*/
+    bios(SETDMA,buff,0);
+/*---------------------------------------------------*/
+/* Read the sector                                   */
+/*---------------------------------------------------*/
+    err = bios(READ,0,0);
+    if(err)
+        return(-2);
+    else
+        return(0);
+}
+/*---------------------------------------------------*/
+/* Fixes Apple strings for display under CP/M        */
+/*---------------------------------------------------*/
+fixstr(s)
+byte *s;
+{
+    while(*s)
+        *s++ &= 0x7f;
+}

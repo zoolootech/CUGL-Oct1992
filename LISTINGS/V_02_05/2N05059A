@@ -1,0 +1,170 @@
+
+/*******************************************************
+*  PlaySong - Play specified song or sound effect
+*  Parameters:
+*     nNumber - song number to play
+*
+*  Files:  song* in resource file
+*
+*  Notes:
+*  1.    MAX_SONGS is defined as maximum available songs
+*  2.    Voice 1 must be opened externally to this routine.
+*
+*  Copyright:
+*   Original code by William H. Roetzheim (619) 669-6970
+*   Copyright 1990 by William H. Roetzheim
+*   All rights reserved.
+***********************************************************/
+
+void    PlaySong (int nNumber)
+{
+   int             i;
+   char            szBuffer[255];
+   char            szTemp[6];
+   int             nDefault;
+   int             nNote;
+   int             nDuration;
+   int             nDot;
+   int             nPointer;
+   int             nOctave;
+   int             nSpeedAdjust;
+
+
+   StopSound ();   /* stop old song, if any */
+   i = LoadString (hInstance, IDS_SONG0 + nNumber, 
+                  szBuffer, 250);
+   szBuffer[i] = 0;
+
+   /* Change queue size based on length of song */
+   nPointer = 0;
+   while (isdigit (szBuffer[nPointer]))
+   {
+         szTemp[nPointer] = szBuffer[nPointer];
+         nPointer++;
+   }
+   szTemp[nPointer] = 0;
+   i = atoi (szTemp);
+   i += 20;      /* safety margin */
+   i *= 8;       /* 8 bytes per note */
+   SetVoiceQueueSize (1, i);
+
+   nDefault = 1;   /* default note duration */
+   while (nPointer < lstrlen (szBuffer))
+   {
+         switch (szBuffer[nPointer++])
+         {
+             case 'O':     /* octave */
+                   szTemp[0] = szBuffer[nPointer++];
+                   if (isdigit(szBuffer[nPointer]))
+                   {
+                       szTemp[1] = szBuffer[nPointer++];
+                       szTemp[2] = 0;
+                   }
+                   else szTemp[1] = 0;
+                   nOctave = 12 * (atoi (szTemp));
+                   continue;
+
+             case 'S':     /* Speed adjust */
+                   szTemp[0] = szBuffer[nPointer++];
+                   if (isdigit(szBuffer[nPointer]))
+                   {
+                       szTemp[1] = szBuffer[nPointer++];
+                       szTemp[2] = 0;
+                   }
+                   else szTemp[1] = 0;
+                   nSpeedAdjust = atoi (szTemp);
+                   continue;
+
+             case 'L':     /* reset default duration */
+                   szTemp[0] = szBuffer[nPointer++];
+                   if (isdigit(szBuffer[nPointer]))
+                   {
+                       szTemp[1] = szBuffer[nPointer++];
+                       szTemp[2] = 0;
+                   }
+                   else szTemp[1] = 0;
+                   nDefault = atoi (szTemp);
+                   continue;
+
+             case 'A':
+                   nNote = 1;
+                   break;
+
+             case 'B':
+                   nNote = 3;
+                   break;
+
+             case 'C':
+                   nNote = 5;
+                   break;
+
+             case 'D':
+                   nNote = 6;
+                   break;
+
+             case 'E':
+                   nNote = 8;
+                   break;
+
+             case 'F':
+                   nNote = 10;
+                   break;
+
+             case 'G':
+                   nNote = 12;
+                   break;
+
+             case 'R':     /* rest */
+                   nNote = 0;
+                   break;
+
+             default:
+                   continue;
+         }
+
+         /* check for sharps */
+         if ((szBuffer[nPointer] == '#') || (szBuffer[nPointer] 
+              == '+'))
+         {
+             nNote++;
+             nPointer++;
+         }
+         else if (szBuffer[nPointer] == '-')    /* and flats */
+         {
+             nNote--;
+             nPointer++;
+         }
+
+         /* See if duration is explicitely called out */
+         if (isdigit (szBuffer[nPointer]))
+         {
+             i = 0;
+             szTemp[i++] = szBuffer[nPointer++];
+             if (isdigit (szBuffer[nPointer])) szTemp[i++] = 
+                szBuffer[nPointer++];
+             szTemp[i] = 0;
+             nDuration = atoi (szTemp);
+         }
+         else nDuration = nDefault;
+
+         /* Dotted note? */
+         nDot = 0;
+         if (szBuffer[nPointer] == '.')
+         {
+             nDot = 1;
+             nPointer++;
+         }
+
+         SetVoiceNote (1, nNote + nOctave, nDuration * 
+                       nSpeedAdjust, nDot);
+   }
+   /* Optional unless you use GetThresholdStatus() */
+   SetVoiceThreshold (1, 0);
+
+   StartSound ();
+}
+
+
+
+
+

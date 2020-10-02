@@ -1,0 +1,532 @@
+SIMPFITR.DOC         VERS:- 01.00  DATE:- 09/26/86  TIME:- 10:02:49 PM
+
+documentation for C routines for simplex fitting and
+	quadratic approximation of least squares surface.
+
+
+
+
+
+
+        By J.A. Rupley, Tucson, Arizona
+
+
+         NOTES ON THE SIMPLEX FITTING PROGRAM XXXXFITn
+         AND ITS SUPPORTING MODULES
+
+
+        A.  DESCRIPTION OF THE PROGRAM:
+
+
+                A function explicitly relating a dependent variable to
+        one or more independent variables and up to ten variable
+        parameters is fit to a set of data points (observed values of the
+        dependent and independent variables).  The Nelder-Mead algorithm
+        is used to locate the least squares minimum by a simplex search
+        procedure, giving estimates of the best-fit values of the
+        parameters.  Standard deviations of the parameters are estimated
+        by use of a quadratic approximation of the least squares surface
+        near the minimum.  The quadratic approximation, equivalent to
+        minimization by use of a Taylor's series approximation, also
+        returns an improved estimate of the parameter.  Thus the
+        quadratic approximation can be used as part of the minimization
+        procedure.
+
+             Alternation of  several cycles (eg, 30) of simplex
+        minimization with one cycle of quadratic minimization quickly
+        converges on the least squares minimum.  The simplex search
+        efficiently defines the region of parameter space that contains
+        the minimum; bounds are easily incorporated; because derivatives
+        are not used, ill-behaved functions can be handled.  The
+        quadratic minimization, on the other hand, rapidly moves to the
+        least squares minimum, but it is reliable only when the parameter
+        estimates have been brought near the minimum.
+
+             One cycle of quadratic minimization takes about as much time
+        as 30 cycles of simplex minimization.  If the quadratic
+        minimization fails, as it often will in the early stages of the
+        search, considerable time is wasted.  To reduce this waste, the
+        next one or several cycles of quadratic minimization are skipped
+        after a failure.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        1
+
+
+
+
+
+
+
+
+
+        USAGE:
+
+        A>xxxxfitn   [d:]input_file   [[d:]output_file]
+
+           the optional output file can be LST: or a disk file;
+
+           the required input file has the following structure:
+                  one-line title, with no tabs or ctrl characters;
+                  lines following give control variables, the starting
+                           simplex, and the data array;
+                  the order of entry is fixed by <read_data()>;
+                           see sample file for structure;
+                  the one-word descriptors must be present;
+                  the data format is free-form (no set field widths);
+                  comments at the end of the file are not read by the
+                            program and any other information to be
+                            stored should be there.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        2
+
+
+
+
+
+
+
+
+
+        B.  CONTENTS OF THE C SOURCE FILES:
+
+
+        SIMPMAIN:
+        main program controlling input, output & fitting        = main()
+
+
+        XXXXFITn:
+        routines for simplex fitting that depend on the data and function
+        to be fit (must be changed when function fit is changed):
+                all external definitions, except for <data>, which is
+                        defined as dummy storage in SIMPLIB1
+                        or its modification
+                function for calculation of dependent variable  and
+                        weighted sum of residuals squared       = func()
+                print of <data> records                         = fdatprint()
+                customizable display called by <simpfit()>      = fspecial()
+                other special functions called by above functions
+
+
+        SIMPLIB0:
+        general routines for simplex fitting:
+                simplex fitting routine                          = simpfit()
+                quadratic fit for standard deviations            = simpdev()
+                supporting functions
+
+
+        SIMPLIB1:
+        routines for data input that depend (partially) on the data
+        and function to be fit:
+                definition of the aggregate <data>, with a
+                       dummy structure declaration
+                usage message displayed on command line error     = use_mess()
+                opening of files for input and optional output    = file()
+                input of variables and data                       = read_data()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        3
+
+
+
+
+
+
+
+
+
+        C.  PROGRAM FLOW:
+
+
+             Program flow is controlled by <main()>.
+
+
+        I.  A call to <read_data()> at the start of execution initializes
+        the following:
+
+        a one-line title string, without tabs or other control
+        characters;
+
+        control values that are used in testing (1) for exit from the
+        minimization (<exit_test>), (2) for cycles on which to print
+        intermediate fitting results (<prt_cycle>), and (3) for cycles on
+        which to pass through the quadratic approximation (<maxquad_skip>
+        and <quad_test>);
+
+        <iter>, the starting interation number, generally set at 0;
+        the starting simplex <p>, with <nvert> vertices and <nparm>
+        parameters; <nvert> = 1 + number of free parameters, <nfree>;
+        parameters that are the same for all vertices are treated as
+        fixed;
+
+        the data set, stored in the aggregate <data> of size <ndata>,
+        each record of <data[ndata]> having <ndatval> members.
+
+
+             On return from <read_data()>:
+
+        <maxiter> is set at <iter> + <prt_cycle>; <nquad_skip> and
+        <quad_cycle>, used in resetting <quad_test>, are set at zero and
+        <quad_test>, respectively;
+
+
+             The first command line argument specifies the input file
+        from which the above information is read.  The (optional) second
+        argument specifies the (optional) output file or device, on which
+        a selection of the crt display is saved.
+
+             A sample input file is given in a following section.
+
+
+        II.  Fitting by use of the Nelder-Mead simplex algorithm is
+        carried out by call of <simpfit()>.  Control is returned to main
+        every <prt_cycle> number of fitting cycles, for printout of the
+        current simplex and its centroid.
+
+
+        III.  On certain cycles of simplex minimization, determined by
+        the value of <quad_test>, the current simplex is passed to the
+        quadratic approximation routine <simpdev()>.  Printout consists
+        of (1) the data array with calculated values of the dependent
+        variable and (2) a summary of the results of the quadratic fit,
+
+
+                                        4
+
+
+
+
+
+
+
+
+
+        including estimates of the standard deviations of the parameters.
+        <Simpdev()> returns a modified simplex, with, if quadratic
+        minimization was successful, the new low vertex closer to the
+        least squares minimum.  The variance-covariance matrix is
+        returned in <qmat[nfree][nfree]>.  The standard deviations of the
+        parameters and other information are returned in the structure
+        <q>.
+
+
+        IV.  Minimization consists of looping through steps II and III,
+        until the value of <test> is less than <exit_test>:
+
+             <exit_test> = input value
+             <test>      = <rms_func>/<mean_func>
+             <rms_func>  = (root mean square of the deviations
+                                      of the least squares values
+                                      at the simplex vertices)
+             <mean_func> = (mean of the least squares values)
+
+             On exit from the minimization, a pass through <simpdev()>
+        gives the final estimates of the standard deviations of the
+        parameters.
+
+             The alternation of a set of simplex fitting cycles with a
+        pass through the quadratic approximation gives rapid convergence
+        to the least squares minimum.  In order to control this,
+        <quad_test> can be used in either of two ways:
+
+             If in the input file <quad_test> is set < 1, then
+        <simpdev()> is entered at the first printing cycle for which
+        <test> is less than <quad_test>.  Before looping back to
+        <simpfit()>, <quad_test> is reduced by a factor of 10.
+
+             If in the input file <quad_test> is set >= 1 (in which case
+        it should be an integer multiple of <prt_cycle>), then
+        <simpdev()> is entered every {<quad_cycle> * (<nquad_skip> + 1)}
+        number of cycles.  <nquad_skip> is initially zero; it is
+        incremented on each failure of the quadratic minimization, up to
+        the limit <maxquad_skip>; on a successful quadratic minimization,
+        <nquad_skip> is reset at zero.  This algorithm reduces the time
+        spent in unsuccessful quadratic minimization.
+
+
+             The operator can choose, from within <simpfit()>, to return
+        to <main()> and pass through <simpdev()> for a cycle of quadratic
+        approximation.
+
+
+
+
+
+
+
+
+
+
+                                        5
+
+
+
+
+
+
+
+
+
+        D.  CODING IN XXXXFITn FOR THE SPECIFIC FUNCTION TO BE FIT:
+
+
+             The routine <func()> calculates for a simplex vertex the
+        weighted sum of residuals for the set of parameter values passed
+        to it.  The result is stored in <p.val>.  Bounds on the
+        parameters can be implemented easily, by a test that returns an
+        excessively large function value (eg, 1.E38) if a parameter
+        exceeds a bound.  Coding should be efficient, because much of the
+        minimization time is spent in <func()>.
+
+             The print statement of the routine <fdatprint()> may have to
+        be recoded after change in the function or data.
+
+             The routine <fspecial()> controls the customizable display
+        printed at the end of the standard display for each cycle of the
+        simplex minimization in <simpfit()>.
+
+             Other routines should be function and data independent,
+        unless special manipulation of the data is required.
+
+             NOTE: change in the model being fit should require changes
+        in the coding only of the function of XXXXFITn.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        6
+
+
+
+
+
+
+
+
+
+        E. COMMENTS ON THE CONSTRUCTION OF THE SIMPLEX FITTING PROGRAM:
+
+
+             About 4K of memory are reserved to allow expansion of
+        <main()> and<func()>, for more elaborate output, functions, etc.
+
+
+             The maximum number of parameters, NPARM, is set at 10; if
+        more are needed, all routines (SIMPMAIN, SIMPLIB0, etc) must be
+        recompiled with the new value of NPARM.
+
+
+             To make more readable the coding in <func()> of the model
+        equation to be fit to the data:
+
+        (1) use mnemonic member names in declaring <struct dat> in
+        XXXXFITn;
+
+        (2) declare a dummy structure, <struct pnamestruct>, that is
+        entirely equivalent to the structure that holds the parameter
+        values, <pstruct>, but that has mnemonic member names; the
+        mnemonic dummy structure then can be used with the <pstruct>
+        address passed as a parameter to <func()>.
+
+
+             The DEFINITION of the aggregate <data> and the functions
+        <use_mess()>, <file()>, and <read_data()> are in a separate file,
+        SIMPLIB1; this is to to allow expansion of the aggregate <data>
+        by overwriting most of SIMPLIB1; the SIMPLIB1 routines are
+        entered only once, at the start of execution.
+
+             the DECLARATION of <struct dat> according to the
+        requirements of the model described by <func()> is given in
+        XXXXFITn; <func()>, etc. reference the aggregate <data> as
+        external to XXXXFITn, but through the structure <dat>, declared
+        locally in XXXXFITn with mnemonic member names suitable for use
+        in the coding of <func()>, etc.
+
+
+             The intent is to generalize the read of the data file and
+        the allocation of data storage (in SIMPLIB1), while retaining
+        flexibility in the declaration of <struct dat data> in XXXXFITn;
+        the following comments bear upon this arrangement:
+
+             The loading of values into the aggregate <data> is done in
+        the SIMPLIB1 module <read_me()> by use of:
+
+        (1) a generalized ("dummy") structure for <data>;
+
+        (2) a read loop that moves successive double values from the
+        ascii data file into the storage at and above <data[0]>, without
+        referencing the elements of <data> by structure member or index.
+
+
+
+
+                                        7
+
+
+
+
+
+
+
+
+
+
+             The "useful" declaration of the structure for <data> is in
+        XXXXFITn, where it is referenced by <func()> and <fdatprint()>;
+        <struct dat> must be changed to accord with the requirements of
+        <func()> and <fdatprint()>; all members of <struct dat> MUST be
+        of type double.
+
+
+             Change in the model being fit should not require recoding
+        and recompilation of <read_me()> or of any other routines except
+        those of XXXXFITn; of course, change in the model requires change
+        of <func()>, <fdatprint()>, and of the declarations of <struct
+        dat>
+        and <struct pnamestruct> in XXXXFITn.
+
+
+             The size of the <data> aggregate is limited by (1) the size
+        of free memory and (2) the size of SIMPLIB1, most of which can be
+        overwritten by data records; for this version of the program,
+        SIMPLIB1 corresponds to about 600 double values, and unused
+        memory to about 600 double values; overwriting of the code of
+        SIMPLIB1 may not be allowed by some compilers.
+
+
+             For the six-member structure <dat> used in this version of
+        the program, the maximum number of data points is more than 100
+        (600 double values), expandable to more than 200 (1200 double
+        values) if SIMPLIB1 is recompiled with an increase of NDATA;
+        NDATA is currently set at 350 double values; increase of NDATA of
+        course decreases the amount of memory available for expansion of
+        the code of <main()>, <func()>, etc.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                        8
+
+
+

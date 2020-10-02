@@ -1,0 +1,125 @@
+; (c) Copyright 1991, Martin Stitt
+; dumpmacs.inc - dump macros which call xmit_par.com
+
+intvect	equ	0fdh
+
+dchar_code equ 	0
+dstr_code  equ	1
+dbyte_code equ	2
+dword_code equ	3
+
+; dump single char.  parameter can register, memory or
+; an immediate character (must be in quotes: 'x')
+
+dump_char   macro data
+	pushf
+	push	ax
+	mov	al,data
+	mov	ah,dchar_code
+	int	intvect	
+	pop	ax
+	popf
+	endm
+
+; simple way to dump a marker character:  dump_chari a
+; to dump a blank space, don't give any parameter
+
+dump_chari  macro data
+	pushf
+	push	ax
+ifnb <char>
+	mov	al,'&data&'
+else
+	mov	al,' '
+endif
+	mov	ah,dchar_code
+	int	intvect	
+	pop	ax
+	popf
+	endm
+
+; dumps an asciiz string at ds:si
+
+dump_str    macro
+	pushf
+	push	ax
+	mov	ah,dstr_code
+	int	intvect	
+	pop	ax
+	popf
+	endm
+
+; dumps an immediate string parameter.  
+; enclose string within <> signs: dump_stri <count = >
+
+dump_stri   macro str
+	local	msg, st1
+	jmp	short st1
+msg	db	'&str&',0
+st1:
+	pushf
+	push	ax
+	push	si
+	push	ds
+	mov	ax,cs
+	mov	ds,ax
+	mov	si,offset cs:msg
+	mov	ah,dstr_code
+	int	intvect	
+	pop	ds
+	pop	si
+	pop	ax
+	popf
+	endm
+
+; cause a carriage return and linefeed to be dumped
+
+dump_nl	    macro
+	local	msg, st1
+	jmp	short st1
+msg	db	13,10,0
+st1:
+	pushf
+	push	ax
+	push	si
+	push	ds
+	mov	ax,cs
+	mov	ds,ax
+	mov	si,offset cs:msg
+	mov	ah,dstr_code
+	int	intvect	
+	pop	ds
+	pop	si
+	pop	ax
+	popf
+	endm
+
+; dump parameter byte in hex mode.  parameter can be a
+; register or memory location.
+
+dump_byte   macro data
+	pushf
+	push	ax
+	mov	al,data
+	mov	ah,dbyte_code
+	int	intvect
+	pop	ax
+	popf
+	endm
+
+; dump parameter word in hex mode.  parameter can be a
+; register or memory location.
+
+dump_word   macro data
+	pushf
+	push	ax
+	push	si
+	mov	si,data
+	mov	ah,dword_code
+	int	intvect
+	pop	si
+	pop	ax
+	popf
+	endm
+
+

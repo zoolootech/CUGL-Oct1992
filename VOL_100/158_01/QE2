@@ -1,0 +1,424 @@
+/*  VERSION 0005    (DATE: 20.VIII.86)  (TIME: 6:12 pm)                 */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qe2
+
+	FUNCTIONS: movechar,moveline, calcjmp, jumpline, movepage, moveword,
+			insertchar, firstwhite,deletechar,crdelete,deleteword,
+			crinsert,adjustc,sync.
+
+	PURPOSE: perform text changing commands
+
+*/
+
+#include "qe.h"
+
+movechar(move)	/*move cursor by 'move' columns to the right
+		  return YES unless going off text*/
+int move;
+{
+	int cp, len, result;
+
+	cp=charn+move;
+	result=YES;
+	if (cp < 0) {
+		result=moveline(-1); 
+		if (result) {
+			cursorx=adjustc(LLIM); 
+			movechar(cp+1);
+			}
+		else sync(0);
+		}
+	else if (cp > (len=strlen(text))) {
+		result=moveline(1); 
+		if (result) {
+			sync(0);
+			movechar(cp-len-1);			
+			}
+		else cursorx=adjustc(LLIM);
+		}
+	else sync(cp);
+	return result;
+}
+
+moveline(move)	/*move cursor by 'move' lines down 
+		 return YES if Ok, NO if going off text*/
+int move;
+{
+	int line;
+
+	puttext();
+	if ( (move<0?-move:move) > SHEIGHT) gotoxy(WAITPOS,0);
+	line=cline;
+	if ((cline=loc(cline,move)) == line) return NO;
+	gettext(cline);
+	if (cline < pfirst || cline > plast) {
+		if (move == 1 || move == -1) scroll(move);
+		else putpage();
+		}
+	else {
+#if SCRNDIMMD
+		putline(line,cursory);
+		cursory+=cline-line;
+		cursorx=adjustc(cursorx);
+		putline(cline,cursory);
+#else								/* screen is brite, just move cursor */
+		if ((!blocking) && (!offset)) {
+			cursory+=cline-line;
+			cursorx=adjustc(cursorx);
+			gotoxy(cursorx,cursory);
+			}
+		else {
+			putline(line,cursory);
+			cursory+=cline-line;
+			cursorx=adjustc(cursorx);
+			putline(cline,cursory);
+			}
+#endif
+		}
+	return YES;
+}
+
+scroll(move)	/*scroll up (move==1) or down 1 line*/
+int move;
+{
+	if (move == 1) {
+		linedelete(topline);
+		putline(cline-1,SHEIGHT-1);
+		}
+	else {
+		insertline();
+		putline(cline+1,topline+1);
+		}
+	cursorx=adjustc(cursorx);
+	putline(cline,cursory);
+	if (plast-pfirst == (SHEIGHT-topline)) plast+=move;
+	pfirst+=move;
+}
+
+calcjmp()  		/* calc number of lines to jump */
+{
+int to;
+	jmpto = 1;  			/* reset jmpto for repeat incrmtl jumps*/
+	if (ans[0] == '+')
+		if ((to=atoi(ans+1))) jumpline(to);
+	if (ans[0] == '-')
+		if ((to=atoi(ans))) jumpline((to));
+	if (ans[0] >= '0') {
+		if ((to=atoi(ans))) jumpline(to-cline);
+		jmpto = to;
+		}
+}
+
+jumpline(move)	/*move current line by move lines down, checking for
+			interrupt from user (if interrupted, do nothing,
+			and return NO) */
+int move;
+{
+	int line, dest;
+
+	puttext();
+	dest=cline+move;
+	dest-=dest%100;
+	if (dest > lastread) {
+		gotoxy(WAITPOS,0);
+		line=cline;
+		while (line < dest && loc(line,100) != line) {
+			line+=100;
+			if (testkey() == ESCKEY) {
+				error("Interrupted");
+				return NO;
+				}
+			}
+		}
+	moveline(move);
+	return YES;
+}
+
+movepage(dir)	/*move current line by a page down (dir==0) or up (-1)*/
+int dir;
+{
+	int move, line;
+
+	puttext();
+	move=(SHEIGHT-topline)/2 - PAGEOVERLAP;
+	if (dir) move=pfirst-cline-move;
+	else move=plast-cline+move;
+	if ( (cline=loc((line=cline),move) ) != line) {
+		gettext(cline);  
+		putpage();
+		}
+}
+
+moveword(move)	/*move 1 word to the right (move -1: left)*/
+int move;
+{
+	if (charn+move < 0) {
+		moveline(-1);
+		charn=strlen(text);
+		goto cratend;	/* leave cursor at end of line */
+		}
+	else if (charn+move >= strlen(text)) {
+		moveline(1);
+		sync(0);
+		if (inword(text[0])) return;
+		}
+	/*	while (move<0 && text[charn] && inword(text[charn])
+			&& !inword(text[--charn]) && (charn+=move));
+		ORIGINAL ^ */
+	if (move < 0) charn--;  /* replace above */
+	while (move>=0 && text[charn] && inword(text[charn]) && (charn+=move));
+		/*	while (( move<0 || text[charn]) &&		<--ORIGINAL*/
+	while (( (move<0 && charn) || move>=0) && text[charn] &&
+		!inword(text[charn]) && (charn+=move));
+	if (move < 0)  {
+		if (charn) {
+			while(inword(text[charn]) && --charn); {
+				if (charn || !inword(text[charn]) ) charn++;
+				}
+			}
+		else		/* charn == 0 */
+			if (!inword(text[0])) {
+				moveline(-1);
+				charn = strlen(text);
+				}
+		}
+
+cratend:
+	sync(charn);
+}
+
+#if (WWRAP)		/*do word wrap on char insert*/
+insertchar(c)	/*inserts 'c' at charn, moves cursor up  one */
+char c;
+{
+	int cp;
+	/*char *t;*/
+	int diffn,ncharn;
+	char *txtp,*posp;
+	char *firstwhite();
+	
+	if ( (cp=strlen(text)+1) >= (LLIM-1))
+		error("Line too long");
+	else {
+		for (; cp >= charn; cp--) text[cp+1]=text[cp];
+		text[charn]=c;
+		altered=YES;
+		rewrite(charn,cursorx);
+		sync(charn+1);
+			/*word wrap*/
+		if  ((cursorx>rtmarg) && c!=' ' && c!='\t') {
+			txtp=posp=&text[charn];
+			/*if ((ncharn=firstwhite(text,cursorx,charn)) == 0) ncharn=charn;*/
+			if ((posp=firstwhite(text,cursorx,txtp)) == text) ncharn=charn;
+			else ncharn=posp-text;
+			diffn=charn-ncharn;
+			sync(ncharn);
+			resetcursor();
+			crinsert(0);
+			sync(charn+diffn);
+			resetcursor();
+			}
+		}
+}
+
+char *firstwhite(s,cp,tp)	/*find first prev. white*/
+char s[];					/*string to search*/
+int cp;						/*cursor pos and string (text) pos */
+char *tp;
+{
+	/*int cpos,pos;*/
+	int cpos;
+	char *posp,*lastnwht;
+	char c;
+
+	lastnwht=tp;
+	posp=tp-1;
+	while( ( ((c=*posp)!=' ' && c!='\t') || cp>rtmarg) && posp>=s)
+	{
+		switch(c) {
+		case '\t' : 
+			if (!((cp-1)%tabwidth)) posp--;
+			break;
+		case ' '  :
+			posp--;
+			break;
+		default   :
+			lastnwht=(posp--);
+			break;
+		}
+		cp--;
+	}
+	return (lastnwht);
+}
+
+#else		/*no wwrap*/
+
+insertchar(c)	/*inserts 'c' at charn, moves cursor up  one */
+char c;
+{
+		int cx,cp,temp;
+	char *t;
+
+	if ( (cp=strlen(text)+1) >= (LLIM-1))
+		error("Line to long");
+	else {
+		for (; cp >= charn; cp--) text[cp+1]=text[cp];
+		text[charn]=c;
+		altered=YES;
+		rewrite(charn,cursorx);
+		sync(charn+1);
+		}
+}
+#endif
+
+deletechar(dir)	/*deletes char before (dir=-1) or at (dir=0) cursor */
+int dir;
+{
+	char c;
+	int cp;
+
+	cp=charn+dir;
+	if (cp < 0) {
+		if (cline > 1) crdelete(-1);
+		}
+	else if (text[cp] == '\0') {
+		if (cline < lastl) crdelete(0);
+		}
+	else {
+		do { 
+			c=text[cp]=text[cp+1]; 
+			cp++; 
+			} 
+		while(c);
+		altered=YES;
+		sync(charn+dir);
+		if (calcoffset() != lastoff)rewrite(0,0);
+		else rewrite(charn,cursorx);
+		}
+}
+
+crdelete(dir)	/*delete a [CR] before (dir==-1)or at (dir==0) cursor */
+int dir;
+{
+	int delline, len, *t;
+	char textb[LLIM];
+
+	altered=YES;
+	if (dir == 0) {
+		delline=cline+1;
+		strcpy(textb,getline(delline));
+		cursory++;
+		}
+	else {
+		delline=cline;
+		strcpy(textb,text);
+		if (cline > 1) gettext(cline-1);
+		else puttext();
+		}
+	sync((len=strlen(text)));
+	if (len+strlen(textb) >= LLIM) {
+		textb[LLIM-len]='\0';
+		error("Line too long - cut short");
+		}
+	strcat(text,textb);
+	deltp(delline,1);
+	if (delline > plast || delline <= pfirst) {
+		puttext(); 
+		putpage();
+		}
+	else {
+		linedelete(cursory--);
+		rewrite(0,0);
+		if (plast <= lastl && lastl-pfirst > SHEIGHT - topline)
+			putline(plast, SHEIGHT);
+		else plast=lastl;
+		}
+}
+
+deleteword()
+{
+	int pend, cp;
+	char c;
+
+	for (pend=charn; (c=text[pend]) && ( !inword(c)); pend++);
+	while ( (c=text[pend]) && inword(c)) pend++;
+	for (cp=charn; (text[cp]=text[pend]); pend++, cp++);
+	rewrite(charn,cursorx);
+	altered=YES;
+}
+
+crinsert(dir)	/*insert a [CR] behind (dir==0) or in front of (-1) cursor*/
+{
+	char textb[LLIM], c;
+	int charnb;
+
+	charnb=0;
+	if (autoin && !isspace(text[charn]))
+		while(isspace( (c=text[charnb]) )) textb[charnb++]=c;
+	strcpy(&textb[charnb],&text[charn]);
+	text[charn]='\0';
+	altered=YES; 
+	if (dir == 0) puttext();
+	if ((cline=inject(cline,textb)+dir) == FAIL) return;
+	if (dir == 0) {
+		gettext(cline); 
+		sync(charnb); 
+		}
+	if (cursory >= SHEIGHT) { 
+		puttext(); 
+		/*putpage();*/		/*<==original code*/
+		linedelete(topline);/*<==new code to next "}" */
+		pfirst++;			/*   (scrolls with new line) */
+		gotoxy(cursorx,--cursory);
+	}
+/*	else {*/	/*<==original code*/
+	if (cursory < SHEIGHT) {
+		gotoxy(0,cursory+1);
+		insertline();
+		if (dir == 0) putline(cline-1,cursory++);
+		else putline(cline+1,cursory+1);
+		rewrite(0,0);
+		if (plast-pfirst < SHEIGHT-topline)plast++;
+	}
+}
+
+oops()	/*undoes edits on current line*/
+{
+	if (altered) {
+		if (cline <= lastl) gettext(cline);
+		else text[0]='\0';
+		altered=NO;
+		cursorx=adjustc(cursorx);
+		rewrite(0,0);
+		}
+}
+
+adjustc(x)	/*return x coord. for cursor nearest to col. 'x' so that
+		  cursor isn't in the middle of a tab or off the end of the
+		  current line*/
+int x;
+{
+	int cpos;
+	char c;
+
+	for(charn=0, cpos=0; cpos < x && (c=text[charn]); charn++, cpos++)
+		if (c == '\t') cpos=cpos+tabwidth-1-(cpos%tabwidth);
+	return cpos;
+}
+
+sync(cp)	/*put cursorx and charn onto character 'cp' of current line*/
+int cp;
+{
+	for(charn=0, cursorx=0; charn < cp; cursorx++, charn++)
+		if (text[charn] == '\t') cursorx=cursorx+tabwidth-1-(cursorx%tabwidth);
+}
+rite(0,0);
+		if (plast <= lastl && lastl-pfirst > SHEIGHT - topline)
+			putli

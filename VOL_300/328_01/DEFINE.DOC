@@ -1,0 +1,1022 @@
+/*
+HEADER:		Documentation file
+TITLE:		DEFINE.DOC
+VERSION:	1.0
+DATE:		5/1/90
+
+DESCRIPTION:	documentation for #defines, structures, typedefs, etc 
+			used by the windows programs.
+
+KEYWORDS:	windows, keyboard, mouse, text, graphics, expanded memory, menus;
+SYSTEM:		MS-DOS v3.0, probably works with v2.0 but untested;
+FILENAME:	DEFINE.DOC
+
+WARNINGS:	
+
+SEE-ALSO:	files on this disk named *.doc, demo*.c
+				wtwg.doc  - more detailed introduction to concepts, 
+							  covers main features briefly,
+							  instructions for installation and use of routines
+							  compiler-specific suggestions
+							  list of files for this system with brief desc.
+				defines.doc - this file
+				funcs.doc   - documentation of specific function calls.
+				
+				demo*.c     - demo programs showing main features.
+				
+AUTHOR:	David Blum
+COMPILERS:	Turbo C v2.0, Microsoft C v5.1
+*/
+
+
+
+
+/* DATADEF.DOC 	documentation for data definitions, structures, typedefs
+ *				for the WT/WG programs. 
+ *
+ *	Organization: 
+ *		SCREEN ATTRIBUTES
+ *		KEYBOARD definitions
+ *		STRUCTURES & typedefs
+ *				(for flags defined as part of structures,
+ *				 the corresponding #define statements are given here)
+ *			specific structures:
+ *			BOX    - line and border drawing characters.
+ *			BUTTON - onscreen mouse-selectable buttons and scrollbars
+ *			HEAP   - virtual memory, expanded memory, etc.
+ *			WINDOW - windows
+ *			LOCATION - data for auto-locating windows.
+ *			FORMS  - table layout for data entry forms. associated macros.
+ *			MENUS  - table layout for pulldown menus.
+ *			MOUSE  - global data describing recent mouse activity.
+ *			OBJECT_D_ART - data for mouse-driven drawing. (TurboC only)
+ *			MACRO NAMES table.
+ *
+ *	GLOBAL DATA ITEMS.
+ *
+ *					@ David Blum, 1986, 1989, 1990
+ */
+
+
+/* some 'standard' definitions for improving readability.
+ */
+	#define ON 	1
+	#define OFF	0
+	#define	TRUE	1
+	#define FALSE 	0
+
+/* VIDEO COLORS
+ *		(note that these over-ride the enum COLORS found in 
+ *       GRAPHICS.H and conflict with those found in CONIO.H)
+ */
+#define BLACK 				0
+#define BLUE	    		1
+#define GREEN       		2	
+#define CYAN       			3 
+#define RED         		4
+#define MAGENTA	    		5
+#define BROWN       		6
+#define LIGHTGRAY   		7
+#define DARKGRAY    		8
+#define LIGHTBLUE   		9
+#define LIGHTGREEN  		10
+#define LIGHTCYAN   		11
+#define LIGHTRED    		12
+#define LIGHTMAGENTA		13
+#define YELLOW      		14
+#define WHITE	    		15
+
+/* these allow spelling mistakes.
+ */
+#define LIGHTGREY LIGHTGRAY
+#define DARKGREY  DARKGRAY
+
+
+#define BLINK  	0x80  /* in text mode only - blinking characters. */
+
+#define BRIGHT  0x08  /* add this to other colors to get bright video.  */
+
+
+
+/* HERCULES monochrome attributes 
+ *  Note that in graphics modes, 
+ * 		any pixels with GREEN or BLUE bits ON will be ON
+ *		So, RED, DARKGRAY, LIGHTRED all will be BLACK onscreen
+ *		and BLUE, GREEN, CYAN, MAGENTA, BROWN, YELLOW, etc will be white.
+ *	 
+ */
+#define WHITE_ON_BLACK 0x02  /*green*/
+#define BLACK_ON_WHITE 0x70
+#define UNDERLINE      0x01  /*blue */   /*red =x04 */
+#define BOLDFACE       0x0A  /* = 0x08 + green */
+
+
+
+
+
+
+
+/*----------------------  KEYBOARD  ----------------------------------*/
+
+/* keyboard symbolic definitions
+ *	routines that access the keyboard return a single 'int' speicifying
+ *	which key was pressed. This includes the MOUSE.
+ *
+ *	this scheme maps all the keys and  mouse into a single int
+ *	so the keycode/scancode arrangement can be ignored (simplified!!!)
+ *	wgetc() does all the mapping, behind the scenes.
+ *
+ *	if the mouse left or center button was used since the last call,
+ *	the returned key will be MOUSE.
+ *	The caller should then check the structure wmouse
+ *If the MOUSE right key was pressed, that code will be converted to ESCAPE
+ *
+ */
+ 
+ 
+#define CTRL(L)		(L - 0x40)  /* L must be uppercase */
+
+	/* Function keys
+	 * on a standard PC keyboard, only FKEY(1) thru FKEY(10) are avail
+	 *	(also theier SHIFT_ ALT_ and CTRL_ combos)
+	 *
+	 * even if using an AT, FKEY_11 and FKEY_2 cannot be referenced
+	 *	using the FKEY() etc macros used for FKEY(1) thru FKEY(10)
+	 * because their key values are not contiguous with FKEY(10).
+	 */
+
+#define FKEY(x)		(128+ 58 +(x))
+#define SHIFT_FKEY(x)	(128+ 83 +(x))
+#define SHIFTFKEY(x)	(128+ 83 +(x))
+#define CTRL_FKEY(x)	(128+ 94 +(x))
+#define CTRLFKEY(n)	(128+ 94 +(n))
+
+
+#define EXTENDED_KEY   	00
+#define BACKSPACE	(0x08)
+#define CTRL_BACKSPACE  127
+#define SHIFT_BACKSPACE   8
+
+
+#define ENTER		(0x0d)
+#define RETURN		(0x0d)
+#define CTRL_ENTER	(0x0a)
+#define ESCAPE 		(0x1b)
+#define CTRL_LEFTBRACKET 0x1b
+#define CTRL_RIGHTBRACKET 0x1c
+#define END 		(128+ 79)
+#define CTRL_END	(128+ 117)
+#define HOME		(128+ 71)
+#define CTRL_HOME 	(128+ 119)
+#define PAGE_DOWN	(128+ 81)
+#define PAGE_DN		(128+ 81)
+#define	CTRL_PgDn	(128+ 118)
+#define	CTRL_PAGE_DN	(128+ 118)
+#define	CTRL_PAGE_DOWN  (128+ 118)
+#define PAGE_UP	 	(128+ 73)
+#define UP_ARROW 	(128+ 72)
+#define DOWN_ARROW	(128+ 80)
+#define  DN_ARROW	(128+ 80)
+#define LEFT_ARROW	(128+ 75)
+#define LT_ARROW	(128+ 75)
+#define CTRL_LT_ARROW	(128+ 115)
+#define CTRL_LEFT_ARROW (128+ 115)
+#define RIGHT_ARROW 	(128+ 77)
+#define  RT_ARROW	(128+ 77)
+#define CTRL_RT_ARROW   (128+ 116)
+#define CTRL_RIGHT_ARROW (128+ 116)
+#define INSERT		(128+ 82)
+#define DELETE		(128+ 83)
+#define TAB		(9)
+#define	SHIFT_TAB	(128+ 15)
+#define	BACKTAB		(128+ 15)
+#define CTRL_PRTSCRN	(128+ 114)
+#define CTRL_MINUS	31
+#define CTRL_BACKSLASH  28
+
+
+
+
+#define MOUSE		128
+
+
+
+
+
+/*! ALT key functions.
+ *
+ * the extended key codes for the ALT-letter strokes
+ * mimic the keyboard layout, but with breaks of 5 between rows 1-2
+ * and a break of 6 between rows 2-3. Don't ask me why.
+ *
+ *
+ * ALT(val)   returns the ALT-letter value of val, which must be caps.
+ *
+ * isALT(val) returns 1 or 0
+ *			(only picks up ALT-letters)
+ *                      if (isALT(keypress)).....
+ *
+ *  unALT(val) returns 0 if cannot convert, returns letter equivalent if can
+ *			if ( 0 != ( 'X' == unALT(keypress)  ) ...
+ *				ALT-X was pressed
+ *			else    wasn't pressed
+ *		(note unALT requires capital letter)
+ *
+ * ALTFKEY(n) returns the ALT value of the function key
+ */
+int ALT 	(int val);
+int unALT 	(int keypress);
+
+#define 	ALTFKEY(n)	(128 +103+ (n))
+#define		ALT_FKEY(n)	(128 +103+ (n))
+
+
+
+#define  isALT(xx)   ( (xx) >= 0x10+128  && (xx) <= 0x32+128 )
+
+
+
+#define ALT_A  (0x1E+128)
+#define ALT_B  (0x30+128)
+#define ALT_C  (0x2E+128)
+#define ALT_D  (0x20+128)
+#define ALT_E  (0x12+128)
+#define ALT_F  (0x21+128)
+#define ALT_G  (0x22+128)
+#define ALT_H  (0x23+128)
+#define ALT_I  (0x17+128)
+#define ALT_J  (0x24+128)
+#define ALT_K  (0x25+128)
+#define ALT_L  (0x26+128)
+#define ALT_M  (0x32+128)
+#define ALT_N  (0x31+128)
+#define ALT_O  (0x18+128)
+#define ALT_P  (0x19+128)
+#define ALT_Q  (0x10+128)
+#define ALT_R  (0x13+128)
+#define ALT_S  (0x1F+128)
+#define ALT_T  (0x14+128)
+#define ALT_U  (0x16+128)
+#define ALT_V  (0x2F+128)
+#define ALT_W  (0x11+128)
+#define ALT_X  (0x2d+128)
+#define ALT_Y  (0x15+128)
+#define ALT_Z  (0x2C+128)
+
+
+
+
+#define ALT_1  (128+120)
+#define ALT_2  (128+121)
+#define ALT_3  (128+122)
+#define ALT_4  (128+123)
+#define ALT_5  (128+124)
+#define ALT_6  (128+125)
+#define ALT_7  (128+126)
+#define ALT_8  (128+127)
+#define ALT_9  (128+128)
+#define ALT_0  (128+129)
+
+
+
+#define ALT_MINUS	(128+130)
+
+#define ALT_EQ		(128+131)
+#define ALT_EQUAL	(128+131)
+
+#define CTRL_PgUp	(128+132)
+#define CTRL_PAGE_UP	(128+132)
+
+
+
+/* the following keys are available only on AT keyboards.
+ */
+#define ALT_ESCAPE 	(128+1  )
+#define ALT_BKSPACE	(128+14 )
+#define ALT_LT_BRACKET	(128+26 )
+#define ALT_RT_BRACKET	(128+27 )
+#define ALT_ENTER       (128+28 )
+#define ALT_SEMICOLON	(128+39 )
+#define ALT_QUOTE	(128+40 )
+#define ALT_ACCENT	(128+41 )
+#define ALT_BKSLASH	(128+48 )
+#define ALT_COMMA	(128+51 )
+#define ALT_PERIOD	(128+52 )
+#define ALT_SLASH	(128+53 )
+#define CTRL_UP_ARROW   (128+141)
+#define CTRL_DN_ARROW   (128+145)
+#define ALT_HOME        (128+151)
+#define ALT_UP_ARROW	(128+152)
+#define ALT_PGUP        (128+153)
+#define ALT_LT_ARROW	(128+155)
+#define ALT_RT_ARROW    (128+157)
+#define ALT_END         (128+159)
+#define ALT_DN_ARROW    (128+160)
+#define ALT_PGDN        (128+161)
+#define ALT_INSERT	(128+162)
+#define ALT_DEL         (128+163)
+#define ALT_TAB         (128+165)
+
+
+	/* NOTE that FKEY 11 and 12 cannot be referenced
+	 *	using the FKEY() etc macros used for FKEY(1) thru FKEY(10)
+	 */
+#define FKEY_11		(128+133)
+#define FKEY_12		(128+134)
+#define SHIFT_FKEY_11	(128+135)
+#define SHIFT_FKEY_12	(128+136)
+#define CTRL_FKEY_11	(128+137)
+#define CTRL_FKEY_12	(128+138)
+#define ALT_FKEY_11	(128+139)
+#define ALT_FKEY_12	(128+140)
+
+
+/*--------------------------- DATA STRUCTURES ------------------------*/
+
+
+/* structure for line-drawing characters.
+ * the actual values are held in the global variable wbox[].
+ *
+ *		for example, wbox[SINGLE_BORDER].nw  gives the upper left corner
+ *													of a single line box.
+ *	
+ */
+struct  WBOX_PATTERN
+		{
+		unsigned char nw, horiz, ne, sw, vert, se ;
+		};
+
+
+
+	/* box styles - array indices for wbox[]. see above.
+	 */
+#define NO_BORDER		0
+#define SINGLE_BORDER 		1
+#define DOUBLE_BORDER		2
+#define SPECKLE_BORDER  	3
+#define SOLID_BORDER		4
+#define MIXED2H1V_BORDER	5
+#define MIXED1H2V_BORDER	6
+#define HANGING_BORDER		7
+#define STANDUP_BORDER		8
+
+
+
+
+/* following button flags reserved for internal use.
+ */
+	#define WBTN_ACTIVE     0x02
+	#define WBTN_SCROLL		0x04
+	#define WBTN_BUTTON 	0x08
+
+
+/* WHEAP
+ *		This structure is used by the memory management routines.
+ *		(Allow use of expnaded memory and/or disk virtual memory)
+ *
+ *		On calls to wheap_alloc(), this structure is created
+ *		and a pointer to it is returned. 
+ *		Use that pointer for all further accessions to that heap element.
+ *		example (more details in FUNCS.DOC):
+ *			WHEAP *h_ptr;
+ *			char far *data_ptr;			
+ *			h_ptr  = wheap_alloc ( ... );
+ *			data_ptr = wheap_access ( h_ptr, ... );
+ *				data block associated with by h_ptr is now in RAM
+ *			wheap_deaccess ( h_ptr );
+ *				data block is now swapped out to expanded memory or disk
+ *			wheap_free ( h_ptr );
+ *				data block is now free.
+ *		
+ */
+struct WHEAP_STRUCT
+	{
+	struct WHEAP_STRUCT 	*whp_next;	/* linked lists of heap */
+	struct WHEAP_STRUCT 	*whp_prev;
+
+	size_t			 		whp_nb;  	/* number of bytes */
+
+	char	 		 		whp_flag;	/* type of heap element */
+	unsigned char		 	whp_priority;	/* priority		*/
+
+	/*---------- end of common part ---------- */
+
+	void far 				*whp_ram;	/* where stored or accessed*/
+
+	/* double linked lists  of disk blocks,
+	 * so we can find 'holes' for new allocations
+	 */
+	struct WHEAP_STRUCT 	*whp_dskhi;	/* ptrs to lo/hi blocks */
+	struct WHEAP_STRUCT 	*whp_dsklo;
+
+	unsigned long 		 	whp_position;	/* position in disk */
+
+	int			 			whp_handle;	/* XMS handle */
+	int			 			whp_npages;	/* XMS number of pages */
+
+	/* for disk type storage: append (new block), update (old block),
+	 *	or create (new file)
+	 */
+	char 			 		whp_typewrite;
+
+	char 			 		whp_filler;	/* alignment */
+
+
+	};
+
+typedef struct WHEAP_STRUCT  WHEAP;
+
+
+
+
+	/* flag values for whx_flag...tells how this blobk is stored
+	 */
+#define WHP_XMS		0x01		/* expanded memory 		*/
+#define WHP_RAM		0x02		/* DOS heap ( void far * )	*/
+#define WHP_DSK		0x04		/* disk file 			*/
+
+
+	/* maximum allowable allocation by heap manager
+	 *	this is 64k -16 bytes for DOS memory mgt info.
+	 */
+#define WHEAP_MAX	(65520u)
+
+
+	/* priority for window save areas
+	 * any other data may be saved with higher priority -
+	 * if out of RAM, the window area will be swapped to disk
+	 */
+#define WIN_HP_PRIORITY	 1
+
+
+
+
+
+
+struct _WINDOW
+	{
+	struct 	_WINDOW *winchain;	/* pointer to previous window   */
+
+	WHEAP           *winsave;	/* restore screen contents area */
+
+	WBUTTON         *winbutton;	/* pointer to buttons, if any   */
+
+	int		winpxmax;	/* size of window in pixels 	*/
+	int		winpymax;	/*      hihgest VALID pixel #s  */
+	int 		winpx;  	/* last graphics pos. from wopen*/
+	int 		winpy;          /*    in window-viewport co-ords*/
+
+	unsigned char 	winpage;	/* video page # =  0...wlastpage*/
+	unsigned char   winputstyle;	/* FLAGS see below		*/
+	unsigned char   winleft;      	/* current window positon  	*/
+	unsigned char   wintop;
+	unsigned char   winxmax;	/* highest valid column    	*/
+	unsigned char   winymax;        /* highest valid row       	*/
+	unsigned char   winattr;        /* text attribute	   	*/
+	unsigned char   winx;		/* current text postion    	*/
+	unsigned char   winy; 		/*     range 0...winymax	*/
+	unsigned char   winbox;        	/* style of border 		*/
+	unsigned char   winboxcolor;  	/* color of border 		*/
+	unsigned char 	winflag;	/* internal flag	 	*/
+	};
+
+
+typedef struct _WINDOW WINDOW;
+
+
+
+
+
+/* put styles - flag values for winputstyle
+ *		These my be set at any time to change future performance of wputc()
+ *
+ */
+#define WPUTANSI	0x80	/* ON = use ANSI format codes
+				 * OFF= put IBM graphic chars instead
+				 */
+#define WPUTWRAP	0x40	/* ON = wrap text to next line at End Of Line
+				 * OFF= truncate text, stop output
+				 */
+#define WPUTSCROLL	0x20	/* ON = scroll window up one line
+				 * 	when text ouptut reaches bottom
+				 * OFF= halt text output at lower right char.
+				 */
+#define WPUTN2RN	0x10	/* ON = translate \n into \r\n. (like ANSI C)
+				 * OFF= no carriage return. like TurboC cputs
+				 */
+#define WPUTALARM	0x08	/* ON = sound alarm for \a.
+				 * OFF= no alarm.  NOTE: ON is not implemented at present. 
+				 */
+#define	WPUTATTR	0x04	/* ON = char. following \a is an attribute
+				 * OFF= char following \a is an ordinary char
+				 * ONLY enabled if WPUTALARM is OFF
+				 */
+
+
+	/* definition for winflag.
+	 */
+#define WFL_CURSOR	0x80	/* ON = (text mode only) cursor is on.
+				 * OFF= cursor is off.
+				 * ONLY set by wcursor() routine.
+				 * DO NOT set this yourself.
+				 */
+
+
+/* flags to govern function of wgets()
+ *	these are described in funcs.doc
+ */
+	#define WGETS_FORM	0x80	/* used internally by wscanform */
+	#define WGETS_INT	0x40	/* accept integer input only, +- signs OK */
+	#define WGETS_DEC	0x60	/* accept integers and a single decimal pt*/
+	#define WGETS_SKIP	0x10	/* auto return when buffer is filled */
+
+
+
+
+/* WLOCATION  structure:
+ *	this structure contains info for helping to locate a window
+ *	if values are placed here they affect the location of windows
+ *  The macro wsetlocation() simplifies use.
+ *	openned by wpromptc(), wprompts(), wpicklist(), wscanform()
+ *         or any other function that uses wlocate() to set its position.
+ *	values in this structure are reset after each call to wlocate()
+ *
+ *	EXAMPLES: 
+ *		wsetlocation ( WLOC_ATWIN, 3,4 )
+ *		wpromptc (...)		...prompt box located column 3 row 4 of curr win.
+ *
+ *		wsetlocation ( WLOC_CENTER, 0, -5 )
+ *		wlocate ( &l, &t, xmax, ymax );
+ *		wopen (l, t, xmax, ymax.....);  window set 5 rows above screen center
+ *	
+ *		wsetlocation ( WLOC_ATXY, 0, 0 );
+ *		n= wpicklist (...);	... picklist displayed at current text location
+ */
+struct WLOCATION
+	{
+	int  wloc_x;		/* x,y offsets from above location	  */
+	int  wloc_y;
+	char wloc_type; 	/* type of location desired - see defines */
+	char wloc_reserved;	/* mainains word alignment */
+	};
+
+
+	#define WLOC_CENTER 	0	/* center next window onscreen */
+	#define WLOC_ATXY       1	/* place left/top at given position */
+	#define WLOC_ATWIN		2	/* place left/top relative to curr. window */
+	#define WLOC_ATCUR		3 	/* place left/top relative to curr position */
+
+
+
+
+
+
+
+
+
+
+
+
+ /*! MENUS
+  *  This is the table giving the layout of the main menus.
+  *  the text of the menu line is the first entry,
+  *  followed by a function to call, ptr to help text, and a nested menu
+  *
+  */
+struct _WMENU
+	{
+	char 			*mu_entry;      /*text for menu line */
+	void 			(*mu_func)(void);
+	char 			*mu_help;       /*help 		     */
+	struct 	_WMENU 	*mu_menu;       /*nested menu        */
+	unsigned char 	*mu_enable;	/*0=disable this entry*/
+	int           	mu_highlight;   /*which letter (0-n) to highlight */
+	int				mu_key;		/*keypress to select this one     */
+	};
+
+typedef struct _WMENU  WMENU;
+
+
+
+
+
+/* FORMS
+ *	data input routine, driven by a table - 
+ *	see the function wscanform() for more info.
+ *	see DEMOFORM.C for examples.
+ *  
+ */
+struct _WFORM
+	{
+
+	char 		*wflabel;	/* identifying text */
+	void 		*wfuser;	/* pointer to user data area */
+	char 		**wfpick;	/* optional - pointer to picklist */
+
+	char 		*wformat;	/* % format for printf/scanf
+					 		 */
+
+					 /* the next entry is a user-supplied
+					  * field validation function
+					  */
+	int 		(*wfvalidate)(struct _WFORM *, char *);
+
+	unsigned char 	wflen;		/* number of bytes incl. term. null*/
+	unsigned char   wfspecial;	/* internal use */
+
+	unsigned char 	wfx;		/* x,y co-ords of start of data item */
+	unsigned char 	wfy;
+
+
+	};
+
+typedef struct _WFORM WFORM;
+
+
+
+	/* automatic generation of entries for string, int, float data
+	 * assuming no user validation or pickllist functions
+	 * and default lengths for numeric data
+	 *
+	 * all that's left to specify is x,y
+	 */
+#define  WFORMENTRY_S(xx)  #xx,  xx, NULL, "%s", NULL, sizeof(xx), 0
+#define  WFORMENTRY_I(xx)  #xx, &xx, NULL, "%i", NULL, 6,          0
+#define  WFORMENTRY_F(xx)  #xx, &xx, NULL, "%f", NULL, 12,         0
+
+
+
+
+
+
+
+
+
+/*! wmouse - structure contains info about where the mouse was
+ * 		at the time of the last call to wgetc()
+ *		wms_left & right tell how many times the buttons were hit
+ *		   since the last call to wgetc().
+ *
+ *	If the mouse was used, wgetc() returns key == MOUSE, then check this.
+ */
+typedef struct _WMOUSE
+	{
+	int 	wms_xmickey,			/*mouse position in mickeys (internal use)*/
+			wms_ymickey;
+
+	int 	wms_px, wms_py;			/* pixel coords relative to window */
+
+	int 	wms_pxabs, wms_pyabs;	/* pixels in abs.screen coords*/
+
+	int		wms_x, wms_y;			/* text-based position in window */
+
+	int 	wms_xabs, wms_yabs;  	/* text-based absolute  coords*/
+
+	/* mouse flags -- zero if false, non-zero if true.
+	 *
+	 *	note:
+	 *        wms_present: if non-zero, tells number of mouse buttons
+	 *	  wms_used: see defines below to tell how mouse was used
+	 *		    but you'll never see WMS_RIGHT because it's
+	 *			changed to ESCAPE automatically.
+	 *
+	 *
+	 */
+	unsigned char 	wms_present,	/* was a mouse detected            */
+					wms_used,	/* was mouse used since last call  */
+					wms_inwindow,	/* is mouse in current window      */
+					wms_internal;	/* internal use */
+	} WMOUSE;
+
+
+
+
+
+	/* defined values for wmouse.wms_used
+	 * 	these are valid only after call to wgetc() (or wreadc())
+	 *	they are reset after each call.
+	 *
+	 * NOTE wgetc 'maps' the right mouse button to the ESCAPE key
+	 *	so calling programs should not test for WMS_RIGHT_BUTTON
+	 */
+
+
+	/* defined values for wmouse.wms_used
+	 */
+
+		/*------- recent button release ------*/
+
+	#define	WMS_LEFT_RLS	0x01
+
+	#define WMS_CENTER_RLS	0x02
+
+		/*------ mouse mvt with Left or Center button held down --------*/
+
+	#define WMS_MOVED	 	0x04
+
+		/*------ recent button press --------*/
+
+	#define WMS_LEFT_PRS	0x08
+
+	#define WMS_CENTER_PRS 	0x10
+
+	#define WMS_RIGHT_PRS 	0x20		/* mostly internal use only */
+
+	#define WMS_RIGHT_RLS	0x80		/* mapped to key==ESCAPE by wgetc()
+										 * only seen if use wmouse_location()
+										 * directly
+										 */
+
+
+/* WOBJECT_D_ART  - data for control of mouse drawing
+ * Only available in Turbo C
+ * This structure is allocated once in each call to wdraw()
+ * contains description of object that was drawn by mouse.
+ */
+
+typedef struct
+	{
+	char	wdr_type;			/* see defines listed below */
+	char 	wdr_filler;
+	int 	wdr_linestyle;
+	int 	wdr_thickness;
+	int 	wdr_color;
+	int		wdr_x1, wdr_y1;		/* start or center co-ords (@button press)*/
+	int	 	wdr_x2, wdr_y2;		/* end co-ords			   (@button release)*/
+	}
+	WOBJECT_D_ART;
+
+	/* definitions apply to wdr_type.
+	 */
+	#define WDR_LINE		'l'
+	#define WDR_RECT		'r'
+	#define WDR_XHAIR   	'x'
+	#define WDR_VERT 		'v'
+	#define WDR_HORZ		'h'
+	#define WDR_SQUIGGLE 	's'
+
+
+
+
+
+
+/* definition of macro names table
+ * see wmacro_ functions for use.
+ * and DEMOMACR for example.
+ */
+typedef char WMACRO_NAMES[10][9];
+
+
+
+/*---------------------- global variables. -------------------------*
+ *
+ *  these are declared extern unless WINDOW_GLOBALS is defined
+ *
+ *  NOTE: defined in order of alignment precedence.
+ *	  so it doesn't matter if you compile with -a on or off
+ *
+ *------------------------------------------------------------------*/
+
+
+	/* pointer to currently active window
+	 * and to original, fullscreen window openned by winit()
+	 * EXAMPLE 	w0-> winxmax gives last valid x value in current window
+	 *			w0-> winattr  = BLUE  sets new text attribute
+	 *			w0-> winleft  gives screen co-ord of left edge of window
+	 *
+	 * wfullscreen is a fullscreen window. The system will never remove it
+	 *			calls to wclose() referencing this are ignored.
+	 * 	EXAMPLE:
+	 *		... say a 4x5 window is now open.
+	 *		wreopen (wfullscreen);
+	 *		wgoto (0,0);
+	 *		wputs ("text will appear on top line of screen");
+	 *		wbury ();		...place wfullscreen on bottom of stack
+	 *		... the 4x5 window is again the current window.
+	 */
+	extern 	WINDOW  	*(w0);				/* current (most recent) window */
+
+	extern  WINDOW		*(wfullscreen);		/* first window = fullscreen */
+
+
+	/* global ptr to current help string.
+	 *	change this to a help string when the topic changes.
+	 *	These changes are handled by wpulldown() and wscanform()
+	 *	The 'help string' is the key to the helpfile.
+	 *	See winstall_help() or DEMOMENU.C for example.
+	 */
+	extern  char 		*whelp_ptr;
+
+
+
+
+	/* tab width (default is 8, user may change at any time)
+	 */
+	extern  int 			wtabwidth;
+	
+	
+	/* wcurscanln - cursor scan lines. 
+	 *  Controls size of text-mode cursor. Lines numbered 0=top, 13=bottom.
+	 *
+	 * 	high order byte is top line of cursor (0 to character size)
+	 *	low byte is final line of cursor.
+	 *
+	 * 	for CGA, automatically is set by winit('T') to 0x0607
+	 *	for EGA/VGA/HERC/MDA, defaults to 0x0C0D (lines 12 to 13)
+	 *	to change cursor to a block, reset this to 0x000D (EGA/VGA/HERC/MDA)
+	 *			 or 0x0007 (CGA)
+	 *	Other combinations can be used, to get 'half-cell' cursors etc...
+	 *	
+	 *  For 43 or 50 line modes, cursor size is automatically changed
+	 *		( to 0x0607 )
+	 *  and changed back again when returning to 25-line mode (and at exit)
+	 * 
+	 *  Changing this global variable only takes effect 
+	 *	the next time cursor is turned ON using wcursor (ON).
+	 *  
+	 */
+	extern unsigned int wcurscanln;
+
+
+
+	/* screen size, in characters co=ords (even in graphics modes
+	 * the number of the first row/column is 0/0
+	 * the number of the last row/column  is wyabsmax /wxabsmax
+	 * loop control logic should be like this:
+	 *	for (row=0; row <= wyabsmax; ++row) {process each row}
+	 * the actual screen size if wxabsmax+1 by wyabsmax+1.
+	 * 
+	 * set by system, do not change.
+	 */
+	extern  int 		wxabsmax, wyabsmax;
+
+
+
+	/* graphics- specific values -- not used in text-mode functions.
+	 *	these values give number of pixels-1 in a screen
+	 *	(start count at 0....n-1.)
+	 */
+	extern  int 		wpxabsmax, wpyabsmax;
+
+
+
+
+	/* wlocate - data for auto-locating windows
+	 */
+	extern struct  WLOCATION wlocation;
+
+
+
+
+
+
+	/* mouse
+	 */
+	extern WMOUSE wmouse;
+
+
+
+	/* graphics
+	 *     wpath_BGI = path name for BGI interface.
+	 *		   default is "C:\\TC"
+	 *		   If needed, change before calling winit()
+	 *     wpxchar, wpychar = pixels per character in x,y directions
+	 */
+	extern  char		*wpath_BGI;	/* path to BGI drivers */
+	#define wpxchar		8
+	#define wpychar		8
+
+
+	/*  whome_dir = 
+	 * 		pointer to a 'home directory'
+	 *		The online help system looks here for help files.
+	 *		Default is current directory.
+	 *		The max length of this string is WDIRLEN bytes (=40)
+	 */
+	#define WDIRLEN 40
+	extern char *whome_dir = "\0";		/* Null for home directory = current */
+
+
+
+	/* video mode and type of monitor
+	 *	Note these 'simplified' definitions
+	 *	wmode is either 'T' for text or 'G' for graphics
+	 *	wmonitor is 'H' for hercules, 'E' for EGA, etc...
+	 *
+	 */
+	extern 	char  		wmode;		/* 'T' or 'G' */
+	extern  char 		wmonitor;	/* 'H' 'E' 'V' or 'C' */
+	extern char 	wega256;		/* 1= ega has 256k of RAM, 0=less avail */
+
+	/* page number
+	 * 	In programs that plan to use multiple video pages,
+	 *	call winit_pages() rather than winit()
+	 *
+	 *	wlastpage is #-1 of display pages available to you.
+	 *		highest valid number is wlastpage.
+	 *
+	 * 	wnextpage affects the NEXT window openned,
+	 *       	and doesn't actually change the display
+	 *		just sets where in the screen buffers the output goes
+	 *
+	 *	wneedpage  is set internally by winit_pages ()
+	 *		tells the graphics initializing routine
+	 *		that a video mode should be selected that allows
+	 *		multiple paging. DEFAULT is OFF.
+	 *		only affects VGA monitors, selects 0x10 or 0x12
+	 *
+	 *	when a new window is openned, wopen() checks wnextpage
+	 *		and changes the active page pointers
+	 *		( wreopen() and wclose() do the same )
+	 *		( so will wlink() and wunlink() when they're done )
+	 *		(TURBO C BGI programs - also calls setactivepage() )
+	 *	use wturnpage () setvisualpage() to set the visual page.
+	 */
+	extern  unsigned char 	wlastpage;
+	extern 	unsigned char 	wnextpage;
+
+	extern  unsigned char   wneedpage;
+
+
+
+
+	/* colors for menus, menu box, buttons...
+	 */
+	extern  unsigned char 	wmenuattr,
+				wmenuboxattr,
+				wbuttonattr,
+				whelpattr,
+				wformattr;
+
+	/* table giving all the different border styles
+	 * see definition of struct WBOX_PATTERN, above
+	 * use the _BORDER definitions as subscripts to access these
+	 * example: the character to draw a double vertical line is:
+	 *	wbox[DOUBLE_BORDER].vert
+	 */
+	extern const struct WBOX_PATTERN wbox[];
+
+
+
+	/* globals used by the wgetc() routines
+	 *
+	 *   wunget_buffer == used by wungetc() and wgetc()
+	 *			NOTE this buffer can hold only one key.
+	 *
+	 *   wkeytrap ()   == a user-definable function to examine keystrokes
+	 *			before they are returned from wgetc()
+	 *
+	 *			This routine could do whatever you want
+	 *			...dispatch a menu whenever
+	 *			         an ALT_letter combination is pressed
+	 *                      ...convert all lower case keys to upper
+	 *			...change video display pages in response to
+	 *				user pressing PAGE_UP or PAGE_DOWN
+	 *			...halt the program in response to CTRL_F10
+	 *			parameter passed by wgetc() to function:
+	 *			    key value
+	 *			return code expected by wgetc() from func:
+	 *			    new key value to replace old one with
+	 *			    or zero to reject this key
+	 *			    ...and get another
+	 *
+	 *
+	 *   wpipein ()   == a user-definable function that provides input
+	 *			instead of keyboard/mouse.
+	 *   		     if this funciton is non-NULL, wgetc() calls it
+	 *			for each keystroke rather than calling wreadc
+	 *   wpipeout ()  == a user-definable function to record each key
+	 *			value that is returned to the caller.
+	 *
+	 *	NOTES: 	1) the keytrap routines are called after the pipes.
+	 *		2) the keytrap routine should 'chain' to other traps.
+	 *
+	 *		3) the input pipe has to de-install itself
+	 *		   immediately after the last character is returned.
+	 *
+	 *		4) see the routines wpipefin() and wpipefout()
+	 *		   for sample pipes.
+	 *
+	 */
+	extern int 	wunget_buffer;
+
+	extern int 	(*wkeytrap)( int );
+
+	extern int	(*wpipein )( void );
+	extern void	(*wpipeout)( int  );
+
+
+/*-------------------- end of DATADEF.DOC -------------------------*/
+
+
+
+
+
+
+
+
+
+
+
+
+

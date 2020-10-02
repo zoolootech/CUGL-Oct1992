@@ -1,0 +1,110 @@
+
+typedef struct vga_info_block { /* VESA SuperVGA Subfunction 00h    */
+   char VESASignature[4];       /* "VESA" signature, NOT terminated */
+   short VESAVersion;           /* VESA version number              */
+   char far *OEMStringPtr;      /* Points to OEM signature string   */
+   long capabilities;           /* Capabilities (reserved)          */
+   short far *VideoModePtr;     /* VESA modes supported, zero-term. */
+   short TotalMemory;           /* Number of 64K blocks, v1.1 ONLY! */
+   char Reserved[236];          /* Reserved area, do not use!       */
+   } VgaInfoBlock;
+
+typedef struct mode_info_block { /* VESA SuperVGA Subfunction 01h   */
+   short ModeAttributes;         /* flags                           */
+   char WinAAttributes;          /* Window "A" attributes           */
+   char WinBAttributes;          /* Window "B" attributes           */
+   short WinGranularity;         /* Window granularity in Kb        */
+   short WinSize;                /* Window size in Kb               */
+   unsigned short WinASegment;   /* Segment normally at A000h       */
+   unsigned short WinBSegment;   /* Segment normally at A000h       */
+   void (far *WinFuncPtr) ();    /* shortcut call to Subfunction 05h*/
+   short BytesPerScanLine;       /* Bytes per scan line             */
+
+   /* Optional info present only if bit 1 of ModeAttributes is set: */
+   short XResolution;            /* Horizontal resolution           */
+   short YResolution;            /* Vertical resolution             */
+   char XCharSize;               /* Character cell width            */
+   char YCharSize;               /* Character cell height           */
+   char NumberOfPlanes;          /* Number of memory planes         */
+   char BitsPerPixel;            /* Bits per pixel                  */
+   char NumberOfBanks;           /* Number of banks (CGA/Herc)      */
+   char MemoryModel;             /* Memory model type               */
+   char BankSize;                /* Bank size in Kb                 */
+   char NumberOfImagePages;      /* Display page count, v1.1 ONLY!  */
+   char CurrentImagePage;        /* Current Image page, v1.1 ONLY!  */
+   char Reserved[225];           /* Reserved area, do not use!      */
+   } ModeInfoBlock;
+
+#define VIDEO_INT         0x10  /* General video services INT       */
+#define SVGA_SUPPORT      0x4F  /* SuperVGA functions for INT 10h   */
+#define VESA_SIGNATURE   "VESA"
+#define SVGA_INFO_BLOCK   256   /* Returned by subfunction 00h      */
+
+#define VESA_VER_100     0x100  /* Minimum VESA version available   */
+#define VESA_VER_110     0x110  /* Required for some fields         */
+
+/* SuperVGA subfunctions (AL=??) */
+
+#define SVGA_INFO         0x00  /* Return SuperVGA Information      */
+#define SVGA_MODE_INFO    0x01  /* Return SuperVGA Mode Information */
+#define SVGA_SET_MODE     0x02  /* Set SuperVGA Mode                */
+#define SVGA_GET_MODE     0x03  /* Get SuperVGA Mode                */
+#define SVGA_SAVE_RESTORE 0x04  /* Save or Restore SVGA Mode        */
+#define SVGA_CPU_VID_WIN  0x05  /* Set SuperVGA CPU Video Mem Win   */
+#define SVGA_LOG_LINE_LEN 0x06  /* Set SuperVGA CPU Video Mem Win   */
+#define SVGA_DISP_START   0x07  /* Set SuperVGA CPU Video Mem Win   */
+
+
+/* Flags returned in ModeAttributes, subfunction 00h */
+
+#define SVGA_MODE_HARDWARE  0x01  /* Mode supported by this monitor?*/
+#define SVGA_MODE_EXTENDED  0x02  /* Is extend information present? */
+#define SVGA_MODE_BIOS      0x04  /* BIOS support for this mode?    */
+#define SVGA_MODE_COLOR     0x08  /* Is this a color/mono mode?     */
+#define SVGA_MODE_GRAPHICS  0x10  /* Is this a graphics/text mode?  */
+
+/* Flags returned in Win?Attributes, subfunction 00h */
+
+#define SVGA_WIN_SUPPORTED  0x01  /* Is window supported in mode?   */
+#define SVGA_WIN_READABLE   0x02  /* Is window readable in mode?    */
+#define SVGA_WIN_WRITEABLE  0x04  /* Is window writeable in mode?   */
+
+/* Flag used by SetSVGAMode, subfunction 02h */
+
+#define DONT_CLEAR_MEMORY_FLAG   0x8000 /* High bit of BX */
+#define CLEAR_MEMORY_FLAG        0x0000 /* High bit of BX */
+
+/* Flags used by SaveSVGAMode and RestoreSVGAMode, subfunction 04h */
+
+#define SVGA_VIDEO_STATE_HARD     0x01 /* as used in CX register */
+#define SVGA_VIDEO_STATE_BIOS     0x02
+#define SVGA_VIDEO_STATE_DAC      0x04
+#define SVGA_VIDEO_STATE_SVGA     0x08
+#define SVGA_VIDEO_STATE_ALL      0x0F
+
+#define SVGA_SR_GET_BUFFER_SIZE      0x00 /* as used in DL register */
+#define SVGA_SR_SAVE_VIDEO_STATE     0x01
+#define SVGA_SR_RESTORE_VIDEO_STATE  0x02
+
+/* Flags used by SelectSVGAMemoryWindow, and GetSVGAMemory Window,
+   subfunction 05h */
+
+/* Window numbers */
+#define WINDOW_A    0x00
+#define WINDOW_B    0x01
+
+/* Sub-subfunction numbers */
+#define SVGA_VID_WIN_SELECT 0x00  /* as used in BH register */
+#define SVGA_VID_WIN_GET    0x01
+
+#define SVGA_LOG_LINE_SELECT 0x00 /* as used in BL register */
+#define SVGA_LOG_LINE_GET    0x00
+
+#define SVGA_DISP_START_SET 0x00  /* as used in BL register */
+#define SVGA_DISP_START_GET 0x00
+
+/* Error returns from C interface routines */
+
+#define VESA_OK                    0x004F /* Function executed normally */
+#define ERROR_VESA_NOT_SUPPORTED  -1  /* Not supported by driver    */
+#define ERROR_VESA_NO_SIGNATURE   -2  /* Signature string mismatch  */

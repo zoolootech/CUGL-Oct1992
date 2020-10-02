@@ -1,0 +1,230 @@
+Figure 3.
+
+/******************************************************************************
+ * LISTBOX.C
+ */
+
+#define LINT_ARGS
+
+#include <stdio.h>
+#include <windows.h>
+#include "listbox.h"
+
+HANDLE    hInst;                        /* Global Instance Handle           */
+
+long FAR PASCAL MainFormWndProc(HWND, unsigned, WORD, LONG);
+BOOL FAR PASCAL CustomerMaintenance(HWND, unsigned, WORD, LONG);
+BOOL FAR PASCAL CustomerEdit(HWND, unsigned, WORD, LONG);
+
+char Account[7];
+char Name[40];
+
+/*****************************************************************************
+ * WinMain()
+ */
+int PASCAL WinMain(hInstance, hPrevInstance, CmdLine, CmdShow)
+    HANDLE hInstance,hPrevInstance;
+    LPSTR CmdLine;
+    int CmdShow;
+    {
+    WNDCLASS WndClass;
+    HWND hWnd;
+    MSG msg;
+
+    hInst=hInstance;                             /* Store Instance handle   */
+
+    /*
+     * Register Main Form Window Class
+     */
+    if (!hPrevInstance){
+       WNDCLASS WndClass;
+       WndClass.lpszClassName = (LPSTR)"techspec5";
+       WndClass.hInstance     = hInstance;
+       WndClass.lpfnWndProc   = MainFormWndProc;
+       WndClass.style         = CS_HREDRAW | CS_VREDRAW;
+       WndClass.hbrBackground = GetStockObject(WHITE_BRUSH);
+       WndClass.hIcon         = NULL;
+       WndClass.lpszMenuName  = "MAINMENU";
+       WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+       WndClass.cbClsExtra    = NULL;
+       WndClass.cbWndExtra    = NULL;
+       if (!RegisterClass(&WndClass))
+          return(NULL);
+       }
+
+    /*
+     * Create MainForm Window
+     */
+    hWnd = CreateWindow("techspec5",         /* window class name       */
+                        "Listbox Example Program", /* window caption    */
+                        WS_OVERLAPPEDWINDOW, /* window style            */
+                        0,                   /* initial x position      */
+                        0,                   /* initial y position      */
+                        CW_USEDEFAULT,       /* initial x size          */
+                        0,                   /* initial y size          */
+                        NULL,                /* parent window handle    */
+                        NULL,                /* window menu handle      */
+                        hInstance,           /* program instance handle */
+                        NULL);               /* create parameters       */
+    if (!hWnd)
+      return (NULL);
+    /*
+     * Message Loop
+     */
+    while (GetMessage(&msg,NULL,0,0)){   
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+        }
+    return(msg.wParam);
+    }
+/****************************************************************************
+ * MainFormWndProc()
+ */
+long FAR PASCAL MainFormWndProc(hWnd, message, wParam, lParam)
+  HWND hWnd;
+  unsigned message;
+  WORD wParam;
+  LONG lParam;
+  {
+  switch (message){
+     case WM_CREATE:
+          ShowWindow(hWnd,SW_SHOWNORMAL);
+          UpdateWindow(hWnd);
+          break;
+     case WM_COMMAND:
+          switch(wParam){
+             case IDM_CUSTMAINT:
+                  DoDialog(hInst,hWnd,"CUSTOMERMAINTENANCE",CustomerMaintenance);
+                  break;
+             case IDM_EXIT:
+                  DestroyWindow(hWnd);
+                  break;
+             }
+          break;
+     case WM_DESTROY:
+          PostQuitMessage(0);
+          break;
+     default:return(DefWindowProc(hWnd,message,wParam,lParam));
+     }
+  return (NULL);
+  }
+/****************************************************************************
+ * DoDialog
+ */
+int DoDialog(HANDLE hInst,HWND hWnd, char *Resource, FARPROC lpProc){
+   FARPROC lpfn;
+   BOOL ret;
+   lpfn = MakeProcInstance(lpProc, hInst);
+   ret = DialogBox(hInst, Resource, hWnd, lpfn);
+   FreeProcInstance(lpfn);
+   return(ret);
+   }
+/****************************************************************************
+ * CustomerMaintenance()
+ */                            
+BOOL FAR PASCAL CustomerMaintenance(HWND hDlg,unsigned message,WORD wParam,LONG lParam){
+  static char buf[100];
+  int i,y;
+  long ListItem;
+  switch (message){
+     case WM_INITDIALOG:
+          y=ID_NAME;
+          for(i=ID_ACCOUNT;i<=ID_ACCOUNT+4;i++){
+              LoadString(hInst,i,Account,6);
+              LoadString(hInst,y++,Name,39);
+              sprintf(buf,"%-6.6s %-s",Account,Name);
+              SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_ADDSTRING,0,(LONG)(LPSTR)buf);
+              }
+          SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_SETCURSEL,0,0L);
+          return(FALSE);
+     case WM_CLOSE:
+          SendMessage(hDlg,WM_COMMAND,ID_OK,0L); 
+          break;
+     case WM_COMMAND:
+          switch(wParam){
+             case ID_DELETE:
+                  ListItem=SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_GETCURSEL,0,0L);
+                  if(ListItem==-1L)
+                     break;
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_GETTEXT,(WORD)ListItem,(LONG)(LPSTR)buf);
+                  sprintf(Account,"%-s",buf);  
+                  sprintf(buf,"Delete Account# %-s ?",Account);
+                  MessageBeep(0);
+                  if (MessageBox(hDlg,buf,"Confirm",MB_OKCANCEL|MB_ICONQUESTION)==IDCANCEL)
+                      break;
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_DELETESTRING,(WORD)ListItem,0L);
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_SETCURSEL,(WORD)max(ListItem-1L,0L),0L);
+                  break;
+             case ID_ADD:
+                  Account[0]=NULL;
+                  if (DoDialog(hInst,hDlg,"CUSTOMEREDIT",CustomerEdit)){
+                     sprintf(buf,"%-6.6s %-s",Account,Name);
+                     SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_ADDSTRING,0,(LONG)(LPSTR)buf);
+                     }
+                  break;
+             case ID_LISTBOX:
+                  if (HIWORD(lParam)!=2)
+                     break;
+             case ID_EDIT:
+                  ListItem=SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_GETCURSEL,0,0L);
+                  if(ListItem==-1L)
+                     break;
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_GETTEXT,(WORD)ListItem,(LONG)(LPSTR)buf);
+                  sprintf(Account,"%-6.6s",buf);  
+                  sprintf(Name,"%-s",buf+7);  
+                  if (DoDialog(hInst,hDlg,"CUSTOMEREDIT",CustomerEdit)){
+                        sprintf(buf,"%-6.6s %-s",Account,Name);
+                        SendMessage(GetDlgItem(hDlg,ID_LISTBOX),WM_SETREDRAW,FALSE,0L);
+                        SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_DELETESTRING,(WORD)ListItem,0L);
+                        SendMessage(GetDlgItem(hDlg,ID_LISTBOX),WM_SETREDRAW,TRUE,0L);
+                        SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_INSERTSTRING,(WORD)ListItem,(LONG)(LPSTR)buf);
+                        }
+                  SendMessage(GetDlgItem(hDlg,ID_LISTBOX),LB_SETCURSEL,(WORD)ListItem,0L);
+                  break;
+             case ID_OK:
+                  EndDialog(hDlg,TRUE);
+                  break;
+             default:return(FALSE);
+             }
+          break;
+     default:return(FALSE);
+     }
+  return(TRUE);
+  }
+/****************************************************************************
+ * CustomerEdit()
+ */                            
+BOOL FAR PASCAL CustomerEdit(HWND hDlg,unsigned message,WORD wParam,LONG lParam){
+  switch (message){
+     case WM_INITDIALOG:
+          if (Account[0]!=NULL){
+            SetWindowText(hDlg,"Edit Customer");
+            SetDlgItemText(hDlg,ID_ACCOUNT,Account);
+            SetDlgItemText(hDlg,ID_NAME,Name);
+            EnableWindow(GetDlgItem(hDlg,ID_ACCOUNT),FALSE);
+            }
+          else SetWindowText(hDlg,"Add Customer");
+          return(FALSE);
+     case WM_CLOSE:
+          SendMessage(hDlg,WM_COMMAND,ID_CANCEL,0L);
+          break;
+     case WM_COMMAND:
+          switch(wParam){
+             case ID_OK:
+                  GetDlgItemText(hDlg,ID_ACCOUNT,Account,7);
+                  GetDlgItemText(hDlg,ID_NAME,Name,21);
+                  EndDialog(hDlg,TRUE);
+                  break;
+             case ID_CANCEL:
+                  EndDialog(hDlg,FALSE);
+                  break;
+             default:return(FALSE);
+             }
+          break;
+     default:return(FALSE);
+     }
+  return(TRUE);
+  }
+
+
+

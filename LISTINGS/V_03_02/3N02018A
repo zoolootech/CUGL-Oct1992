@@ -1,0 +1,540 @@
+/* fader.c - main code for fader custom control */
+
+#include <windows.h>
+#include "fader.h"
+
+#define NO_DRAG              0    /* Values of FADER_THUMBSTATE */
+#define DRAG                 1
+
+#define FADER_THUMB_OFFSET   2    /* Distance in pixels from edge */
+
+/* Window extra bytes */
+#define FADER_RANGE          0    /* logical range values returned */
+#define FADER_VALUE          4    /* Current logical value */
+#define FADER_THUMBSTATE     6    /* DRAG or NO_DRAG */
+#define FADER_WNDEXTRA       8    /* Total # of window extra bytes */
+
+HANDLE hGlobFaderInstance = NULL;
+char szGlobControlName[] = "Fader";
+
+/* Forward declarations for completeness */
+
+static BOOL NEAR PASCAL RegisterControlClass (HANDLE hInstance);
+LONG FAR PASCAL FaderWndFn (HWND hWnd, WORD wMsg,
+            WORD wParam, LONG lParam);
+int GetThumbHeight(int iTotalHeight);
+void GetFaderThumbRect(HWND hWnd, LPRECT pRc, LPRECT pThumbRect,
+            int iCurPos);
+int  XlatPosPhysicalToLogical(LONG lLogRange, int iPhysMax,
+            int iPhysMin, int iCurPos);
+int  XlatPosLogicalToPhysical(LONG lLogRange, int iPhysMax,
+            int iPhysMin, int iLogPos);
+static void DrawCaret(HDC hDC, LPRECT lprc);
+static void PaintFader(HWND hWnd);
+
+/* These are DLL initialization and control functions */
+
+BOOL FAR PASCAL LibMain (HANDLE hModule, WORD wDataSeg,
+   WORD wHeapSize, LPSTR lpszCmdLine)
+{
+   hGlobFaderInstance = hModule;
+   if (wHeapSize != 0)  /* Moveable DS */
+      UnlockData(0);
+   return RegisterControlClass(hModule);
+}
+
+
+int FAR PASCAL WEP (int nSystemExit)
+{
+   UnregisterClass(szGlobControlName, hGlobFaderInstance);
+   return 1;                 /* never fails */
+}
+
+
+/* This function can be static if you only plan to use it
+   in a DLL */
+
+BOOL NEAR PASCAL RegisterControlClass (HANDLE hInstance)
+{
+   WNDCLASS wc;
+
+   wc.style         = CS_GLOBALCLASS | CS_HREDRAW | CS_VREDRAW;
+   wc.lpfnWndProc   = FaderWndFn;
+   wc.cbClsExtra    = 0;
+   wc.cbWndExtra    = FADER_WNDEXTRA;
+   wc.hInstance     = hInstance;
+   wc.hIcon         = NULL;
+   wc.hCursor       = LoadCursor(NULL, IDC_SIZENS);
+   wc.hbrBackground = COLOR_WINDOW + 1;
+   wc.lpszMenuName  = NULL;
+   wc.lpszClassName = szGlobControlName;
+   return RegisterClass(&wc);
+}
+
+
+/* This function is handy for sending the FDRN_... messages
+   back to the parent.  Note that FDRN_THUMBTRACK is disabled
+   unless FDRS_TRACK is enabled */
+
+static LONG NEAR PASCAL NotifyParent (HWND hWnd,
+   WORD wNotifyCode)
+{
+   BOOL bSend=TRUE;
+
+   if (wNotifyCode == FDRN_THUMBTRACK)
+      bSend = (BOOL) (GetWindowLong(hWnd, GWL_STYLE) & FDRS_TRACK);
+
+   if (bSend)
+      return SendMessage(GetParent(hWnd), WM_COMMAND,
+             GetWindowWord(hWnd, GWW_ID),
+             MAKELONG(hWnd, wNotifyCode));
+   else
+      return 0;
+}
+
+
+/* This is the main "window function" procedure, it is called
+   sometimes by the SDK Dialog box editor */
+
+LONG FAR PASCAL FaderWndFn (HWND hWnd, WORD wMsg,
+   WORD wParam, LONG lParam)
+{
+   LONG lResult = 0;
+   HDC hDC;
+   POINT pt;
+   RECT rc;
+   int iLogPos;
+   int iOldLogPos;
+   int iPhyPos;
+   int iMaxLog;
+   int iMinLog;
+   RECT thumb_rect;
+   LONG lLogRange;
+   int iThumbHalf;
+   HANDLE hNewBrush, hOldBrush;
+
+   switch (wMsg) {
+      case WM_CREATE:
+         SendMessage(hWnd, FDRM_SETRANGE, 0, MAKELONG(0, 100));
+         SendMessage(hWnd, FDRM_SETLOGVALUE, 0, 0);
+         break;
+
+      case WM_GETDLGCODE: /* interface query by dialog manager */
+         lResult = DLGC_WANTARROWS;
+         break;
+
+      case WM_PAINT:
+         PaintFader(hWnd);
+         break;
+
+      case WM_SETFOCUS: /* receiving the keyboard focus */
+      case WM_KILLFOCUS: /* losing the keyboard focus */
+            /* calculate update region */
+            GetClientRect(hWnd, &rc);
+            iLogPos = GetWindowWord(hWnd, FADER_VALUE);
+            GetFaderThumbRect(hWnd, (LPRECT)&rc, (LPRECT)&thumb_rect,
+               iLogPos);
+            if (thumb_rect.left == rc.left)
+               break;
+
+            /* force a repaint */
+            hDC = GetDC( hWnd );
+            if (hDC) {
+               /* define appropriate brush & text colors */
+               if (hNewBrush = (HBRUSH)SendMessage( GetParent(hWnd),
+                  WM_CTLCOLOR, hDC, MAKELONG(hWnd,CTLCOLOR_BTN) ) )
+                  hOldBrush = SelectObject(hDC,hNewBrush);
+               else
+                  hOldBrush = NULL;
+
+               /* draw caret */
+               DrawCaret(hDC, (LPRECT)&thumb_rect);
+
+               /* restore original brush */
+               if ( hNewBrush ) {
+                  SelectObject( hDC, hOldBrush );
+                  DeleteObject( hNewBrush );
+                  }
+
+               /* release display context */
+               ReleaseDC( hWnd, hDC );
+               }
+         break;
+
+      case WM_KEYDOWN:    /* process virtual key code */
+         GetClientRect(hWnd, &rc);
+         iLogPos = (int)GetWindowWord(hWnd, FADER_VALUE);
+         iOldLogPos = iLogPos;
+         lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+         iMaxLog = HIWORD(lLogRange);
+         iMinLog = LOWORD(lLogRange);
+
+         switch (wParam) {
+            case VK_HOME : /* home key */
+               iLogPos = iMinLog;
+               break;
+
+            case VK_END : /* end key */
+               iLogPos = iMaxLog;
+               break;
+
+            case VK_LEFT : /* cursor left key */
+            case VK_DOWN : /* cursor down key */
+               if (iLogPos < iMaxLog)
+                  iLogPos++;
+               break;
+
+            case VK_UP : /* cursor up key */
+            case VK_RIGHT : /* cursor right key */
+               if (iLogPos > iMinLog)
+                  iLogPos--;
+               break;
+
+            case VK_PRIOR : /* page up key */
+               iLogPos -= (iMaxLog - iMinLog) / 8;
+               if (iLogPos < iMinLog)
+                  iLogPos = iMinLog;
+               break;
+
+            case VK_NEXT : /* page down key */
+               iLogPos += (iMaxLog - iMinLog) / 8;
+               if (iLogPos > iMaxLog)
+                  iLogPos = iMaxLog;
+               break;
+
+            default : /* something else */
+               break;
+            }
+
+         if (iLogPos != iOldLogPos) /* did it change? */
+            {
+            SendMessage(hWnd, FDRM_SETLOGVALUE, iLogPos, 0);
+            NotifyParent(hWnd, FDRN_THUMBTRACK);
+
+            /* Invalidate old position */
+            GetFaderThumbRect(hWnd, (LPRECT)&rc,
+                 (LPRECT)&thumb_rect, iOldLogPos);
+            InvalidateRect(hWnd, (LPRECT)&thumb_rect, TRUE);
+
+            /* Invalidate new position */
+            GetFaderThumbRect(hWnd, (LPRECT)&rc,
+                (LPRECT)&thumb_rect, iLogPos);
+            InvalidateRect(hWnd, (LPRECT)&thumb_rect, TRUE);
+            }
+         break;
+
+      case WM_LBUTTONDOWN:
+         GetClientRect(hWnd, &rc);
+         iLogPos = GetWindowWord(hWnd, FADER_VALUE);
+         GetFaderThumbRect(hWnd, (LPRECT)&rc, (LPRECT)&thumb_rect, iLogPos);
+         pt = MAKEPOINT(lParam);
+         /* is the mouse in the "hot" rectangle? */
+         if ((thumb_rect.top <= pt.y) && (thumb_rect.bottom >= pt.y) &&
+            (thumb_rect.left <= pt.x) && (thumb_rect.right  >= pt.x)) {
+            SetWindowWord(hWnd, FADER_THUMBSTATE, DRAG);
+            hDC = GetDC(hWnd);
+            InvertRect(hDC, (LPRECT)&thumb_rect);
+            ReleaseDC(hWnd, hDC);
+
+            NotifyParent(hWnd, FDRN_THUMBTRACK);
+            /* grab focus if necessary */
+            if ( GetFocus() != hWnd )
+                SetFocus( hWnd );
+            /* Lock mouse on to this window */
+            SetCapture(hWnd);
+            }
+         break;
+
+      case WM_MOUSEMOVE:
+      case WM_LBUTTONUP:
+         /* Nothing to do if not in drag! */
+         if ((wMsg == WM_MOUSEMOVE) &&
+             (GetWindowWord(hWnd, FADER_THUMBSTATE) != DRAG) ) {
+            lResult = DefWindowProc(hWnd, wMsg, wParam, lParam);
+            break;
+            }
+
+         /* set the new current position and ask for redraw */
+         pt = MAKEPOINT(lParam);
+         GetClientRect(hWnd, &rc);
+         iLogPos = GetWindowWord(hWnd, FADER_VALUE);
+         lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+
+         /* Invalidate old position */
+         GetFaderThumbRect(hWnd, (LPRECT)&rc, (LPRECT)&thumb_rect, iLogPos);
+         InvalidateRect(hWnd, (LPRECT)&thumb_rect, TRUE);
+
+         iPhyPos = pt.y;
+         iThumbHalf = GetThumbHeight(rc.bottom)/2;
+         if (iPhyPos < iThumbHalf)
+            iPhyPos = iThumbHalf;
+         if (iPhyPos > rc.bottom-iThumbHalf)
+            iPhyPos = rc.bottom-iThumbHalf;
+
+         iLogPos = XlatPosPhysicalToLogical(lLogRange,
+            rc.bottom-iThumbHalf, rc.top+iThumbHalf, iPhyPos);
+         GetFaderThumbRect(hWnd, (LPRECT)&rc, (LPRECT)&thumb_rect, iLogPos);
+         InvalidateRect(hWnd, (LPRECT)&thumb_rect, TRUE);
+
+         SetWindowWord(hWnd, FADER_VALUE, iLogPos);
+         NotifyParent(hWnd, FDRN_THUMBTRACK);
+
+         if (wMsg == WM_LBUTTONUP) {
+            SetWindowWord(hWnd, FADER_THUMBSTATE, NO_DRAG);
+            NotifyParent(hWnd, FDRN_ENDFADER);
+            ReleaseCapture();
+            }
+         break;
+
+      case FDRM_SETRANGE:
+         GetClientRect(hWnd, &rc);
+         InvalidateRect(hWnd, (LPRECT)&rc, TRUE);
+         SetWindowLong(hWnd, FADER_RANGE, lParam);
+         break;
+
+      case FDRM_GETRANGE:
+         lResult = GetWindowLong(hWnd, FADER_RANGE);
+         break;
+
+      case FDRM_SETLOGVALUE:
+         GetClientRect(hWnd, &rc);
+         InvalidateRect(hWnd, (LPRECT)&rc, TRUE);
+         SetWindowWord(hWnd, FADER_VALUE, wParam);
+         break;
+
+      case FDRM_GETLOGVALUE:
+         lResult = GetWindowWord(hWnd, FADER_VALUE);
+         break;
+
+      case FDRM_GETPHYSVALUE:
+         GetClientRect(hWnd, &rc);
+         iThumbHalf = GetThumbHeight(rc.bottom)/2;
+         lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+         iLogPos = GetWindowWord(hWnd, FADER_VALUE);
+         lResult = (long) XlatPosLogicalToPhysical(lLogRange,
+            rc.bottom-iThumbHalf, rc.top+iThumbHalf, iLogPos);
+         break;
+
+      case FDRM_SETPHYSVALUE:
+         GetClientRect(hWnd, &rc);
+         iThumbHalf = GetThumbHeight(rc.bottom)/2;
+         lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+         iLogPos = XlatPosPhysicalToLogical(lLogRange,
+            rc.bottom-iThumbHalf, rc.top+iThumbHalf, wParam);
+         SetWindowWord(hWnd, FADER_VALUE, iLogPos);
+         InvalidateRect(hWnd, NULL, TRUE);
+         break;
+
+      default:
+         lResult = DefWindowProc(hWnd, wMsg, wParam, lParam);
+         break;
+   }
+   return(lResult);
+}
+
+
+
+/* This is a "helper" function which draws the entire fader */
+
+static void PaintFader(HWND hWnd)
+{
+   PAINTSTRUCT ps;
+   HANDLE  hOldPen;
+   HANDLE hNewBrush, hOldBrush;
+   HANDLE hMyParent;
+   RECT thumb_rect;
+   int x_center, y_coord;
+   int iLogPos;
+   int iPhyPos;
+   int iThumbHalf;
+   LONG lLogRange;
+   HDC hDC;
+   RECT rc;
+
+   /* Default system color is COLOR_BTNFACE  from WNDCLASS structure */
+   hDC = BeginPaint(hWnd, &ps);
+
+   GetClientRect(hWnd, &rc);
+
+   hOldPen = SelectObject( hDC,
+       CreatePen(PS_SOLID,1,GetSysColor(COLOR_WINDOWFRAME)) );
+
+   /* define appropriate brush & text colors */
+   hMyParent = GetParent(hWnd);
+   if (hNewBrush = (HBRUSH)SendMessage( hMyParent, WM_CTLCOLOR,
+      ps.hdc, MAKELONG(hWnd,CTLCOLOR_FADER) ) )
+      hOldBrush = SelectObject(ps.hdc,hNewBrush);
+   else
+      hOldBrush = NULL;
+
+   /* Draws with horizontal symmetry */
+   x_center = rc.right / 2;
+
+   /* draw fader slot (clockwise) */
+   MoveTo(hDC, x_center, 1);
+   LineTo(hDC, x_center+1, 2);
+   LineTo(hDC, x_center+1, rc.bottom-2);
+   LineTo(hDC, x_center, rc.bottom-1);
+   LineTo(hDC, x_center-1, rc.bottom-2);
+   LineTo(hDC, x_center-1, 2);
+   LineTo(hDC, x_center, 1);
+
+   /* draw gridlines (top to bottom, left to right) */
+   for (y_coord=3; y_coord < rc.bottom-3; y_coord+=3) {
+      /* Left half first */
+      MoveTo(hDC, 1, y_coord);
+      LineTo(hDC, x_center-1, y_coord);
+      /* Then right half */
+      MoveTo(hDC, x_center+2, y_coord);
+      LineTo(hDC, rc.right-1, y_coord);
+      }
+
+   /* draw filled box and then dividing line */
+   iThumbHalf = GetThumbHeight(rc.bottom)/2;
+   iLogPos = GetWindowWord(hWnd, FADER_VALUE);
+   lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+   iPhyPos =  XlatPosLogicalToPhysical(lLogRange, rc.bottom-iThumbHalf,
+            rc.top+iThumbHalf, iLogPos);
+
+   GetFaderThumbRect(hWnd, (LPRECT)&rc, (LPRECT)&thumb_rect, iLogPos);
+
+   /* restore original brush */
+   DeleteObject( SelectObject(hDC,hOldBrush) );
+
+   /* now go to 3D button face brush */
+   hOldBrush = SelectObject( hDC,
+      CreateSolidBrush(GetSysColor(COLOR_BTNFACE)) );
+
+   Rectangle(hDC, thumb_rect.left, thumb_rect.top,
+            thumb_rect.right, thumb_rect.bottom);
+
+   DeleteObject( SelectObject(hDC,hOldBrush) );
+   if (iThumbHalf > 2)  /* Big enough for 3D paint */
+      {
+      DeleteObject( SelectObject(hDC,hOldPen) );
+      hOldPen = SelectObject( hDC,
+         CreatePen(PS_SOLID,1,GetSysColor(COLOR_WINDOW)) );
+      MoveTo(hDC, thumb_rect.left+1, thumb_rect.bottom-1);
+      LineTo(hDC, thumb_rect.left+1, thumb_rect.top+1);
+      LineTo(hDC, thumb_rect.right-1, thumb_rect.top+1);
+      DeleteObject( SelectObject(hDC,hOldPen) );
+
+      hOldPen = SelectObject( hDC,
+         CreatePen(PS_SOLID,1,GetSysColor(COLOR_BTNSHADOW)) );
+      MoveTo(hDC, thumb_rect.right-1, thumb_rect.top+1);
+      LineTo(hDC, thumb_rect.right-1, thumb_rect.bottom-1);
+      LineTo(hDC, thumb_rect.left+1, thumb_rect.bottom-1);
+      }
+   /* restore original pen */
+   DeleteObject( SelectObject(hDC,hOldPen) );
+   DeleteObject( SelectObject(hDC,hOldBrush) );
+
+
+   EndPaint(hWnd, &ps);
+}
+
+
+
+/* Thumb height is magically 1/8th of window height */
+
+int GetThumbHeight(int iTotalHeight)
+{
+   return max(iTotalHeight/8, 2);
+}
+
+
+/* The fader button is always 1/8th the heighth of the window
+   and 1/2 the width of the window */
+
+void GetFaderThumbRect(HWND hWnd, LPRECT pRc,
+     LPRECT pThumbRect, int iLogPos)
+{
+   int x_center;
+   int iPhyPos;
+   int iThumbHalf;
+   LONG lLogRange;
+
+   lLogRange = GetWindowLong(hWnd, FADER_RANGE);
+   iThumbHalf = GetThumbHeight(pRc->bottom) / 2;
+   iPhyPos = XlatPosLogicalToPhysical(lLogRange,
+      pRc->bottom - iThumbHalf, pRc->top + iThumbHalf,
+      iLogPos);
+   x_center = pRc->right / 2;
+   pThumbRect->left   = x_center / 2;
+   pThumbRect->top    = iPhyPos - iThumbHalf;
+   pThumbRect->right  = (3 * x_center) / 2;
+   pThumbRect->bottom = iPhyPos + iThumbHalf;
+}
+
+
+/* This "helper" function maps from pixel coordinates to
+   logical positions */
+
+int XlatPosPhysicalToLogical(LONG lLogRange, int iPhysMax,
+            int iPhysMin, int iPhyPos)
+{
+   int iLogMin;
+   int iLogMax;
+   int iResult;
+   double dScale;
+
+   iLogMax = HIWORD(lLogRange);
+   iLogMin = LOWORD(lLogRange);
+   dScale = (double)(iPhysMax - iPhyPos) /
+            (double)(iPhysMax - iPhysMin);
+   iResult = (int) ((double)iLogMin + (iLogMax-iLogMin)*(1-dScale));
+   return iResult;
+}
+
+
+/* This "helper" function maps from logical positions to
+   physical pixel coordinates */
+
+int XlatPosLogicalToPhysical(LONG lLogRange, int iPhysMax,
+            int iPhysMin, int iLogPos)
+{
+   int iLogMin;
+   int iLogMax;
+   int iResult;
+   double dScale;
+
+   iLogMax = HIWORD(lLogRange);
+   iLogMin = LOWORD(lLogRange);
+
+   dScale = (double)(iLogMax - iLogPos) /
+            (double)(iLogMax - iLogMin);
+   iResult = (int) ((double)iPhysMin + (iPhysMax-iPhysMin)*(1-dScale));
+   return iResult;
+}
+
+
+
+/* The "caret" is a way of highlighting the controls which are
+   active and inactive.  Note that a ones-complement is used so we
+   don't need to know the previous state */
+
+void DrawCaret(HDC hDC, LPRECT lprc)
+{
+   HBRUSH      hOldBrush;
+   int iWidth;
+   int iHeight;
+
+   if (lprc->bottom - lprc->top < 4)
+      return;
+
+   /* initialize display context */
+   hOldBrush = (HBRUSH)SelectObject( hDC,
+      GetStockObject(GRAY_BRUSH) );
+
+   /* draw caret */
+   iWidth = lprc->right - lprc->left;
+   iHeight = lprc->bottom - lprc->top;
+
+   PatBlt( hDC, lprc->left+1, lprc->top+1, iWidth-2, 3, PATINVERT );
+   PatBlt( hDC, lprc->right-4, lprc->top+1, 3, iHeight-2, PATINVERT );
+   PatBlt( hDC, lprc->left+1, lprc->bottom-4, iWidth-2, 3, PATINVERT );
+   PatBlt( hDC, lprc->left+1, lprc->top+1, 3, iHeight-2, PATINVERT );
+
+   /* restore display context */
+   SelectObject( hDC, hOldBrush );
+}

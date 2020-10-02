@@ -1,0 +1,119 @@
+;
+; redira.asm:
+;
+; Assembly language version of redir() function,
+; to detect I/O redirection.
+; To assemble with TASM:
+;   tasm /mx redira
+;
+
+    NAME    redir
+
+NEARCODE    EQU 01H ; near function
+SMALLDATA   EQU 01H ; tiny, small, or medium memory model
+MOLASSES    EQU 1   ; define for Microsoft C or Turbo C, else comment out
+;USEPSP     EQU 1   ; use global _psp, comment out to use int 21h command 62h
+
+IFDEF   TINY
+    IFNDEF  NEARCODE
+        NEARCODE    EQU 01H
+    ENDIF
+    IFNDEF  SMALLDATA
+        SMALLDATA   EQU 01H
+    ENDIF
+ENDIF
+
+DGROUP  GROUP   _DATA
+_TEXT   SEGMENT PUBLIC BYTE 'CODE'
+        ASSUME  CS:_TEXT
+
+IFDEF   MOLASSES        ; Microsoft C and Turbo C
+PUBLIC  _redir
+    IFDEF   NEARCODE    ; if near function
+_redir  PROC    NEAR    ; unsigned char _near redir (void);
+    ELSE                ; if far function
+_redir  PROC    FAR     ; unsigned char _far redir (void);
+    ENDIF
+ELSE                    ; WATCOM C
+PUBLIC  redir_
+    IFDEF   NEARCODE    ; if near function
+redir_  PROC    NEAR    ; unsigned char __near redir (void);
+    ELSE                ; if far function
+redir_  PROC    FAR     ; unsigned char __far redir (void);
+    ENDIF
+ENDIF
+
+    PUSH    BX
+    PUSH    CX
+    PUSH    SI
+    PUSH    DI
+    PUSH    ES
+
+IFNDEF  TINY            ; If not COM file
+    PUSH    DS
+    IFDEF USEPSP        
+        MOV AX, __PSP   ; Use global _psp variable
+        MOV DS,AX
+    ELSE
+        MOV AH,62H      ; Undocumented Get PSP Segment
+        INT 21H
+        MOV DS,BX       ; Put PSP Segment in DS
+    ENDIF
+ENDIF
+
+    MOV SI,0034H        ; DS:SI points to pointer to File Handle Table
+
+    LES DI, DWORD PTR DS:[SI]
+
+;   MOV DI,WORD PTR DS:[SI]         ; Load ES:DI
+;   MOV ES,WORD PTR DS:[SI+02H]     ;  with address of File Handle Table
+
+IFNDEF  SMALLDATA       ; If compact, large, or huge memory model
+    MOV AX,SEG DGROUP   ;  put segment of table of default values
+    MOV DS,AX           ;   into DS
+ELSE                    ; If tiny, small, or medium memory model
+    IFNDEF  TINY
+    POP DS              ; Pointed to DGROUP when PUSHed
+    ENDIF
+ENDIF
+
+    MOV SI,OFFSET DGROUP:STDIN  ; pointer to default values in DS:SI
+    XOR AX,AX           ; Assume no redirection
+    MOV BX,01H          ; Set bit zero of handle_bit
+    MOV CX,0005H        ; There are five defaults
+
+TOP:
+    CMPSB       ; Compare handles to defaults
+    JE  SHIFT   ; If equal, prepare for next compare
+    OR  AX,BX   ;  else set bit in return value
+
+SHIFT:
+    SHL BX,1    ; Shift to set next bit of handle_bit
+    LOOP    TOP ; If not all standard devices checked, check next
+
+IFNDEF  SMALLDATA   ; If compact, large, or huge memory model
+    POP DS
+ENDIF
+
+    POP ES
+    POP DI
+    POP SI
+    POP CX
+    POP BX
+    RET
+
+IFDEF MOLASSES      ;Microsoft C and Turbo C
+_redir  ENDP
+ELSE
+redir_  ENDP
+ENDIF
+
+_TEXT   ENDS
+_DATA   SEGMENT BYTE PUBLIC 'DATA'
+STDIN   DB  01H ; CON:
+STDOUT  DB  01H ; CON:
+STDERR  DB  01H ; CON:
+AUXIO   DB  00H ; AUX:
+LSTOUT  DB  02H ; PRN:
+_DATA   ENDS
+    END

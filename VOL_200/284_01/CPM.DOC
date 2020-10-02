@@ -1,0 +1,158 @@
+Porting of CP/M for the portable 8080 system
+
+
+This documentation explains the porting of CP/M.  Since the BIOS part
+is already implemented (I tried to use C to implement the BIOS package
+as much as possible.), the porting procedures are centered on copying the real
+CP/M to the simulated environment. It is assumed that you have the standard
+CP/M (8 inch single sided single density), but in case you don't have that,
+you need to modify the procedures appropriately.
+
+First of all, you need to create the boot image of CP/M. This is 
+written in the track 0 and 1 in CP/M. Our virtual CP/M is
+a MSDOS file called "CPMxx.HEX". xx refers to the CP/M system size.
+For example, in a 20 KB system, it will be "CPM20.HEX" which is
+obviously Intel hexa format.
+
+You need to extract CCP and BDOS from 20K-CP/M. If you have the standard
+CP/M for Intel MDS, you can use as it is because it includes the
+system track of 20K-CP/M. If your system supports the standard CP/M format but
+it is not for a 20K-CP/M, you need to create 20K-CP/M using your CP/M.
+
+If you have 20K-CP/M, you first set the master floppy disk
+in the disk drive assigned as the physical drive under the virtual
+CP/M and execute these commands under MSDOS.
+
+	A>type nul > cpm20.com
+	A>i8080 -b getsys.hex -A . -B cpm20.com
+
+This operation copies the file CPM20.COM, which includes 20KB-CP/M, into a 
+MSDOS file.
+And then, execute 
+
+	A>mkhex 20
+
+As a result, a file CPM20.HEX is created. Note that a file BIOS20.HEX must
+exist in the current directory for this operation.
+CPM20.COM can be deleted after CPM20/HEX is created.
+
+Next, with the master disk in the drive, please execute the commands:
+
+	A>newdsk cpmsys.dsk
+	A>i8080 -b copyall.hex -A . -B cpmsys.dsk
+	A>cpmfile -d cpmsys.dsk -b -w halt.com
+
+This operation creates a virtual disk whose contents is the same as
+the CP/M master floppy disk. The program HALT.COM is a command to
+terminate the virtual CP/M and exit to MSDOS.
+
+With the procedures above, 20KB-CP/M is created. Please go on
+to the execution stage.
+
+If the CP/M size is different, you need to create 20KB-CP/M using MOVCPM.
+First, you need to make a copy of the standard CP/M master disk.
+The procedures described below use the copy.
+Under CP/M, please enter the commands:
+
+	A>MOVCPM 20 *
+
+In response, MOVCPM gives a message:
+
+	CONSTRUCTING 20K CP/M VERS 2.2
+	READY FOR "SYSGEN" OR
+	"SAVE 34 CPM20.COM"
+
+Now, you enter
+
+	A>SAVE 34 CPM20.COM
+
+Finally, a CP/M master floppy disk including 20KB-CP/M is created.
+
+You set this disk in the 8 inch disk drive assingned as the 
+physical disk drive under the virtual CP/M and execute the commands:
+
+	A>newdsk cpmsys.dsk
+	A>i8080 -b copyall.hex -A . -B cpmsys.dsk
+
+Note that i8080 command distinguishes upper-case and lower-case letters.	
+If this operation is successful, the size CPMSYS.DSK should be 249,600
+bytes. This file will be used as a CP/M virtual master disk after the 
+porting of CP/M is finished.  For the preparation, please execute the 
+command:
+
+	A>cpmfilie -b -w -d cpmsys.dsk halt.com
+
+The program HALT.COM is a command to terminate the virtual CP/M and exit
+to MSDOS.
+
+Next, you create CPM20.HEX. Under MSDOS, please enter
+
+	A>cpmfile -b -d cpmsys.dsk cpm20.com
+
+This operation extracts CPM20.COM including 20K-CP/M from CPMSYS.DSK.
+Now, input the command:
+
+	A>mkhex 20
+
+This operation creates CPM20.HEX. Note that BIOS20.HEX must exist in the
+current directory for this operation.
+CPM20.COM can be deleted after CPM20.HEX is created.
+
+Finally, you have 20KB-CP/M. Let's start running this.
+Please input the command below under MSDOS.
+
+	A>i8080 -b cpm20.hex -A cpmsys.dsk
+
+As a result, the prompt of the virtual CP/M will be displayed.
+( In this case, it is the same as MSDOS prompt.)
+Please try DIR and you will see the display format is different from MSDOS.
+Please make sure that you have HALT.COM in the drive A.
+
+	A>HALT  
+brings you back to MSDOS.
+
+Since CP/M runs with the procedures described above, you can change the size of 
+CP/M suitable for the memory size of your virtual environment. This procedure
+is the same as one described above. Please note that you need to change the
+definition in BIOS20.ASM corresponding to the memory size specified in MOVCPM
+and reassemble it. (You need to change the filename, too.)
+You should assemble under the virtual CP/M and copy the created .HEX file
+into MSDOS using cpmfile.
+
+If you want to change the floppy disk format, you need to change both a BIOS
+program under the virtual CP/M (BIOS20.ASM) and the BIOS simulator in i8080.
+In BIOS20.ASM, you need to change DPB, Disk Parameter Block. (Please
+refer to the CP/M manual about this.)
+From the new DPB table, you pick up two values, SPT (the number of logical
+sectors per track) and OFF (the number of tracks reserved for system),
+and define macros DPB_SPT and DPB_OFF in BIOS.H with these two values.
+
+To support a physical drive, you need to modify
+functions, x_rd and x_wr.  When you need a blocking in the floppy aceess,
+it would be better to  make a change to those functions rather
+than changing the entries of READ and WRITE in BIOS20.ASM.
+
+A change to the floppy format normally means a loss of
+portability in the virtual disk. You need to create the virtual system disk
+everytime. COPYALL, in this package,can't be used except with 8 inch single 
+sided and single density. If necessary, you have to modify for this, too.
+
+The standard CP/M is distributed with a single CPU license. The CP/M you 
+purchased is allowed for use only for a machine with one CPU. Therefore,
+you need to purchase the CP/M for your virtual CP/M. When porting
+CP/M, please not violate the copyright of Digital Research.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

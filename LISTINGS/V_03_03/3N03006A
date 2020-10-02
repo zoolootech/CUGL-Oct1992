@@ -1,0 +1,277 @@
+/*
+ File name:    FADER2.C
+ Description:  SDK Dialog Editor (DIALOG.EXE) support funcs.
+*/
+
+#include <windows.h>
+#include <custcntl.h>
+#include "fader.h"
+#include "dialog.h"
+
+/* Property string used internally for local handle of
+   CTLSTYLEDLG structure */
+static char szFaderCtlProp[] = "CtlDlgStyleData";
+extern HANDLE hGlobFaderInstance;
+extern char szGlobControlName[];
+
+/* Data structure used internally to access data in
+   the style dialog box function. */
+typedef struct {
+   GLOBALHANDLE hCtlStyle;    /* Handle holds CTLSTYLE */
+   LPFNSTRTOID  lpfnStrToId;  /* convert string to ID */
+   LPFNIDTOSTR  lpfnIdToStr;  /* convert ID to string */
+} CTLSTYLEDLG, FAR *LPCTLSTYLEDLG, NEAR *NPCTLSTYLEDLG;
+
+/* Forward declarations, for completeness */
+
+LPCTLSTYLE FAR PASCAL CtlStyleLock (HWND hDlg);
+VOID FAR PASCAL CtlStyleUnlock (HWND hDlg);
+WORD FAR PASCAL GetIdString (HWND hDlg, LPSTR szId,
+     WORD wIdMaxLen);
+DWORD FAR PASCAL PutIdValue (HWND hDlg, LPSTR szId);
+BOOL FAR PASCAL FaderDlgFn (HWND hDlg, WORD wMessage,
+     WORD wParam, LONG lParam);
+BOOL FAR PASCAL FaderDlgCmdFn (HWND hDlg, WORD wParam,
+     LONG lParam);
+
+
+GLOBALHANDLE FAR PASCAL FaderInfo (void)
+{
+   GLOBALHANDLE hCtlInfo = NULL;
+   LPCTLINFO lpCtlInfo; WORD wNumTypes;
+
+   hCtlInfo = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT,
+                        (DWORD) sizeof(CTLINFO));
+   if (hCtlInfo == NULL)
+      return NULL;
+   lpCtlInfo = (LPCTLINFO) GlobalLock(hCtlInfo);
+   lpCtlInfo->wVersion  = 0x0100;
+
+   /* Initialize wCtlTypes to zero */
+   lpCtlInfo->wCtlTypes = 0;
+   lstrcpy(lpCtlInfo->szClass, szGlobControlName);
+   lstrcpy(lpCtlInfo->szTitle, szGlobControlName);
+   wNumTypes = lpCtlInfo->wCtlTypes;
+   if (wNumTypes == CTLTYPES) {
+      GlobalUnlock(hCtlInfo);
+      return hCtlInfo;
+      }
+   lpCtlInfo->Type[wNumTypes].wType   = 0;
+   lpCtlInfo->Type[wNumTypes].wWidth  = 12;
+   lpCtlInfo->Type[wNumTypes].wHeight = 24;
+   lpCtlInfo->Type[wNumTypes].dwStyle = WS_BORDER
+                          | WS_CHILD | WS_TABSTOP;
+   lstrcpy(lpCtlInfo->Type[wNumTypes].szDescr,
+                            szGlobControlName);
+   lpCtlInfo->wCtlTypes++;
+   GlobalUnlock(hCtlInfo);
+   return hCtlInfo;
+}
+
+
+BOOL FAR PASCAL FaderStyle (HWND hWnd, GLOBALHANDLE hCtlStyle,
+   LPFNSTRTOID lpfnStrToId, LPFNIDTOSTR lpfnIdToStr)
+{
+   LOCALHANDLE hCtlStyleDlg;
+   NPCTLSTYLEDLG npCtlStyleDlg;
+   int x;
+
+   hCtlStyleDlg = LocalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,
+                                      sizeof(CTLSTYLEDLG));
+   if (hCtlStyleDlg == NULL)
+       return FALSE;
+   npCtlStyleDlg = (NPCTLSTYLEDLG) LocalLock(hCtlStyleDlg);
+   npCtlStyleDlg->hCtlStyle = hCtlStyle;
+   npCtlStyleDlg->lpfnStrToId = lpfnStrToId;
+   npCtlStyleDlg->lpfnIdToStr = lpfnIdToStr;
+   LocalUnlock(hCtlStyleDlg);
+
+   /* Associate property with Dialog Editor's window. */
+   SetProp(hWnd, szFaderCtlProp, hCtlStyleDlg);
+
+   /* Display control's Styles Dialog Box. */
+   x = DialogBoxParam(hGlobFaderInstance, "StyleDlg",
+                                hWnd, FaderDlgFn, 0);
+   /* Remove property associated with
+      Dialog Editor's window. */
+   RemoveProp(hWnd, szFaderCtlProp);
+
+   LocalFree(hCtlStyleDlg);
+   /* Return whether CTLSTYLE structure has been changed.*/
+   return x==IDOK;
+}
+
+
+BOOL FAR PASCAL FaderDlgFn (HWND hDlg, WORD wMsg,
+   WORD wParam, LONG lParam)
+{
+   BOOL bProcMsg = TRUE;
+   char szId[20];
+   LPCTLSTYLE lpCtlStyle;
+
+   switch (wMsg)
+      {
+      case WM_INITDIALOG:
+         /* Set the "EDIT" control with the name of
+            this control's ID. */
+         GetIdString(hDlg, szId, sizeof(szId));
+         SetDlgItemText(hDlg, ID_VALUE, szId);
+
+       /* Initialize check box w/Fader control's styles. */
+         lpCtlStyle = CtlStyleLock(hDlg);
+         SendDlgItemMessage(hDlg, ID_TRACK, BM_SETCHECK,
+            (BOOL) (lpCtlStyle->dwStyle & FDRS_TRACK), 1L);
+         CtlStyleUnlock(hDlg);
+         break;
+      case WM_COMMAND:
+         FaderDlgCmdFn(hDlg, wParam, lParam);
+         break;
+      default:
+         bProcMsg = FALSE;
+         break;
+   }
+   return bProcMsg;
+}
+
+
+BOOL FAR PASCAL FaderDlgCmdFn (HWND hDlg, WORD wParam,
+                                          LONG lParam)
+{
+   DWORD dwResult;
+   char szId[20];
+   LPCTLSTYLE lpCtlStyle;
+
+   switch(wParam)
+      {
+      case IDOK:
+/* Convert the string ID value to its numeric equivalent. */
+         GetDlgItemText(hDlg, ID_VALUE, szId, sizeof(szId));
+         dwResult = PutIdValue(hDlg, szId);
+
+/* If string ID not found or added, stay in Dialog box. */
+         if (LOWORD(dwResult) == 0)
+            break;
+
+         /* Calculate the new control's styles. */
+         lpCtlStyle = CtlStyleLock(hDlg);
+
+         /* Clear control-specific flags */
+         lpCtlStyle->dwStyle &= 0xFFFF0000L;
+
+         if (SendDlgItemMessage(hDlg, ID_TRACK,
+                                    BM_GETCHECK, 0, 0L))
+            lpCtlStyle->dwStyle |= FDRS_TRACK;
+
+         CtlStyleUnlock(hDlg);
+         EndDialog(hDlg, wParam);
+         break;
+      case IDCANCEL:
+         EndDialog(hDlg, wParam);
+         break;
+      case ID_VALUE:
+/* Disable IDOK button if no text exists in ID_VALUE box. */
+         if (HIWORD(lParam) == EN_CHANGE)
+            EnableWindow(GetDlgItem(hDlg, IDOK),
+               SendMessage(LOWORD(lParam), WM_GETTEXTLENGTH,
+               0, 0L) ? TRUE : FALSE);
+         break;
+      default:
+         return FALSE;
+         break;
+   }
+   return TRUE;
+}
+
+
+WORD FAR PASCAL FaderFlags (DWORD dwFlags, LPSTR szString,
+                                          WORD wMaxString)
+{
+   *szString = 0;
+   if (dwFlags & FDRS_TRACK)
+      lstrcat(szString, "FDRS_TRACK");
+   return lstrlen(szString);
+}
+
+
+LPCTLSTYLE FAR PASCAL CtlStyleLock (HWND hDlg) {
+   LOCALHANDLE hCtlStyleDlg;
+   NPCTLSTYLEDLG npCtlStyleDlg;
+   LPCTLSTYLE lpCtlStyle;
+
+   if ( (hCtlStyleDlg=GetProp(GetParent(hDlg),
+                     szFaderCtlProp)) == NULL)
+       return NULL;
+   npCtlStyleDlg = (NPCTLSTYLEDLG) LocalLock(hCtlStyleDlg);
+   lpCtlStyle = (LPCTLSTYLE) GlobalLock(
+                        npCtlStyleDlg->hCtlStyle);
+   LocalUnlock(hCtlStyleDlg);
+   return lpCtlStyle;
+}
+
+VOID FAR PASCAL CtlStyleUnlock (HWND hDlg) {
+   LOCALHANDLE hCtlStyleDlg;
+   NPCTLSTYLEDLG npCtlStyleDlg;
+
+   if ((hCtlStyleDlg=GetProp(GetParent(hDlg),
+                        szFaderCtlProp)) == NULL)
+      return;
+   npCtlStyleDlg = (NPCTLSTYLEDLG) LocalLock(hCtlStyleDlg);
+   GlobalUnlock(npCtlStyleDlg->hCtlStyle);
+   LocalUnlock(hCtlStyleDlg);
+}
+
+/* Convert number into ID string */
+WORD FAR PASCAL GetIdString (HWND hDlg, LPSTR szId,
+                                WORD wIdMaxLen) {
+   LOCALHANDLE hCtlStyleDlg;
+   NPCTLSTYLEDLG npCtlStyleDlg;
+   LPCTLSTYLE lpCtlStyle;
+   WORD wIdLen;
+
+   /* Property is associated with Dialog Editor's window.
+      Parent of the dialog box is the Dialog Editor. */
+   if (( hCtlStyleDlg=GetProp(GetParent(hDlg),
+                szFaderCtlProp)) == NULL)
+       return 0;
+
+   npCtlStyleDlg = (NPCTLSTYLEDLG) LocalLock(hCtlStyleDlg);
+   lpCtlStyle = (LPCTLSTYLE) GlobalLock(
+                                npCtlStyleDlg->hCtlStyle);
+   /* Call the lpfnIdToStr function to convert the numeric
+      ID to its string equivalent. */
+   wIdLen = (*npCtlStyleDlg->lpfnIdToStr)
+              (lpCtlStyle->wId, szId, wIdMaxLen);
+   GlobalUnlock(npCtlStyleDlg->hCtlStyle);
+   LocalUnlock(hCtlStyleDlg);
+   return wIdLen;
+}
+
+/* Convert ID string value to int and store in CTLSTYLE */
+DWORD FAR PASCAL PutIdValue (HWND hDlg, LPSTR szId) {
+   LOCALHANDLE hCtlStyleDlg;
+   NPCTLSTYLEDLG npCtlStyleDlg;
+   LPCTLSTYLE lpCtlStyle;
+   DWORD dwResult = 0;
+
+   if ((hCtlStyleDlg=GetProp(GetParent(hDlg),
+                szFaderCtlProp)) == NULL )
+      return NULL;
+   npCtlStyleDlg = (NPCTLSTYLEDLG) LocalLock(hCtlStyleDlg);
+
+   /* Call the lpfnStrToId function to convert the string
+      ID to its numeric equivalent. */
+   dwResult = (*npCtlStyleDlg->lpfnStrToId)(szId);
+
+   LocalUnlock(hCtlStyleDlg);
+
+   /* If LOWORD is zero, string NOT found. */
+   if (LOWORD(dwResult) == 0)
+      return dwResult;
+
+   /* LOWORD is not zero, numeric ID is in the HIWORD. */
+   lpCtlStyle = CtlStyleLock(hDlg);
+   lpCtlStyle->wId = HIWORD(dwResult);
+   CtlStyleUnlock(hDlg);
+   return dwResult;
+}
+

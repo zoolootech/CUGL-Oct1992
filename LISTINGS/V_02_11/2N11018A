@@ -1,0 +1,293 @@
+/* ----------------------------------------------------
+ *  LISTING 1
+ *
+ *  Filename:           bcache.c
+ *  Summary:            block cache manager functions
+ *  Author:             T.W. Nelson
+ *  Compile options:    
+ *  Version:            1.00
+ *  Date:               04-Sep-1991
+ *  Notes:
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ * ------------------------------------------------- */
+
+#include <stdio.h>
+#include <alloc.h>
+#include <dos.h>
+#include "bcache.h"
+#include <assert.h>
+
+//Pointer to default memory allocator function.
+//This pointer may be redirected to a customized
+//allocator via bc_setalloc() before calling
+//bc_open()........
+//
+static int (*allocp)(BCACHE *cp, int flag) = bc_alloc;
+
+int bc_open( BCACHE *cp,    //-> cache descriptor
+             int bmax,      //number of blocks
+             int bsize,     //size of each block
+             void (*proc)(), //processing function
+             idnt_t *idnt  )  //cache identifier
+{
+   /* Open and initialize block cache data
+    * structures
+    */
+
+    int i;
+    chdr_t *p;
+    chdr_t *q;
+
+    if( bmax < 2 )
+            return BC_NOBLOCKS;
+
+    cp->idnt = idnt;
+    cp->bsiz = bsize;
+    cp->bmax = bmax;
+    cp->proc = proc;
+    cp->hits = cp->miss = cp->adds = 0L;
+
+    if( (*allocp)( cp, ALLOCATE ) == BC_NOMEMORY )
+            return BC_NOMEMORY;
+
+    /* setup intial mfru/lfru chain .... */
+    cp->mfru = cp->head;
+    p = cp->mfru;
+    q = GROUND;
+
+    for( i = bmax; i ; i-- )    {
+            p->stat = RELEASE;
+            p->idnt = idnt;
+            p->bnum = -1L;
+            p->acc  = 0L;
+            p->prev = q;
+            q = p;
+            (size_t) p += BHDR_SIZE + bsize;
+            q->next = p;
+    }
+
+    q->next = GROUND;
+    cp->lfru = q;
+
+    return BC_NOERROR;          //success
+}
+
+int bc_setalloc( int (*user_alloc)() )
+{
+   /* Install a new memory allocator function
+    * for bc_open().
+    */
+
+    allocp = user_alloc;
+    return BC_NOERROR;
+}
+
+int bc_alloc( BCACHE *c,
+              int flag )    //alloc/dealloc flag
+{
+   /* Allocate cache memory on the heap using the
+    * given cache parameters. 'c->head' must be
+    * initialized to point to the allocated array.
+    * This is the default memory allocation method
+    * using malloc().
+    */
+
+    size_t mem;
+
+    if( flag == ALLOCATE )  {
+        mem = (c->bsiz+BHDR_SIZE) * c->bmax;
+
+        if((c->head = (chdr_t *) malloc( mem )) ==
+                                       (chdr_t *) 0 )
+                return BC_NOMEMORY;
+    }
+    else    {       //deallocate memory
+        #if defined(__SMALL__) || defined(__MEDIUM__)
+            free( (void *) FP_OFF(c->head) );
+        #else
+            free( (void *) c->head );
+        #endif
+    }
+
+    return BC_NOERROR;
+}
+
+int bc_free( BCACHE *c )
+{
+   /* Perform block postprocessing and free all
+    * cache memory
+    */
+
+    bc_flush(c);
+    (*allocp)( c, DEALLOCATE );
+    c->head = c->mfru = c->lfru = (bufp_t *) 0;
+
+    return BC_NOERROR;
+}
+
+int bc_search( BCACHE *c,       //-> cache descriptor
+               ulong bnum,      //block # (0-based)
+               bufp_t **bufptr) //-> buffer to assign
+{
+   /* Search for the given block number in the cache
+    * list.  Assign 'bufptr' to point to the found
+    * block buffer. Returns NOTFOUND if block number
+    * not present.
+    */
+
+    chdr_t *p = c->mfru;
+
+    for( ; p != GROUND; p = p->next ) {
+        assert( c->idnt == p->idnt );
+
+        if( p->bnum == bnum )   {   //found
+            c->hits++;
+            p->acc += c->bmax;
+            bc_insert( c, p );   //re-insert in chain
+            *bufptr = BLOCK_PTR(bufp_t,p);
+            return BC_NOERROR;
+        }
+    }
+
+    c->miss++;
+    *bufptr = (bufp_t *) 0;
+    return BC_NOTFOUND;
+}
+
+int  bc_insert( BCACHE *c,      //-> cache descriptor
+                chdr_t *p )     //block to re-insert
+{
+   /* Take the indicated block out of the chain
+    * and re-insert it in a new position based on
+    * its access count.
+    */
+
+    chdr_t *q;      //previous block
+    chdr_t *r;      //next block
+
+    if( p == c->mfru )     //already mfru, return
+            return BC_NOERROR;
+
+    //disconnect the block from the chain ...
+    q = p->prev;
+    r = p->next;
+    assert( q != GROUND );
+    q->next = r;
+
+    if( p == c->lfru )      //p is current lfru block
+            c->lfru = q;    //prev block is new lfru
+    else    {
+            assert( r != GROUND );  //not lfru!
+            r->prev = q;
+    }
+
+    //Search thru remaining chain for insertion point,
+    //decrementing all access counts by 1 on the way...
+    for(r = 0, q = c->mfru; q != GROUND; q = q->next) {
+            if( q->acc != 0L )
+                    --(q->acc);
+
+            if( r == 0 && (p->acc >= q->acc) )
+                    r = q;      //r = insertion point
+    }
+
+    //Insert 'p' between 'q' and 'r'.....
+    if( r == 0 )    {
+            //Insertion point is beyond current lfru.
+            //Re-connect 'p' as the new lfru.....
+            q = c->lfru;
+            q->next = p;
+            p->prev = q;
+            p->next = GROUND;
+            c->lfru = p;
+
+            return BC_NOERROR;
+    }
+
+    q = r->prev;            //back up one
+    p->next = r;
+    p->prev = q;
+    r->prev = p;
+
+    if( q == GROUND )
+            c->mfru = p;    //assign new mfru
+    else    {
+            q->next = p;
+    }
+
+    return BC_NOERROR;
+}
+
+int bc_addnew( BCACHE *c, ulong bnum, bufp_t **bufptr)
+{
+   /* A block was not found in the cache. Re-use the
+    * lfru block by re-numbering it and reinserting in
+    * the cache list. Assigned access count is bmax/2,
+    * which gives it lower priority than a cache hit,
+    * since there's no a priori reason to assume it's
+    * going to be accessed again.
+    */
+
+    chdr_t *p = c->lfru;
+
+    assert( p->next == GROUND );
+
+    // process block if marked ....
+    if( p->stat == MARK && c->proc )
+            (*(c->proc))( c->idnt, p->bnum,
+                            BLOCK_PTR( bufp_t, p ));
+    p->stat = RELEASE;  //free block for reuse
+    c->adds++;
+    p->acc = c->bmax/2; //assign usage cnt
+    p->bnum = bnum;     //re-number lfru
+    bc_insert( c, p );  //re-insert in chain
+    *bufptr = BLOCK_PTR(bufp_t,p);
+
+    return BC_NOERROR;
+}
+
+int bc_mark( BCACHE *c, ulong bnum, size_t flag )
+{
+   /* Find and mark/unmark a block.
+    * Marking a block defers processing (writing)
+    * for later.
+    */
+
+    chdr_t *p = 0;
+
+    for( p = c->mfru; p != GROUND; p = p->next ) {
+            assert( c->idnt == p->idnt );
+
+            if( p->bnum == bnum )   {   //found
+                    p->stat = flag;
+                    return BC_NOERROR;
+            }
+    }
+
+    return BC_NOTFOUND;
+}
+
+int bc_flush( BCACHE *c )
+{
+   /* Process and free all marked records.
+    */
+
+    chdr_t *p = 0;
+
+    if( !(c->proc) )
+            return BC_NOERROR;
+
+    for( p = c->mfru; p != GROUND; p = p->next ) {
+            assert( c->idnt == p->idnt );
+            (*(c->proc))( c->idnt, p->bnum,
+                            BLOCK_PTR( bufp_t, p ));
+            p->stat = RELEASE;
+    }
+
+    return BC_NOERROR;
+}
+
+/* ---- End of File -------------------------------- */

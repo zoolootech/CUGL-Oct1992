@@ -1,0 +1,113 @@
+;   TXTPLOT.CSM
+;   New txtplot function for BDS C library.:
+;	James Pritchett,  3/11/85
+;   Version 1.1, 6/14/85
+
+;	Format:
+;   int txtplot(string,x,y,tabsiz)
+;   char *string;
+;   int  x, y, tabsiz;
+
+;   "string" is a pointer to the line to be plotted, "x" and "y" are
+;   the screen coordinates to plot at, and "tabsiz" is the
+;   factor for tab expansion.
+
+;   Strings may be either null-terminated or CR-terminated.
+;   All control characters are ignored, except for tabs.
+;   Tabs are expanded to every "tabsiz" space.
+;   Parity is stripped.
+;   Lines extending beyond column 80 are truncated.
+;   Function returns the last column mapped.
+
+;   This function uses the values of "pbase" and "ysize" that are
+;   stored in C.CCC.  See TXTPLOT.DOC for details of how to
+;   set these parameters.
+
+	INCLUDE	"BDS.LIB"
+
+MAXCOL	EQU	80		; Screen width
+
+	FUNCTION TXTPLOT
+	CALL	ARGHAK		; Gets the args passed
+	PUSH	B		; 'cause Leor sez so
+	LHLD	ARG2		; = row number (x)
+	XCHG			; Row in DE
+	LHLD	YSIZE		; = number of columns (120)
+	CALL	USMUL		; X * 120 = beginning of row in memory
+	XCHG			; Store this in HL
+	LHLD	ARG3		; = column number (y)
+	MOV	C,L		; Store in C for now
+	DAD	D		; Y + (x * 120) = offset for location (x,y)
+	XCHG			; Put in DE
+	LHLD	PBASE		; Base of video ram
+	DAD	D		; Base + offset = location to begin mapping
+	XCHG			; Mapping address in HL
+	LHLD	ARG1		; = string address
+
+;at this point, C = colcount, DE = target, HL = source
+
+TXT0:
+	MOV	A,M		; Fetch the char
+	ANI	7FH		; Strip parity
+	CPI	' '		; Is it a control?
+	JC	TXT2		; If so, check it out
+	
+	STAX	D		; Else, map it
+	CALL	CHKCOL		; Check for end of screen
+	JZ	TXTEXIT		; Truncate if so
+TXT1:
+	INX	H		; Else, increment pointers
+	INX	D
+	JMP	TXT0		; And loop
+
+TXT2:
+	ORA	A		; Null is end of string
+	JZ	TXTEXIT
+	CPI	CR		; As is a CR
+	JZ	TXTEXIT
+	CPI	TAB		; Tabs are ok
+	JNZ	TXT1		; Skip all others
+
+TXTTAB:
+	PUSH	B		; We need these registers
+	LDA	ARG4		; Get the tabsiz
+	MOV	B,A		; And put into B
+	MOV	A,C		; A = current column
+TAB1:
+	CMP	B		; This is a modulus function
+	JC	TAB2
+	SUB	B
+	JMP	TAB1
+TAB2:
+	MOV	C,A		; C = column mod tabsiz
+	MOV	A,B		; A = tabsiz
+	SUB	C		; Tabsiz - (column mod tabsiz) = counter
+	POP	B		; All clear now
+	XCHG			; HL => video ram
+	MOV	B,A		; B = count, C = column
+TAB3:
+	MVI	M,' '		; Send a space
+	CALL	CHKCOL		; Don't go too far
+	JZ	TXTEXIT
+	INX	H		; Next map address
+	DCR	B		; Countdown
+	JNZ	TAB3		; Loop till count = 0
+	XCHG			; Return string pointer to HL
+	INX	H		; And increment it
+	JMP	TXT0		; All done with this tab
+
+TXTEXIT:
+	MOV	L,C		; Set HL to last column
+	MVI	H,0
+	POP	B		; Don't forget this
+	RET			; All done
+
+CHKCOL:
+	INR	C		; Bump column count
+	MVI	A,MAXCOL	; 80 cols in screen
+	CMP	C		; Check it out
+	RET			; Returns zero set on end of screen
+	ENDFUNC
+
+
+

@@ -1,0 +1,358 @@
+ LIB CCEQU.SYS
+ NAME CRTL
+*
+* 16 bit division
+*
+ GLOBAL ccdiv,ccmult
+ GLOBAL fopen,fclose,getc,putc,putchar,getchar,rewind,gets
+ GLOBAL exit
+ GLOBAL CCSWITCH
+*
+* D=X/D
+*
+ccdiv
+ CLR ADR31
+ STX ADR1
+ STD ADR2
+ CMPD #0
+ BNE ccd1
+ LDA #103
+ LBRA exi1
+ccd1 BGT ccd2
+ COM ADR31
+ COMA
+ COMB
+ ADDD #1
+ STD ADR2
+ccd2 LDD ADR1
+ CMPD #0
+ BGT ccd3
+ COM ADR31
+ COMA
+ COMB
+ ADDD #1
+ STD ADR1
+ccd3 LDA #16
+ STA ADR3
+ CLRA
+ CLRB
+DIVD ASL ADR1+1
+ ROL ADR1
+ ROLB
+ ROLA
+ CMPD ADR2
+ BLO NOSUB
+ SUBD ADR2
+ INC ADR1+1
+NOSUB DEC ADR3
+ BNE DIVD
+ TFR D,X
+ LDD ADR1
+ TST ADR31
+ BEQ ccd4
+ COMA
+ COMB
+ ADDD #1
+ccd4 RTS
+*
+* 16 bit multiplication
+*
+ccmult
+ STX ADR1
+ STD ADR2
+ CLR ADR3
+ CLR ADR3+1
+ LDA ADR1+1
+ LDB ADR2+1
+ MUL
+ STD ADR3+2
+ LDA ADR1
+ LDB ADR2+1
+ MUL
+ ADDD ADR3+1
+ STD ADR3+1
+ LDA ADR1+1
+ LDB ADR2
+ MUL
+ ADDD ADR3+1
+ STD ADR3+1
+ BCC NOCARRY
+ INC ADR3
+NOCARRY LDA ADR1
+ LDB ADR2
+ MUL
+ ADDD ADR3
+ TFR D,X
+ LDD ADR3+2
+ RTS
+ADR1 RMB 2
+ADR2 RMB 2
+ADR3 RMB 1
+ADR31 RMB 3
+*
+* file open routine
+*
+fopen
+*
+* I/O routines
+*
+* select FCB
+*
+ LDA #NOFILE get number of allowed files
+ LDB FCBPTR get file id pointer
+fop1 RORB search for free slot
+ BCC fop3 found
+ DECA try next
+ LBEQ foperr no free found
+ BRA fop1 else try again
+fop3 LDX #FCB-FCBSIZ found, get FCB adr
+ DECA
+ CLRB
+ ORCC #1 set carry flag
+fop2 LEAX FCBSIZ,X get next FCB
+ INCA
+ ROLB
+ CMPA #NOFILE found?
+ BNE fop2 no, try next one
+ STB ADR1 save flag
+ LDY 4,S get adr of filename
+ STY LBPTR store in line buffer ptr
+ CLRA replace \0 with CR
+FENDSTR CMPA ,Y+
+ BNE FENDSTR
+ LDA #13
+ STA ,-Y
+ JSR GETFIL check file name and set in FCB
+ BCS foperr
+fdefex LDA #1 set default extension to .TXT
+ JSR SETEXT
+fopen9 LDY 2,S get mode
+ LDA ,Y+ get first char of mode
+ ORA #$20 force lower case
+ STY ADR2 save adr
+ LDY #FMODE search for right mode
+fopen2 CMPA ,Y+
+ BEQ fopen3 found
+ LDB ,Y+
+ BNE fopen2
+ BRA foperr
+fopen3 LDA ,Y
+ STA ,X
+ TFR A,B
+ JSR FMS open file
+ BEQ fopok go if ok
+ CMPB #2 else if it exist already (write)
+ BNE foperr
+ LDA #12 delete file
+ STA ,X
+ JSR FMS
+ BNE foperr on error return 0
+*
+* now recover file name
+*
+ LDY 4,S
+ STY LBPTR
+ JSR GETFIL
+ LDA #2 and try again
+ STA ,X
+ JSR FMS
+ BNE foperr branch on error
+fopok LDB ADR2 get next char
+ CMPB #'b binary file access?
+ BNE FRTS yes
+ LDA #$FF indicate binary
+ STA 59,X
+FRTS LDA ADR1 recall flag
+ ORA FCBPTR set fcb in use
+ STA FCBPTR
+ TFR X,D give FCB address to program
+ RTS else return
+foperr LDD #0
+ RTS
+NOFILE EQU 4 number of files allowed
+FMODE EQU * file access mode
+ FCB 'r
+FREAD FCB 1
+ FCB 'w
+FWRITE FCB 2
+ FCB 'u
+FUPDATE FCB 3
+ FCB 'b
+FBIN FCB 4
+ FDB 0
+FCBPTR FCB 0 pointer to FCB
+FCBSIZ EQU 320 size of FCB
+FCB RMB FCBSIZ*NOFILE
+*
+* check if valid FCB
+* X=FCB , returns -1 in D if false
+*
+CHKFCB CMPX #FCB
+ BEQ CHKRET
+ CMPX #FCB+FCBSIZ
+ BEQ CHKRET
+ CMPX #FCB+FCBSIZ+FCBSIZ
+ BEQ CHKRET
+ CMPX #FCB+FCBSIZ+FCBSIZ+FCBSIZ
+ BEQ CHKRET
+ LDD #-1
+CHKRET RTS
+*
+* read character from file
+*
+getc
+ LDX 2,S get FCB adr
+ CMPX #3
+ LBLO getchar yes, standart device
+ BSR CHKFCB check if FCB is ok
+ LBMI foperr something was wrong
+ CLR ,X in FCB
+ JSR FMS
+ BNE getc1
+ TFR A,B
+ SEX
+ RTS
+getc1 LDA 1,X get error code
+ CMPA #8 end of file ?
+ LBNE foperr no, error
+ LDD #-1 else return EOF
+ RTS
+* 
+* put character to file
+*
+putc
+ LDX 2,S get FCB adr
+ CMPX #2
+ BHI putc1
+ LDA 5,S
+ BRA putcha1
+putc1 BSR CHKFCB
+ LBMI foperr
+ CLR ,X
+ LDA 5,S
+ JSR FMS
+ LBNE foperr
+ LDD #1
+ RTS
+*
+* close file
+*
+fclose
+ LDX 2,S
+ BSR CHKFCB
+ LBMI foperr
+ LDA #4
+ STA ,X
+ JSR FMS
+ LBNE foperr
+*
+* reset FCB pointer
+*
+ LDB #1
+ PSHS B
+ TFR X,D
+ SUBD #FCB
+ BEQ RESPTR
+L1 STD ADR1
+ PULS B
+ LSLB
+ PSHS B
+ LDD ADR1
+ SUBD #FCBSIZ
+ BEQ RESPTR
+ BRA L1
+RESPTR PULS B
+ EORB FCBPTR
+ STB FCBPTR
+ RTS
+*
+* rewind file
+*
+rewind
+ LDX 2,S
+ LBSR CHKFCB
+ LBMI foperr
+ LDA #5
+ STA ,X
+ JSR FMS
+ LBNE foperr
+ RTS
+*
+* exit program, calls FLEX warm start entry
+* and reports error
+*
+exit
+ LDD 2,S
+exi1 LDX #FCB
+ STA 1,X
+ JSR REPERR
+ JMP WARMS
+ RTS
+*
+* report error
+*
+reperr
+ LDX 2,S get FCB adr
+ JMP REPERR
+*
+* get character from keyboard
+*
+getchar
+ JSR GETCHR
+ TFR A,B
+ SEX
+ RTS
+*
+* write character to terminal
+*
+putchar
+ LDA 3,S get character
+putcha1 JSR PUTCHR
+ CMPA #13
+ BNE P1
+ LDA #10
+ JMP PUTCHR
+P1 RTS
+*
+* get line from keyboard
+*
+gets
+ LDX 2,S get adr of line
+gets1 BSR getchar get character in B
+ CMPB #8 delete ?
+ BNE gets2
+ LDA #$20
+ JSR PUTCHR
+ LDA #8
+ JSR PUTCHR
+ LDA ,-X
+ BRA gets1
+gets2 STB ,X+
+ CMPB #13 end of input?
+ BNE gets1 no
+ CLRA
+ STA ,-X
+ RTS
+*
+*  switch statement
+*
+* D = switch value
+* S = switch table
+*     FDB addr1, value1
+*     FDB addr2, value2
+*     ...
+*     FDB 0
+*     [JMP DEFAULT]
+*     continuation
+*
+CCSWITCH
+ PULS X get stack adr
+SWLOOP LDY ,X++ get address
+ CMPY #0 if 0
+ BEQ SWEND then it is the default
+ CMPD ,X++ else, if it is not the switch value
+ BNE SWLOOP try next one
+ JMP ,Y else we found it
+SWEND JMP ,X default exit
+ END
+

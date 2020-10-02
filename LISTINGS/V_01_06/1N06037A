@@ -1,0 +1,87 @@
+
+Listing 1
+
+unit scan;
+
+interface
+
+type
+	token_code =
+		(
+		TC_INT, TC_ADD, TC_SUB, TC_MUL, TC_DIV,
+		TC_EOL, TC_BAD, TC_EOF
+		);
+
+const
+	token_code_image : array [token_code] of string[7] =
+		(
+		'TC_INT', 'TC_ADD', 'TC_SUB', 'TC_MUL', 'TC_DIV',
+		'TC_EOL', 'TC_BAD', 'TC_EOF'
+		);
+
+var
+	int_value : integer;
+
+function get_token : token_code;
+procedure restart_scan;
+procedure start_scan;
+
+implementation
+
+const
+	TAB = chr(9);
+	LF = chr(10);
+	CR = chr(13);
+	EF = chr(26);
+	MINCHAR = chr(0);
+	MAXCHAR = chr(255);
+
+var
+	c : char;
+	xtable : array [char] of token_code;
+
+function get_token : token_code;
+	begin
+	while c in [' ', TAB, LF] do
+		read(c);
+	if c in ['0' .. '9'] then
+		begin
+		get_token := TC_INT;
+		int_value := 0;
+		repeat
+			int_value := 10 * int_value + ord(c) - ord('0');
+			read(c);
+		until not (c in ['0' .. '9']);
+		end
+	else
+		begin
+		get_token := xtable[c];
+		read(c);
+		end;
+	end;
+
+procedure restart_scan;
+	begin
+	while c <> LF do
+		read(c);
+	read(c);
+	end;
+
+procedure start_scan;
+	var
+		cx : char;
+	begin
+	for cx := MINCHAR to MAXCHAR do
+		xtable[cx] := TC_BAD;
+	xtable['+'] := TC_ADD;
+	xtable['-'] := TC_SUB;
+	xtable['*'] := TC_MUL;
+	xtable['/'] := TC_DIV;
+	xtable[CR] := TC_EOL;
+	xtable[EF] := TC_EOF;
+	read(c);
+	end;
+
+end.
+
+

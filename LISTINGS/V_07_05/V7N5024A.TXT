@@ -1,0 +1,145 @@
+Listing 1:
+
+/******************************************************************
+MEM.C
+
+By: Leonard Zerman
+Date: 02/05/1989
+Version: 1.00
+Revision: None
+Notice: Placed into the public domain by Leonard Zerman.
+
+******************************************************************/
+
+#include <stdlib.h>            /* malloc and free prototype*/
+
+#define LARGEST_ALLOC  Oxffef  /* 64k - 1 paragraph for alignment */
+#define SMALLEST_ALLOC Oxffef  /* single paragraph - 1*/
+
+/********************************************************************
+
+Syntax: memleft ();
+Parameters: None
+Prototype: long memleft (void);
+Returns: Number of bytes free for allocation with malloc.
+         Zero if none.
+Operation: The memleft function keeps allocating the 
+           largest chuncks of memory it can and 
+           stores the pointer in vptrarray.
+           If an allocation request is too large, 
+           it is cut in half and tried again.
+           This continues until request are smaller
+           than 1 memory paragraph.
+
+Source notes:
+*********************************************************************/
+long memleft (void)
+     {
+     int i:                        /* counter */
+     unsigned allocsize;           /* allocation block size */
+     long totalmem;                /* accumulates total */
+     void * vptr;                  /* temp pointer */
+     void * vptrarray [30];        /* holds all pointers */
+                                   /* make static if shy on stack */
+
+     i = 0;                        /* initialize counter */
+     totalmem = OL;                /* initialize accumulator */
+     allocsize = LARGEST_ALLOC;    /* large allocation number */
+     
+     while  (allocsize  > SMALLEST_ALLOC) /* while bytes left  to 
+                                             allocate */
+        {
+        if ((vptr = (void *) malloc(allocsize)) ! = (void *) 0)
+           {                       /* if not NULL pointer */
+           vptrarray[i} = vptr;    /* store pointer */
+           totalmem += allocsize;  /* add to total */
+           i++;
+           }
+        else                       /* if malloc failed */
+           allocsize /= 2;         /* try 1/2 the allocation */
+        }
+     for ( ; i ; i--)              /* for all valid pointers */
+         {
+         free (vptrarray[i -1]);   /* free in reverse order */
+         }
+     return(totalmem);             /* return total */
+     }
+
+
+/*****************************************************************/
+Syntax: memlargest ();
+Parameters: None
+Prototype: unsigned int memlargest (void);
+Returns: Size in bytes of the largest block malloc can return.
+Operation: The memlargest function tries to allocate a large 
+           block.  When successful it returns the size of that 
+           block.  If it can't allocate that size it reduces it`s 
+           request until it can.
+Source notes: Memory fragmentation during runtime can make this 
+              function return smaller and smaller sizes.           
+Anomaly: In small memory model memlargest may return a value 
+         slightly larger than memleft.  In that case, memlargest 
+         is more accurate.
+******************************************************************/
+
+unsigned int memlargest (void)
+     {
+     unsigned allocsize;
+     void * vptr;
+     
+     allocsize = LARGEST_ALLOC;    /* start with largest block */
+
+     while ((vptr = (void *) malloc(allocsize)) == (void *) 0 )
+       {                             /* while request is too large */
+       allocsize -= SMALLEST_ALLOC;  /* make request smaller */
+       if (allocsize < SMALLEST_ALLOC)
+          return (0);                /* not enough memory */
+       }
+     free (vptr);                   /* free pointer */
+     return (allocsize);            /* return size of largest block */ 
+     }
+
+
+
+
+
+
+
+
+
+
+   enum e_print_mode {
+       PRINT_START_ENLARGED ,
+       PRINT_STOP_ENLARGED,
+       PRINT_START_EMPHASIZED, 
+       PRINT_STOP_EMPHASIZED};         /* Defines printer modes */
+
+   void set_print_mode(printer, mode)
+   /* Set the printer mode */
+   FILE *printer;              /* Which file to output to */       
+   enum e_print_mode mode;     /* Which mode to output */
+       {
+       switch(mode)
+           {
+       case PRINT_START_ENLARGED:
+           fputc(14, printer);
+           break;
+       case PRINT_STOP_ENLARGED:
+           fputc(4, printer);
+           break;
+       case PRINT_START_EMPHASIZED:
+           fputc(27, printer);
+           fputc('E', printer);
+           break;
+       case PRINT_STOP_EMPHASIZED:
+           fputc(27, printer);
+           fputc('F', printer);
+           break;
+       default:
+           printf("\n BAD PRINT MODE ENCOUNTERED");
+           break;
+           }
+       return;
+       }   
+       
+       

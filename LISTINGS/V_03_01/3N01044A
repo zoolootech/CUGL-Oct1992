@@ -1,0 +1,185 @@
+{ LISTING 1 }
+{$M 2048,1024,R-,S-,D-,L-,N-,A-}
+Program Bye;
+
+   (* BYE.PAS - Quick Exit For Windows in Generic Windows API
+    * Written by Richard R. Sands in Turbo Pascal for Windows
+    *)
+
+   {$R BYE1}
+
+   USES
+     WinTypes, WinProcs;
+
+   CONST
+     AppName  = 'Bye';
+     Confirm  : Boolean = FALSE;  { Confirm Windows Shutdown? }
+
+     idm_Quit    = 100;  { Sys Message Command: Quit Windows }
+     idm_Confirm = 101;  { Sys Message Command: Confirm Exit }
+     idm_OS      = 102;  { Sys Message Command: Execute DOS Shell }
+     idm_About   = 103;  { Sys Message Command: Show About Dialog }
+
+{ -------------------------------------------------------------------------- }
+function About(Dialog: hWnd; Message, wParam: Word; lParam: Longint): Bool; EXPORT;
+  begin
+    About := True;
+    case Message of
+      wm_InitDialog: EXIT;
+      wm_Command   : if (wParam = id_Ok) or (wParam = id_Cancel) then
+                     begin
+                        EndDialog(Dialog, 1);
+                        EXIT
+                     end;
+    end;
+    About := False
+  end;
+
+{ -------------------------------------------------------------------------- }
+procedure DoAbout(Window:hWnd);
+  var AboutProc: tFarProc;
+  begin
+     AboutProc := MakeProcInstance(@About, hInstance);
+     DialogBox(hInstance, 'AboutBox', Window, AboutProc);
+     FreeProcInstance(AboutProc)
+  end;
+
+{ -------------------------------------------------------------------------- }
+Procedure SetConfirmState;
+  { Sets the [BYE]
+             Confirm=Y/N
+     WIN.INI setting }
+  var Buffer: Array[0..1] of char;
+  begin
+     if Confirm then Buffer[0] := 'Y'
+     else
+        Buffer[0] := 'N';
+     Buffer[1] := #0;  { Null terminate the String }
+     WriteProfileString(AppName, 'Confirm', Buffer);
+  end;
+
+{ -------------------------------------------------------------------------- }
+procedure Quit(Window: hWnd);
+  begin
+     if Confirm then
+     begin
+        MessageBeep(0);
+        if MessageBox(Window,'Are you sure you want to exit Windows?', 'Exit Windows?',
+                      mb_IconQuestion + mb_OkCancel) = id_Cancel then
+           EXIT
+     end;
+     SetConfirmState;   { Write our Confirm=Y/N entry in WIN.INI }
+     ExitWindows(0, 0)  { See 'ya }
+  end;
+
+{ -------------------------------------------------------------------------- }
+Procedure ToggleConfirm(Window : hWnd);
+  var SysMenu  : hMenu;
+  begin
+      SysMenu := GetSystemMenu(Window, FALSE);
+      Confirm := NOT Confirm;
+      if Confirm then
+         CheckMenuItem(SysMenu, idm_Confirm, mf_byCommand + mf_Checked)
+      else
+         CheckMenuItem(SysMenu, idm_Confirm, mf_byCommand + mf_UnChecked)
+  end;
+
+{ -------------------------------------------------------------------------- }
+function WindowProc(Window: hWnd; Message, WParam: Word; LParam: Longint): Longint; EXPORT;
+
+  { This is the main message handling routine.  If there is a System Menu
+    command, then wm_SysCommand is sent with the menu option.  Otherwise,
+    I check for a double click on the icon, which is sent as a
+    wm_QueryOpen message, as a signal to close Windows }
+
+  begin
+    WindowProc := 0;
+    case Message of
+      wm_SysCommand:
+          case wParam of
+            idm_About  : DoAbout(Window);
+            idm_Confirm: ToggleConfirm(Window);
+            idm_OS     : WinExec('Command.Com', sw_Normal);
+            idm_Quit   : Quit(Window);
+          end;
+      wm_QueryOpen:          { Double click on Icon }
+          begin
+              Quit(Window);
+              { If returns 0 then we cannot open - this suppresses the
+                restore window function }
+              EXIT
+          end;
+      wm_Destroy:
+          begin
+              SetConfirmState;  { Update WIN.INI with Confirm Setting }
+              PostQuitMessage(0);
+              EXIT
+          end;
+    end;
+    { For all messages we don't care about, they are handled by the
+      "default window process" }
+    WindowProc := DefWindowProc(Window, Message, wParam, lParam)
+  end;
+
+{ -------------------------------------------------------------------------- }
+procedure WinMain;
+  var Window  : hWnd;
+      Message : tMsg;
+      SysMenu : hMenu;
+      Buffer  : Array[0..1] of char;
+  const
+    WindowClass: tWndClass = (
+      style      : 0;
+      lpfnWndProc: @WindowProc;
+      cbClsExtra : 0;
+      cbWndExtra : 0;
+      hInstance  : 0;
+      hIcon      : 0;
+      hCursor    : 0;
+      hbrBackground: 0;
+      lpszMenuName : AppName;
+      lpszClassName: AppName);
+  begin
+    if hPrevInst = 0 then
+    begin
+      WindowClass.hInstance := hInstance;
+      WindowClass.hIcon := LoadIcon(hInstance, 'ICON');
+      WindowClass.hCursor := LoadCursor(0, idc_Arrow);
+      WindowClass.hbrBackground := GetStockObject(white_Brush);
+      if not RegisterClass(WindowClass) then Halt(255);
+    end
+    else
+       Halt(0);  { Only One Instance Allowed }
+    Window := CreateWindow(AppName, AppName,
+                  ws_OverlappedWindow,
+                  cw_UseDefault, cw_UseDefault, cw_UseDefault, cw_UseDefault,
+                  0, 0, hInstance, nil);
+
+    SysMenu := GetSystemMenu(Window, FALSE);
+
+    { Add Items to the System Menu }
+    AppendMenu(SysMenu, mf_SysMenu + mf_Separator, 0, NIL);
+    AppendMenu(SysMenu, mf_SysMenu, idm_Quit,    '&Exit Windows');
+    AppendMenu(SysMenu, mf_SysMenu, idm_Confirm, 'Confirm &Shutdown');
+    AppendMenu(SysMenu, mf_SysMenu, idm_OS,      '&Operating System');
+    AppendMenu(SysMenu, mf_SysMenu, idm_About,   '&About Bye...');
+
+    GetProfileString(AppName, 'Confirm', 'N', Buffer, sizeof(Buffer));
+    if Buffer[0] = 'Y' then
+       ToggleConfirm(Window);
+
+    ShowWindow(Window, sw_Minimize);  { This minimizes the window }
+
+    { The application's message loop }
+    while GetMessage(Message, 0, 0, 0) do
+    begin
+       TranslateMessage(Message);
+       DispatchMessage(Message)
+    end;
+    Halt(Message.wParam)
+  end;
+
+{ -------------------------------------------------------------------------- }
+begin
+   WinMain
+end.

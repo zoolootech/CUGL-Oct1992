@@ -1,0 +1,1458 @@
+
+
+						 
+
+
+
+
+		######	######		######	#######  #####
+		#     # #     # 	#     # #     # #     #
+		#     # #     # 	#     # #     # #
+		#     # ######		#     # #     # #
+		#     # #     #   ###	#     # #     # #
+		#     # #     #   ###	#     # #     # #     #
+		######	######	  ###	######	#######  #####
+			
+
+			#     #    #		 #####
+			#     #   ##		#     #
+			#     #  # #		      #
+			#     #    #		 #####
+			 #   #	   #	  ###	      #
+			  # #	   #	  ###	#     #
+			   #	 #####	  ###	 #####
+
+
+
+			  (c) 1987, 1990
+
+                              Ken Harris
+			      901 E. Hampton
+			      Milwaukee, WI  53217
+			      (414) 962-1961
+			      harris@cvax.cs.uwm.edu
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/****************************************************************************/
+/*                                                                          */
+/*      This software is made available on an AS-IS basis. Unrestricted     */
+/*      use is granted provided that the copyright notice remains intact.   */
+/*	The author makes no warranties expressed or implied; however, any   */
+/*	feedback is welcome.						    */
+/*                                                                          */
+/****************************************************************************/
+         
+
+	V1.2 Release Notes:
+	---- ------- -----
+
+	(1)  The DB_READ_LAST and DB_READ_PREV routines have been added
+	     to allow backwards traversal. The routines work for all three
+	     file types. DB_DELETE should not be used with these routines.
+	     The delete routine sets the current record pointer so that a
+	     subsequent DB_READ_NEXT will work correctly. A DB_READ_PREV
+	     loop with DB_DELETES will result in skipped records.
+								  
+
+	(2)  A number of bugs in the file create routine have been fixed.
+
+
+	(3)  A file corruption bug in the Index delete routine has been
+	     fixed.
+
+
+	(4)  The distribution has been divided into three separately
+	     compiled files. 
+
+
+	(5)  Large memory model now works correctly.
+
+
+	(6)  A lot of "warning" type problems have been cleaned up.
+
+	(7)  Just before releasing V1.2 Microsoft C V5.0 rolled in
+	     the door so I was able to fix a couple of problems. 
+	     There are still some warning messages while compiling
+	     db_main.c. This is the result of ",..." type declarations
+	     used to prevent type checking of the user_data argument.
+	     User programs don't have to type cast user_data to char*
+	     to avoid warnings.
+
+	(8)  I have avoided the temptation of using too many of the
+	     ANSI C extensions for those folks with old compilers.
+	     Also I'd rather not fill the code with a zillion IFDEF's.
+	     
+
+
+	V1.3 Release Notes:
+	---- ------- -----
+
+	(1)  A variable type file has been added. It is a sequential file
+	     with variable length records.
+
+	(2)  A simple object dictionary manager has been added. It works
+	     well for a small data base of non-homogeneous objects, for
+	     example setup data records.
+
+	(3)  The file descriptor pointer is now called DATA_FILE instead of
+	     DATA_SET. DATA_SET is still defined so that V1.2 programs
+	     will compile.
+
+	(4)  The db_create routine arguments have changed. An option
+	     string is now passed instead of a df_file_hdr pointer. This
+	     is much cleaner. It will require changing any V1.2 programs
+	     before they will work.
+
+	(5)  A number of routines now take an optional final record size
+	     argument. This is only required for VAR type files. It may
+	     be ignored for other file types.
+
+	(6)  Existing V1.2 data files should work with V1.3 routines.
+	     The first time the file is openned and updated the file
+	     version will be changed from 1.2 to 1.3.
+
+	(7)  Compiler conditionals have been added to DB_MAIN.C to
+	     bracket references to file-type specific routines. This
+	     makes it possible to build a library with support for
+	     only file types you need. The lexical variables are
+	     SEQ, RAN, IDX, VAR and ALL. So if SEQ is defined, then
+	     sequential file support is included, etc. Note that
+	     DB_DICT uses VAR files. If an attempt is made to access
+	     an unsupported file-type an error will occur. 
+
+	     Only the references to routines are IFDEFed. If you build
+	     a subset library you will probably get warning messages
+	     about some unreferenced variables. It's ok.
+
+	(8)  Compiler conditionals are used to bracket compiler specific
+	     code. The current conditionals are:
+		MSC   - Microsoft C
+		TURBO - Turbo C
+		SYSV  - Unix Sys V 
+
+	     In addition ANSI can be defined to use ANSI style function
+	     prototypes. You will probably want to edit #defines for
+	     your compiler and ANSI at the beginning of db.h.
+
+	(9)  A header file, dblib.h, has been added for building the
+	     library. It is not needed for application programs. It
+	     contains compiler specific includes and defines.
+
+	V1.3 Release Notes (cont):
+	---- ------- -----
+
+	(10) The header file contains references to DB_LINK routines.
+	     These are routines for linking records between files.
+	     They have not been included in the distribution.
+
+	(11) The routines memedt and stredt are no longer used by the
+	     db routines and have been removed from the distribution.
+
+	(12) The *test.c files are intended to provide a minimal test
+	     of the routines. If the the tests run to compeletion
+	     without crashing or generating a DB-ERROR then there is
+	     a good chance that you're in business. The tests are
+	     not necessarily good examples of using the routines.
+
+	(13) The routines have been built and tested on several
+	     different machines. Most of the development for v1.3
+	     was done under Ultrix on a VAXstation-2000 with gcc.
+	     It has also been sucessfully built using MSC 5.1 and
+	     Turbo C 2.0 under MSDOS and cc under Unix on a 3B1. 
+
+	     If your compiler is not one of these you should still 
+	     be able to build the routines without too much trouble.
+	     Search through the code for MSC 's and add an
+	     appropriate case for your compiler. 
+
+	(14) Note that although this code works fine on Unix systems,
+	     it is still single user. There is no support for record
+	     locking or file sharing. 
+
+        +----------+            -------------------               +----------+
+        | db_Intro |            - DB Introduction -               | db_Intro |
+        +----------+            -------------------               +----------+
+
+
+
+        o Description
+
+                    This document describes the DB package for maintaining
+            data files. The package consists of a library of file handling
+            routines which may be linked with user programs.
+
+            The following four file organizations are supported:
+
+               (1) Sequential - This file is a sequential stream of fixed
+				length records.
+
+               (2) Index      - Data records are stored in an ISAM type
+                                organization.
+
+               (3) Random     - Data records are stored using a hashed method.
+ 
+	       (4) Variable   - A sequential stream of variable length
+				records.
+                     
+
+            The following operations are supported:
+
+	 	   db_read_last         -  Read Last Record 
+	 	   db_read_prev         -  Read Prev Record
+         	   db_add               -  Add a New Record a File 
+         	   db_close             -  Close an Open Data Set
+         	   db_create            -  Create a New Data Set
+         	   db_delete            -  Delete the Current Record
+         	   db_dict_add          -  Dict Add Object
+         	   db_dict_close        -  Dict Close 
+         	   db_dict_delete       -  Dict Object Delete 
+         	   db_dict_delete_all   -  Dict Delete All 
+         	   db_dict_dump         -  Dict Dump to a File
+         	   db_dict_find         -  Dict Find Object
+         	   db_dict_find_all     -  Dict Find All 
+         	   db_dict_init         -  Dict Initialize
+         	   db_dict_load         -  Dict Load From File
+         	   db_error_msg         -  Get Error Message Text
+         	   db_find              -  Find a Record by Key   
+         	   db_get_rec_no        -  Get Relative Record # 
+         	   db_open              -  Open an Existing Data Set
+         	   db_read_atr          -  Read Attribute Data  
+         	   db_read_direct       -  Read by Record #   
+         	   db_read_first        -  Read First Record 
+         	   db_read_next         -  Read Next Record 
+         	   db_reorg             -  Reorganize Free Space
+         	   db_update            -  Update the Current Record
+         	   db_update_atr        -  Update Attribute Data 
+
+        +------+           -------------------------------           +------+
+        | db.h |           - Data Set Structures Defines -           | db.h |
+        +------+           -------------------------------           +------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+
+
+        o Description
+
+                This header file contains the definitions for the global
+                structures that are used by all of the DB routines. It 
+                should be included in any program that calls DB routines.
+                The user program needs only to declare DATA_FILE descriptor
+                pointers for the data files that are to be used. The
+                DATA_FILE descriptor pointer is used to refer to the data
+                files.
+
+
+                A global variable db_error is used to return a status
+                value after any call to a DB routine. The header file
+                includes constant declarations for db_error values. 
+                The user program can check for specific conditions
+                such as DB_END_OF_FILE. A function call db_error_msg()
+                can be used to get the error message text corresponding
+                to the value of db_error.
+
+        +--------+     ------------------------------------         +--------+
+        | db_add |     -  Add a New Record to a Data Set  -         | db_add |
+        +--------+     ------------------------------------         +--------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                ulong db_add(df, user_data, data_size)
+                  DATA_FILE  df;
+                  void     *user_data;
+		  int       data_size;
+
+
+
+        o Description
+
+                This function is used to add a new record to a data file.
+                The data file is specified by the input df and user_data
+                points to the data record to be added.
+
+                For Indexed and Random data files, the first field of the
+                data record (user_data) must contain the record key value.
+
+		For Variable data files, the data_size field contains the
+		size of the variable length user_data record. The field
+		is not used for the other file types.
+
+                The value of Current Record (used by db_read_next) is reset
+                to NONE by this operation.
+
+
+
+        o Returns
+
+                The relative record number of the new record is returned.
+                If an error occurs a zero value is returned and the global
+                db_error contains the error number.
+
+
+
+        +----------+         ----------------------------         +----------+
+        | db_close |         -  Close an Open Data Set  -         | db_close |
+        +----------+         ----------------------------         +----------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                DATA_FILE db_close(df)
+                  DATA_FILE  df;
+
+
+
+        o Description
+
+                This function terminates all processing for an open data file.
+                The associated file is closed and all dynamic storage is
+                released.
+
+
+
+        o Returns
+
+                The completion status of the function is returned in the
+		global db_error. The function itself returns a NULL pointer
+		value.
+
+        +-----------+         -------------------------         +-----------+
+        | db_create |         - Create a New Data Set -         | db_create |
+        +-----------+         -------------------------         +-----------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                DATA_FILE db_create(path, fname, options)
+                  char *path, *fname, *options;
+
+
+
+        o Description
+
+                This function is used to create a new data file. The inputs
+                are as follows:
+
+                     path    -  Path name of data directory
+                     fname   -  File name of new data file
+                     options -  Create options string 
+
+
+		The option string contains a list of create options
+		seperated by commas. The following options are supported:
+
+			SEQ	     - Sequential file organization 
+			RAN          - Random file organization
+			IDX          - Index file organization
+			VAR          - Variable file organization  
+			BLK    = nnn - Size of block 
+			REC    = nnn - Size of record
+			BASE   = nnn - Size of Random file base area
+				       (Should be a prime number)
+			KEY    = nnn - Size of the record key
+			ATR    = nnn - Size of Attribute block   
+			DUPS         - Duplicate record keys allowed
+			NODUPS       - Duplicate record keys NOT allowd
+
+
+				O P T I O N   T A B L E
+				===========   =========
+
+
+				+===============================+
+				|   -- File Organizations --    |
+		+===============+=======+=======+=======+=======+
+		|  - Options -  | SEQ   | RAN   | IDX   | VAR   |
+		+===============+=======+=======+=======+=======+
+		| SEQ		| REQ	| -	| -	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| RAN		| -	| REQ	| -	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| IDX		| -	| -	| REQ	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| VAR		| -	| -	| -	+ REQ	|
+		+---------------+-------+-------+-------+-------+
+		| BLK		| OPT	| OPT	| OPT	+ OPT	|
+		+---------------+-------+-------+-------+-------+
+		| REC		| REQ	| REQ	| REQ	+ REQ	|
+		+---------------+-------+-------+-------+-------+
+		| BASE		| -	| REQ	| -	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| KEY		| -	| REQ	| REQ	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| ATR		| OPT	| OPT	| OPT	+ OPT	|
+		+---------------+-------+-------+-------+-------+ 
+		| DUPS 		| -	| -	| OPT	+ -	|
+		+---------------+-------+-------+-------+-------+
+		| NODUPS	| -	| -	| OPT	+ -	|
+		+===============+=======+=======+=======+=======+
+		  REQ = Required   OPT = Optional  - = Doesn't Apply
+
+
+	o Examples:
+
+		df = db_create("c:\\data", "test.dat", "SEQ, REC=32");
+
+		df = db_create("", "test.dat", "RAN,REC=32,KEY=2,BASE=29");
+
+		df = db_create("", "test.dat", "IDX, REC=50, KEY=5");
+
+
+        o Returns
+
+                This function returns a pointer to the data file descriptor
+                block for the newly created data file. This value should be 
+                used for future references to the data file. The status of 
+                the data file is open.
+
+                The return status is available in the global db_error. If 
+                an error occurs the new data file is not created and a null
+                descriptor pointer is returned.
+
+        +-----------+      -------------------------------      +-----------+
+        | db_delete |      -  Delete the Current Record  -      | db_delete |
+        +-----------+      -------------------------------      +-----------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_delete(df)
+                  DATA_FILE  df;
+
+
+
+        o Description
+
+                This function is used to delete the Current Record from the
+                data file specified by df.
+
+                This function must be preceeded by some function that 
+                establishes the Current Record for the data file.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error. The Current Record
+                for the data file is reset to NONE.
+
+        +---------+           -------------------------           +---------+
+        | db_dict |           -  Dictionary Routines  -           | db_dict |
+        +---------+           -------------------------           +---------+
+
+
+
+        o Description
+
+		The dictionary routines can be used to maintain a simple
+		object dictionary. Objects are of arbitrary size and are
+		referenced by name and type. A dictionary may be dumped
+		to or loaded from a VAR file. If the DB_DICT routines are
+		to be used, VAR file support must be included in the
+		library.
+
+		A dictionary is memory resident. It makes a good place
+		to store a non-homogenous collection of objects (records).
+		
+
+		The following functions are supported:
+
+         	   db_dict_add          -  Dict Add Object
+         	   db_dict_close        -  Dict Close 
+         	   db_dict_delete       -  Dict Object Delete 
+         	   db_dict_delete_all   -  Dict Delete All 
+         	   db_dict_dump         -  Dict Dump to a File
+         	   db_dict_find         -  Dict Find Object
+         	   db_dict_find_all     -  Dict Find All 
+         	   db_dict_init         -  Dict Initialize
+         	   db_dict_load         -  Dict Load From File
+
+        +--------------+        ---------------------        +--------------+
+        | db_dict_init |        -  Dict Initialize  -        | db_dict_init |
+        +--------------+        ---------------------        +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                DICT db_dict_init() 
+
+
+
+        o Description
+
+		This function is used to create a new dictionary. It must
+		be called before any other dictionary routines.
+
+
+
+        o Returns
+
+		A pointer to the new dictionary is returned. If an error
+		occurs a NULL pointer is returned and db_error contains
+		the error code.
+
+        +---------------+          ----------------         +---------------+
+        | db_dict_close |          -  Dict Close  -         | db_dict_close |
+        +---------------+          ----------------         +---------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_dict_close(dict)
+		  DICT dict;
+
+
+
+        o Description
+
+                This function is used to close up the dictionary dict.
+		All allocated storage will be freed. The dict variable
+		should be set to NULL after a close.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error.
+
+        +-------------+         ---------------------         +-------------+
+        | db_dict_add |         -  Dict Add Object  -         | db_dict_add |
+        +-------------+         ---------------------         +-------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void *db_dict_add(dict, name, o_type, o_size, obj)
+		  DICT  dict;		/* Dictionary pointer		*/
+		  char *name;  		/* Name of the object		*/
+		  int   o_type;		/* Object type			*/
+		  int   o_size;		/* Object size			*/
+		  void *obj;		/* Pointer to the object	*/
+
+
+
+        o Description
+
+		This function is used to add a new object to a dictionary.
+		The dictionary is specified by dict. Name is the lookup
+		name for the object. The o_type is a user specified type 
+		which can be used to group like objects together. The o_size
+		is the size of the object in bytes. Obj is a pointer to
+		the object. If sucessful, a new object is created in the
+		specified dictionary and the contents of obj are copied
+		to it. 
+
+
+
+        o Returns
+
+		A pointer to the new object is returned. If an error occurs,
+		a NULL pointer is returned and db_error contains the error
+		code.
+
+        +----------------+    ------------------------     +----------------+
+        | db_dict_delete |    -  Dict Object Delete  -     | db_dict_delete |
+        +----------------+    ------------------------     +----------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_dict_delete(dict, name, o_type)
+		  DICT  dict;
+		  char *name;
+		  int   o_type;
+
+
+
+        o Description
+
+		This function is used to delete an object from the
+		dictionary dict. Name is the name of the object to
+		delete. O_type is the type of the object to delete.
+		There may be mutiple objects with the same name but
+		different types. If o_type is 0, then all types will
+		be deleted. If sucessful, the matching object(s) is
+		removed.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error. 
+
+        +--------------------+     ---------------     +--------------------+
+        | db_dict_delete_all |     Dict Delete All     | db_dict_delete_all |
+        +--------------------+     ---------------     +--------------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_dict_delete_all(dict, o_type)
+                  DICT  dict;
+		  int   o_type;
+
+
+
+        o Description
+
+                This function is used to delete all objects of type o_type
+		from the dictionary dict. If o_type is 0 then all objects
+		will be removed.
+
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error.
+
+        +--------------+      -------------------------      +--------------+
+        | db_dict_dump |      -  Dict Dump to a File  -      | db_dict_dump |
+        +--------------+      -------------------------      +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_dict_dump(dict, path, fname)
+		  DICT   dict;
+		  char  *path;
+		  char  *fname;
+
+
+
+        o Description
+
+                This function is used to dump the objects in a dictionary
+		dict to a file. The file is specified by path and fname.
+		A new VAR file will be created.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error.
+
+        +--------------+        ----------------------       +--------------+
+        | db_dict_find |        -  Dict Find Object  -       | db_dict_find |
+        +--------------+        ----------------------       +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void *db_dict_find(dict, name, o_type)
+		  DICT  dict;
+		  char *name;
+		  int   o_type;
+
+
+
+        o Description
+
+                This function is used to lookup an object in dictionary
+		dict. Name is the name of the object to look for and o_type
+		is the type. If o_type is 0 then the first matching object
+		of any type will be found.
+
+
+
+        o Returns
+
+		A pointer to the found object is returned. If no matching
+		object is found, a NULL pointer is returned and an error
+		code is placed in db_error.
+
+        +------------------+     -------------------     +------------------+
+        | db_dict_find_all |     -  Dict Find All  -     | db_dict_find_all |
+        +------------------+     -------------------     +------------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                int db_dict_find_all(dict, o_type, nlist, olist)
+                  DICT    dict;		/* Dictionary		*/
+		  int     o_type;	/* Object type		*/
+		  char ***nlist;	/* List of object names	*/
+		  void ***olist;	/* List of object ptrs	*/
+
+
+
+        o Description
+
+		This function is used to retrieve all the objects of type
+		o_type from dictionary dict. If o_type is 0, then all
+		types will be retrieved. The function allocates space and
+		creates a list of pointers to the object names and a list
+		of pointers to the objects themselves. Nlist and olist
+		will be updated to point to the above two lists resp.
+		The two lists should be freed when done with them.  
+
+
+
+	o Example
+
+		DICT  dict;
+		char *names[], *objs[];
+		int   i, cnt;
+
+
+		cnt = db_find_all(dict, 1, &names, &objs);
+		for (i=0; i<cnt; i++)
+			printf("name[%d]=%s\n", names[i]);
+
+		free(name);
+		free(objs);
+
+
+        o Returns
+
+		A count of the number of objects found is returned. The
+		two pointers nlist and olist are updated to point to the
+		list of names and objects resp. If an error occurs, 0
+		is returned, nlist and olist are set to NULL and an error
+		code is place in db_error.
+
+        +--------------+       ------------------------      +--------------+
+        | db_dict_load |       -  Dict Load From File -      | db_dict_load |
+        +--------------+       ------------------------      +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_dict_load(dict, path, fname)
+                  DICT  dict;
+		  char *path;
+		  char *fname;
+
+
+
+        o Description
+
+                This function is used to load a dictionary dict with
+		objects from a file. The file is specified by path and
+		fname. The dictionary must already be initialized. This
+		allows multiple loads to a single dictionary. The file
+		fname must be an existing VAR type file.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error.
+
+        +----------+          -------------------------          +----------+
+        | db_error |          -  Global Error Status  -          | db_error |
+        +----------+          -------------------------          +----------+
+
+
+
+        o Summary
+
+                extern int db_error;
+
+
+
+        o Description
+
+                This global variable contains the completion status of
+                the most recent db_xxxx call. The following values and
+                associated constants are defined for V1.3:
+
+
+			DB_FILE_NOT_FOUND      1
+			DB_READ_ERROR          2
+			DB_END_OF_FILE         3
+			DB_WRITE_ERROR         4
+			DB_FILE_NOT_CREATED    5
+			DB_FILE_NOT_OPEN       6
+			DB_INVALID_BLOCK       7
+			DB_BUFFER_ERROR        8
+			DB_NO_CURRENT_REC      9
+			DB_DELETED_REC        10
+			DB_INVALID_FREE       11
+			DB_INVALID_BLK_SIZE   12
+			DB_INVALID_INDEX      13
+			DB_REC_NOT_FOUND      14
+			DB_DUP_NOT_ALLOWED    15
+			DB_INVALID_REQUEST    16
+			DB_INVALID_RANDOM     17
+			DB_INVALID_FHDR       18
+			DB_VERSION_ERROR      19
+			DB_INVALID_LINK       20
+			DB_LINK_ERROR         21
+			DB_FTYPE_ERROR        22
+			DB_INVALID_OPTION     23
+			DB_ALLOC_ERROR        24
+			DB_VAR_SIZE_ERROR     25
+			DB_VAR_CSUM_ERROR     26
+			DB_UNSUPP_FEATURE     27
+			DB_INVALID_DICT       28
+			DB_INVALID_NAME       29
+			DB_INVALID_ERROR      30
+
+        +--------------+     ----------------------------    +--------------+
+        | db_error_msg |     -  Get Error Message Text  -    | db_error_msg |
+        +--------------+     ----------------------------    +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                char *db_error_msg(error)
+                  int   error;
+
+
+
+        o Description
+
+                This function is used to get an error message corresponding
+                to the error number returned in db_error.
+
+
+
+        o Returns
+
+                A pointer to the error message is returned.
+
+
+        +---------+          --------------------------           +---------+
+        | db_find |          -  Find a Record by Key  -           | db_find |
+        +---------+          --------------------------           +---------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_find(df, user_data, key, key_size)
+                  DATA_FILE  df;
+                  void     *user_data;                   
+                  char     *key;
+                  int       key_size;
+
+
+
+        o Description
+
+                This function is used to find a record by key value. The
+                following are inputs:
+
+                     df         -  specifies the data file
+                     user_data  -  pointer to the destination buffer
+                     key        -  pointer to key value
+                     key_size   -  length of the key field
+
+                The key_length field allows for matching less than the
+                entire record key in an Index data file. A key_size of zero
+                defaults to entire key length. For a Random data file, the
+                key_length field is ignored.
+
+                This function is not valid for Sequential ior variable data 
+		files.
+                
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. The read record becomes the Current Record
+                for this data file. The completion status is returned 
+                in the global db_error. A non-zero value indicates an 
+                error.
+
+
+
+        +---------------+    ---------------------------    +---------------+
+        | db_get_rec_no |    -  Get Relative Record #  -    | db_get_rec_no |
+        +---------------+    ---------------------------    +---------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                ulong db_get_rec_no(df)
+                  DATA_FILE  df;
+
+
+
+        o Description
+
+                This function returns the Relative Record Number for the
+                Current Record in the data file specified by df. The
+                Relative  Record Number for records in sequential data
+                files is fixed; however, for records in Index, Random
+		and Variable data files the value may be changed due to 
+		reorganizations that occur when adds and deletes take 
+		place.
+
+
+
+        o Returns
+
+                The value of the relative record number is returned.
+		For Variable files the rrn is the lseek offsest of the
+		record. For the other file organizations, the rrn is
+		the actual record number from the beginning of the file.
+
+                If there is an error, a NULL value is returned and the
+                global db_error contains the error code.
+
+
+        +---------+        -------------------------------        +---------+
+        | db_open |        -  Open an Existing Data Set  -        | db_open |
+        +---------+        -------------------------------        +---------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                DATA_FILE db_open(path, fname)
+                  char *path, *fname;
+
+
+
+        o Description
+
+                This function is used to open an existing data file. The inputs
+                are as follows:
+
+                     path   -  Path name of data directory
+                     fname  -  File name of the data fileo
+		
+		The path argument can also be treated as a string of 
+		defaults.
+
+
+
+        o Returns
+
+                This function returns a pointer to the data file descriptor
+                block for the data file. This value should be used for future 
+                references to the data file.
+
+                If an error occurs a NULL value is returned and the global
+                db_error contains the error number.
+
+
+
+ 
+        +-------------+       -------------------------       +-------------+
+        | db_read_atr |       -  Read Attribute Data  -       | db_read_atr |
+        +-------------+       -------------------------       +-------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_read_atr(df, user_data)
+                  DATA_FILE  df;                 
+                  void      *user_data;
+
+
+
+        o Description
+
+                This function is used to read the attribute record for a
+                data file. The data file is specified by df and user_data
+                points to the destination buffer.
+
+                The attribute data is a single user record that may be 
+		used to store some global data for the data file.
+
+
+
+
+        o Returns
+
+                The attribute record is read into the buffer pointed to by
+                user_data. The completion status is returned in the global 
+                db_error. A non-zero value indicates an error.
+
+        +----------------+     -----------------------     +----------------+
+        | db_read_direct |     -  Read by Record #   -     | db_read_direct |
+        +----------------+     -----------------------     +----------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_read_direct(df, rec_no, user_data, data_size)
+                  DATA_FILE  df;                 
+                  ulong     rec_no;
+                  void     *user_data;
+		  int      *data_size;
+
+
+
+        o Description
+
+                This function is used to read a record directly by using its
+                Relative Record Number. The data file is specified by df,
+                the Relative Record Number is rec_no and user_data points
+                to the destination buffer.
+
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. If the file type is Variable, the length of
+		the record read is placed in data_size. The read record 
+		becomes the Current Record for this data file. The 
+		completion status is returned in the global db_error. 
+		A non-zero value indicates an error.
+
+
+        +---------------+      -----------------------      +---------------+
+        | db_read_first |      -  Read First Record  -      | db_read_first |
+        +---------------+      -----------------------      +---------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_read_first(df, user_data, data_size)
+                  DATA_FILE  df;
+                  void     *user_data;
+		  int      *data_size;
+
+
+
+        o Description
+
+                This function is used to read the first record from a 
+		data file.  The data file is specified by df and user_data 
+		points to the destination buffer for the record.
+
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. If the file type is Variable, the length of
+		the record read is placed in data_size. The read record 
+		becomes the Current Record for this data file. The 
+		completion status is returned in the global db_error. 
+		A non-zero value indicates an error.
+
+
+	+--------------+       ----------------------	     +--------------+
+	| db_read_last |       -  Read Last Record  -	     | db_read_last |
+	+--------------+       ----------------------	     +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+		void db_read_last(df, user_data, data_size)
+                  DATA_FILE  df;
+                  void     *user_data;
+		  int      *data_size;
+
+
+
+        o Description
+
+		This function is used to read the last record from a 
+		data file.  The data file is specified by df and user_data 
+		points to the destination buffer for the record.
+
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. If the file type is Variable, the length of
+		the record read is placed in data_size. The read record 
+		becomes the Current Record for this data file. The 
+		completion status is returned in the global db_error. 
+		A non-zero value indicates an error.
+
+
+        +--------------+       ----------------------        +--------------+
+        | db_read_next |       -  Read Next Record  -        | db_read_next |
+        +--------------+       ----------------------        +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_read_next(df, user_data, data_size)
+                  DATA_FILE  df;
+                  void     *user_data;
+		  int      *data_size;
+
+
+
+        o Description
+
+                This function is used to read the next record from a 
+		data file.  The data file is specified by df and user_data 
+		points to the destination buffer for the record.
+
+                This function must be preceeded by some function that 
+                establishes the Current Record for the data file. For 
+		example db_read_first followed by db_read_next until end 
+		of file occurs. The value of Current Record is reset to 
+		NONE by a db_add.
+
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. If the file type is Variable, the length of
+		the record read is placed in data_size. The read record 
+		becomes the Current Record for this data file. The 
+		completion status is returned in the global db_error. 
+		A non-zero value indicates an error.
+
+
+        +--------------+       ----------------------        +--------------+
+	| db_read_prev |       -  Read Prev Record  -	     | db_read_prev |
+        +--------------+       ----------------------        +--------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+		void db_read_prev(df, user_data, data_size)
+                  DATA_FILE  df;
+                  void     *user_data;
+		  int      *data_size;
+
+
+
+        o Description
+
+		This function is used to read the previous record from a 
+		data file. The data file is specified by df and user_data 
+		points to the destination buffer for the record.
+
+                This function must be preceeded by some function that 
+                establishes the Current Record for the data file. For 
+		example db_read_last followed by db_read_prev until end 
+		of file occurs. The value of Current Record is reset to 
+		NONE by a db_add. 
+
+		db_read_prev should not be used with db_delete. db_delete
+		positions the current pointer so that a db_read_next will
+		be correct. A db_read_prev loop with deletes will skip
+		records.
+
+
+
+        o Returns
+
+                The data record is read into the buffer pointed to by
+                user_data. If the file type is Variable, the length of
+		the record read is placed in data_size. The read record 
+		becomes the Current Record for this data file. The 
+		completion status is returned in the global db_error. 
+		A non-zero value indicates an error.
+
+
+
+        +----------+         ---------------------------         +----------+
+        | db_reorg |         -  Reorganize Free Space  -         | db_reorg |
+        +----------+         ---------------------------         +----------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_reorg(df)
+                  DATA_FILE  df;
+
+
+
+        o Description
+
+		When a VAR file record is deleted, the record is marked
+		as deleted but still remains in the file. This function
+		is used to reclaim the space held by deleted records.
+		It is only valid for VAR files.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error.
+
+        +-----------+      -------------------------------      +-----------+
+        | db_update |      -  Update the Current Record  -      | db_update |
+        +-----------+      -------------------------------      +-----------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_update(df, user_data)
+                  DATA_FILE  df;
+                  void     *user_data;
+
+
+
+        o Description
+
+                This function is used to update the Current Record for the
+                data file specified by df. The contents of the data record
+                pointed to by user_data are written back to the data file.
+
+                This function must be preceeded by some function that 
+                establishes the Current Record for the data file.
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error. 
+                A non-zero value indicates an error. The Current Record
+                for the data file is reset to NONE.
+
+
+        +---------------+    ---------------------------    +---------------+
+        | db_update_atr |    -  Update Attribute Data  -    | db_update_atr |
+        +---------------+    ---------------------------    +---------------+
+
+
+
+        o Summary
+
+                #include <db.h>
+
+                void db_update_atr(df, user_data)
+                  DATA_FILE  df;                 
+                  void     *user_data;
+
+
+
+        o Description
+
+                This function is used to update the attribute record for a
+                data file. The data file is specified by df and user_data
+                points to the source buffer to be written to the attribute
+                area for the data file.
+
+                The attribute data is a single user record that may be 
+		used to store some global data for the data file.
+
+
+
+
+        o Returns
+
+                The completion status is returned in the global db_error.
+                A non-zero value indicates an error.
+
+
+        +-------------+     ------------------------------     +-------------+
+        | fname_dflts |     -  Merge File Name Defaults  -     | fname_dflts |
+        +-------------+     ------------------------------     +-------------+
+
+
+
+        o Summary
+
+                char *fname_dflts(fname, dflt)
+                  char *fname, *dflt;
+
+
+
+        o Description
+
+                This function merges a file name string with a
+                default file name. For example the following would
+                force a default extension of ".c" if no extension
+                was present.
+
+                        x = fname_dflts(fname,".c");
+
+
+
+        o Returns
+
+                A pointer to the resulting static string is returned.
+
+
+        +--------+           -----------------------              +--------+
+        | fparse |           -  Parse a File Spec  -              | fparse |
+        +--------+           -----------------------              +--------+
+
+
+
+        o Summary
+
+                fparse(fstr, o_node, o_dev, o_dir, o_file, o_ext, o_ver)
+                  char *fstr, *o_node, *o_dev, *o_dir, *o_file, *o_ext, *o_ver;
+
+
+
+        o Description
+
+                This function parses a file specification fstr into component
+                parts. Not all of these components apply to generic MS-DOS.
+
+                        o_node  - Node name
+                        o_dev   - Device name
+                        o_dir   - Directory Path
+                        o_file  - File name
+                        o_ext   - File extension
+                        o_ver   - Version number
+
+
+
+        o Returns
+
+                The component strings are copied into the buffers pointed
+                to by the o_* args.
+
+
+        +------+              --------------------------             +------+
+        | sort |              -  Callable Record Sort  -             | sort |
+        +------+              --------------------------             +------+
+
+
+
+        o Summary
+
+                void  sort_init(rec_size, spec_str)
+                  int   rec_size;
+                  char *spec_str;
+
+                void  sort_release(data_rec)
+                  char *data_rec;
+
+                void  sort_merge()
+
+                char *sort_return(data_rec)
+                  char *data_rec;
+
+
+
+        o Description
+
+                This set of functions provides a callable record sort
+                facility:
+
+                sort_init - Initialize the sort. This must be done first.
+                            rec_size = the size of the data record
+                            spec_str = string of sort specs separated
+                                       by commas. "spec,spec,spec..."
+                            spec     = XXn.n
+                                       ||| |
+                                       ||| +--- size of field     (bytes)
+                                       ||+----- starting position (1 relative)
+                                       ||
+                                       |+------ Format   A = Alpha
+                                       |                 U = Unsigned integer
+                                       |                 I = Integer
+                                       |                 R = Real
+                                       |
+                                       +------- Sequence A = Ascending
+                                                         D = Descending
+
+                sort_release - Release a record to the sort. data_rec
+                               points to the data.
+
+                sort_merge   - Do the sort merge operation.
+
+                sort_return  - Return a record from the sort and put
+                               it in data_rec. A pointer to the data
+                               record is returned. A NULL value indicates
+                               end of file.
+
+
+
+        o Returns
+
+                If a sort error occurs an error message is printed and
+                the program aborts.
+

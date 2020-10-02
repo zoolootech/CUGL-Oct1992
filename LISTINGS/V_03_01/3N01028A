@@ -1,0 +1,72 @@
+
+/*** Listing #2
+*/
+#include <string.h>
+
+/*** iDBCCharRplc - Replaces a character in a string.
+*
+*   written by: John G. Nelson, Pacific Software Publishing Inc.
+*   copyright:  Pacific Software Publishing Inc.
+*   date:       10/91
+*   purpose:    Allows a single (DBC or sbc) character in a DBC
+*               string to be replaced by another (DBC or sbc) character.
+*               The replacement only takes place if there is
+*               sufficient room in the string.
+*   parameters: pdbcString : Pointer to DBC string.
+*               iOffset    : Byte position of character to be replaced.
+*               pdbcChar   : Incoming character.
+*               iMaxLen    : Length of pdbcField in bytes.
+*   return:     iOffset    : Replacement does not have enough room.
+*               iNewOffset : Offset indicating position of character
+*                            immediately following newly replaced character.
+*/
+int iDBCRplcChar(
+    DBC *pdbcString,/*  DBC string */
+    int iOffset,    /*  Offset     */
+    DBC *pdbcChar,  /*  DBC        */
+    int iMaxLen)    /*  Max bytes  */
+    {
+    int  iInChSz, iOutChSz;
+    int  iRoom;     /* bytes slots */
+    int  iStrLen;
+    int  i;
+
+    iStrLen  = strlen(pdbcString);
+    iRoom    = iMaxLen - iStrLen;
+    iInChSz  = (bIsDBC(pdbcChar)) ? 2 : 1;
+    iOutChSz = (bIsDBC(&pdbcString[iOffset])) ? 2 : 1;
+
+    /* check if there is enough room for replacement*/
+    if ((iInChSz - iOutChSz) > iRoom)  {
+        /* not room to accomodate replacement       */
+        return(iOffset);
+    }
+
+    /* enough room for replacement                  */
+
+    if (-1 == (iInChSz - iOutChSz))  {
+
+        /* DBC by SBC replacement case              */
+        /* shift left to delete 2nd byte of OutDBC  */
+        memmove(&pdbcString[iOffset+1],
+                &pdbcString[iOffset+2],
+                iStrLen-iOffset);
+
+    } else if (1 == (iInChSz-iOutChSz))  {
+
+        /* SBC by DBC replacement case              */
+        /* shift right to make room for 2nd byte    */
+        memmove(&pdbcString[iOffset+2],
+                &pdbcString[iOffset+1],
+                iStrLen-iOffset);
+    }
+
+    /* replace character                            */
+    for (i=0; i<iInChSz; i++)  {
+        pdbcString[iOffset+i] = pdbcChar[i];
+    }
+
+    return (iOffset+iInChSz);
+
+} /* iDBCCharRplc */
+

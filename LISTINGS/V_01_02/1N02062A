@@ -1,0 +1,67 @@
+/*
+**  Listing 8 - Removing, setting, or changing volume labels
+**
+**  Note: Requires byte alignment and use of xfcb structure,
+**        therefore written for TC 2.0 or TC++ 1.0. Also compiles
+**        under ZTC/C++ using MFLZT's TCPORT.H.
+*/
+
+#include <stdio.h>
+#include <dos.h>
+#include <dir.h>
+#include <io.h>
+
+int PushDir(char *);
+int PopDir(void);
+
+int vol_kill(char *fname)
+{
+        union REGS regs;
+        struct SREGS sregs;
+        struct xfcb buf;
+
+        /* Parse the filename into an FCB               */
+        segread(&sregs);
+        regs.h.ah = 0x29;
+        regs.h.al = 0;
+        regs.x.si = (unsigned)fname;
+        regs.x.di = (unsigned)&buf.xfcb_fcb;
+        sregs.es  = sregs.ds;
+        intdosx(&regs, &regs, &sregs);
+
+        /* Volume labels require extended FCB's         */
+        buf.xfcb_flag = 0xff;
+        buf.xfcb_attr = FA_LABEL;
+
+        /* Delete the old label                         */
+        regs.h.ah = 0x13;
+        regs.x.dx = (unsigned)&buf;
+        intdos(&regs, &regs);
+}
+
+void flsetvol(char *label)
+{
+        int fd;
+        struct ffblk finfo;
+
+        pushdir("\\");          /* Move to the root directory   */
+        /* If drive is already labeled, remove it               */
+        if (0 == findfirst("*.*", &finfo, FA_LABEL)) do
+        {       if (FA_LABEL & finfo.ff_attrib)
+                        break;
+        } while (0 == findnext(&finfo));
+        if (FA_LABEL & finfo.ff_attrib)
+                vol_kill(finfo.ff_name);
+        fd = _creat(label, FA_LABEL);   /* Create new label     */
+        close(fd);
+        popdir();
+}
+
+main(int argc, char *argv[])
+{
+        if (2 > argc)
+        {       puts("\aUsage: SETVOL new_name");
+                abort();
+        }
+        flsetvol(argv[1]);
+}

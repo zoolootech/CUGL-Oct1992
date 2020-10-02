@@ -1,0 +1,208 @@
+Listing one:
+
+	menu = menu_Open();
+
+     /* This are simply outputs to the screen */
+	menu_Printf(menu, "@p[3,0]Customer data");
+	menu_Printf(menu, "@p[5,0]Last name:");
+	menu_Printf(menu, "@p[7,0]Phone number:");
+	menu_Printf(menu, "@p[7,43]Date of birth:");
+	menu_Printf(menu, "@p[12,0]Item purchased:");
+	menu_Printf(menu, "@p[14,0]Unit cost:");
+
+
+     /* These are the field functions */
+	menu_Printf(menu, "@p[5,11]@fd[@[17,#]]",
+	  lname, &string_funcs, "The customer's last name");
+	menu_Printf(menu, "@p[7,14]@fd[(###) ###-####]",
+	  phone, &digit_funcs, "The customer's phone number");
+	menu_Printf(menu, "@p[7,58]@fd[##/##/##]",
+	  &dob, &date_funcs, "The customer's date of birth (MM/DD/YY)");
+	menu_Printf(menu, "@p[12,16]@fd[@[16,#]]",
+	  &item, &select_funcs, 
+          "The item purchased (press space bar to change)");
+	menu_Printf(menu, "@p[14,16]@fd2[@[9,#]]",
+	  &amount, &cmoney_funcs, "The unit cost of the item", "(0,)");
+	menu_Printf(menu, "@p[19,62]@fp[####]",
+	  &pnum, &int_funcs);
+	menu_Flush(menu);
+
+        /* This opens a window using the fields in menu */
+	sed = sed_Open(menu);
+
+        /* This does the actual input */
+	sed_Go(sed);
+
+	menu_Close(menu);
+	sed_Close(sed);
+
+
+
+     #include <dos.h>
+
+     int int86(interrupt, in_regs, out_regs)
+     int interrupt;           /* Interrupt number */
+     union REGS *in_regs;     /* Values to set registers to */
+     union REGS *out_regs;    /* Values returned from interrupt 
+
+                                 function */
+
+
+
+struct sregs
+	{
+	int ax, bx, cx, dx, si, di, ds, es;
+	};
+struct sregs reg;
+
+#define PRINT_SCREEN_INT 0X5
+
+print_screen()
+	{
+	sysint(PRINT_SCREEN_INT, &reg, &reg);
+	}
+
+     ret                 ; return
+
+
+
+
+
+
+     struct Symbol {
+          char *name;     /* Name of the symbol */
+          short type;     /* Type:
+                            VAR  (variable names)
+
+                            BLTIN (built-in function)
+                            UNDEF (a variable without a value)
+                          */
+          union {
+              double val;    /* Value , if type == VAR */
+              double (*ptr); /* Pointer to function, if type == BLTIN*/         
+              }  u;
+         struct Symbol *next; /* Pointer to next link */
+         };
+
+          Init() is a function that adds the built-in 
+
+
+
+
+
+
+     struct {                      /*  Constant symbols */
+          char *name;              /*  Name of symbol */
+          double cval;             /*  Value */
+          } consts[] = {
+                   {"PI", 3.14159265358979323846},
+                   {"E",  2.71828182845904523536},
+                   {0, 0},         /* End of list */
+                   };
+
+     struct {                      /* Built in functions */
+          char *name;              /* Name of function */
+          double (*func)()         /* Pointer to function */
+          } builtins[] = {
+                    { "sin", sin},
+                    {"sqrt", sqrt},
+                    {0, 0},        /* End oflist */
+                    }; 
+
+
+
+
+
+
+     init()
+          {
+          int i;
+          struct Symbol *s;
+
+          /* Install the constants */
+          for (i = 0; consts[i].name; i++)
+                    {
+                    install(consts[i].name, VAR, consts[i].cval);
+                    }
+
+          /* Install the functions */
+          for (i = 0; builtins[i].name; i++)
+                    {
+                    s = install(builtins[i].name, BLTIN, 0.0);
+                    s->u.ptr = builtins[i].func;
+                    }
+          }
+  
+
+
+
+
+
+     struct Symbol *install(s, t, d)
+     char *s;       /* Symbol name */
+     int t;         /* Type (VAR, BLTIN) */
+     double d;      /* Value of Symbol */
+
+
+
+
+
+
+     #include <stdio.h>
+     FILE *file;              /* File to read */
+     int no_of_names;         /* Number of names to read */     
+     int i;                        
+     int *count;              /* Will be array of values read */
+
+     file = fopen ("FILENAME","rb");
+     fread(&no_of_names, sizeof(int), 1, file);
+
+     /* Allocate the necessary space */
+     count = calloc(no_of_names, sizeof(int));
+
+     /* Read the values       */
+     for (i = 0; i < no_of_names; i++)
+          {
+          fread(&count[i], sizeof(int), 1, file);
+          }
+
+
+
+
+
+
+     #include <stdio.h>
+     FILE *file;              /* File to read */
+     int no_of_names;         /* Number of names to read */     
+     int i;
+     char *strings;           /* Will be array of pointers to 
+                                 string that were read  */     
+     char *ret;               /* For return value from fgets
+                                 should be checked for NULL (EOF)*/     
+     int length;              /* Length of string */
+
+     #define MAX_STRING 256   /* Maximum size for a string */
+
+     char string_buffer[MAX_STRING];    /* Buffer for strings */
+
+     /* Get the count */
+     file = fopen ("FILENAME","r");
+     ret = fgets(string_buffer,MAX_STRING,file);
+     fscanf(string_buffer,"%d",&no_of_names);
+
+     /* Allocate a array of pointers */
+
+     strings = calloc(no_of_names, sizeof(char *));
+
+     /* Read each string */
+     for (i = 0; i < no_of_names; i++)
+          {
+          ret = fgets(string_buffer,MAX_STRING,file);
+
+          /* Determine length, allocate for that much and copy  it */
+          length = strlen(string_buffer);
+          strings[i] = calloc(length + 1, 1);
+          strcpy(strings[i], string_buffer);
+          }
+
+

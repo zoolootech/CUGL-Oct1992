@@ -1,0 +1,106 @@
+#include "makedef.h"
+
+#define	WHITESPACE	" \t\n"
+
+TARGET	*parse_makefile(int argc, char *argv[], char *target)
+{
+FILE	*fp;
+TARGET	*head = NULL;
+TARGET	*current = NULL;
+char	makefile[ DEP_LEN ] = {0};
+char	buffer[ CMD_LEN ];
+char    *token;
+
+parse_options(argc, argv, makefile, target);
+if (NULL == (fp = strlen(makefile) ?
+    fopen(makefile, "r") : fopen("Makefile", "r"))) 
+	fatal_error("could not find makefile");
+
+while (fgets(buffer, CMD_LEN, fp)) {
+    if (!isspace(buffer[0])) {
+	token = strtok(buffer, WHITESPACE);
+	if (!head && !strlen(target))
+	    strcpy(target, token);
+	current = add_target(&head, token);
+	token = strtok(NULL, WHITESPACE);
+	if (!token || strcmp(":", token)) 
+	    fatal_error("target must be followed by ':'");
+	while (token = strtok(NULL, WHITESPACE))
+	    insert_dependency(current, token);
+    } else {
+	if (!head)
+	    fatal_error("command must be preceeded by a target");
+	else if (token = skip_ws(buffer))
+	    insert_cmd(current, token);
+    }
+}
+fclose(fp);
+return head;
+}
+
+
+
+char	*skip_ws(char *s)
+{
+while (isspace(*s)) s++;
+return (('\0'== *s) ? NULL : s);
+}
+
+
+
+TARGET	*add_target(TARGET **head, char *target)
+{
+TARGET	*p;
+
+if (search_target_list(*head, target))
+    fatal_error("duplicate target found");
+p = (TARGET *) malloc(sizeof(TARGET));
+
+if (p) {
+    p->link = *head;
+    strcpy(p->target, target);
+    p->cmdlink = (CMD *) NULL;
+    p->deplink = (DEP *) NULL;
+    p->color = WHITE;
+    *head = p;
+}
+return p;
+}
+
+
+
+DEP	*insert_dependency(TARGET *p, char *dependency)
+{
+DEP	*q;
+
+q = (DEP *) malloc(sizeof(DEP));
+
+if (q) {
+    q->link = p->deplink;
+    strcpy(q->depstr, dependency);
+    p->deplink = q;
+}
+return q;
+}
+
+
+
+CMD	*insert_cmd(TARGET *p, char *cmd)
+{
+CMD	*q, *r;
+
+q = (CMD *) malloc(sizeof(CMD));
+
+if (q) {
+    q->link = NULL;
+    strcpy(q->cmdstr, cmd);
+    q->cmdstr[strlen(q->cmdstr) - 1] = '\0';
+    if (r = p->cmdlink) {
+	while (r->link)
+	    r = r->link;
+	r->link = q;
+    } else
+	p->cmdlink = q;
+}
+return q;
+}

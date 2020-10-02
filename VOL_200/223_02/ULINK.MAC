@@ -1,0 +1,253 @@
+; ulink
+;
+;		Small-C	 System Library  Version 1.0
+;
+;				by
+;
+;			Fred A. Scacchitti
+;			25 Glenview Lane
+;			Roch., NY 14609
+;
+;			  11 - 24 - 84
+;
+;	This module is a derivative of RUNTIME.MAC by Glen Fisher
+;	and Bill Randle. It contains a minimal implementation of
+;	CP/M hooks to allow proper linking of Small-C programs
+;	compiled by Version 2.08 (and later) of the Small-C compiler.
+;
+;	This module contains the following routines:
+;
+;	-ULINK entry point just like J. E. Hendrix Vers. 2.1
+;
+;	-Initialization of stack, memory buffers, and argument
+;	 passing (argv, argc).
+;
+;
+;	 call to main()
+;		links to main in user program
+;
+;	-Cleans house and returns to CP/M
+;
+;
+;
+;
+; Now then here's the starting code
+;
+;
+;
+; 1st - Save CPM's stack pointer, establish file i/o constructs	set
+;	new default buffer and establish start of available memory.
+;
+; 2nd - Get the default disk and set stack at base of BDOS or CCP
+;	depending on the status ZZZCCP. 0 = bdos  1 = ccp
+;
+; 3rd - Parse the CPM input line and modify it so that we can pass
+;	the C program  in the argc, argv form that it expects.
+;		 HL = pointer to next argv entry
+;		 DE = pointer to next character in command line
+;		 B  = number of	characters left	in line
+;		 C  = argument count (argc)
+;
+; 4th - Call MAIN to commence operation of the user program
+;
+; 5th - Work, work, work and then return to here via exit(), abort()
+;	or normal return from program.
+;
+; 6th - Close any open files (buffers are not flushed)
+;
+; 7th - Restore CP/M's stack pointer, select the disk you entered
+;	with, reset the default buffer and return to CP/M either
+;	via a JMP 0 (ZZZCCP = 0) or RET (ZZZCCP = 1).
+;
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	24	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CBDOS	EQU	5
+CLOSE	EQU	16
+;
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+BUFFER	EQU	6	;offset	to disk	sector buf. in I/O struct.
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFSZ	EQU	128	;size of default disk buffer
+;
+EXTRN	MAIN, ZZBUF, ZZZCCP
+;
+;
+ULINK::
+;
+	LXI	H,0		; get CPM's stack pointer
+	DAD	SP
+	SHLD	ZZSTAK		; save it for later
+;
+	MVI	C,26
+	LXI	D,ZZBUF
+	CALL	CBDOS		; Set the default buffer out there
+;
+SETIO:	
+	MVI	B,NBUFS
+	LXI	H,ZZBUF+TBUFSZ+FLAG
+	LXI	D,FCBSIZE+BUFFER+BUFSIZ
+	MVI	A,FREEFLG
+SETIO2:	MOV	M,A			;set all buffers to free
+	DAD	D			;on to next buffer
+	DCR	B
+	JNZ	SETIO2			;if there is one...
+	SHLD	ZZMEM			;put it where it belongs
+;
+
+	MVI	C,25		; get logged-in	disk
+	CALL	CBDOS	
+	INR	A
+	STA	ZZDFLT		; save it
+;
+	LDA	CBDOS+2		; get base of BDOS
+	MOV	H,A		; save page in HL
+	MVI	L,0		; where do we put the stack
+;
+	LDA	ZZZCCP		; let's check
+	ORA	A		;
+	JZ	SETSTK		; just below the BDOS
+	MOV	A,H
+	SUI	8		; just below the CCP
+	MOV	H,A
+;
+SETSTK:
+	SPHL			; set stack pointer
+;
+	MVI	C,0	; Init argc
+	LXI	H,ARGV	; Pointer to first entry of argv array
+;
+; CPM does not tell us what the first word of  the command 
+; line was (the name of pgm), so we fake  it by	pointing it
+; to an ascii string with '*' in it
+;
+	LXI	D,PGM	; Pointer to 'pgmname' string
+	CALL	SVARG	; Save next argument
+;
+; Ok, now for the real stuff.  Set DE pair to point to
+; CPM command line and start searching for arguments
+
+	LXI	D,CPMARG ; Pointer to CPM arg line
+	LDAX	D	; Load # character in line
+	MOV	B,A	; Save it in B
+NXTSP:	INX	D	; Point	to next	character
+	DCR	B	; Decrement character count
+	JM	ENDCMD	; End of cmd line
+	LDAX	D	; Load next character in line
+	CPI	' '	; Space?
+	JZ	NXTSP	; Yes...continue searching
+	CALL	SVARG	; Nope,	save starting point of this arg
+
+; Loop looking for either end of line of a space
+
+NXTCH:	INX	D	; Point	to next	character
+	DCR	B	; Decrement character count
+	JM	ENDWRD	; End of cmd line, but need to end arg
+	LDAX	D	; Load next character in line
+	CPI	' '	; Space?
+	JNZ	NXTCH	; Nope...keep looking
+	MVI	A,0	; Yes, replace it with a zero byte
+	STAX	D
+	JMP	NXTSP	; Look for start of next arg
+ENDWRD:	MVI	A,0
+	STAX	D
+ENDCMD:	MVI	B,0	; Zero B (BC now is 16 bit argc)
+	PUSH	B	; First	arg to main procedure
+	LXI	H,ARGV	; Point	to argv	array
+	PUSH	H	; Second argument to main procedure
+	MVI	A,2	; Load up the argument count
+;
+	CALL	MAIN	; Transfer to the C world....
+;
+;	anchors
+;		away
+;			my
+;				bo
+;				   y
+;				    y
+;				     y
+;				      y
+;				      y
+;
+EXIT::
+	MVI	B,NBUFS		; Prepare to scan for open files
+	MVI	C,CLOSE
+	LXI	H,ZZBUF+TBUFSZ+FLAG
+	LXI	D,FCBSIZE+BUFFER+BUFSIZ
+SCANEM:	
+	MOV	A,M		; Get free flag
+	CPI	FREEFLG		; Is it free ?
+	JZ	NOPEN		; Yes - not open, go get next
+	PUSH	B		; No  - prepare to close
+	PUSH	D
+	PUSH	H
+	LXI	D,-FLAG
+	DAD	D
+	XCHG			; DE --> Start of FCB
+	CALL	CBDOS		; Close the file
+	POP	H		; Restore scan setup
+	POP	D
+	POP	B
+NOPEN:
+	DAD	D		; Point to next flag
+	DCR	B		; Last one ?
+	JNZ	SCANEM		; No  - keep scanning until done
+;
+	MVI	C,26
+	LXI	D,80H
+	CALL	CBDOS		; Reset the default buffer
+;
+	LHLD	ZZSTAK		; Load stack pointer
+	SPHL
+	LDA	ZZZCCP		; How do we get back ?
+        ORA	A
+	RNZ			; this way to CCP
+;
+;					or
+;
+;				  this way to warm boot
+;
+	LDA	ZZDFLT		; Grab orig. logged-in disk
+	MOV	E,A
+	DCR	E		; (cvt.	back to	0-n)
+	MVI	C,14		; and log it in	again
+	CALL	CBDOS		; (mod to cbdos (fas))
+;
+	JMP	0
+;
+;
+SVARG:	MOV	M,E	; Save pointer to start	of string
+	INX	H
+	MOV	M,D
+	INX	H
+	INR	C	; Increment argc
+	RET
+PGM:		DB	'*',0
+;
+ARGV:		DS	MAXARG*2
+;
+ZZDFLT::	DB	0	; default disk 
+;
+ZZSTAK::	DW	0	; CP/M's stack
+;
+ZZMEM::		DW	0	; useable memory pointer
+;
+ZZTEMP::	DW	0	; available to anyone
+;
+;
+;
+	END	ULINK
+
+
+
+
+

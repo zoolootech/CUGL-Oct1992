@@ -1,0 +1,118 @@
+/*
+ *	MDBFTXT.C
+ *	Program:	Mini-Database
+ *	Written by:	Leor Zolman
+ *  Module:		File I/O, Text Representation Version
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "mdb.h"
+
+/*
+ * Function:		read_db
+ * Purpose:			Load an existing Database from disk
+ * Parameters:		Name of Database to load
+ * Return Value:	NULL on error, else # of records.
+ */
+int read_db(char *filename)
+{
+	FILE *fp;			/* File pointer			*/
+	int rec_no = 0;		/* # of records read	*/
+	struct record *rp;	/* Single record ptr	*/
+	int nitems;
+	int active;			/* Temporary variables	*/
+	char last[26], first[20];	/* to hold the	*/
+	long id;			/* values of fields 	*/
+	int age;			/* during file input	*/
+	char gender;
+	float salary;
+
+	max_recs = MAX_RECS;
+
+	if ((fp = fopen(filename, "r")) == NULL)
+	{
+		printf("Database not found.\n");
+		return NULL;
+	}
+	
+	while (1)
+	{			/* Read one record (one line) of data: */
+		nitems = fscanf(fp, "%d %s %s %ld %d %c %f\n",
+			&active, last, first, &id, &age,
+			&gender, &salary);
+		if (nitems == EOF)		/* stop reading on EOF	*/
+			break;
+		if (nitems != 7)		/* Check for bad record	*/
+		{
+			printf("Warning: Last record ignored ");
+			printf("(matched only %d items!)\n", nitems);
+			break;
+		}
+					/* Allocate memory for one record: */
+		if ((rp = alloc_rec()) == NULL)
+		{
+			printf("Out of memory loading Database.\n");
+			return NULL;
+		}
+					/* rp points to the memory area		*/
+		rp->active = active;	/* assign field values:	*/
+		strcpy(rp->last, last);
+		strcpy(rp->first, first);
+		rp->id = id;
+		rp->age = age;
+		rp->gender = gender;
+		rp->salary = salary;
+					/* Save pointer to memory area in	*/
+		RECS[rec_no++] = rp;	/* RECS, and bump count */
+	}
+
+	fclose(fp);		/* Finished reading input file		*/
+	return rec_no;	/* Return number of records read	*/
+}
+
+/*
+ * Function:		write_db
+ * Purpose:			Write current Database to disk
+ * Parameters:		Name of Database
+ * Return Value:	None
+ */
+void write_db(char *filename)
+{
+	FILE *fp;
+	int rec_no, result;
+	struct record *rp;
+
+					/* Write into temporary file first:	*/
+	char *tempname = "TEMPFILE.$$$";
+	if ((fp = fopen(tempname, "w")) == NULL)
+	{
+		printf("Can't open temporary file %s ", tempname);
+		printf("for writing.\n");
+		return;
+	}
+	
+	printf("Writing Database %s To Disk...\n", filename);
+			/* Each loop iteration writes one record:	*/
+	for (rec_no = 0; rec_no < n_recs; rec_no++)
+	{
+		rp = RECS[rec_no];		/* set rp to next rec	*/
+								/* write rec. in ASCII	*/
+		result = fprintf(fp, "%d %s %s %ld %d %c %f\n", 
+			rp->active, rp->last, rp->first, rp->id, 
+			rp->age, rp->gender, rp->salary);
+		if (result < 0)			/* Check for error		*/
+			error("Error writing output database.\n");
+	}
+	
+	fclose(fp);				/* close temporary file		*/
+	remove(filename);		/* remove old version		*/
+	while (rename(tempname, filename) == -1)
+	{						/* if renaming didn't work..*/
+		printf("Error renaming temp file: %s\n",
+							_strerror(NULL));
+		printf("Please enter a new filename: ");
+		gets(filename);		/* try for a legal filename	*/
+	}
+	printf("Database written successfully.\n");
+}

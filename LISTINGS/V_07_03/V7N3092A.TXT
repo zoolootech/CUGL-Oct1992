@@ -1,0 +1,933 @@
+/*-----------------------------------------------------------------------------
+OTHELLO.H
+
+This file contains global function prototypes, external variable declarations,
+and manifest constant definitions for the othello program.
+
+Revision History
+----------------
+Jon Ward    17 Oct 1988    Initial Revision.
+Jon Ward    30 Oct 1988    Added typedef for move type.
+Jon Ward    01 Nov 1988    Added constant defs and macros.
+Jon Ward    04 Dec 1988    Changed fa_ndx_struct from a structure to an
+                           array.
+Jon Ward    12 Dec 1988    Started adding function prototypes and external
+                           declarations for global variables.
+Gary Culp   15 Dec 1988    Added declaration for delta_array, BELONGS macro.
+Gary Culp   19 Dec 1988    Updated prototypes for functions in PROTECT.C
+Gary Culp   22 Dec 1988    Added MAX_AFFECTED_PIECES.
+Gary Culp    2 Jan 1989    Added STATIC and BT_MAX_DEPTH
+Jon Ward     3 Jan 1989    Added prototypes for minimax functions.
+			    added prototype for limb removing DB function
+Jon Ward     7 Jan 1989    Added last_max_score extern for MINIMAX.C.
+-----------------------------------------------------------------------------*/
+
+
+/*-----------------------------------------------------------------------------
+For debugging purposes, it is sometimes useful to change 'static' functions and
+variables to global, so they will appear in MAP files.  This definition makes
+that easier to do.  Just define STATIC to be an empty string (For MSC, the
+command line option "/DSTATIC=" will do this.) Do not use STATIC to declare
+static variables inside functions!  They will turn into automatics, and cease
+to work correctly.
+-----------------------------------------------------------------------------*/
+#ifndef STATIC
+#define STATIC static
+#endif
+
+
+/*-----------------------------------------------------------------------------
+This constant represents the number of axes on the othello board that can 
+contain a capture. There are obviously 8 vertical and 8 horizontal columns and 
+rows. There are also 15 diagonal "rows" forward and 15 diagonal "rows" 
+backward. However, 4 of each of these 15 are eliminated because a row must 
+contain 3 or more cells for a capture to occur. The 2 diagonal "rows" nearest 
+each corner have only 1 and 2 cells.
+-----------------------------------------------------------------------------*/
+
+#define NUM_CAPTURABLE_AXES (11 + 11 + 8 + 8)
+
+
+/*-----------------------------------------------------------------------------
+The following board structure will contain the definition for a particular
+board.
+
+The board element will contain bits (as defined below) that tell whether a cell
+is empty or occupied and whether the piece in that cell is protected along an
+axis. Once a piece is protected along all 4 axes, it has become permanent and
+can never be changed in the remainder of this game.
+
+The fa_bits (fa being full axis) is an array of bits that tell if a particular
+axis is completely full.  1 is added for the non-capturable axes and 7 is added
+to round up to the nearest byte.
+-----------------------------------------------------------------------------*/
+
+#define FA_BITS_SIZE ((NUM_CAPTURABLE_AXES + 1 + 7) / 8)
+
+struct board_struct
+  {
+  unsigned char board [10][10];
+  unsigned char fa_bits [FA_BITS_SIZE];
+  };
+
+typedef struct board_struct board_type;
+
+
+/*-----------------------------------------------------------------------------
+Board manifest constants and macros for the board_struct board element.
+
+Note that the first four bits (NO_PIECE thru OFF_BOARD) are mutually exclusive.
+Only one of them may be set at a given time.
+
+This bit mapping is NOT arbitrary.  The IS_PERM macro is a good example of why
+it is not.  The program exploits the numerical properties of the variables
+built with these definitions, as well as extracting bits from them.
+-----------------------------------------------------------------------------*/
+
+#define NO_PIECE	0x01	/* Empty cell, No disk there */
+#define US_PIECE	0x02	/* Cell occupied by our disk */
+#define THEM_PIECE	0x04	/* Cell occupied by their disk */
+#define OFF_BOARD	0x08	/* Cell is off the board */
+#define BD_AX		0x10	/* Backward diagonal axis protected */
+#define FD_AX		0x20	/* Forward diagonal axis protected */
+#define H_AX		0x40	/* Horizontal axis protected */
+#define V_AX		0x80	/* Vertical axis protected */
+
+#define IS_PERM(cell) ((cell) > (NO_PIECE | BD_AX | FD_AX | H_AX | V_AX))
+#define BELONGS(cell,code) ((cell)&(code))
+
+#define TEST_BITS(cell,bits) ((cell) & (bits))
+#define SET_BITS(cell,bits) ((cell) |= (bits))
+#define CLR_BITS(cell,bits) ((cell) &= ~(bits))
+
+
+/*-----------------------------------------------------------------------------
+Full axis table for FA index table and macros for setting and testing the FA
+bits.
+-----------------------------------------------------------------------------*/
+
+typedef unsigned char fa_type [4];
+
+#define BD_NDX 0	/* index for backward diagonal FA bit */
+#define FD_NDX 1	/* index for forward diagonal FA bit */ 
+#define H_NDX  2	/* index for horizontal FA bit */       
+#define V_NDX  3	/* index for vertical FA bit */         
+
+#define WHICH_BYTE(ndx) ((unsigned char) (ndx) >> 3)
+#define BIT_N_BYTE(ndx) ((unsigned char) 1 << ((ndx) & 0x07))
+
+#define SET_FA_BIT(fa,bit) ((fa) [WHICH_BYTE(bit)] |= BIT_N_BYTE(bit))
+#define CHK_FA_BIT(fa,bit) ((fa) [WHICH_BYTE(bit)] & BIT_N_BYTE(bit))
+
+
+/*-----------------------------------------------------------------------------
+The following type is used to represent a number used for indexing into the
+database manager when referencing a node (limb) in one of the move trees.
+-----------------------------------------------------------------------------*/
+
+typedef unsigned int key_type;
+
+#define NO_KEY ((key_type) 0xFFFF)
+
+
+/*-----------------------------------------------------------------------------
+The following type is used to represent the row and column of an othello move.
+
+Since there are only 8 rows and 8 columns on the othello board, the move can be
+reduced to 6 bits, 3 for the row and 3 for the column.  One of the remaining
+bits is used to indicate that the player (computer or opponent) has no valid
+moves.  The other bit will be used by the DBM to indicate that there is a board
+associated with a limb entry.
+
+The GET_ROW/GET_COL macros extract and normalize the row and col stored in a
+move_type.
+
+The SET_ROW/SET_COL macros initialize the row and col for a move_type.
+
+The CLR_ROW/CLR_COL macros clear the row and col for a move_type.
+-----------------------------------------------------------------------------*/
+
+typedef unsigned char move_type;
+
+#define ROW_MASK	0x07	/* 3 bits for row number */
+#define COL_MASK	0x38	/* 3 bits for col number */
+#define NO_MOVE_MASK	0x40	/* bit set for no valid moves */
+#define BOARD_MASK	0x80	/* bit set in DBM if bottom level of tree */
+#define HASNT_MOVED BOARD_MASK /* returned by check_for_input() when
+                                  move has not been entered yet */
+
+#define GET_ROW(move) ((move) & ROW_MASK) 
+#define GET_COL(move) (((move) & COL_MASK) >> 3)
+
+#define SET_ROW(move,row) ((move) |= ((row) & 0x07))
+#define SET_COL(move,col) ((move) |= ((col) & 0x07) << 3)
+
+#define CLR_ROW(move) ((move) &= ~ROW_MASK)
+#define CLR_COL(move) ((move) &= ~COL_MASK)
+
+#define SET_ROW_COL(m,r,c) ((m) |= (((c) & 0x07) << 3) | ((r) & 0x07))
+
+
+/*-----------------------------------------------------------------------------
+The limb_type type represents the data that is contained at each branch (limb)
+in the move tree.
+
+The bc union is either a key for the board at this limb, or is a key for the
+first child of this limb.  The move struct element will have the BOARD_MASK
+bit set if the bc element is a board key.  If the BOARD_MASK bit is NOT set,
+bc will be the child_key.
+
+A value of NO_KEY indicates that there are no children or siblings.
+-----------------------------------------------------------------------------*/
+
+struct limb_struct 
+  {
+  move_type move;		/* what we did to get here */
+  int score;			/* value of this limb */
+  key_type sibling_key;		/* key for next sibling of this limb */
+
+  union
+    {
+    key_type child_key;		/* key for the limb's first child */
+    key_type board_key;		/* key for board at this limb */
+    } bc;
+
+  };
+
+typedef struct limb_struct limb_type;
+
+
+/*-----------------------------------------------------------------------------
+Maximum depth to build the tree
+-----------------------------------------------------------------------------*/
+#define BT_MAX_DEPTH 11
+
+
+/*-----------------------------------------------------------------------------
+				   BD_EVAL.C
+-----------------------------------------------------------------------------*/
+int bd_eval(
+   struct board_struct *board_ptr,
+   unsigned char which_color);
+
+/*-----------------------------------------------------------------------------
+				    BDTTY.C
+-----------------------------------------------------------------------------*/
+void disp_board (board_type *board);
+void disp_row (int row);
+void disp_col (int col);
+void disp_clr_row_col (void);
+void disp_init (void);
+void disp_error_msg (char *msg);
+void disp_player_move (unsigned char player);
+void disp_player_cant_move (unsigned char player);
+void disp_player_moved_to (unsigned char player);
+void disp_pieces (int us, int them);
+
+extern char us_char;
+extern char them_char;
+
+
+/*-----------------------------------------------------------------------------
+				   BUILDLVL.C
+-----------------------------------------------------------------------------*/
+int build_tree (
+   int depth_to_build,
+   unsigned char movers_color);
+
+void update_tree_after_our_move (
+   key_type our_move);
+
+/*-----------------------------------------------------------------------------
+				    FATABL.C
+-----------------------------------------------------------------------------*/
+extern fa_type fa_tabl [8][8];
+
+
+/*-----------------------------------------------------------------------------
+				    GETMOV.C
+-----------------------------------------------------------------------------*/
+move_type check_for_input (void);
+void init_input_vars (void);
+
+
+/*-----------------------------------------------------------------------------
+				   MINIMAX.C
+-----------------------------------------------------------------------------*/
+key_type find_best_move (
+   key_type root,
+   int depth);
+
+key_type find_worst_move (
+   key_type root,
+   int depth);
+
+extern int last_max_score;	/* score for last tree evaluated */
+
+
+/*-----------------------------------------------------------------------------
+				    MOVEIT.C
+-----------------------------------------------------------------------------*/
+int verify_move_and_update_board (
+  move_type move,
+  unsigned char player);
+
+/*-----------------------------------------------------------------------------
+				   MOVE_GEN.C
+-----------------------------------------------------------------------------*/
+int find_move(
+   struct board_struct *board_ptr,
+   int start_displacement,
+   unsigned char movers_color,
+   int *affected_list);
+
+/* affected_list needs room for this many entries */
+#define MAX_AFFECTED_PIECES 19
+
+
+/*-----------------------------------------------------------------------------
+				    OTHDBM.C
+-----------------------------------------------------------------------------*/
+void free_limb (key_type limb);
+void db_init (void);
+void db_kill (void);
+
+key_type db_add_child (
+   key_type parent_key,
+   unsigned char move,
+   board_type *board,
+   int score);
+
+int db_retrieve_board (
+   key_type key,
+   board_type *board);
+
+limb_type far *db_retrieve_limb (
+   key_type key);
+
+int db_delete_subtree (
+   key_type parent,
+   key_type child);
+
+int db_almost_full (void);
+void init_borders (board_type *bd);
+
+/*-----------------------------------------------------------------------------
+				   OTHELLO.C
+-----------------------------------------------------------------------------*/
+void main (void);
+
+extern board_type curnt_bd;		/* board -- used for display */
+extern key_type curnt_top_limb;		/* key of limb for current board */
+
+
+/*-----------------------------------------------------------------------------
+				   PIECE_CT.C
+-----------------------------------------------------------------------------*/
+int piece_count(
+   struct board_struct *board_ptr,
+   unsigned char piece_type);
+
+unsigned char who_can_move(struct board_struct *board_ptr);
+
+/*-----------------------------------------------------------------------------
+				   PROTECT.C
+-----------------------------------------------------------------------------*/
+void update_protection_for_board(
+   struct board_struct *board_ptr,
+   int *affected_list, /* list of affected pieces, beginning with new piece */
+   int num_affected,   /* number of pieces in affected list */
+   unsigned char new_color);  /* new color for affected pieces */
+
+void handle_changed_pieces(
+   struct board_struct *board_ptr,
+   int *affected_list,
+   int num_affected,
+   unsigned char new_color,
+   int prot_check_flag);
+
+/*
+   For movement along an axis within a board, add or subtract
+   delta_array[axis_number] to a pointer to a cell within the board.
+*/
+extern const int delta_array[4];
+
+
+/*-----------------------------------------------------------------------------
+-----------------------------------------------------------------------------*/
+
+/*-----------------------------------------------------------------------------
+MINIMAX.C
+
+This file contains the tree searching minimax algorithms.
+
+Revision History
+----------------
+Jon Ward	 2 Jan 1989	Initial Revision
+Jon Ward	 7 Jan 1989	Added last_max_score var for statistical stuff.
+-----------------------------------------------------------------------------*/
+
+#include <stdio.h>
+#include <limits.h>
+
+#include "othello.h"
+
+
+/*-----------------------------------------------------------------------------
+			  Global Variable Declarations
+-----------------------------------------------------------------------------*/
+int last_max_score;
+
+/*-----------------------------------------------------------------------------
+			   Local Function Prototypes
+-----------------------------------------------------------------------------*/
+STATIC int mm_max (
+   key_type parent,		/* limb whose children will be maxd */
+   int depth,			/* number of levels to minimax */
+   key_type *best);		/* pointer to best move */
+
+STATIC int mm_min (
+   key_type parent,		/* limb whose children will be mind */
+   int depth,			/* number of levels to minimax */
+   key_type *worst);		/* pointer to worst move */
+
+
+/*-----------------------------------------------------------------------------
+STATIC int mm_max (
+   key_type parent,
+   int depth,
+   key_type *best);
+
+This function will find the maximal board score depth levels below the parent.
+The value returned is the maximal score.
+-----------------------------------------------------------------------------*/
+
+STATIC int mm_max (
+   key_type parent,		/* limb whose children will be maxd */
+   int depth,			/* number of levels to minimax */
+   key_type *best)		/* pointer to best move */
+{
+register int max;		/* value for the maximal limb */
+int score;			/* score for the current limb */
+limb_type far *l;		/* pointer to the limb for the current limb */
+register key_type limb;		/* key for the current limb */
+
+max = INT_MIN;			/* minimum int value */
+
+limb = (db_retrieve_limb (parent))->bc.child_key;
+
+for (; limb != NO_KEY; limb = l->sibling_key)
+  {
+  l = db_retrieve_limb (limb);
+
+  score = (depth) ? mm_min (limb, depth - 1, NULL) : l->score;
+
+  if (score > max)
+    {
+    max = score;
+    if (best)
+      *best = limb;
+    }
+  }
+
+return (max);
+}
+
+
+/*-----------------------------------------------------------------------------
+STATIC int mm_min (
+   key_type parent,
+   int depth,
+   key_type *worst);
+
+This function will find the minimal board score depth levels below the parent.
+The value returned is the minimal score.
+-----------------------------------------------------------------------------*/
+
+STATIC int mm_min (
+   key_type parent,		/* limb whose children will be mind */
+   int depth,			/* number of levels to minimax */
+   key_type *worst)		/* pointer to worst move */
+{
+register int min;		/* value for the minimal limb */
+int score;			/* score for the current limb */
+limb_type far *l;		/* pointer to the limb for the current limb */
+register key_type limb;		/* key for the current limb */
+
+min = INT_MAX;			/* maximum int value */
+
+limb = (db_retrieve_limb (parent))->bc.child_key;
+
+for (; limb != NO_KEY; limb = l->sibling_key)
+  {
+  l = db_retrieve_limb (limb);
+
+  score = (depth) ? mm_max (limb, depth - 1, NULL) : l->score;
+
+  if (score < min)
+    {
+    min = score;
+    if (worst)
+      *worst = limb;
+    }
+  }
+
+return (min);
+}
+
+
+/*-----------------------------------------------------------------------------
+key_type find_best_move (
+   key_type root,
+   int depth);
+
+This function returns the key of the maximal move for the root referenced by
+the root argument. Note that the root key is the key for the currently
+displayed board and that its children are the moves that will finally be
+considered. The depth argument is the number of levels of children that exist
+below the root.  For example, depth = 1 means that there is only one level
+built below the root.
+-----------------------------------------------------------------------------*/
+
+key_type find_best_move (
+   key_type root,		/* key to root of tree */
+   int depth)			/* levels below root to look */
+{
+key_type best_move;
+
+last_max_score = mm_max (root, depth - 1, &best_move);	/* do the minimax */
+return (best_move);			/* return the limb key of the best move */
+}
+
+/*-----------------------------------------------------------------------------
+-----------------------------------------------------------------------------*/
+
+/*-----------------------------------------------------------------------------
+Update board
+
+Revision History
+----------------
+Gary Culp   3-14 Dec 1988  Initial version.
+Gary Culp   19 Dec 1988    Added prot_check_flag to handle_changed_pieces, so
+                           that the display routines can use it, too.
+-----------------------------------------------------------------------------*/
+
+/*
+Glossary terms:        ***!!!
+   permanent  (piece)
+   axis
+   hostile    (piece or color)
+   friendly   (piece or color)
+   off-board  (piece or color)
+
+A common piece of advice to Othello players is to take the corners of the
+board, because they can never be captured from you.  Not only can you depend
+upon their contributing to your final count of pieces, they make a good
+solid foundation upon which to build.  Something I haven't heard pointed out
+though, is that corners aren't the only pieces that can't be captured.
+I call any piece that can't be captured a permanent piece.  My strategy when
+playing Othello is to acquire as many permanent pieces as I can; and that is
+the strategy implemented in this game.  The most challenging part of this
+project, for me, was figuring out an efficient algorithm for determining which
+pieces in a given board configuration are permanent.  The answer was obvious
+(after several hours of intense thought :) ).
+This file contains the code which implements the algorithm.
+
+To capture a piece (or line of pieces), P, the opponent must place 
+his pieces, O, on opposite sides of P.
+There are 4 axes through which this may be done:
+
+horizontal   vertical   forward    backward
+                        diagonal   diagonal
+               O             O      O
+ O P O         P           P          P
+               O         O              O
+
+If a piece is protected from being captured along all 4 axes, it cannot be
+captured at all, and is therefore permanent.
+
+A piece is protected along an axis if one of these conditions is true:
+
+1)  The axis is full.
+2)  One of the adjacent pieces along the axis is a friendly permanent piece.
+3)  Both of the adjacent pieces along the axis are permanent.  (It doesn't
+    matter what colors they are.)
+
+For these rules for protection along an axis to work, we have imaginary
+squares which lie off the edge of the board (that's why the boards are
+manipulated as 10x10 instead of 8x8).  These imaginary squares contain
+permanent pieces of a third color: "off-board".  Off-board is considered
+to be a friendly color, for both players.  It may seem weird to add all
+this imaginary stuff to the game, but it greatly simplifies handling the
+edge of the board.  Off-board pieces make the code simpler, smaller,
+and faster, at the expense of making the board data structure larger.
+
+When to check protection and permanence:
+
+   When a piece is played or its color is changed, all 4 of its axes must be
+   checked for protection (previous protection may be invalidated by color
+   change).
+
+   When a protection bit that was clear is set, the piece must be checked
+   for permanence.
+
+   When a piece becomes permanent, the pieces adjacent to it must be checked
+   for protection along the axis containing the newly permanent piece.
+*/
+
+
+#include "othello.h"
+
+
+/* These definitions aren't used anywhere else.  They are part of a trick
+   for determining whether the protected axis rules are satisfied. (The
+   rules which deal with adjacent pieces being permanent, not the rule
+   about a full axis.)
+   Note that TRICK_PROTECTED == TRICK_ADJ1_PERM | TRICK_ADJ2_PERM.
+*/
+#define TRICK_ADJ1_PERM    1 
+#define TRICK_ADJ2_PERM    2
+#define TRICK_PROTECTED    3
+
+/*--------------------------------*/
+/*          Prototypes            */
+/*--------------------------------*/
+
+void handle_changed_pieces(
+   struct board_struct *board_ptr,
+   int *affected_list,
+   int num_affected,
+   unsigned char new_color,
+   int prot_check_flag);
+
+void new_piece_axis_fill_check(
+   struct board_struct *board_ptr,
+   int *affected_list);
+
+void perform_all_protection_checks(struct board_struct *board_ptr);
+
+unsigned char is_filled_axis(unsigned char *new_piece_ptr, int axis_num);
+
+void request_prot_check(
+   struct board_struct *board_ptr, /* pointer to board structure */
+   unsigned char *cell_ptr,        /* pointer to cell */
+   unsigned char requested_axes);  /* requesting prot check for these axes */
+
+int next_check(int *row_num_ptr, int *clm_num_ptr, int *axis_num_ptr);
+
+/*--------------------------------*/
+/*             Variables          */
+/*--------------------------------*/
+
+/* To convert axis flags to axis numbers, shift the axis flag right 4 bits;
+   use the result as an index into this table.
+*/
+static const unsigned char bit_priority_encode[] = {
+   0, /* [0000] */ /* actually, no bit set */
+   0, /* [0001] */
+   1, /* [0010] */
+   1, /* [0011] */
+   2, /* [0100] */
+   2, /* [0101] */
+   2, /* [0110] */
+   2, /* [0111] */
+   3, /* [1000] */
+   3, /* [1001] */
+   3, /* [1010] */
+   3, /* [1011] */
+   3, /* [1100] */
+   3, /* [1101] */
+   3, /* [1110] */
+   3, /* [1111] */
+};
+
+/*
+   For movement along an axis within a board, add or subtract
+   delta_array[axis_number] to a pointer to a cell within the board.
+*/
+const int delta_array[4] = {11, 9, 1, 10};
+
+static unsigned char schedule_map[10][10];
+
+
+/*------------------------------*/
+/*           Functions          */
+/*------------------------------*/
+
+
+/*
+Given a list of affected pieces, starting with the new piece,
+update the board, including the protection flags.
+*/
+void
+update_protection_for_board(
+   struct board_struct *board_ptr,
+   int *affected_list, /* list of affected pieces, beginning with new piece */
+   int num_affected,   /* number of pieces in affected list */
+   unsigned char new_color)   /* new color for affected pieces */
+{
+   handle_changed_pieces(board_ptr, affected_list, num_affected, new_color, 1);
+   new_piece_axis_fill_check(board_ptr, affected_list);
+   perform_all_protection_checks(board_ptr);
+}
+
+/*
+Update board according to list of pieces changed by this move (including
+new piece).
+*/
+void
+handle_changed_pieces(
+   struct board_struct *board_ptr,
+   register int *affected_list, /* list of affected pieces, beginning with new piece */
+   int num_affected,            /* number of pieces in affected list */
+   unsigned char new_color,     /* new color for affected pieces */
+   int prot_check_flag)         /* flag: request protection checks iff set */
+{
+   register unsigned char *cell_ptr;
+
+   /* for all pieces changed by the move, including the new piece */
+   while (num_affected--) {
+
+      /* Clear all protection bits for this piece & set its new color. */
+      *(cell_ptr = &board_ptr->board[0][0] + *affected_list++) = new_color;
+
+      /* Request that this piece be checked for protection along all 4 axes. */
+      if (prot_check_flag) {
+         request_prot_check(board_ptr, cell_ptr, BD_AX | FD_AX | H_AX | V_AX);
+      }
+   }
+}
+
+/*
+Check each axis of new piece to see if we filled the axis.
+*/
+void
+new_piece_axis_fill_check(
+   struct board_struct *board_ptr,
+   int *affected_list) /* list of affected pieces, beginning with new piece */
+{
+   unsigned char axis_flag;
+   unsigned char *new_piece_ptr;
+   register unsigned char *cell_ptr;
+   int axis_num;
+
+   new_piece_ptr = &board_ptr->board[0][0] + *affected_list;
+
+   /* for all 4 axes through the new piece */
+   for (axis_num = BD_NDX; axis_num <= V_NDX; axis_num++) {
+      if (is_filled_axis(new_piece_ptr, axis_num)) {
+
+         /* Set full-axis bit for this axis */
+         SET_FA_BIT(board_ptr->fa_bits,
+          fa_tabl[*affected_list / 10 - 1][*affected_list % 10 - 1][axis_num]);
+
+         /* Request protection check for each piece along this axis.
+            (The pieces are protected along this axis, of course.
+            But it's easier to keep the protection checking in one place,
+            so we go through the scheduler.)
+
+            The loop which does this (below) never hits the new piece, but
+            that's OK because we already requested that it be checked for
+            protection (It's in the affected_list).
+         */
+
+         {
+            register int delta;
+            int pass;
+
+            axis_flag = (unsigned char)BD_AX << axis_num;
+
+            delta = delta_array[axis_num];
+            for (pass = 0; pass < 2; pass++, delta = -delta) {
+               cell_ptr = new_piece_ptr;
+               while (!(*(cell_ptr += delta) & OFF_BOARD)) {
+                  request_prot_check(board_ptr, cell_ptr, axis_flag);
+               }
+            }
+         }
+      }
+   }
+}
+
+
+/*
+   Perform protection checks until they're all done.
+
+   initialize row and column
+   while scheduler returns pieces to check {
+      check piece for protection along specified axis
+      if piece is protected {
+         set protection flag
+         if piece is permanent {
+            schedule adjacent pieces to be checked for permanence along
+            the axis containing this piece
+         }
+      }
+   }
+*/
+void
+perform_all_protection_checks(struct board_struct *board_ptr)
+{
+   int row;
+   int clm;
+   int rule_trick;
+   register unsigned char *cell_ptr;
+   int axis_num;
+
+   row = 1;
+   clm = 1;
+
+   while (next_check(&row, &clm, &axis_num)) {
+
+      cell_ptr = &board_ptr->board[row][clm];
+
+      if (CHK_FA_BIT(board_ptr->fa_bits, fa_tabl[row-1][clm-1][axis_num])) {
+         /* axis is full, therefore piece is protected along it */
+         rule_trick = TRICK_PROTECTED;
+      }
+      else {
+         unsigned char adjac1;
+         unsigned char adjac2;
+         unsigned char friendly_colors;
+
+         friendly_colors = *cell_ptr & (US_PIECE | THEM_PIECE) | OFF_BOARD;
+         adjac1 = *(cell_ptr + delta_array[axis_num]);
+         adjac2 = *(cell_ptr - delta_array[axis_num]);
+
+         rule_trick =
+            IS_PERM(adjac1) ?
+            (BELONGS(adjac1, friendly_colors) ? TRICK_PROTECTED : TRICK_ADJ1_PERM)
+            :
+            0 ;
+
+         if (IS_PERM(adjac2)) {
+            rule_trick |= BELONGS(adjac2, friendly_colors) ?
+               TRICK_PROTECTED : TRICK_ADJ2_PERM;
+         }
+      }
+
+      if (rule_trick == TRICK_PROTECTED) {
+         /* the piece is protected along this axis */
+
+         /* set the protection flag & check for permanence */
+
+         if (IS_PERM(*cell_ptr |= BD_AX << axis_num)) {
+            int sched_ax_num;
+      
+            /* Piece is now permanent. */
+
+            /* Schedule protection checks for all adjacent pieces
+               along the axis containing this piece.
+            */
+            for (sched_ax_num = BD_NDX;
+               sched_ax_num <= V_NDX;
+               sched_ax_num++)
+            {
+               request_prot_check(
+                  board_ptr,
+                  cell_ptr + delta_array[sched_ax_num],
+                  BD_AX << sched_ax_num
+               );
+               request_prot_check(
+                  board_ptr,
+                  cell_ptr - delta_array[sched_ax_num],
+                  BD_AX << sched_ax_num
+               );
+                  cell_ptr - delta_array[sched_ax_num];
+            }
+         }
+      }
+   }
+}
+
+
+/*
+Set bit(s) in the protection check scheduling map.
+
+If the cell is unoccupied, the entire request will be ignored.
+Schedule bits corresponding to axes which are already protected
+   will not be set.
+*/
+void
+request_prot_check(
+   struct board_struct *board_ptr, /* pointer to board structure */
+   unsigned char *cell_ptr,        /* pointer to cell */
+   unsigned char requested_axes)   /* requesting prot check for these axes */
+{
+   if (BELONGS(*cell_ptr, US_PIECE | THEM_PIECE)) {
+      /* Cell is occupied.
+         Set bits for requested axes, except those axes
+         which are already protected.
+      */
+
+      *(&schedule_map[0][0] + (cell_ptr - &board_ptr->board[0][0]))
+         |= requested_axes & ~*cell_ptr;
+   }
+   /* else cell is unoccupied, so ignore request */
+}
+
+/*
+Get next cell for protection check
+
+Returns:
+   0: no more cells need to be checked
+   1: cell at *row_num_ptr, *clm_num_ptr needs to be checked along axis
+      number *axis_num_ptr
+*/
+int
+next_check(int *row_num_ptr, int *clm_num_ptr, int *axis_num_ptr)
+{
+   register unsigned char *p;
+   register unsigned char *stop;
+   unsigned char *start;
+   int temp;
+   int pass;
+
+   p = start = &schedule_map[*row_num_ptr][*clm_num_ptr];
+   stop = &schedule_map[8][9];
+   for (pass = 0; pass < 2; pass++) {
+      while (*p == 0 && ++p < stop) ;
+      if (p != stop) {
+         /* found one, perform calcs and return */
+         temp = p - &schedule_map[0][0];
+         *row_num_ptr = temp / 10;
+         *clm_num_ptr = temp % 10;
+         /* Determine which axis & clear schedule bit for that axis */
+         *p ^= BD_AX << (*axis_num_ptr = bit_priority_encode[*p >> 4]);
+         return (1); /* found one */
+      }
+      p = &schedule_map[1][1]; /* now check from 1st cell of the board... */
+      stop = start;            /* ...up to where we started checking */
+   }
+   return (0); /* they're all done */
+}
+
+
+/*
+Determine whether a specified axis has been filled by a new piece.
+
+The cell occupied by the new piece is never checked; it is just assumed
+to be occupied.
+
+Returns:
+   1 if axis is filled, 0 if axis is not filled
+*/
+unsigned char
+is_filled_axis(unsigned char *new_piece_ptr, int axis_num)
+{
+   register unsigned char *ptr;
+   register int delta;
+   int pass;
+
+   delta = delta_array[axis_num];
+   for (pass = 0; pass < 2; pass++, delta = -delta) {
+      ptr = new_piece_ptr;
+      while (*(ptr += delta) & (US_PIECE | THEM_PIECE)) ;
+      if (*ptr & NO_PIECE) {
+         return (0);    /* This axis is still unfilled. */
+      }  /* else we ran off the edge of the board */
+   }
+
+   return (1);
+}
+

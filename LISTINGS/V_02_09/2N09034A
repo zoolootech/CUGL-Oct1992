@@ -1,0 +1,469 @@
+/**********************************************************
+ * MENUC.CTL - Allows you to dynamically change your       *
+ * CONFIG.SYS  configuration at boot time.                *
+ *                                                        *
+ * Add DEVICE = MENUC.CTL [Mx Tx "Text] to your CONFIG.SYS *
+ * just ahead of the first group of commands  you wish to *
+ * be able to menu.  The x in Tx is the seconds MENUC.CTL  *
+ * will pause for a keystroke before booting normally.    *
+ * x defaults to zero.  The x in Mx is the default menu   *
+ * number (1-8) that will be selected in a normal boot.   *
+ * x defaults to one.  The text after the " will be the   *
+ * first menu title.  All text after the " will be        *
+ * considered part of the title, so it must be the last   *
+ * parameter on the line.  The first title can be         *
+ * specified this way, or by putting the following        *
+ * construct immediately after the DEVICE=MENUC.CTL        *
+ *                                                        *
+ * Add DEVICE = MTITLE [Text] to give the boot menu       *
+ * selection a title to put on the screen.  Each          *
+ * MTITLE [Text] (up to * eight) will create a new menu   *
+ * selection.                                             *
+ *                                                        *
+ * Add DEVICE = MENUEND after the last command you wish   *
+ * to be able to menu.  MENUEND (like MTITLE) is a dummy  *
+ * device and must appear in CONFIG.SYS in order for      *
+ * MENUC.CTL to operate.                                   *
+ *********************************************************/
+
+#include "GENERAL.H"
+#include "LIB.H"
+
+typedef   struct {        /* The static part of a device */
+  BYTE    HEADER_LENGTH;  /* drivers request header. */
+  BYTE    UNIT_CODE;      /* See "Writing MS-DOS Device */
+  BYTE    COMMAND_CODE;   /* Drivers" by Robert S. Lai  */
+  WORD    STATUS;
+  double  RESERVED;
+} RQ_Header;
+typedef   struct {        /* The dynamic part of the    */
+  RQ_Header HEADER;       /* "INITIALIZE" request       */
+  BYTE      UNITS;        /* header to a device driver  */
+  WORD      *ENDING_OFFSET;
+  WORD      ENDING_SEGMENT;
+  char      far *ARGUMENTS;
+} Init_Header;
+typedef   struct {         /* Structure to keep track   */
+  WORD    str_len;         /* of location of Config.SYS */
+  char    menu;            /* commands to be dealt with */
+  char far *start;
+} Cmd_Rec;
+
+
+#define Last_Record -1
+        /* flag to indicate last cmd to process */
+#define row_start 9       /* menu start location */
+#define col_start 12
+#define normal    0x07    /* norman and inverse video */
+#define inverse   0x70    /* colors */
+
+BYTE   row;     /* variables for screen positioning */
+BYTE   col;
+
+extern WORD MENU_CTL_END;
+       /* end of resident portion of device driver */
+WORD   DOS_VERSION;
+extern Cmd_Rec _ENDDATA;
+       /* free memory location for dynamic allocation */
+Cmd_Rec near *MyStorage = &_ENDDATA;
+        /* set pointer to free memory */
+Cmd_Rec *Cmds;
+        /* make it a pointer to Config.Sys commands */
+void leave(void);     /* device driver exit point */
+void clean_up(void);
+     /* disable non selected Config.SYS commands */
+char far *make_coff(char far *Buf);
+     /* routine to convert non selected Config.Sys *
+      * commands to BREAK = OFF                    */
+void set_menu(BYTE m);    /* setup menu select text */
+void display_far(char far *Buf); /* display a far string */
+void xlat_ch(char test); /* make control chars visible */
+void menu_name(BYTE cmd);
+extern Init_Header far *REQUEST_OFFSET;
+       /* pointer to Device Request Header */
+BYTE   far *M_Buffer;   /* some global variables */
+BYTE   far *Buf_Start;
+BYTE   far *Control_End;
+BOOL   end_found = FALSE;
+       /* make sure there is a "DEVICE=MENUEND" */
+BOOL   modified;
+       /* flag to indicate display screen needs update */
+
+WORD   key = 0;  /* keeps track of keyboard entry */
+WORD   junk;
+WORD   time = 0; /* default time and menu selection */
+BYTE   menu = 0;
+WORD   configs;  /* number of menus */
+char   test;     /* local char for testing */
+char   menu_end[] = "DMENUEND";
+       /* Used to find "DEVICE=MENUEND" */
+#define l_menuend sizeof(menu_end) - 1
+char   bmenu[] = "DMTITLE";
+       /* Used to find "DEVICE=MTITLE" */
+#define l_bmenu  sizeof(bmenu) - 1
+char   menut[7][70];
+       /* store the titles for upto 8 selections */
+
+
+// #define Debug = TRUE;
+
+void main(void) {
+  WORD i;
+  BYTE j;
+  BYTE k;
+  BYTE m;
+
+  REQUEST_OFFSET->ENDING_OFFSET = 0;
+  REQUEST_OFFSET->ENDING_SEGMENT = _CS;
+    /* tell MS-Dos where our resident portion ends */
+  M_Buffer = REQUEST_OFFSET->ARGUMENTS;
+    /* point to rest of Config.Sys Commands */
+  printstr("MENUC.CTL V1.0 (C) Dec. 6, 1990 by "
+           "Larry Weaver\n\r$");
+  /* print a start up line.  */
+  DOS_VERSION = dosversion(); /*get MS-Dos version number*/
+  if (DOS_VERSION < 0X200) {  /* must be greater than 2 */
+    printstr("Wrong Version of Dos, "
+              "requires 2X or greater\n\r$");
+    leave();
+  }
+  for (i=0;i < 8;i++) for (j=0;j < 2;j++) menut[i][j] = 0;
+    /* assume no menu selection titles */
+  for (;((*M_Buffer != LF) & (*M_Buffer != CR));M_Buffer++){
+
+/* parse MENUC.CTL command line,  get default time, menu, *
+ * and title                                            */
+
+    test = *M_Buffer;
+    #ifdef Debug
+    xlat_ch(test);
+    #endif
+    if (test == '"') { /* see if title 1 */
+      M_Buffer++;
+      for (j=1;(*M_Buffer != LF) & (*M_Buffer != CR);
+           M_Buffer++,j++) {
+        #ifdef Debug
+          xlat_ch(*M_Buffer);
+        #endif
+        menut[0][j] = *M_Buffer;
+      }
+      /* put text in menu array */
+      menut[0][j] = '\0';  /* add terminating 0 */
+      menut[0][0] = --j;     /* put length in first element */
+      break;
+    } else if (test == 'M') { /* see if default menu */
+      test = *(M_Buffer + 1);
+      if ((test > '0') & (test < '9')) menu = test - '1';
+    } else if (test == 'T') { /* see if default time */
+      test = *(M_Buffer + 1);
+      if ((test > '/') & (test < ':')) time = test - '0';
+    }
+  }
+  while ((*M_Buffer == CR) | (*M_Buffer == LF)) {
+    /* go to next command */
+    #ifdef Debug
+    xlat_ch(*M_Buffer);
+    #endif
+    M_Buffer++;
+  }
+  m = 0;
+  if (cmpsnf(M_Buffer,bmenu,l_bmenu)) {
+    /* see if next command is "DEVICE=MTITLE", if it is *
+     * set up title for menu 1                         */
+    #ifdef Debug
+      display_far(M_Buffer);
+    #endif
+    set_menu(m);
+  }
+  Buf_Start = M_Buffer;
+  i = 0;
+  while (!end_found) {
+
+/* parse rest of Config.Sys commands looking for          *
+ * "DEVICE=MENUEND".  Will turn all unrecognized commands *
+ * into "BREAK=OFF" commands in the process.  Also parses *
+ * rest of menus, and sets up their titles for later      *
+ * selection.                                            */
+
+    for (;(*M_Buffer == CR) | (*M_Buffer == LF);M_Buffer++) {
+      #ifdef Debug
+        xlat_ch(*M_Buffer);
+      #endif
+    }
+    test = *M_Buffer;
+    #ifdef Debug
+      display_far(M_Buffer);
+    #endif
+    Control_End = M_Buffer;
+    Cmds = MyStorage + i;
+    if (test == 'D') {
+      end_found = cmpsnf(M_Buffer,menu_end,l_menuend);
+      /*  check for "DEVICE=MENUEND" */
+      if (end_found) {
+        make_coff(M_Buffer);
+        /* deactivate the command line */
+        Cmds->menu = Last_Record;
+        break;
+      } else if (cmpsnf(M_Buffer,bmenu,l_bmenu)) {
+        /* check for "DEVICE=MTITLE".  If too many titles *
+         * then select menu 1 and leave.                 */
+        if (m < 7) {
+          set_menu(++m);
+          continue;
+        } else {
+          printstr("Too many menu selections.  Must be less"
+                   " than 9!\n\rHit any key to continue!$");
+          junk = get_key();
+          printstr("\n\r$");
+          set_menu(++m);
+          key = EnterKey;
+          menu = 0;
+          Cmds->menu = Last_Record;
+          clean_up();
+          leave();
+        }
+      }
+    }
+    Cmds->start = M_Buffer;
+    for (j=0;(*M_Buffer != CR) & (*M_Buffer != LF);
+         j++,M_Buffer++);
+    if (test == 'Z') {
+      if (DOS_VERSION >= DOS4) *Cmds->start = '0';
+      /* deactivate all "Unrecognized" commands. */
+      /* Dos 4 Config.Sys has a "REM" capability, so we *
+       * use it instead of "BREAK=OFF"                 */
+      else if (j > 4) {
+        make_coff(Cmds->start);
+      }
+    } else if ((test != -1) & (test != '0'))
+      /* don't mess with things Dos has already processed */
+      if (j != 0)  {
+        Cmds->menu = m;
+        i++;
+        Cmds->str_len = j;
+        /* store the string length (COFF control) */
+      }
+    if (!((WORD) M_Buffer)) break;
+    /* can't process more than 64K */
+    if ((WORD) Cmds > 0xF000) break;
+    /* could start interfering with the stack, should *
+     * never be this big.                            */
+  }
+  #ifdef Debug
+    while (!chk_key());
+  #endif
+  delay_1();
+  if (!end_found) {
+
+/* Didn't find DEVICE=MENUEND in the Config.Sys file.     *
+ * Don't process any more commands, just print an error   *
+ * message and leave                                     */
+
+    if (chk_key()) key = get_key();
+    if (key == EscKey) key = 0;
+    if (time | key) {
+      printstr("DEVICE = MENUEND has to be added as a "
+               "terminating\r\n"
+               "command in CONFIG.SYS before MENUC.CTL "
+               "can function.\r\n"
+               "Press and key to continue.$");
+      get_key();
+    }
+    leave();
+  }
+  if (time) {
+    /* if default time not = 0, then give chance to hit a   *
+     * key.  Max time is 9 seconds, then process continues. *
+     * If ESC key is hit, process continues immediately.   */
+    printstr("\n\r\rPress any key if you wish to modify the\n\r"
+             "CONFIG.SYS configuration.\n\r"
+              "Press Esc for quick bypass of MENUC.CTL.\n\r\r$");
+    for (;time;time--) {
+      if (!chk_key()) delay_1();
+      else {
+        key = get_key();
+        break;
+      }
+    }
+  } else if (chk_key()) key = get_key();
+  if (key == EscKey) key = 0;
+  /* if no key hit in time, then select default and leave */
+  if (!key) {
+    if (menu > m) menu = 0; /* default menu exist? */
+    clean_up();
+  }
+  key = 0;
+  cls();
+  /* someone hit a key, set up the menus, and allow the */
+  /* operator to select one. */
+  printstr("Press Up/Down arrow keys to select highlighted"
+           " configuration\r\n"
+           "Press Enter to accept configuration "
+           "and exit.\r\n"
+           "Press Alt-X to deactivate all configurations "
+           "and exit\r\n"
+           "Note: Permanent changes are not made to the "
+           "CONFIG.SYS file.\r\n\n$");
+
+  if (menu > (m)) { /* Does default menu exist? */
+    printstr("Menu$ ");
+    w_tty(menu+0x31);
+    printstr(" doesn't exist.  Default set to Menu 1 "
+             "(see AltX).$");
+    menu = 0;
+  }
+  if (i) { /* anything to pick from ? */
+    configs = m;
+    row = row_start;
+    col = 0;
+    for (m=0;m <= configs;m++,row++) {
+      /* print menu titiles on screen */
+      set_curs(row,col);
+      menu_name(m);
+      fputsh(&menut[m][1]);
+    }
+  } else leave(); /* no, go home */
+  m = 0;
+
+  row = row_start + menu;
+  col = col_start;
+  modified = TRUE;
+  while ((key != EscKey) & (key != EnterKey)&(key!=AltX)) {
+
+    /* Allow arrowing through menu titles.  Show current  *
+     * with -->, and Hi-Lited text (if any).             */
+
+    if (modified) {
+      set_curs(row,0);
+      printstr("--> $");
+      hi_lite(row, col, inverse, menut[row - row_start][0]);
+      modified = FALSE;
+    }
+    key = get_key();
+    switch (key) {
+      case AltX   :
+      case EnterKey :
+      case EscKey : break;
+      case DnArrow :
+      case UpArrow : {
+        modified = TRUE;
+        set_curs(row,0);
+        printstr("    $");
+        hi_lite(row, col=col_start ,normal,
+                menut[row - row_start][0]);
+        if (key==DnArrow) {
+          if (++m <= configs) row++;
+          else { row = row_start; m=0; }
+          break;
+        }
+        if (m > 0) { row--; m--; }    /* down arrow */
+        else { m = configs; row = row_start + configs; }
+        break;
+      }
+      case PgDn    :
+      case PgUp    : {
+        modified = TRUE;
+        set_curs(row,0);
+        printstr("    $");
+        hi_lite(row,col=col_start,normal,
+                menut[row_start - row][0]);
+        if (key==PgDn) {
+          m = configs;
+          row = row_start + configs;
+        }else {
+          m = 0;
+          row = row_start;
+        }
+        break;
+      }
+    }
+  }
+  if (key == EnterKey) menu = m;
+  clean_up();
+}
+
+/*********************************************************
+ *     disable the non selected menu items, and leave    *
+ ********************************************************/
+
+void clean_up() {
+  BYTE i;
+  for (i=0,Cmds=MyStorage;
+       (Cmds->menu != Last_Record);Cmds = MyStorage + i) {
+
+    M_Buffer = Cmds->start;
+        #ifdef Debug
+          display_far(M_Buffer);
+        #endif
+    if ((key == AltX) | (Cmds->menu != menu)) {
+      if (DOS_VERSION >= DOS4) *M_Buffer = '0';
+      else if (Cmds->str_len < 5) {
+        *M_Buffer = 'Z';
+      } else make_coff(M_Buffer);
+    }
+        #ifdef Debug
+          display_far(M_Buffer);
+          junk = get_key();
+        #endif
+    i++;
+  }
+  leave(); /* return to DEVICE.ASM */
+}
+
+/********************************************************
+ * disable the current config sys command by replacing  *
+ * it with "BREAK=OFF".                                 *
+ *******************************************************/
+
+char far *make_coff(char far *Buf) {
+  Buf = Buf + movesnf(Buf,"COFF");
+  for (;(*Buf != CR) & (*Buf != LF);Buf++) *Buf = ' ';
+  return(Buf);
+}
+/*********************************************************
+ * Move the text pointed to by M_Buffer into the current *
+ * menu title                                            *
+ ********************************************************/
+
+void set_menu(BYTE m) {
+  BYTE j;
+  char far *Buf;
+  Buf = M_Buffer + sizeof(bmenu); /* skip MTITLE */
+  for (;(*Buf == ' ');Buf++);   /* remove leading spaces */
+  for (j=1;(*Buf != CR) & (*Buf != LF);j++,Buf++)
+    menut[m][j] = *Buf; /* put text in menu array */
+  menut[m][j] = '\0';  /* add terminating 0 */
+  menut[m][0] = --j;     /* put length in first element */
+  M_Buffer = make_coff(M_Buffer);
+  /* deactivate the command */
+}
+
+
+void menu_name(BYTE cmd) {
+  switch (cmd) {
+    case  0 : { printstr("    Menu 1$"); break; }
+    case  1 : { printstr("    Menu 2$"); break; }
+    case  2 : { printstr("    Menu 3$"); break; }
+    case  4 : { printstr("    Menu 4$"); break; }
+    case  5 : { printstr("    Menu 5$"); break; }
+    case  6 : { printstr("    Menu 6$"); break; }
+    case  7 : { printstr("    Menu 7$"); break; }
+    case  3 : { printstr("    Menu 8$"); break; }
+    }
+  printstr("= $");
+}
+
+#ifdef Debug
+void display_far(char far *Buf) {
+  for (;(*Buf != CR) & (*Buf != LF);Buf++) xlat_ch(*Buf);
+}
+
+void xlat_ch(char test) {
+  if (test==0) fputsh("<0>"); else
+  if (test==CR) fputsh("<CR>\r\n"); else
+  if (test==LF) fputsh("<LF>\n\r"); else
+  if (test==SP) fputsh("<SP>"); else
+  if (test==BELL) fputsh("<BELL>"); else
+  w_tty(test);
+}
+#endif

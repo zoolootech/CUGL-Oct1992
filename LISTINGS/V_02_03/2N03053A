@@ -1,0 +1,74 @@
+
+;********************************************************************
+; _Check8087 -- check for a numeric coprocessor.
+;
+; C Prototype :
+;
+;        short int Check8087(void)
+;
+; Input : Nothing
+;
+; Output: AX = 0 -- No Coprocessor
+;              1 -- 8087
+;              2 -- 80287
+;              3 -- 80387
+;
+; Author : Bob Zigon
+; Date   : July 23, 1989
+;********************************************************************
+     dosseg
+     .model small
+     .code 
+      public _Check8087
+
+_Check8087 proc near
+     local Control:word=ChLocals
+     push bp
+     mov bp,sp
+     sub sp,ChLocals             ; Allocate some locals
+
+     finit                       ; Initialize math coprocessor
+     mov byte ptr Control+1,0    ; Clear memory byte
+     fnstcw Control              ; Store control word in memory
+     mov ah,byte ptr Control+1   ; Upper byte is 03h if
+     cmp ah,03h                  ;   ... coprocessor is present
+     jne No8087                  ; No math coprocessor
+;
+;  Check for 8087
+;
+     and Control, NOT 0080h      ; Turn interrupts on (IEM=0)
+     fldcw Control               ; Load control word
+     fdisi                       ; Disable interrupts (IEM=1)
+     fstcw Control               ; Store control word
+     test Control, 0080h         ; If IEM=1, then 8087
+     jnz Is8087                  ; We have an 8087
+;
+;  Check if 80287 OR 80387
+;
+     finit                       ; Use default infinity mode
+     fld1                        ; Generate infinity
+     fldz                        ;     by dividing 1 by zero
+     fdiv                        ;
+     fld st                      ; Form negative infinity
+     fchs                        ;
+     fcompp                      ; Compare +/- infinity
+     fstsw Control               ; Equal for 87/287
+     fwait                       ; Wait for fstsw to complete
+     mov ax,Control              ; Get NDP control word
+     sahf                        ; Store condition bits in flags
+     jz Is80287                  ; It's 287 if infinities equal
+     mov ax,3                    ; It must be an 80387
+
+ChExit:  mov sp,bp
+         pop bp
+         ret
+No8087:  xor ax,ax
+         jmp short ChExit
+Is8087:  mov ax,1
+         jmp short ChExit
+Is80287: mov ax,2
+         jmp short ChExit
+_Check8087 endp
+
+      end
+

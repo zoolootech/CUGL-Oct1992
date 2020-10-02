@@ -1,0 +1,184 @@
+/*				stdio.src
+
+	Copyright (C) 1980, M J Maney
+
+	First created	3/15/80
+	Last revised	4/19/80 1:45
+
+	This file defines some useful functions that are designed to help
+	make BDS C programs running under CP/M pretend that they're
+	running in a nicer environment (like UNIX, ha-ha). It makes it
+	easier to setup and use STDIN and STDOUT directed IO, and
+	although you can't just assume that they're there as you can
+	with UNIX C, at least you don't have to put in code to parse
+	the command line into each program you write: just use the
+	functions here.
+*/
+
+
+#include "csym.lib"
+#include "stdio.lib"
+
+#define ESCAPE '\\'
+
+
+/* stdopen parses the command line arguments looking for arguments that
+	begin with "<" or ">", which are respectively taken to be the
+	filenames for STDIN and STDOUT. The defaults are to use the
+	console for both STDIN and STDOUT. Any argument beginning with
+	"<" or ">" is effectively removed from the argument list (by
+	moving pointers in argv[] and decreasing argc)...if your program
+	wants to get an argument beginning with "<" or ">", you must
+	type it as "\<" or "\>", and stdopen will replace the escape
+	sequence in the strings, but will not "use" those arguments
+	for IO assignment. If you want to pass arguments beginning with
+	"\", you must type "\\" to escape the escape character.
+
+	NB: the escape character is ONLY significant to stdopen() in the
+	FIRST character position of an argument.
+
+	If the "filter" argument is true, and stdopen finds a STDIN arg,
+	but does not find one for STDOUT, then an amazing thing happens:
+	a STDOUT file is created with the same drive and name as STDIN,
+	but a type of "$$$". Then, when stdclose is called to close
+	the files, the following occurs:
+	    1)	STDIN is closed
+	    2)	STDOUT is closed
+	    3)	if both closes were OK, then
+			STDIN is deleted, and
+			STDOUT is renamed to the original (STDIN) filename
+		else an error message is printed, and any active SUBMIT file
+			that may be present is deleted (to break out of any
+			pipeline that may be running)
+
+	Stdopen returns ERR if something goes awry. If everything is
+	ok, it will return YES or NO, depending on whether STDIN is a
+	file or not (NO if its left attatched to the console). This
+	provides a mechanism for programs using stdopen to determine
+	whether they're talking to the console or a file when they
+	get input from STDIN, which is often useful, without the program
+	needing to know about _stdin and the like.
+*/
+
+int stdopen(argc,argv,filter)
+int	*argc;		/* NB that argc MUST be passed by reference */
+char	*argv[];
+char	filter;
+	{
+	char	trouble,haveinp,haveout;	/* flags */
+	char	c;
+	int	i,j;
+
+	trouble=haveinp=haveout=NO;
+	_filter=NO;
+	_stdin=_stdout=CONSOLE;
+	i=1;
+	while (i<*argc)
+		switch(c=*argv[i]) {
+		case '<' :
+		case '>' :
+			if (c=='<') {
+				if (haveinp)	/* more than one STDIN arg */
+					trouble=YES;
+				else
+					strcpy(_inpname,argv[i]+1);
+				haveinp=YES;
+				}
+			else {
+				if (haveout)	/* more than one STDOUT arg */
+					trouble=YES;
+				else
+					strcpy(_outname,argv[i]+1);
+				haveout=YES;
+				}
+			for (j=i+1 ; j<*argc ; j++)
+				argv[j-1]=argv[j];
+			(*argc)--;
+			break;
+		case ESCAPE :
+			strcpy(argv[i],argv[i]+1);
+			/* fall through to increment i */
+		default :
+			i++;
+			}	/* end of switch, also end of while */
+
+	if (trouble) {
+		puts("\nTrouble: multiple STDIN or STDOUT args. Continue ?");
+		if (toupper(getchar())!='Y')
+			exit();
+		else
+			trouble=NO;
+		}
+
+	if (haveinp && !haveout && filter) {
+		strcpy(_outname,_inpname);
+		for (i=0 ; _outname[i]!='\0' && _outname[i]!='.' ; i++)
+			;
+		strcpy(_outname+i,".$$$");
+		haveout=_filter=YES;
+		}
+
+	if (haveinp)
+		if ((_inpfd=fopen(_inpname,_inpbuf))==ERR) {
+			puts("\nCannot open STDIN: ");
+			printf("%s",_inpname);
+			return ERR;
+			}
+		else
+			_stdin=FILE;
+
+	if (haveout)
+		if ((_outfd=fcreat(_outname,_outbuf))==ERR) {
+			puts("\nCannot create STDOUT: ");
+			printf("%s",_outname);
+			return ERR;
+			}
+		else
+			_stdout=FILE;
+
+	return (_stdin==CONSOLE ? YES : NO);
+	}
+
+
+/* stdclose is the function that closes STDIN and STDOUT files if needed,
+	so that tou don't have to think about which might be files and
+	which not. Also continues the idea of hiding tthese little
+	peculiararities from your program. This is where that _filter
+	flag is put to good use, too.
+*/
+
+int stdclose()
+	{
+	int	flag;
+
+	if (_stdin==FILE) {
+		flag=(close(_inpfd)==ERR);
+		_stdin=CONSOLE;
+		}
+	else
+		flag=TRUE;
+
+	if (_stdout==FILE) {
+		putc(EOT,_outbuf);
+		fflush(_outbuf);
+		flag|=(close(_outfd)==ERR);
+		_stdout=CONSOLE;
+		}
+	else
+		flag=TRUE;
+
+	if (_filter)
+		if (flag) {
+			puts("\nStdio close error");
+			unlink("A:$$$.SUB");
+			return ERR;
+			}
+		else {
+			unlink(_inpname);
+			rename(_outname,_inpname);
+			}
+
+	_filter=NO;
+	return OK;
+	}
+

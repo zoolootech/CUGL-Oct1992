@@ -1,0 +1,93 @@
+
+/*
+ * xrt.c - cross-reference table implementation
+ */
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include "xrt.h"
+
+typedef struct listnode listnode;
+struct listnode
+    {
+    unsigned number;
+    listnode *next;
+    };
+
+typedef struct treenode treenode;
+struct treenode
+    {
+    char *word;
+    listnode *lines;
+    treenode *left, *right;
+    };
+
+static void addnumber(treenode *t, unsigned n)
+    {
+    listnode *p;
+
+    p = t->lines;
+    while (p->next != NULL && p->number != n)
+        p = p->next;
+    if (p->number != n)
+        {
+        p = p->next
+            = (listnode *)malloc(sizeof(listnode));
+        p->number = n;
+        p->next = NULL;
+        }
+    }
+
+static treenode *addtree
+        (treenode *t, char *w, unsigned n)
+    {
+    int cond;
+
+    if (t == NULL)
+        {
+        t = (treenode *)malloc(sizeof(treenode));
+        t->word =
+            strcpy((char *)malloc(strlen(w) + 1), w);
+        t->lines =
+            (listnode *)malloc(sizeof(listnode));
+        t->lines->number = n;
+        t->lines->next = NULL;
+        t->left = t->right = NULL;
+        }
+    else if ((cond = strcmp(w, t->word)) == 0)
+        addnumber(t, n);
+    else if (cond < 0)
+        t->left = addtree(t->left, w, n);
+    else
+        t->right = addtree(t->right, w, n);
+    return t;
+    }
+
+static void printtree(treenode *t)
+    {
+    listnode *p;
+
+    if (t != NULL)
+        {
+        printtree(t->left);
+        printf("%12s: ", t->word);
+        for (p = t->lines; p != NULL; p = p->next)
+            printf("%4d ", p->number);
+        printf("\n");
+        printtree(t->right);
+        }
+    }
+
+static treenode *root = NULL;
+
+void xrt_add(char *w, unsigned n)
+    {
+    root = addtree(root, w, n);
+    }
+
+void xrt_print(void)
+    {
+    printtree(root);
+    }
+

@@ -1,0 +1,142 @@
+Listing 2
+
+{*
+ * map.pas - color a map
+ *}
+
+{$I readid.pas }
+
+const
+	REGION_MAX = 255;
+
+type
+	region = 0..REGION_MAX;
+	region_set = set of region;
+	color = (RED, BLUE, GREEN, YELLOW);
+	color_image_array = array [color] of string[6];
+
+const
+	COLOR_MIN = RED;
+	COLOR_MAX = YELLOW;
+	color_image : color_image_array =
+		('RED', 'BLUE', 'GREEN', 'YELLOW');
+	NAME_MAX = 3;
+
+var
+	name : array [region] of string[NAME_MAX];
+	adjacent : array [region] of region_set;
+	last_region : integer;
+	colored : array [color] of region_set;
+
+procedure init_map;
+	var
+		r : region;
+		c : color;
+	begin
+	for r := 0 to REGION_MAX do
+		begin
+		name[r] := '';
+		adjacent[r] := [ ];
+		end;
+	last_region := -1;
+	for c := COLOR_MIN to COLOR_MAX do
+		colored[c] := [ ];
+	end;
+
+procedure dump_map;
+	var
+		ri, rj : region;
+	begin
+	for ri := 0 to last_region do
+		begin
+		write(name[ri]:NAME_MAX);
+		for rj := 0 to last_region do
+			if rj in adjacent[ri] then
+				write(' ', name[rj]:NAME_MAX);
+			writeln;
+		end;
+	end;
+
+function region_number(var s : string) : integer;
+	var
+		r : region;
+	begin
+	for r := 0 to last_region do
+		if s = name[r] then
+			begin
+			region_number := r;
+			exit;	
+			end;
+	inc(last_region);
+	if last_region > REGION_MAX then
+		begin
+		writeln('too many countries');
+		halt;
+		end;
+	name[last_region] := s;
+	region_number := last_region;
+	end;
+
+procedure read_map;
+	var
+		ri, rj : region;
+		s : string;
+	begin
+	while not seekeof do
+		begin
+		read_id(input, s);
+		ri := region_number(s);
+		while not seekeoln do
+			begin
+			read_id(input, s);
+			rj := region_number(s);
+			adjacent[ri] := adjacent[ri] + [rj];
+			adjacent[rj] := adjacent[rj] + [ri];
+			end;
+		readln;
+		end;
+	end;
+
+procedure write_map;
+	var
+		r : region;
+		c : color;
+	begin
+	for r := 0 to last_region do
+		begin
+		write(name[r]:NAME_MAX, ' ');
+		for c := COLOR_MIN to COLOR_MAX do
+			if r in colored[c] then
+				write(color_image[c]);
+		writeln;
+		end;
+	end;
+
+function try_coloring(r : region) : boolean;
+	var
+		c : color;
+	begin
+	for c := COLOR_MIN to COLOR_MAX do
+		if adjacent[r] * colored[c] = [ ] then
+			begin
+			colored[c] := colored[c] + [r];
+			if (r >= last_region)
+			or try_coloring(r + 1) then
+				begin
+				try_coloring := TRUE;
+				exit;
+				end;
+			writeln('backtracking...');
+			colored[c] := colored[c] - [r];
+			end;
+	try_coloring := FALSE;
+	end;
+
+begin
+init_map;
+read_map;
+if try_coloring(0) then
+	write_map
+else
+	writeln('no solution');
+end.

@@ -1,0 +1,384 @@
+<< PART I >>
+ 
+1. The MSU.C program is run under the VMS operating system
+   on the DEC VAX 8820.
+
+2. The input data for MSU.C program is called MSU.DATA.
+ 
+3. The output file for MSU.C program is called MSU.OUT.
+
+4. A program runs on the MSU1 computer if the user 
+   follows the input specifications for the object code
+   program. The user can see the data that is stored in
+   the memory, the value of bit field changes in PSW, 
+   and the kinds of instructions in IR. The user can
+   also determine the time spent executing the program
+   or why the program failed to work. One can understand
+   general computer organization and operations by writing
+   programs for MSU1. The user can modify MSU1 to simulate
+   other machine.
+
+
+<< PART II >>
+
+     The MSU.C program is used to simulate a computer 
+(MSU1). The MSU1 is described by four sections. These 
+sections are Hardware, Instruction Set, Software 
+Interface to the Simulated System, and INPUT and 
+OUTPUT Format. 
+
+1. Hardware
+
+   1) Memory
+
+      * 4K word memory space (from 0 to 4095).
+      * each word of memory consists of 32 bits.
+           
+   2) CPU:
+
+      * contains four segment origin registers.
+           
+        -- code segment
+        -- input segment
+        -- output segment
+        -- workspace segment
+
+      * each segment origin register is 32 bits.
+      * format of the segment origin register
+
+        +--------------------+------------------------+
+        |    base address    |   length of segment    |
+        +--------------------+------------------------+
+         31                18 17                     0
+
+        base address: the beginning address of a segment
+                      in main memory.
+        length of segment: the length of that segment in
+                           main memory.
+
+      * maintain two 32 bit registers: 
+
+        -- IR (Instruction Register) and 
+        -- PSW (Program Status Word) register.
+ 
+      * format of PSW
+
+        +------+------+-------------------------------+
+        |  CC  |  IC  |     PC (program counter)      |
+        +------+------+-------------------------------+
+         31  28 27  24 23                            0
+
+        CC: Condition Code.
+        IC: Interrupt Code.
+        PC: Program Counter.
+
+   3) Input/Output Devices:
+
+      One card reader and one line printer are available.
+      Both are simulated by files on the system.
+
+   4) Clock:
+
+      * used to time the execution of programs within the 
+        system.
+      * when the termination of each job, the clock must be
+        reset to 0.
+
+2. Instruction Set
+
+   1) addressing mode:
+
+      * The fundamental addressing mode on MSU1 is base plus
+        displacement addressing.
+      * The effective memory address refers to a byte in 
+        memory.
+   
+   2) instruction type:
+
+      * GI (General Instruction) and BI (Branch Instruction).
+      * format of GI instructions
+
+        +--------+------+----------+------+----------+
+        | opcode |  S1  |    D1    |  S2  |    D2    |
+        +--------+------+----------+------+----------+
+         31    26 25  22 21      13 12  11 10       0
+
+        S1: origin register of the operand1.
+        S2: origin register of the operand2.
+        D1: displacement value of the operand1.
+        D2: displacement value of the operand2.
+
+        operand1 = effective address specified by C(S1) + D1.
+        operand2 = effective address specified by C(S2) + D2.
+
+        C(X): contents of X, where X may be an origin register
+              or the effective address of an operand.
+
+      * format of BI instructions
+
+        +--------+------+----------+------+----------+
+        | opcode |  M   | not used |  S1  |    D1    |
+        +--------+------+----------+------+----------+
+         31    26 25  22 21      13 12  11 10       0
+
+        M: mask mode.
+
+        operand1 = effective address specified by C(S1) + D1.
+        operand2 = mask bits contained in field M.
+      
+   3) The bit set to 1 for PSW
+
+      * after an arithmetic operation
+
+            Result       Bit Set to 1
+            ======       ============
+ 
+              = 0           PSW(31)
+              < 0           PSW(30)
+              > 0           PSW(29)
+           overflow         PSW(28)
+
+      * after a logical comparison operation
+
+            Result         Bit Set to 1
+            ======         ============
+ 
+        C(op1) = C(op2)       PSW(31)
+        C(op1) < C(op2)       PSW(30)
+        C(op1) > C(op2)       PSW(29)
+
+   4) Summary of Instructions
+
+      Opcode  Mnemonic  Type    Operation
+      ======  ========  ====    =========
+
+      000000     NOP     GI     No operation
+      000001     ADD     GI     op1 = C(op1) + C(op2)
+      000100     MOV     GI     op1 = C(op2)
+      001011     BC      BI     if branch condition true,
+                                PC = op1
+      011000     MLT     GI     op1 = C(op1) * C(op2)
+      011011     RD      GI     op2 = input
+      100001     SUB     GI     op1 = C(op1) - C(op2)
+      101010     CMP     GI     CC set upon logical
+                                comparison
+      110011     WR      GI     output = C(op2)
+      111111     HLT     GI     program terminate
+
+      * The branch condition (BC) instruction utilizes
+        the mask bits within the instruction and the 
+        CC bits of PSW register to determine whether or
+        not a branching condition is true. A branch 
+        occurs only if any bit that is set ON in the 
+        instruction mask has a corresponding bit set ON
+        in the CC. 
+
+      * examples of truth table for the branch condition
+
+         CC   Mask   Branching Condition
+        ====  ====   ===================
+
+        0001  1110          false
+        0010  1010          true
+        0100  0110          true
+        1000  1111          true
+
+3. Software Interface to the Simulated System
+
+     The main driver program for MSU1 is SYSTEM. It 
+   contains subroutines LOADER, CPU, MEMORY, and
+   INTERRUPT.
+
+   1) LOADER operation
+
+      * reading user programs from the card reader
+        into main memory.
+      * LOADER needs to access main memory. This 
+        access is made via the subroutine MEMORY.
+
+   2) CPU operation
+
+      * CPU loops indefinitely, fetching, decoding,
+        and executing instructions until a HLT
+        instruction or an I/O instruction is interpreted.
+      * The system clock is incremented by 4 for every
+        GI instruction and by 1 for every BI instruction.
+      * When an I/O instruction is encountered, control
+        is returned to SYSTEM, and the clock is 
+        incremented by an additional 16 time units.
+      * The clock is incremented by CPU as the first step
+        of executing all instructions.
+      * If a HLT insruction is encountered, control is 
+        returned to SYSTEM, the job is terminated, and 
+        the next job in the batch is started.
+      * An invalid opcode takes 4 time units, and 
+        currnet job is terminated automatically by SYSTEM.
+      * if another job is available, SYSTEM switches to the
+        new job and continues to execute the program.
+
+   3) MEMORY operation
+
+      * Main memory cannot be accessed directly by SYSTEM.
+        Access to main memory can be made only via the
+        subroutine MEMORY.
+
+   4) INTERRUPT operation
+
+      * When an interrupt fault is recognized by CPU, the
+        exceptional condition will be handled by INTERRUPT.
+      * The IC filed of the PSW is loaded with the 
+        appropriate interrupt code, and control returns
+        back to the SYSTEM routine.
+      * The condition for the interrupt code
+
+        IC Code    Condition
+        =======    ===========
+
+           1       I/O operation initiated.
+           3       Boundary fault. (An attempt has been
+                   made to reference a full word operand
+                   or instruction on other than a full
+                   word memory boundary.)
+           4       HLT instruction executed.
+           5       Invalid opcode.
+           6       Attempt to divide by 0.
+           7       Segment address fault. (If the value
+                   in the displacement field of an
+                   instruction is greater than [length
+                   of the segment] - 1.)
+      
+
+ 4. INPUT and OUTPUT Format
+
+    1) INPUT
+
+       * first card
+
+         format = I L0 L1 L2 L3
+
+         where:
+
+              I indicates that this card is the first card 
+         of a job. This symbol can be used to find another
+         job card when the current job is finished.
+         
+              L0 is a 4 character hexadecimal number that indicates
+         the length of the program in bytes. L0 is the length of 
+         the executable segment used to store the object code. The
+         The length of the segment field of the segment origin
+         register 0 is loaded with this number. In MSU1, the base 
+         address field of the segment origin register 0 is always 
+         the value 0.
+
+              L1 is a 4 character hexadecimal number that indicates
+         the length of the input buffer in bytes. The length of the
+         segment field of segment origin register 1 is loaded with 
+         this number. The base address field of segment origin 
+         register 1 is loaded with the address of the next available 
+         byte in memory.
+
+              L2 is a 4 character hexadecimal number that gives the 
+         length of output buffer in bytes. L2 is the length of the 
+         output segment. The length of the segment field of segment 
+         origin register 2 is loaded with this number. The base 
+         address field of the segment origin register 2 is loaded 
+         with the address of the next available byte in memory.
+
+              L3 is a 4 character hexadecimal number that tells the 
+         length of the workspace in bytes. L3 gives the length of 
+         the workspace segment. The length of the segment field of 
+         segment origin register 3 is loaded with this number. The 
+         base address field of segment origin register 3 is loaded 
+         with the address of the next available byte in memory.
+
+       * Object program cards
+
+         format = P1 P2
+
+         where:
+
+              P1 is 2 character hexadecimal number that specifies 
+         the number of nibbles of object code on this card. A 
+         nibble is a single hexadecimal character (4 bits) and Two 
+         nibbles make a byte. P2 is the object code on this card
+         where the number of nibbles is specified by P1. This 
+         information is loaded into the code segment.
+
+       * First Initialization Card
+
+         format = WKS N1
+
+         where:
+
+              WKS identifies the beginning of the workspace
+         initialization cards data. The number (N1) indicates the
+         number of cards that follows this card. The N1 is a 4
+         character hexadecimal number.
+
+       * Initialization cards
+
+         format = O1 V1
+
+         where:
+              
+              O1 is a 4 character hexadecimal number that indicates
+         the offset address in words for the starting word of the 
+         workspace segment. V1 is an 8 character hexadecimal number
+         representing the value to be stored at the specified memory
+         address. The memory address is computed as the base address
+         of segment origin register 3 plus four times O1.
+
+       * Last Card
+ 
+         format = S1 T1
+
+         where:
+        
+              S1 is the byte address of the first instruction to be
+         executed and is a 4 character hexadecimal number. This value
+         becomes the value of the PC in the PSW.
+
+              T1 is a trace bit, represented by a one character 
+         hexadecimal number that specifies whether a trace is 
+         requested. A trace of the program execution is requested by 
+         setting T1 to 1. Other values of T1 are considered to be 0 
+         in MSU1.
+
+    2) OUTPUT
+
+       * The following items are printed by a job.
+
+         -- The job number.
+         -- A message indicating the cause of termination (normal
+            or abnormal, error message if abnormal),
+         -- The clock value at termination, and
+         -- The output or result of the program.
+
+       * If the trace switch is on, the program prints information
+         in the format shown in below before each instructions is
+         executed. All numbers are printed as 8 character 
+         hexadecimal numbers.
+
+          PSW       IR    TYPE  MNE     OP1      OP2    CLOCK
+        xxxxxxxx xxxxxxxx  tt   nnn  ---01--- ---02--- xxxxxxxx
+
+        Note: - only one trace heading per job.
+              - xxxxxxxx is an 8 character hexadecimal number.
+              - tt  is the instruction type (GI or BI).
+              - nnn is the mnemonic name of the instruction.
+              - 01  is the contents of memory of the effective
+                    address of operand1. The format of 01 is:
+      
+                       xxxxxxxx if operand1 is the effective
+                                address.
+                         space  if it is not used.
+              - 02  is the contents of memory of the effective 
+                    address of operand2. The format of 02 is:
+                     
+                       xxxxxxxx if operand2 is the effective
+                                address,
+                         bbbb   if operand2 is the mask bits,
+                         space  if it is not used.
+              - bbbb is the mask bits specified in the BC
+                     instruction.
+

@@ -1,0 +1,166 @@
+CATLBR.DOC     A system to CATALOG 'internal' files
+October 16, 1983
+Joe Vogler
+
+   This library contains a collection of KLUDGEY tools to allow 
+one to maintain the names of INTERNAL files in a MAST.CAT file.  
+If you don't know what an INTERNAL file is, read LU.DOC.  The 
+last version of LU.COM I know of is 3.00.  But you can learn 
+about INTERNAL files from the doc files for earlier versions.
+   My approach goes back to the original programs that formed the 
+Public Domain Catalog System.  These were (among others, I 
+suppose) 
+
+  FMAP.COM - Multipurpose program to generate custom SUB files 
+  and to create the NAMES.SUB file used by CAT2.COM.
+
+  CAT2.COM  - Updates the MAST.CAT file using the data contained 
+  in the file NAMES.SUB.
+
+   I did things much the same way.  LDIRSORT.COM is a 
+modification of LDIR v1.0, written by Gary Novosielski.  I added 
+sorted output and the option to generate a NAMES.SUB file for one 
+of the LBR's named on the command line.  The file option is 
+selected by preceeding the desired LBR with a '-' and a space.  
+Additional documentation for LDIRSORT is available by running the 
+program with no arguments.
+   If the file option is selected, LDIRSORT constructs a dummy 
+LABEL file using the NAME of the LBR.  For example, for an LBR 
+named PROGS.LBR, the label file would be '-PROGS.LBR'.  If 
+PROGS.LBR contained the files FILE1.C, FILE2.C, & FILE3.C, the 
+NAMES.SUB file would look like this:
+
+    -PROGS.LBR
+    FILE1.C
+    FILE2.C
+    FILE3.C
+
+   When incorporated into your MAST.CAT file, these entries would 
+look like this:
+
+    FILE1.C,PROGS.LBR
+    FILE2.C,PROGS.LBR
+    FILE3.C,PROGS.LBR
+
+
+Here's how to catalog a single LBR file:
+----------------------------------------
+  A> ldirsort - <lbrname>
+  ...  (program output)
+
+  A> cat2
+  ...  (program output)
+
+  A>
+----------------------------------------
+
+   There are several known limitations to this method of 
+cataloging internal files:
+
+  1)  The physical volume ID is not stored with the file entries 
+  in MAST.CAT.  You must first find the reference to the LBR 
+  dummy and then run CAT.COM again to find out which disk 
+  contains your file.
+
+  2)  If you catalog more than one LBR file with the same name, 
+  your MAST.CAT will not tell you which one contains a particular 
+  internal file.  The solution to this is to avoid using the same 
+  name more than once unless the files are duplicates.
+
+  3)  You cannot catalog an LBR file if its name exceeds 7 
+  characters in length.  You must leave room for the '-' that 
+  goes into the dummy label entry of the NAMES.SUB file.  This 
+  could be handy, since you could assign 8 character names to all 
+  LBR files that you don't want to catalog.
+
+  4)  Each LBR file requires a separate update of MAST.CAT.  If 
+  you have high density disks and/or many LBR's on the same 
+  diskette, you could spend a great deal of time watching CAT2 
+  repeatedly read and write your MAST.CAT file.  CAT2 is not as 
+  efficient as NCAT, since it's disk buffers are smaller.
+
+   To make it easier to catalog several LBR files, I wrote a 
+quickie program, CATLBR.COM, that creates a SUB file containing a 
+job stream for cataloging all of the LBR's named on the command 
+line.  This SUB file allows anyone to go have lunch while the 
+computer chugs away.
+   I have prepared a SUB file that executes CATLBR.COM and then 
+submits the SUB file just built.  This allows the entire 
+operation to be handled with a single command (if you really want 
+to recatalog ALL of the LBR's on a diskette).
+   Typical usage where MAST.CAT and all programs are on Drive A: 
+and the LBR files are on B:.
+------------------------------
+  A> submit catall b<CR>
+  ...
+  ...
+  ...  (Lots of program output
+
+  A>
+------------------------------
+
+Listing of CATALL.SUB:
+===============================
+xsub
+catlbr $1:*.lbr
+submit commands ldirsort cat2 -
+===============================
+
+   The program CATLBR.COM builds a custom SUB file that controls 
+all cataloging. For example, if my B drive contained 3 LBR files, 
+CPMUG081.LBR, CPMG078..LBR, and CPMG077.LBR, then CATLBR.COM 
+would build this COMMANDS.SUB file:
+
+$1 $3 D:CPMG081.LBR
+$2
+$1 $3 D:CPMG078.LBR
+$2
+$1 $3 D:CPMG077.LBR
+$2
+
+   When expanded by XSUB, the file COMMANDS.SUB will look like 
+this:
+
+LDIRSORT - D:CPMG081.LBR
+CAT2
+LDIRSORT - D:CPMG078.LBR
+CAT2
+LDIRSORT - D:CPMG077.LBR
+CAT2
+
+   You won't see the expanded version since it is the $$$.SUB 
+file that is built by SUBMIT.
+   CATLBR.COM can be used (manually) to create a SUB file to 
+catalog a subset of all the LBR's on all drives.  It was written 
+in BDS C using the WILDEXP() function.  If you have the 
+documentation for this compiler, read about this function.  
+Briefly, CATLBR.COM can be invoked with a full 128 character 
+command line filled with file names (ambiguous and unambiguous) 
+as arguments.  Any of the arguments can be combined with a '!' 
+prefix to indicate that matching filenames are to be excluded.  
+For example:
+
+A> catlbr b:*.lbr !b:this.lbr !b:that.lbr !those???.lbr c:*.lbr
+
+   This invokation will build a COMMANDS.SUB file for all LBR 
+files on drives b: and c:, except B:THIS.LBR,  B:THAT.LBR and 
+files matching the ambiguous name B:THOSE???.LBR or 
+(B:THOSE*.LBR).  You can mix and match on drives too.  Be sure to 
+include the drive designator on each argument.  If no drive is 
+specified, an argument will apply to the default drive.
+   Here's how to submit the file COMMANDS.SUB:
+
+A> submit commands ldirsort cat2 -
+             |         |     |   |
+             |         |     |    \__($3) 'File' option for ldirsort
+             |         |      \______($2)
+             |          \____________($1)
+              \______________________name of sub file
+
+   CATLBR works with all types of files.  Thus, the COMMANDS.SUB 
+file can be used for other purposes.  Also, if you have BDS C 
+v1.4x or better, you can easily modify CATLBR.C to make it create 
+different SUB files.  I left some spaces in the COM file so that 
+CATLBR can be modified by hot patching.  The strings you would 
+need to modify are in the ninth 256-byte page of the COM file.
+

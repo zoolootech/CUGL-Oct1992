@@ -1,0 +1,163 @@
+/*
+ *  File:	NetBIOS.C
+ *  Purpose:	Contains network communications
+ *		functions
+ */
+
+#include	"netbios.h"
+
+
+/*  External functions  */
+void NetBIOS (NCB far *ncb);
+
+
+/*
+ * NetClearNCB : initialize a network block
+ *   Set all fields to binary 0.
+ */
+void NetClearNCB (NCB *ncb)
+{
+	/**  compile option -Ox causes memset to  **/	
+	/**  be inlined automatically.            **/
+	memset (ncb, 0, sizeof (NCB));
+}
+
+/*
+ * NetName : generic add/delete name handler
+ *   Prepares for and calls NetBIOS to manage
+ *   names
+ */
+int NetName (BYTE command, char *name)
+{
+	NCB	ncb;
+
+	NetClearNCB (&ncb);
+	ncb.command = command;
+	strcpy (ncb.name, name);
+	NetBIOS (&ncb);
+
+	return ncb.status;
+}
+
+/*
+ * NetAddname : Add a network name
+ */
+int NetAddname (char *name)
+{
+	return NetName (NB_ADDNAME, name);
+}
+
+/*
+ * NetDelname : Delete a network name
+ */
+int NetDelname (char *name)
+{
+	return NetName (NB_DELNAME, name);
+}
+
+/*
+ * NetHangUp : Terminate a session
+ */
+int NetHangUp (BYTE session)
+{
+	NCB	ncb;
+
+	NetClearNCB (&ncb);
+	ncb.command = NB_HANGUP;
+	ncb.localSession = session;
+	NetBIOS (&ncb);
+
+	return (ncb.status);
+}
+
+/* 
+ * NetCall : Establish a session
+ *   Attempt to establish a session between names
+ *   local and remote.  If established th local
+ *   session number is set in *session.
+ */
+int NetCall (char *local, char *remote, BYTE *session)
+{
+	NCB	ncb;
+
+	NetClearNCB (&ncb);
+	ncb.command = NB_CALL;
+	strcpy (ncb.name, local);
+	strcpy (ncb.callName, remote);
+
+	/**  set no receive timeouts  **/
+	/**  10 second send timeouts  **/
+	ncb.receiveTimeOut = 0;
+	ncb.sendTimeOut = 0; 
+
+	NetBIOS (&ncb);
+	if (!ncb.status)
+		*session = ncb.localSession;
+
+	return ncb.status;
+}
+
+/* 
+ * NetListen : Wait for a Call
+ *   Wait for a session request between names
+ *   local and remote.  If established th local
+ *   session number is set in *session.
+ */
+int NetListen (char *local, char *remote, BYTE *session)
+{
+	NCB	ncb;
+
+	NetClearNCB (&ncb);
+	ncb.command = NB_LISTEN;
+	strcpy (ncb.name, local);
+	strcpy (ncb.callName, remote);
+
+	/**  set no receive timeouts  **/
+	/**  10 second send timeouts  **/
+	ncb.receiveTimeOut = 0;
+	ncb.sendTimeOut = 20; 
+
+	NetBIOS (&ncb);
+	if (!ncb.status) {
+		*session = ncb.localSession;
+		memcpy (remote, ncb.callName, 16);
+		remote[16] = '\0';
+	}
+
+	return ncb.status;
+}
+
+/*
+ * NetTransfer : generic send/receive handler
+ *   Trnasfers data over given session
+ */
+int NetTransfer (BYTE command, FPTR buf, int size,
+		 BYTE session)
+{
+	NCB	ncb;
+
+	NetClearNCB (&ncb);
+	ncb.command = command;
+	ncb.localSession = session;
+	ncb.buffer = buf;
+	ncb.length = size;
+	NetBIOS (&ncb);
+
+	return ncb.status;
+}
+
+/*
+ * NetSend : Send data over a session
+ */
+int NetSend (FPTR buf, int size, BYTE session)
+{
+	return NetTransfer (NB_SEND, buf, size, session);
+}
+
+/*
+ * NetReceive : Receive data over a session
+ */
+int NetReceive (FPTR buf, int size, BYTE session)
+{
+	return NetTransfer (NB_RECV, buf, size, session);
+}

@@ -1,0 +1,412 @@
+/***************************************************/
+/*      Module   : MEMORY.CPP                      */
+/*                                                 */
+/*      Author   : Ismail Zia                      */
+/*                                                 */
+/*      Date     : 21-Mar-1991                     */
+/*                                                 */
+/*      Purpose  : Implementation routines of      */
+/*                 classes defined in memory.hpp   */
+/*                                                 */
+/*      Notes    : To be compiled with Zortech c++ */
+/*                 ver 2.1 in large model. for MS  */
+/*                 Windows 3.0, define MSW.        */
+/*                 Linker must link new and delete */
+/*                 from this object file, and not  */
+/*                 from standard library.          */
+/*                                                 */
+/***************************************************/
+
+#include        "memory.hpp"
+#include        <stdio.h>
+#include        <string.h>
+
+static MEMHEADER        DefaultSize;
+
+
+
+
+/* all three classes, namely MemBlock, ListItem,
+   and List have operators new and delete
+   over loaded  */
+
+void *MemBlock::operator new(size_t sz)
+{
+    #ifdef MSW
+    return (void near *) LocalAlloc( LMEM_FIXED | LMEM_ZEROINIT, sz);
+    #else
+    return (void *)malloc(sz);
+    #endif
+}
+
+void MemBlock::operator delete(void *p)
+{
+    if (p != NULL)
+        {
+            #ifdef MSW
+            LocalFree( (HANDLE) p);
+            #else
+            free(p);
+            #endif
+        }
+}
+
+
+
+
+/* the constructor allocates memory for member item Mem,
+   of the size passed to it or DefaultSize whichever is
+   greater, and initializes other variables. OffSet is
+   the offset of first free client sub-block in Mem,
+   Used is amount returned from Mem any time, and Size
+   is size in bytes of allocated to Mem     */
+
+MemBlock::MemBlock(const MEMHEADER sz)
+{
+    MEMHEADER sz1 = DefaultSize;
+
+    if (sz > DefaultSize)
+        sz1 = sz;
+
+    #ifdef MSW
+    hMemHandle = GlobalAlloc(GMEM_FIXED | GMEM_ZEROINIT,Size = sz1);
+    Mem = (MEMHEADER *)GlobalLock(hMemHandle);
+    #else
+    Mem = (MEMHEADER *)malloc(Size=sz1);
+    #endif
+
+    if (Mem != NULL)
+            {
+                #ifndef MSW
+                memset(Mem,0,Size);
+                #endif
+
+                *(MEMHEADER *)Mem = (Size-MEM_HEADER_SIZE);
+
+                OffSet = MEM_HEADER_SIZE;
+                Used = 0;
+            }
+}
+
+
+
+
+/* destructor frees up memory allocated variable Mem */
+
+MemBlock::~MemBlock(void)
+{
+    #ifdef MSW
+    GlobalUnlock(hMemHandle);
+    GlobalFree(hMemHandle);
+    #else
+    free(Mem);
+    #endif
+}
+
+
+
+
+/* having decided a sub-block of sufficient size is
+   available, this routine either breaks up this free
+   sub-block into two blocks first of which is returned,
+   or returns little more memory or equal, in any case,
+   it updates free list. p is pointer to available
+   sub-block, Last is pointer to contents of offset
+   of last free sub-block, sz is required size   */
+
+void *const MemBlock::NCPointer(MEMHEADER *const p,
+        MEMHEADER *const Last, const MEMHEADER sz)
+{
+    MEMHEADER reminder = (*p)-sz;
+
+    MEMHEADER *r = (MEMHEADER *)((long)p+MEM_HEADER_SIZE);
+
+    if (reminder >= (2*MEM_HEADER_SIZE))
+        {
+            (*p) = sz;
+            MEMHEADER *q = (MEMHEADER *)((long)r+sz);
+            *q = (reminder - MEM_HEADER_SIZE);
+
+            *Last = (MEMHEADER)((long)q+MEM_HEADER_SIZE-(long)Mem);
+
+            *(MEMHEADER *)((long)q+MEM_HEADER_SIZE) = *r;
+        }
+    else
+        {
+            *Last = *r;
+        }
+
+    Used += ((*p) + MEM_HEADER_SIZE);
+
+    return (void *)r;
+}
+
+
+
+
+/* MemAllocate scans free list of sub-blocks, if it finds
+   a free sub-block of size more or equal, then calls
+   NCPointer to return pointer    */
+
+void *const MemBlock::MemAllocate(const MEMHEADER size)
+{
+    if (!OffSet)
+        return NULL;
+
+    MEMHEADER Current = OffSet;
+    MEMHEADER *Last = &OffSet;
+
+    MEMHEADER *p;
+
+    MEMHEADER sz = (size+1) & MEM_FREE;
+
+
+    while (Current != 0)
+      {
+        p =  (MEMHEADER *)((long)Mem + Current - MEM_HEADER_SIZE);
+
+        if ((*p)>=sz)
+          {
+            return NCPointer(p,Last,sz);
+          }
+        Last=(MEMHEADER *)((long)p+MEM_HEADER_SIZE);
+
+        Current = *Last;
+    }
+
+    return NULL;
+}
+
+
+
+
+/* having decided a client pointer belongs to given
+   MemBlock, this routine updates free list of
+   sub-blocks, reduces the usage by amount freed,
+   and returns the current usage    */
+
+const MEMHEADER MemBlock::MemFree(void *const ClientP)
+{
+    Used -= ((*(MEMHEADER *)((long)ClientP - \
+                MEM_HEADER_SIZE))+MEM_HEADER_SIZE);
+    *(MEMHEADER *)ClientP = OffSet;
+    OffSet = (MEMHEADER)((long)ClientP - (long)Mem);
+    return Used;
+}
+
+
+
+
+/* determines if a client pointer belongs to a
+   given MemBlock             */
+
+const short MemBlock::ObjInBlock(void *const obj)
+{
+    return ((long)obj >= (long)Mem) && \
+                       ((long)obj < (long)Mem+Size);
+}
+
+void SetDefaultSize(const MEMHEADER size)
+{
+    if (size <= MEM_HEADER_SIZE)
+        DefaultSize = (MEM_HEADER_SIZE)<<1;
+    else
+        DefaultSize=(size+1) & MEM_FREE;
+}
+const MEMHEADER GetDefaultSize(void)
+{
+    return DefaultSize;
+}
+
+
+
+
+void *ListItem::operator new(size_t sz)
+{
+    #ifdef MSW
+    return (void near *) \
+        LocalAlloc( LMEM_FIXED | LMEM_ZEROINIT, sz);
+    #else
+    return (void *)malloc(sz);
+    #endif
+}
+
+void ListItem::operator delete(void *p)
+{
+    if (p != NULL)
+        {
+            #ifdef MSW
+            LocalFree( (HANDLE) p);
+            #else
+            free(p);
+            #endif
+        }
+
+}
+
+
+
+void *List::operator new(size_t sz)
+{
+        #ifdef MSW
+        return (void near *) \
+          LocalAlloc(LMEM_FIXED | LMEM_ZEROINIT, sz);
+        #else
+        return (void *)malloc(sz);
+        #endif
+}
+
+void List::operator delete(void *p)
+{
+    if (p != NULL)
+        {
+            #ifdef MSW
+            LocalFree( (HANDLE) p);
+            #else
+            free(p);
+            #endif
+        }
+}
+
+List::List(void)
+{
+    ListItem *tmp= new ListItem(DefaultSize);
+    Tail = Head = tmp;
+}
+
+
+
+/* just to make sure, removes all ListItems from
+   List. In normal termination, all ListItems must
+   have been freed automatically, except the Head */
+
+List::~List(void)
+{
+    ListItem *tmp = Head;
+
+    while (tmp != NULL)
+        {
+            Head = tmp->GetNext();
+            delete tmp;
+            tmp = (ListItem *)Head;
+        }
+}
+
+
+
+/* Searches all ListItems, starting with Head, for
+   MemBlock having sufficient free, if not found
+   then appends a new ListItem to the List   */
+
+void *const List::MemAlloc(const MEMHEADER sz)
+{
+    ListItem *Li = Head;
+
+    while (Li != NULL)
+        {
+            void *p = Li->MemAlloc(sz);
+            if (p != NULL)
+                return p;
+
+             Li = Li->GetNext();
+        }
+
+    Li = new ListItem(sz+MEM_HEADER_SIZE);
+
+    ListItem *tmp = Tail;
+    tmp->SetNext(Li);
+    Tail = Li;
+
+    return Li->MemAlloc(sz);
+}
+
+
+
+/* Searches all ListItems, starting with Head, for
+   the MemBlock to which pointer to be freed belongs,
+   after freeing, if the usage returned is = 0, then
+   frees up that ListItem and updates chain    */
+
+void List::MemFree(void *const obj)
+{
+    ListItem *Li = Head;
+    ListItem *Lst = NULL;
+
+    while (Li != NULL)
+      {
+        if (Li->ObjInBlock(obj))
+          {
+            if ( ! Li->MemFree(obj))
+              {
+                if (Lst != NULL)
+                  {
+                    Lst->SetNext(Li->GetNext());
+
+                    if (Tail == Li)
+                      Tail = Lst;
+
+                    delete Li;
+                  }
+              }
+            return;
+          }
+        Lst = Li;
+        Li=Li->GetNext();
+      }
+}
+
+
+
+List   *GMemList;
+
+void InitMem(const MEMHEADER sz)
+{
+    SetDefaultSize(sz);
+    GMemList = new List;
+}
+
+void EndMem(void)
+{
+    delete GMemList;
+}
+
+#ifndef MSW
+void MemErr(void)
+{
+    printf("Memory Allocation Failed\n");
+}
+
+#else
+
+void MemErr(void) 
+{
+    MessageBox(NULL, "Memory Allocation  Failed",
+               NULL, MB_ICONEXCLAMATION | MB_OK);
+}
+
+#endif
+
+/* Global new and delete operators overloaded  */
+  
+void *operator new(size_t size)
+{   
+    void *p;
+
+    if (size<2)
+        size=2;
+
+    p = GMemList->MemAlloc(size);
+
+    if (p == NULL)
+        MemErr();
+
+    return p;
+}
+
+void operator delete(void *obj)
+{
+    if (obj != NULL)
+        GMemList->MemFree(obj);
+}
+
+        

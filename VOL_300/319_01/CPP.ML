@@ -1,0 +1,14 @@
+cpp.obj+
+glb.obj+
+tok.obj+
+dir.obj+
+def.obj+
+mst.obj+
+sys.obj+
+mem.obj+
+str.obj+
+utl.obj+
+pr.obj
+cpp
+nul.map
+c:\lib\msc\;

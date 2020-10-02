@@ -1,0 +1,119 @@
+#include <stdlib.h>
+#include <stdio.h>
+#include <conio.h>
+#include "esp.h"
+#include "esp.fu"
+
+#define OK     1
+#define FAIL   0
+#define bool   short
+
+#define LINE_CONTROL_REG  3
+
+#define EIGHT_BITS   0x03
+#define NO_PARITY    0x00
+#define ONE_STOP_BIT 0x04
+#define SDU_SIZE     8L       /* 8 data + 1 start + 1 stop */
+
+main(argc,argv)
+int argc;
+char **argv;
+{
+   ESP_Handle esp;
+   printf("Setting up for Enhanced Mode\n");
+
+   if (!setup_handle_params(&esp))
+      return FAIL;
+
+   if (!ESP_SetupEnhancedMode(&esp))
+      return FAIL;
+   printf("Setup complete.\n");
+   return OK;
+}
+
+
+int setup_handle_params(esp_h)
+ESP_Handle *esp_h;
+{
+   short port;
+   short esp_no;
+
+   printf("Use which ESP board (1-2): ");
+   scanf("%d", &esp_no);
+   printf("Use which ESP port  (1-2): ");
+   scanf("%d", &port);
+   if ((esp_no < 1) || (esp_no > 2) ||
+       (port   < 1) || (port   > 2)) {
+      printf("Invalid ESP board and/or port no.\n");
+      return FAIL;
+      }
+
+   if (!ESP_InitHandle(esp_h, esp_no, port))
+      return FAIL;
+ }
+
+/* Simplified Enhanced Mode operation:
+    * No DMA
+    * 8 bits, no parity, 1 stop bit
+    * user-defined baud rate
+    * interrupt on receive FIFO, transmit FIFO, or error
+
+   After this function returns, the application is ready to install
+   the serial interrupt handler as usual.. */
+
+int ESP_SetupEnhancedMode(esp_h, baud_rate)
+ESP_Handle *esp_h;
+long baud_rate;
+{
+   long recv_tmo;
+
+   /* This is the only time you ever need to call this func */
+   ESP_WriteToUART(esp_h, LINE_CONTROL_REG,
+      EIGHT_BITS | NO_PARITY | ONE_STOP_BIT);
+
+   /* Disable INTs until everything is ready to go */
+   ESP_SetEnhancedIntAndDMA(esp_h, 0);
+
+   /* Ignore if you're not using DMA */
+   ESP_SetDMAtimeout(esp_h, 0);
+
+   if (esp_h->port == 1)
+      ESP_SetServiceRequestMask(esp_h, ESP_SERV_PORT1_RX_FIFO |
+          ESP_SERV_PORT1_TX_FIFO | ESP_SERV_PORT1_ERROR);
+   else
+      ESP_SetServiceRequestMask(esp_h, ESP_SERV_PORT2_RX_FIFO |
+          ESP_SERV_PORT2_TX_FIFO | ESP_SERV_PORT2_ERROR);
+
+   /* Interrupt on all possible error and status changes */
+   ESP_SetErrorStatusMask(esp_h, ESP_ERR_ALL_BYTE_2,
+      ESP_ERR_ALL_BYTE_2);
+
+   /* Flow control OFF at 768 chars, back on at 512 chars */
+   ESP_SetRXFlowControlLevels(esp_h, 768, 512);
+
+   /* Trigger receive interrupt at 256 chars,
+             transmit interrupt at 768 chars */
+   ESP_SetFIFOTriggerLevels(esp_h, 256, 768);
+
+   /* Suggested timeout is 4 x character transmission speed,
+      but no less than 2 ms  */
+   recv_tmo = ((baud_rate * 4L) / SDU_SIZE) / 1000L;
+   recv_tmo = min(recv_tmo, 2L);
+   ESP_SetReceiveCharTimeout(esp_h, (short)recv_tmo);
+
+   /* Maximum time we want to be flowed off, sugg. 60 ms */
+   ESP_SetFlowedOffTimeout(esp_h, 60);
+
+   ESP_SetBaudRate(esp_h, baud_rate);
+
+   ESP_SetMode(esp_h, ESP_MODE_ENHANCED);  /* No DMA */
+
+   /* Enable INTs and keep same IRQ as used in Comp. Mode */
+   if (esp_h->port == 1)
+      ESP_SetEnhancedIntAndDMA(esp_h, ESP_SET_ENH_INTR_ON |
+         ESP_SET_ENH_IRQ4 | ESP_SET_DMA_OFF);
+   else
+      ESP_SetEnhancedIntAndDMA(esp_h, ESP_SET_ENH_INTR_ON |
+         ESP_SET_ENH_IRQ3 | ESP_SET_DMA_OFF);
+   return OK;
+}

@@ -1,0 +1,600 @@
+
+ /************************************************************
+  *  Program: CMENU Menu Compiler
+  *  Module: cmenu2.c    
+  *      Menu Compiler:
+  *      Menu/Item Token Processing Functions
+  *  Written by: Leor Zolman, 7/91
+  ************************************************************/
+ 
+ #include "cmenu.h"
+ #include "ccmenu.h"
+ 
+ #include <ctype.h>
+ 
+ 
+ /************************************************************
+  * do_menu():
+  *  Process the MENU keyword
+  ************************************************************/
+ 
+ int do_menu()
+ {
+     int tok;
+ 
+     if (in_menu)               /* Are we currently processing a menu?  */
+     {                          /* yes.                                 */
+         warning("Endmenu missing from previous menu");
+         do_endmenu();          /* give them the benefit of the doubt   */
+     }
+ 
+     if ((tok = gettok()) != T_STRING)
+     {
+         if (n_menus)
+             error("Menu name missing; menu unreachable");
+         sprintf(tparam, "menu%d", n_menus + 1);    /* force a name     */
+         ungettok(tok);
+     }
+     
+     if (strlen(tparam) > MAX_NAME)
+     {
+         error("The name '%s' is too long (%d chars max)",
+                 tparam, MAX_NAME);
+         tparam[MAX_NAME] = '\0';                   /* truncate name    */
+     }
+     
+     if ((MIp = find_menu(tparam)) == NULL)         /* menu exist?      */
+     {
+         MInfo[n_menus] = create_menu(tparam);      /* no.              */
+         if (fatal)
+             return ERROR;                          /* creation error   */
+         else
+             MIp = &MInfo[n_menus++];               /* OK, bump count   */
+     }
+     else
+         if (MIp -> Processed)                      /* redefinition?    */
+             return fatalerr("Duplicate Menu definition");    /* yes.   */
+         
+     Mp = &MIp -> Menu;
+     *Mp->title = *Mp->path = '\0';
+     Mp->nitems = Mp->widest = 0;
+     Mp->spacing = Mp->columns = Mp->escape = DEFAULT;
+     Mp->align = DEFAULT;
+ 
+     in_item = FALSE;               /* state variables describing the   */
+     in_menu = TRUE;                /* current menu being processed     */
+     n_items = 0;                
+     n_refs = 0;                    /* no forward item references yet   */
+ 
+     if ((tok = gettok()) != T_COLON)               /* optional colon   */
+         ungettok(tok);
+     
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_title():
+  *  Process the TITLE clause for a menu.
+  ************************************************************/
+ 
+ int do_title()
+ {
+     int tok;
+ 
+     if ((tok = gettok()) != T_STRING)
+     {
+         error("Title text missing");
+         ungettok(tok);
+     }
+         
+     if (!in_item)                          /* Before all items?        */
+     {                                      /* yes.                     */
+         if (*Mp->title)
+             return error("A Menu Title has already been specified");
+         strcpy(Mp->title, tparam);
+     }
+     else
+         return error("The Menu Title must precede all Menu Items.");
+ 
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_path():
+  *  Process the PATH option.
+  *  Note that the PATH option may apply to an entire
+  *  menu or just to a single menu item (determined
+  *  by context.)
+  ************************************************************/
+ 
+ int do_path()
+ {
+     int tok;
+     char *cp;
+     
+     if ((tok = gettok()) != T_STRING)
+     {
+         error("Path text missing");
+         ungettok(tok);
+     }
+         
+     if (tparam[strlen(tparam)-1]=='/' || tparam[strlen(tparam)-1]=='\\')
+         tparam[strlen(tparam) - 1] = '\0';    /* delete traling slash  */
+ 
+     if (!in_item)                          /* Referring to the menu?   */
+     {                                      /* yes.                     */
+         if (*Mp->path)
+             return error("A Menu Path has already been specified");
+         strcpy(Mp->path, tparam);
+     }
+     else
+     {                                      /* Must be for the item.    */
+         if (*Ip->path)
+             return error("An Item Path has already been specified");
+         strcpy(Ip->path, tparam);
+     }
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_align():
+  *  Process text alignment option.
+  *  Note: this option is a no-op. I decided there wasn't
+  *  any real need for any other than left-justified item
+  *  alignment. But, in case anyone thinks of a use for it,
+  *  I'm leaving in the ability to process the option.
+  ************************************************************/
+ 
+ int do_align()
+ {
+     int tok;
+     
+     if (in_item)
+         return error("The Align clause must precede all Menu Items.");
+ 
+     if (Mp->align)
+         return error("Align option already specified for this menu");
+     
+     switch (tok = gettok())
+     {
+         case T_LEFT:
+             Mp->align = 'L'; 
+             break;
+             
+         case T_RIGHT:
+             Mp->align = 'R';
+             break;
+             
+         case T_CENTER:
+             Mp->align = 'C';
+             break;
+             
+         default:
+             ungettok(tok);
+             return error("Align missing valid modifier");
+     }
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_spacing():
+  *  Process the SPACING option (applies
+  *  to menus only.)
+  ************************************************************/
+ 
+ int do_spacing()
+ {
+     int tok;
+ 
+     if ((tok = gettok()) != T_VALUE)
+     {
+         error("Spacing value missing");
+         ungettok(tok);
+     }
+ 
+     if (in_item)
+         return error("Spacing option must precede all menu items");
+ 
+     if (Mp->spacing)
+         return error("Spacing option already specified");
+ 
+                         /* only single and double spacing supported    */
+     if (vparam != 1 && vparam != 2)
+         return error("Spacing value must be either 1 or 2");
+ 
+     Mp->spacing = vparam;
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_columns():
+  *  Process the COLUMNS option
+  ************************************************************/
+ 
+ int do_columns()
+ {
+     int tok;
+     
+     if ((tok = gettok()) != T_VALUE)
+     {
+         error("Columns value missing");
+         ungettok(tok);
+     }
+ 
+     if (in_item)
+         return error("Columns option must precede all menu items");
+ 
+     if (Mp->columns)
+         return error("Columns option already specified");
+ 
+     if (vparam < 1 || vparam > 6)        /*  6 seems a reasonable max. */
+         return error("Columns value must be between 1 and 6");
+     Mp->columns = vparam;
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_escape():
+  *  Process "escape" and "noescape" menu options
+  ************************************************************/
+ 
+ int do_escape()
+ {
+     if (in_item)
+         return error("\"%s\" must appear before all menu items",
+             keywords[token].keyword);
+     
+     if (Mp->escape)
+         return error("Escape option already specified");
+     Mp->escape = (token == T_ESCAPE) ? YES : NO;
+ 
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_endmenu():
+  *  Process ENDMENU keyword
+  ************************************************************/
+ 
+ int do_endmenu()
+ {
+     int i;
+     
+     if (!n_items)
+         error("No menu items specified for this menu");
+     
+     for (i = 0; i < n_refs; i++)           /* check for unresolved     */
+     {                                      /* forward Item references  */
+         if (*fwd_refs[i].refp == UNDEF_FWD)
+         {
+             int save_lineno = lineno;
+             lineno = fwd_refs[i].lineno;
+             error("Unresolved reference to Item \"%s\"",
+                 fwd_refs[i].iname);
+             lineno = save_lineno;
+         }
+     }
+     
+     in_menu = in_item = FALSE;             /* done with current menu   */
+     MIp -> Processed = TRUE;               /* it is now processed      */
+     Mp -> nitems = n_items;
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_item():
+  *  Process the ITEM clause. Create a new ite
+  *  and fill in any existing forward references to it.
+  ************************************************************/
+ 
+ int do_item()
+ {
+     int tok, i;
+     char *cp, c;
+     
+     if (n_items)
+         itemcheck();           /* check for previous item's completion */
+ 
+     if ((tok = gettok()) != T_STRING)          /* label specified?     */
+     {                                          /* If not, stuff unique */
+         sprintf(tparam,"dummy!%d", n_items);         /* dummy name in  */
+             ungettok(tok);
+     }
+     else
+     {
+         if (strlen(tparam) > MAX_NAME)
+         {
+             error("Item name \"%s\" too long. Max %d chars.",
+                         tparam, MAX_NAME);
+             tparam[MAX_NAME] = '\0';
+         }
+         else for (cp = tparam; c = *cp; cp++)
+             if (!(isalpha(c) || isdigit(c) || c == '_'))
+             {
+                 error("Invalid char in identifier name: \"%s\"",
+                             tparam);
+                 *cp = '\0';
+                 break;
+             }
+     }
+     
+     if ((IIp = find_item(tparam)) != NULL)         /* Item name found? */
+         return error("Item name previously used.");
+ 
+     if ((MIp->Items[n_items] = IIp = create_item(tparam))
+                 == NULL)
+         return ERROR;
+ 
+     in_item = TRUE;
+     Ip = &IIp->Item;
+ 
+     for (i = 0; i < n_refs; i++)               /* check for fwd refs   */
+         if (!strcmp(fwd_refs[i].iname, tparam))
+             *fwd_refs[i].refp = n_items;        /* fill in with item # */
+ 
+     n_items++;                                 /* bump item count      */
+ 
+     if ((token = gettok()) != T_COLON)         /* optional colon?      */
+     {
+         ungettok(token);                       /* if not, all done     */
+         return OK;
+     }
+     
+     if ((token = gettok()) == T_STRING)        /* short-form text?     */
+         return do_text2();                     /* if so, go process    */
+     else
+     {
+         ungettok(token);                       /* else all done        */
+         return OK;
+     }
+ }
+ 
+ 
+ /************************************************************
+  * do_opts():
+  *  Process simple "binary" options for prompt,
+  *  pre- and post-clear specifications.
+  *  Note: upon entry, global "token" contains the 
+  *  value of the token to be processed.
+  ************************************************************/
+ 
+ int do_opts()
+ {
+     if (!in_item)
+         return error("\"%s\" only valid within an item",
+             keywords[token].keyword);
+     
+     switch(token)
+     {
+         case T_PROMPT: case T_PAUSE:
+         case T_NOPROMPT: case T_NOPAUSE:
+             if (Ip->prompt != DEFAULT)
+                 return error("Prompt option already specified");
+             Ip->prompt= (token==T_PROMPT || token==T_PAUSE)? YES :NO;
+             break;
+             
+         case T_POSTCLEAR:              /* these are actually no-ops,   */
+         case T_NOPOSTCLEAR:            /* but again, I've left them in */
+             if (Ip->post_clear != DEFAULT)
+                 return error("Postclear option already specified");
+             Ip->post_clear = (token == T_POSTCLEAR) ? YES : NO;
+             break;
+ 
+         case T_PRECLEAR:
+         case T_NOPRECLEAR:
+             if (Ip->pre_clear != DEFAULT)
+                 return error("Preclear option already specified");
+             Ip->pre_clear = (token == T_PRECLEAR) ? YES : NO;
+             break;
+     }
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_nextitem():
+  *  Process NEXTIEM option.
+  ************************************************************/
+ 
+ int do_nextitem()
+ {
+     int tok;
+     
+     if (Ip->nextcode != DEFAULT)
+         error("Nextitem option already specified");
+     
+     switch (tok = gettok())
+     {
+         case T_FIRST:
+             Ip->nextcode = NXT_FIRST;
+             break;
+             
+         case T_LAST:
+             Ip->nextcode = NXT_LAST;
+             break;
+             
+         case T_NEXT:
+             Ip->nextcode = NXT_NEXT;
+             break;
+             
+         case T_STRING:
+             Ip->nextcode = NXT_DIRECT;
+             if (find_item(tparam))
+                 Ip->nextitem = item_num;
+             else
+             {                         /* record forward item reference */
+                 strcpy(fwd_refs[n_refs].iname, tparam);
+                 fwd_refs[n_refs].refp = &Ip->nextitem;
+                 fwd_refs[n_refs++].lineno = lineno;
+                 Ip->nextitem = UNDEF_FWD;
+             }
+             break;
+         
+         default:
+             ungettok(tok);
+             return error("Bad Nextitem specification");
+     }
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_text():
+  *  Process Text parameter
+  ************************************************************/
+ 
+ int do_text()
+ {
+     int tok;
+     
+     if (!in_item)
+         return error("Text clause must be within an item");
+     if (*Ip->text)
+         return error("Text clause already specified for this item");
+     
+     if ((tok = gettok()) != T_STRING)
+     {
+         ungettok(tok);
+         return error("Text clause specified without the text.");
+     }
+     
+     return do_text2();
+ }
+ 
+ 
+ /************************************************************
+  * do_text():
+  *  Continued TEXT clause processing, shared between
+  *  do_text() and do_item().
+  ************************************************************/
+ 
+ int do_text2()
+ {
+     if (strlen(tparam) > MAX_TXTWID)
+     {
+         *Ip->text = 'x';              /* to avoid "missing text" error */
+         return error("Text is too long; maximum %d chars",
+             MAX_TXTWID);
+     }
+     else
+         strcpy(Ip->text, tparam);
+ 
+     if (strlen(tparam) > Mp -> widest)
+         Mp -> widest = strlen(tparam);
+ 
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_action():
+  *  Process standard action, Exit, Lmenu or Emenu clause
+  ************************************************************/
+ 
+ int do_action()
+ {
+     int tok;
+     int old_acttyp = Ip->acttyp;
+     
+     if (!in_item)
+         return error("%s clause only valid within an item",
+             keywords[token].keyword);
+     
+     if (token == T_EXIT || (tok = gettok()) == T_EXIT)
+         Ip->acttyp = ACT_EXIT;
+     else
+         if (tok != T_STRING)
+         {
+             ungettok(tok);
+             error("Incomplete %s specification",
+             keywords[token].keyword);
+         }
+     else 
+         if (strlen(tparam) > MAX_CMD)
+             error("%s parameter too long (max %d chars)",
+                 keywords[token].keyword, MAX_CMD);
+     else
+         switch(token)
+         {
+           case T_ACTION:
+             strcpy(Ip->action, tparam);
+             Ip->acttyp = ACT_CMND;
+             break;
+             
+           case T_LMENU:
+             if (find_menu(tparam) != NULL)     /* named menu defined?  */
+                 Ip->lmenunum = menu_num;       /* yes.                 */
+             else
+             {                                  /* no. create entry     */
+                 MInfo[n_menus] = create_menu(tparam);
+                 if (fatal)
+                     return ERROR;              /* creation error       */
+                 else
+                     Ip->lmenunum = n_menus++;      /* OK; assign.      */
+             }
+             
+             Ip->acttyp = ACT_LMENU;
+             break;
+             
+           case T_EMENU:
+             strcpy(Ip->action, tparam);
+             Ip->acttyp = ACT_EMENU;
+             break;
+         }
+ 
+     if (old_acttyp)
+         return error("Only one Action clause allowed per item");
+     
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_help():
+  *  Process help clause.
+  ************************************************************/
+ 
+ int do_help()
+ {
+     int tok;
+     
+     if (!in_item)
+         return error("Help clause only valid within an item");
+ 
+     if ((tok = gettok()) != T_STRING)
+     {
+         ungettok(tok);
+         return error("No Help text specified");
+     }
+     
+     if (strlen(tparam) > MAX_HELP)
+         return error("Help text too long (max %d chars)",
+             MAX_HELP);
+         
+     if (*Ip->help)
+         return error("Only one help line allowed per item");
+     
+     strcpy(Ip->help, tparam);
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_err():
+  *  Diagnose hopelessly bad syntax (i.e., encountering a
+  *  totally unexpected keyword)
+  ************************************************************/
+ 
+ int do_err()
+ {
+     return fatalerr("Unrecoverable Syntax error.");
+ }
+ 

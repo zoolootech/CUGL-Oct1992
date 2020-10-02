@@ -1,0 +1,157 @@
+/****************************************************************************/
+/*
+/*    FLATLOAD.C -- Linear executable loader for WINMEM32-based programs
+/*
+/*    Written by Walter Oney
+/*
+/****************************************************************************/
+
+/* Include files */
+#include "windows.h"             /* Windows API */
+#include "string.h"              /* string functions */
+#include "newexe.h"              /* new executable dcls (OS/2 SDK) */
+#define FOR_EXEHDR 1             /* (prevent duplicate def'ns) */
+#include "exe386.h"              /* linear executable dcls (OS/2 SDK) */
+#include "winmem32.h"            /* WINMEM32 API (Win3 SDK) */
+#include "flatload.h"            /* FlatLoad API dcls */
+
+/* Accessing macros for portions of the loader section: */
+
+     typedef struct o32_obj *POBJ;
+     typedef struct o32_map *PMAP;
+
+#define objtab ((POBJ) ldrsect)
+#define objmap ((PMAP)(ldrsect+lxhdr.e32_objmap-lxhdr.e32_objtab))
+
+/****************************************************************************/
+
+/* FlatLoad loads a linear executable into a nonzero-based USE32 segment. It
+   returns "TRUE" if the load was successful. */
+
+   BOOL FAR PASCAL FlatLoad
+      (LPSTR lpFileName,         /* name of file to load */
+      LPSTATE32 lpState)         /* where to put initial state descriptor */
+      {                          /* FlatLoad */
+
+/* Local variables */
+
+      int hFile;                 /* input file handle */
+      struct exe_hdr oldhdr;     /* MZ header of main file */
+      DWORD e32_base;            /* offset to start of LE header */
+      struct e32_exe lxhdr;      /* LE header of target subfile */
+      HANDLE hLdrsect;           /* handle of loader section memory */
+      LPSTR ldrsect;             /* pointer to basic loader info */
+      POBJ op;                   /* current object */
+      POBJ olast;                /* last object */
+      DWORD dwSize;              /* size of target program */
+      DWORD pagemask;            /* page-size mask (e.g., 4095) */
+      WORD bigds;                /* target pgm's data segment selector */
+
+/* Open the input file and read in the header of the linear executable
+   subfile. In the interest of simplicity of exposition, assume that
+   everything works. */
+
+      hFile = _lopen(lpFileName, READ);
+      _lread(hFile, (LPSTR) &oldhdr, sizeof(oldhdr));
+      e32_base = oldhdr.e_lfanew;
+      _llseek(hFile, e32_base, 0);
+      _lread(hFile, (LPSTR) &lxhdr, sizeof(lxhdr));
+
+/* Allocate local heap memory for the basic "loader section" info. */
+
+      hLdrsect = LocalAlloc(LPTR, (WORD) lxhdr.e32_ldrsize);
+      ldrsect = LocalLock(hLdrsect);
+      _llseek(hFile, lxhdr.e32_objtab + e32_base, 0);
+      _lread(hFile, ldrsect, (WORD) lxhdr.e32_ldrsize);
+
+/* Determine how much memory is required for the target 32-bit program
+   and create a USE32 segment to hold it. */
+
+      op = objtab;
+      olast = op + lxhdr.e32_objcnt;
+      dwSize = 0L;
+      pagemask = lxhdr.e32_pagesize - 1;
+      for ( ; op < olast; ++op)
+         dwSize += (op->o32_size + pagemask) & ~pagemask;
+      Global32Alloc(dwSize, &bigds, dwSize, 0);
+
+/* Load the target program */
+
+      for (op = objtab; op < olast ; ++op)
+         {                       /* for each object */
+         PMAP mp = objmap + (op->o32_pagemap - 1);
+         PMAP mlast = mp + op->o32_mapsize;
+         DWORD pagebase = op->o32_base;
+         WORD nBytes = lxhdr.e32_pagesize;
+
+         for (; mp < mlast ; ++mp, pagebase += nBytes)
+            {                    /* for each page in object */
+            WORD nPage = GETPAGEIDX(*mp) - 1;
+            DWORD dwPage = (DWORD) nPage * nBytes;
+            LPSTR pPage;
+
+            Global16PointerAlloc(bigds, pagebase, (LPDWORD) &pPage, nBytes, 0);
+            if (nPage == lxhdr.e32_mpages - 1)
+                nBytes = lxhdr.e32_lastpagesize; /* last page in pgm */
+            switch (mp->o32_pageflags)
+                {                /* handle this type of page */
+            case VALID:
+                _llseek(hFile, lxhdr.e32_datapage + dwPage, 0);
+                _lread(hFile, pPage, nBytes);
+                break;
+            case ZEROED:
+                _fmemset(pPage, 0, nBytes);
+                break;
+                }                /* handle this type of page */
+            Global16PointerFree(bigds, (DWORD) pPage, 0);
+            }                    /* for each page in object */
+         }                       /* for each object */
+
+/* Fill in the initial state descriptor. */
+
+      lpState->ss = bigds;
+      lpState->esp = objtab[lxhdr.e32_stackobj-1].o32_base + lxhdr.e32_esp;
+      Global32CodeAlias(bigds, &lpState->cs, 0);
+      lpState->eip = objtab[lxhdr.e32_startobj-1].o32_base + lxhdr.e32_eip;
+
+/* Release working memory and return to caller. */
+
+      LocalUnlock(hLdrsect);
+      LocalFree(hLdrsect);
+      return TRUE;
+      }                          /* FlatLoad */
+
+/****************************************************************************/
+
+/* FlatUnload releases the memory used by a program FlatLoad previously
+   loaded. */
+
+   VOID FAR PASCAL FlatUnload
+      (LPSTATE32 lpState)        /* 32-bit program descriptor */
+      {                          /* FlatUnload */
+      Global32CodeAliasFree(lpState->ss, lpState->cs, 0);
+      Global32Free(lpState->ss, 0);
+      }                          /* FlatUnload */
+
+/**********************************************************************/
+
+/* Dynamic Link Library initialization: */
+
+     int FAR PASCAL LibMain
+        (HANDLE hInstance,      /* library instance handle */
+        WORD wDataSeg,          /* data segment selector */
+        WORD wHeapSize,         /* size of local heap */
+        LPSTR lpCmdLine)        /* command line */
+        {                       /* LibMain */
+        return TRUE ;           /* indicate success */
+        }                       /* LibMain */
+
+/**********************************************************************/
+
+/* Library exit procedure (called on whim in Windows 3.0): */
+
+     int FAR PASCAL WEP
+        (BOOL bSysExit)         /* true if system exit occurring */
+        {                       /* WEP */
+        return TRUE ;           /* indicate success */
+        }                       /* WEP */

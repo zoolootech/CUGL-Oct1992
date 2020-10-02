@@ -1,0 +1,143 @@
+
+.***************** PROGRAM SECTION START ******************
+;
+; CHECK THE PROCESSOR TYPE!
+;
+;
+; 0 = 8088
+; 1 = 8086
+; 2 = NEC V20
+; 3 = NEC V30
+; 4 = 80188
+; 5 = 80186
+; 6 = 80386
+; 7 = 80286
+;
+        PUBLIC  CHIPTYPE
+
+CSEG    SEGMENT PARA PUBLIC 'CODE'
+        ASSUME  DS:CSEG,CS:CSEG
+CHIPTYPE PROC   NEAR
+;
+; This routine will take the CPU type and store it
+; at the address placed on the stack.
+; The routine is setup to work hand in hand with
+; TURBO PASCAL 4.0 & up.
+;
+PARM1   EQU     6       ;SEG
+PARM2   EQU     4       ;DISP
+        PUSH    BP
+        MOV     BP,SP
+
+        PUSH    ES
+        PUSH    DS
+LCPU:
+        MOV     BX,6
+        PUSH    SP
+        POP     AX
+        CMP     AX,SP
+        JNZ     TST88V
+;
+; THE 286 & 386 CPU PUSHES THE VALUE OF THE SP BEFORE DECREMENTING SP
+; THE PRE-286 CPU PUSHES THE SP AFTER DECREMENTING SP
+;
+;
+;
+; 286 or 386 ?
+;
+        PUSHF
+        XOR     AX,AX
+        MOV     AX,0F000H
+        PUSH    AX
+        POPF
+        PUSHF
+        POP     AX
+        AND     AX,0F000H
+        JNZ     YES386
+        POPF
+        JMP     TSTQUE
+;
+; Definitely 386 because the upper 4 bits of the FLAGS operate
+; differently on a 386
+;
+YES386:  POPF
+        MOV     BX,66H
+        JMP     IS286
+;
+; 8088 or NEC V series chip?
+;
+TST88V: MOV     BX,4
+        MOV     CL,21H
+        MOV     AL,0FFH  ;Can I shift a lot?
+        SHL     AL,CL
+        JNZ     TSTQUE   ;If so then NOT a 80188 or 80186
+        MOV     BX,2     ;otherwise could be V20, V30, 8088 or 8086
+        CALL    ISVSERIES ;If CX=0 then either V20 or V30
+        JCXZ    TSTQUE
+        MOV     BX,0     ;Has to be 8088 or 8086
+TSTQUE: CALL    BIGQUE   ;If pre-fetch QUE BIG then must be V30 or 86
+        JCXZ    IS286
+        OR      BX,1
+IS286:  CMP     BX,6     ;If 286 type then force to 7
+        JNZ     L286
+        MOV     BX,7
+L286:   AND     BX,07H
+        STI
+        MOV     DS,[BP+PARM1]
+        MOV     SI,[BP+PARM2]
+        MOV     DS:[SI],BX
+        POP     DS
+        POP     ES
+        MOV     SP,BP
+        POP     BP
+        RET     4               ;POP PARMS OFF STACK
+CHIPTYPE ENDP
+BIGCUE  PROC    NEAR
+;
+; CHECK FOR 8086 OR 80186
+;
+; TESTS THE PROCESSOR'S PRE-FETCH QUEUE
+;
+        PUSH    CS
+        POP     DS
+        PUSH    CS
+        POP     ES
+        STD
+        CALL    $+3
+        POP     DI
+        ADD     DI,OFFSET PATCH-$+1
+        MOV     AL,BYTE PTR CS:[DI-1]
+        CLI
+        MOV     CX,3
+        REPZ    STOSB
+        CLD
+        NOP
+        NOP
+        NOP
+        INC     CX
+CHKPNT: STI
+PATCH:  STI
+        MOV     BYTE PTR DS:[DI+1],41H
+        RET
+BIGCUE  ENDP
+ISVSERIES PROC    NEAR
+;
+; COULD RETURN CX<>0 BECAUSE OF SEGMENT PREFIX IF NOT A 386 V20 OR V30
+;
+; IF NOT A V20 OR V30 AN INTERRUPT WILL CAUSE THE INSTRUCTION
+;    NOT COMPLETE THUS YIELDING CX<>0
+;
+;
+        MOV     CX,0FFFFH
+        STI                     ;ENABLE INTERRUPTS
+        PUSH    AX
+        PUSH    SI
+        DB      0F3H,026H,0ACH  ;REP ES:LODSB
+        POP     SI
+        POP     AX
+        RET
+ISVSERIES ENDP
+CSEG    ENDS
+        END
+.***************** PROGRAM SECTION END ******************
+

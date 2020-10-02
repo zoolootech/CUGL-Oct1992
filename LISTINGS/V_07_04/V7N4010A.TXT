@@ -1,0 +1,123 @@
+Figure 1
+
+
+
+freelist
+       \
+--------\-----+-----+-----+-----+-----+-----+-----+--------
+  . . . |\    |     |     |     |     |     |     |. . . . 
+  . . . | >  --->  --->  --->  --->  --->  ---> 0 |. . . .
+  . . . |     |     |     |     |     |     |     |. . . .
+--------+-----+-----+-----+-----+-----+-----+-----+--------
+
+
+Figure 2
+
+
+
+freelist ---------\          --------------
+                   \        /              \
+--------+-----+-----\-----+/----+-----+-----\-----+--------
+  . . . | in  | in  |\    / in  |     | in  |\    |. . . . 
+  . . . | use | use | >  /| use | > 0 | use | > / |. . . .
+  . . . |     |     |     |     |  \  |     |  /  |. . . .
+--------+-----+-----+-----+-----+---\-+-----+-/---+--------
+                                     \       /
+                                      -------
+
+Listing 1
+
+mem.h
+-----
+/* mem.h - defs for fixed size block memory allocator */
+
+typedef int Align;
+
+union freelist {
+        union freelist *next;   /* next block on free list */
+        char memory;            /* user data */
+        Align aligner;          /* force alignment of blocks */
+};
+
+typedef union freelist Freelist;
+
+struct freelist_head {
+        int size;   /* size of a single elt incl. next ptr */
+        int bytes;  /* if we run out, allocate memory by this many bytes */
+        Freelist *freelist;
+};
+
+char *sbrk(), *new();
+/* end of mem.h */
+
+
+Listing 2
+
+
+mem.c
+-----
+/* mem.c - subroutines to allocate fixed-size blocks */
+
+#include <stdio.h>
+#include "mem.h"
+
+/* chop up big block into linked list of small blocks */
+Freelist * /* return 0 for failure */
+create_freelist(flh,bytes)
+struct freelist_head *flh;      /* freelist head */
+int bytes;                      /* new memory size */
+{
+        Freelist *current = (Freelist *)sbrk(bytes);
+        if ((Freelist *)-1 == current) return(0);
+        flh->freelist = current;
+        while ((char *)current + flh->size <
+                        ((char *)flh->freelist + bytes)) {
+                current-next = (Freelist *)(&current->memory + flh->size);
+                current = current->next;
+        }
+        current->next = NULL;
+        return(current);
+}
+
+memory_init(flh,size,alloc1,alloc2)
+struct freelist_head *flh;      /* freelist head */
+int size;                       /* size of a single element */
+int alloc1;                     /* number to allocate initially */
+int alloc2;                     /* number to allocate if we run out */
+{
+        /* make block large enough to hold the linked list pointer */
+        flh->size = (size>sizeof(Freelist *)?size:sizeof(Freelist *));
+        /* set up for future allocations */
+        flh->bytes = flh->size * alloc2;
+
+        if (0 == create_freelist(flh,flh->size*alloc1)) {
+                fprintf(stderr,"memory_init: out of space");
+                exit(-1);
+        }
+}
+
+char *
+new(flh)
+struct freelist_head *flh;
+{
+        char *obj;
+
+        if (flh->freelist == NULL && 0 == create_freelist(flh,flh->bytes)) {
+                fprintf(stderr,"new: out of space");
+                return(0);
+        }
+
+        obj = &flh->freelist->memory;
+        flh->freelist = flh->freelist->next;
+
+        return(obj);
+}
+
+delete(flh,link)
+struct freelist_head *flh;
+Freelist *link;
+{
+        link->next = flh->freelist;
+        flh->freelist = link; 
+} 
+

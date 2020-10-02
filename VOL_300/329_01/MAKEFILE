@@ -1,0 +1,45 @@
+# Things you might want to put in ENV and LENV:
+# -Dvoid=int		compilers that don't do void
+# -DCHARBITS=0377	compilers that don't do unsigned char
+# -DSTATIC=extern	compilers that don't like "static foo();" as forward decl
+# -DSTRCSPN		library does not have strcspn()
+# -Dstrchr=index	library does not have strchr()
+# -DERRAVAIL		have utzoo-compatible error() function and friends
+ENV=-DSTATIC=extern
+LENV=-DLINTARGS
+
+# Things you might want to put in TEST:
+# -DDEBUG		debugging hooks
+# -I.			regexp.h from current directory, not /usr/include
+TEST=
+
+# Things you might want to put in PROF:
+# -Dstatic='/* */'	make everything global so profiler can see it.
+# -p			profiler
+PROF=
+
+CFLAGS=-Ox $(ENV) $(TEST) $(PROF)
+LINTFLAGS=$(LENV) $(TEST) -ha
+LDFLAGS=/STACK:16384
+
+OBJ=regexp.obj regsub.obj regerror.obj
+LSRC=regexp.c regsub.c regerror.c
+DTR=README dMakefile regexp.3 regexp.h regexp.c regsub.c regerror.c \
+	regmagic.h try.c timer.c tests
+
+try.exe :	try.obj $(OBJ)
+	link $(LDFLAGS) try.obj $(OBJ),$@,;
+
+egrep.exe : egrep.obj $(OBJ)
+	link $(LDFLAGS) $*.obj $(OBJ) $(SETARGV),$@,;
+
+regexp.obj:	regexp.c regexp.h regmagic.h
+regsub.obj:	regsub.c regexp.h regmagic.h
+
+.SUFFIXES : .doc .3
+
+.3.doc:
+	nro -m\nro\an.nro $*.3 >$*.doc
+
+archive : egrep.exe regexp.doc egrep.doc
+	pkarc u \release\egrep *.c *.h *.doc makefile readme tests egrep.exe

@@ -1,0 +1,125 @@
+/*
+ *  cstr - produce compilable C STRing from a text file.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include "blstr.h"
+
+#define MAX_LINE    512         /* largest input line we expect */
+#define MAX_NAME    128         /* largest file name we expect  */
+
+    main(argc, argv)
+char    **argv;
+{
+int     i;
+FILE    *fin, *fout;
+char    foutname[MAX_NAME+1];
+char	sname[MAX_NAME+1];
+
+fprintf(stderr, "cstr 1.0\n");
+    if(argc < 2)                  /* if no command-line args  */
+        usage();
+    for(i = 1; i < argc; ++i) {   /* for each input file */
+        if( !makeout(argv[1], foutname, sname) )
+            error("%s: Input filename ('%s') must not end in '.c'\n",
+                    argv[0], argv[1]);
+        fin     = fopen(argv[1], "r");
+        if(!fin)
+            error("%s: Can't open '%s' for input\n", argv[0], argv[i]);
+	fout    = fopen(foutname, "w");
+        if(!fout)
+            error("%s: Can't open '%s' for input\n", argv[0], argv[i]);
+        cstr(fin, fout, sname);
+        fclose(fin);    fclose(fout);
+        }
+}
+
+/*
+ *  usage - display correct usage and exit.
+ */
+
+    usage()
+{
+extern char cstruse[];
+
+    fputs(cstruse, stderr);
+    exit(EXIT_FAILURE);     /* defined in "stdlib.h" */
+}
+
+
+/*
+ *  makeout - make output name from input name.
+ */
+
+static
+int     makeout(in, out, sname)
+char    *in, *out, *sname;
+{
+char    c;
+
+    while((*sname++=*out++=c=*in++) != '\0')
+        if(c == '.')
+            if (!strcmp(*in, "c"))
+                return (0);
+            else
+                break;
+    if(c != '.') {       /* output has '.', even if input didn't */
+        *out++  = '.';
+        *sname = '\0';
+        }
+    else
+        *--sname = '\0';
+    *out++  = 'c';
+    *out++  = '\0';
+    return (1);
+}
+
+/*
+ *  cstr - do the actual work.
+ */
+static
+int     cstr(fin, fout, sname)
+FILE    *fin, *fout;
+char    *sname;
+{
+char    line[MAX_LINE+1], *maxdimp;
+int     maxdim = 0, c, i;
+
+    if((c = fgetc(fin)) == '&') {  /* if input specifies name and dimension  */
+        fgets(line, MAX_LINE, fin);
+        maxdimp = strbreak(line, " \t\n");
+        if(*maxdimp)
+            *maxdimp++  = '\0';
+        maxdim      = atoi(maxdimp);
+        }
+    else {
+        ungetc(c, fin);
+        strcpy(line, sname);
+        }
+    fprintf(fout, "char %s[", line);
+    if(maxdim)
+        fprintf(fout, "%d", maxdim);
+    fprintf(fout, "]    =\n    {");
+
+    for(i = 0; (c = fgetc(fin)) != EOF; ++i) {
+        if(!(i%12))
+            fprintf(fout, "\n   ");
+        if(c == '\n')
+            fprintf(fout, " '\\n',");
+        else if(c == '\t')
+            fprintf(fout, " '\\t',");
+        else if(c == '\\')
+            fprintf(fout, " '\\\\',");
+        else
+            fprintf(fout, "  '%c',", c);
+        }
+    if (!(i%12)) {
+        fprintf(fout, "\n   ");
+        fprintf(fout, "  '\\0'\n    };\n");
+        }
+    else
+        fprintf(fout, " '\\0'\n    };\n");
+    
+    fprintf(stderr, "Did %d chars\n", i);
+}

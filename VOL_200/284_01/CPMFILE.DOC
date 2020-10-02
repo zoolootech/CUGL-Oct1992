@@ -1,0 +1,188 @@
+NAME
+	CPMFILE.EXE  CP/M virtual disk access
+
+SYNOPSIS
+	cpmfile [-webvl] [-d disk] [-u user] [-o file] file ...
+
+DESCRIPTION
+
+	Please set options as described below:
+
+	When more than one character flag (webvl) is used, please 
+	attach a dash for each option. 
+
+	When the option that requires a parameter is used, it doesn't
+	matter whether or not there is a space between the option and 
+	parameter.
+
+	Although the option can be specified in any order, a file name
+	must come after options.
+
+	Some combinations of options are restricted. Please refer to the
+	detail below where each option is described.
+
+w	The program writes a file to the virtual disk. If none of w, e, or l 
+	options	is specified, the program reads a file from the virtual disk.
+	When w is specified but e is not specified, a file that will be
+	written to the disk shouldn't exist in the virtual disk. If it does,
+	an error will occur. When both w and e are specified and a file
+	that will be written exists in the disk, the file will be removed
+	before the operation. The w option can't be used with l or o options.
+
+	When a file is written with this option, the CP/M filename
+	in the virtual disk and the filename under MSDOS will be the same. 
+	Therefore, the file under MSDOS should be in the current directory
+	in the current disk.
+
+e	The program erases a file in a virtual disk. When w is not
+	specified with this option, the file will be erased from the disk.
+	When w is specifed with this option, the file will be created after
+	it is erased. The e option can't be used with l or o options.
+
+l	The program displays filenames in a virtual disk. The l option
+	can't be used with w,e, or o options. It can be used with a v option,
+	but it makes no difference whether it is with a v option or without it.
+
+	The program checks if the specified file exists in the disk and
+	displays the only filenames that exist in the disk. A wildcard
+	can't be used. Normally, one or more than one file has to be specified,
+	but if no filename is specified the program will display all 
+	filenames with the specified user number in the disk.
+
+v	The program displays currently processing filenames. No filename
+	is displayed in default. In the command line of COMPFILE, it is
+	possible to specify more than one filename and execute them with
+	options. With this option, a filename processed currently is displayed.
+
+b	The program treats a file as a binary file. In default, a file 
+	is treated as a text file.
+
+	Without this option when reading and writing a file, the file will be
+	treated as a text file and  transformed. The transformation is 
+	performed between the file format of the host operating system and
+	the CP/M file format. This feature is designed so that the contents
+	of a file would be same between operating systems that have
+	different file formats, e.g. UNIX or MVS and CP/M.
+	When the host operating system is MSDOS, the transformation described 
+	below is performed (although MSDOS and CP/M file foramt are same.)
+
+	When the program reads a file from the virtual disk, it searches
+	for the end-of-file character, 1AH. When it finds the character,
+	the reading of the file terminates. As a result, MSDOS file doesn't
+	include 1AH.
+
+	When the program writes a file to the virtual disk, it searches for
+	the end-of-file character (1AH). When it encounters the character,
+	the program acknowledges the end of the file and appends 1AHs until
+	the size of the file is a multiple of 128.
+
+	When reading or writing a file with the b option, the processed file
+	will be treated as a binary file. In both reading and writing 
+	operations, the size of the file is the same. The size of the MSDOS 
+	file read from the virtual disk is always a multiple of 128. Writing 
+	a file, when the size of MSDOS file is a multiple of 128, creates a 
+	CP/M file with the same size. However, when the file is not currently
+	a multiple of 128, binary 0s are appended until the file size becomes 
+	a multiple of 128.
+
+o	This options specifies a MSDOS filename read from the virtual disk.
+	In default, the same filename as one that is read will be used.
+	The o option can't be used with w, e, and l options.
+
+	Without this option, the same filename as one that is read will be 
+	used. When more than one filenames is specified, more than one MSDOS
+	files is created. MSDOS files are created in the current directory
+	in the current disk drive.
+
+	With this option, the file read from the disk will be named
+	as specified with the option. If more than one filenames is
+	specified in the command line, all filenames are concatenated in the 
+	order.
+	A pathname can be specified with this option.
+
+u	This option specifies a CP/M user number. The parameter should be
+	from 0 to 31, decimal number. The default user number is 0.
+	
+	In a virtual disk, it is assumed that all CP/M files are in the
+	user number specified with this option. Thus, when reading a file,
+	displaying a filename, or erasing a file, only files that are in the 
+	specified user number will be processed. When writing a file, the file
+	is created in the specified user number.
+
+d	This option specifies a virtual disk. Although the default has
+	an appropriate name, please try to specify on every time. Any MSDOS 
+	pathname can be specified for the parameter. The virtual disk must exist
+	beforehand even if writing a file to the disk.
+
+Filenames
+
+	A CP/M filename consists of a
+	primary name (Length is less than or equal to 8 characters.),
+	, a period, and secondary name (Length is less than or equal 3 
+	characters.). No spaces are allowed between characters. If no
+	secondary name is included, a period can be omitted.
+
+	Upper-case and lower-case characters are not distinguished and
+	all characters are treated as upper-case characters.
+	No wildcard is allowed.
+
+EXAMPLES
+
+	This example displays a filename ( in the user number 0) in the
+	virtual disk "WORK.DSK".
+
+	cpmfile -d word.dsk -l
+
+	This example writes MSDOS text files, A.DOC and B.DOC to the disk.
+	If there is a file with the same filename, it will be erased before
+	writing.
+
+	compfile -w -e -d work.dsk a.doc b.doc
+
+
+	This example reads a binary file, SAMPLE.COM and writes to 
+	a MSDOS file, B:\USER\SAMPLE.CPM. 
+	
+	cpmfile -b -d work.dsk -o b:\user\sample.cpm sample.com
+
+
+BUGS
+
+	When reading a file that includes unassigned blocks, the program
+	reads until it encounters the unassigned block.
+	Moreover, when the program writes a file without the e option
+	a file has the same filename as one to be written which exists in the
+	disk, and also the file has an unassigned block at the first extent,
+	then no error will occur and the writing will processed incorrectly.
+
+	The program doesn't check each character of a filename. Therefore, 
+	when writing a file, a filename unacceptable under CP/M can be created.
+
+	CP/M allows a filename that is unacceptable under MSDOS. 
+	When reading this kind of filename, the o option should be used.
+
+	Errors about the virtual disk won't be displayed correctly.
+
+	When displaying filenames, only files in the specified user number 
+	are displayed each time. In order to know in which user number
+	a file exists, you need to try all 32 user numbers.
+
+	No wildcard can be used.
+
+	When writing a file,  a MSDOS file to be written must exist in
+	the current directory in the current disk drive.  The same is
+	true when reading files. The destination of files must be
+	in the current directory in the current disk drive.
+
+	The program can't correctly process attributes of CP/M files.
+	When a CP/M file has attributes such as "read only",
+	"system file", or "archived", the file can't be read or erased.
+	When overwriting the file, it will end up with two files that
+	have the same file name, one with attributes and one without them.
+	The program can't correctly display a filename with attributes.
+
+	If processing a non standard text file into a text file without
+	the b option, the result may not be the same.
+
+
+

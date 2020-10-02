@@ -1,0 +1,41 @@
+
+unsigned short crc16(char *pcDataPtr, unsigned short usLength)
+{
+  /* this routine calculates a byte-wise CCITT CRC-16 of a block of data of length 
+      usLength and pointed to by pcDataPtr */
+
+  unsigned short usCrc;
+  unsigned short usData;
+
+  /* At this point, to facilitate register optimization, we either make a 
+     local copy of the global variable that holds the current CRC, 
+     or we initialize the local copy to the starting value 0xFFFF.  
+     We do the latter if we are using this routine to calculate the CRC of 
+     ONLY the block pointed to by pcDataPtr, as in this case. */
+
+  usCrc = 0xFFFF;
+
+  while(usLength--)
+  {
+    /* The algorithm requires the data bits in the high byte. */
+    usData = (*(pcDataPtr++)) << 8;
+
+    /* This block of code calculates the CRC for one byte of data. */
+    usCrc  = ((usCrc & 0x00FF) << 8) + (usCrc >> 8);
+    usCrc  = usCrc ^ usData;
+    usData = usCrc & 0xFF00;
+    usData = usData << 4;
+    usCrc  = usCrc ^ usData;
+    usData = usCrc & 0xFF00;
+    usData = usData >> 5;
+    usCrc  = usCrc ^ usData;
+    usData = usData >> 7;
+    usCrc  = usCrc ^ usData;
+  };
+
+  /* We get the CRC ready for transmission. */
+  usCrc  = ~(((usCrc & 0x00FF) << 8) + (usCrc >> 8));
+  return(usCrc);
+}
+
+

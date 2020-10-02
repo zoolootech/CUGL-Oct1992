@@ -1,0 +1,604 @@
+#include <windows.h>
+#include <stdio.h>
+#include <io.h>
+#include <stdlib.h>
+#include <graph.h>
+#include <string.h>
+#include <ctype.h>
+#include "StdWin.h"
+
+
+/* malloc statics */
+static WORD LocalEntries;
+static WORD LocalTotalSize=0;
+static WORD GlobalEntries;
+static WORD GlobalTotalSize=0;
+static VOID **LocalMemPtrs;
+static HANDLE *LocalMemHandles;
+static HANDLE *GlobalMemHandles;
+static VOID huge **GlobalMemPtrs;
+
+BYTE TextBuffer[1024];
+#define TABSIZE 4
+
+/* two states used by printf */
+static int AnsiTextState=TEXT,NewLineState=0;
+
+
+/* atexit function pointer */
+(_cdecl _FAR_ _LOADDS_ *ExitCallFunc)(void);
+int ExitCallInit = 0;
+
+/********************************************************/
+/* malloc() & halloc() keep a list of all the allocated
+   pointers and handles so that they can later be freed */
+/********************************************************/
+void *malloc(size)
+size_t size;
+{
+ static HANDLE MemHandle,MemPtr;
+ static void *Ptr;
+ if(!LocalTotalSize)         /* not initialized */
+	{
+	MemHandle = LocalAlloc(LMEM_MOVEABLE,50);
+	if(!MemHandle) return(0);
+	MemPtr = LocalAlloc(LMEM_MOVEABLE,50);
+	if(!MemPtr) return(0);
+	LocalTotalSize = 25;
+	}
+ if(LocalEntries >= LocalTotalSize && LocalEntries != 0)
+	{
+	MemHandle = LocalReAlloc(MemHandle,100,LMEM_MOVEABLE);
+	if(!MemHandle) return(0);
+	MemPtr = LocalReAlloc(MemPtr,100,LMEM_MOVEABLE);
+	if(!MemPtr) return(0);
+	LocalTotalSize = 50;
+	}
+ LocalMemHandles = (HANDLE *)LocalLock(MemHandle);
+ *LocalMemPtrs = LocalLock(MemPtr);
+ if(!LocalMemHandles || !*LocalMemPtrs) return(0);
+
+ if(!(LocalMemHandles[LocalEntries] =
+			LocalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,size)))
+		{
+		LocalCompact(0xffff);
+		if(!(LocalMemHandles[LocalEntries] =
+			LocalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,size)))
+			return(0);
+		}
+ if(!(Ptr = LocalLock(LocalMemHandles[LocalEntries])))
+		return(0);
+ LocalMemPtrs[LocalEntries] = Ptr;
+ LocalEntries++;
+ LocalUnlock(MemHandle);
+ LocalUnlock(MemPtr);
+
+ return(Ptr);
+}
+
+/***************************************
+function : halloc
+***************************************/
+
+void far *halloc(n,size)
+long n;
+size_t size;
+{
+ static VOID huge *Ptr;
+ static HANDLE MemHandle,MemPtr;
+ if(!GlobalTotalSize)         /* not initialized */
+	{
+	MemHandle = LocalAlloc(LMEM_MOVEABLE,50);
+	if(!MemHandle) return(0);
+	MemPtr = LocalAlloc(LMEM_MOVEABLE,50);
+	if(!MemPtr) return(0);
+	GlobalTotalSize = 25;
+	}
+ if(GlobalEntries >= GlobalTotalSize && GlobalEntries != 0)
+	{
+	MemHandle = LocalReAlloc(MemHandle,GlobalTotalSize+50,
+		LMEM_MOVEABLE);
+	if(!MemHandle) return(0);
+	MemPtr = LocalReAlloc(MemPtr,GlobalTotalSize + 50,
+		LMEM_MOVEABLE);
+	if(!MemPtr) return(0);
+	GlobalTotalSize += 25;
+	}
+ GlobalMemHandles = (HANDLE *)LocalLock(MemHandle);
+ *GlobalMemPtrs = LocalLock(MemPtr);
+
+ if(!GlobalMemHandles || !*GlobalMemPtrs) return(0);
+ if(!(GlobalMemHandles[GlobalEntries] =
+			GlobalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,
+			(long)size*n)))
+		{
+		GlobalCompact(-1L);
+		if(!(GlobalMemHandles[GlobalEntries] =
+			GlobalAlloc(LMEM_MOVEABLE | LMEM_ZEROINIT,
+			(long)size*n)))
+			return(0);
+		}
+ if(!(Ptr =
+	(VOID FAR *)GlobalLock(GlobalMemHandles[GlobalEntries])))
+		return(0);
+ GlobalMemPtrs[GlobalEntries] = Ptr;
+
+ GlobalEntries++;
+ LocalUnlock(MemHandle);
+ LocalUnlock(MemPtr);
+
+ return(Ptr);
+}
+
+/***************************************
+function : free
+***************************************/
+
+void free(ptr)
+void *ptr;
+{
+ int i = 0;
+ while(i < LocalEntries)
+	{
+	if(LocalMemPtrs[i] == ptr)
+		{
+		LocalUnlock(LocalMemHandles[i]);
+		LocalFree(LocalMemHandles[i]);
+		return;
+		}
+	i++;
+	}
+
+}
+
+/***************************************
+function : hfree
+***************************************/
+
+void hfree(hugeptr)
+void huge *hugeptr;
+{
+ int i = 0;
+ while(i < GlobalEntries)
+	{
+	if(GlobalMemPtrs[i] == hugeptr)
+		{
+		GlobalUnlock(GlobalMemHandles[i]);
+		GlobalFree(GlobalMemHandles[i]);
+		return;
+		}
+	i++;
+	}
+
+}
+
+
+/***************************************
+function : printf
+***************************************/
+
+int printf(str,arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,
+	arg9,arg10,arg11,arg12,arg13,arg14,arg15,arg16,arg17,
+	arg18,arg19,arg20,arg21,arg22)
+const char _FAR_ *str;
+WORD arg1,arg2,arg3,arg4,arg5,arg6,arg7,arg8,arg9,arg10,
+	arg11,arg12,arg13,arg14,arg15,arg16,arg17,arg18,arg19,
+	arg20,arg21,arg22;
+{
+ HDC hDC;
+ HANDLE hOldFont,hFont;
+ DWORD dwExtent;
+ int n,i,CharCount;
+ static BYTE number[8];
+ MSG msg;
+ /* 1 of 2 external message loops not found in
+					WinMain(), another in getch*/
+Loop:
+ /* clear the message queue */
+ while(PeekMessage(&msg,NULL,0,0xFFFF,PM_REMOVE)){
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);}
+ /* if the break key is pressed, hold for another key */
+ if(BreakSet) goto Loop;
+
+ CharCount = sprintf(TextBuffer,str,arg1,arg2,arg3,arg4,
+	arg5,arg6,arg7,arg8,arg9,arg10,arg11,arg12,arg13,arg14,
+	arg15,arg16,arg17,arg18,arg19,arg20,arg21,arg22);
+ /* see if output is redirected or piped */
+ if(hOutFile)
+	write(hOutFile,TextBuffer,CharCount);
+ if(Redirected) return(CharCount);
+
+ hDC=GetDC(hStdWinWnd);
+ SetMyDC(hDC);
+ ptr = TextBuffer;
+while(*ptr)
+ {
+ /* set up the AnsiTextState to start with */
+ if((*ptr == 0x1b) && (*(ptr + 1) == '['))
+	AnsiTextState = ANSI;
+ else AnsiTextState = TEXT;
+
+ switch(AnsiTextState){
+	case TEXT:
+		hFont = hFont1;         /* default font */
+	if(*ptr)
+		{ int i;
+		BYTE buffer[120];
+		hOldFont = SelectObject(hDC, hFont);
+		CharCount = 0;
+		ptr2 = ptr;
+		while(*ptr2 == '\b')    /* process a backspace */
+			{memmove(ptr2,ptr2+1,strlen(ptr2));
+			 if(DisplayCol){
+				xCurrentPos -= ScreenBuffer[DisplayLine]
+					[DisplayCol].xExtent;
+				DisplayCol--;
+				HideCaret(hStdWinWnd);
+				TextOut(hDC,xCurrentPos,yCurrentPos," ",1);
+				ShowCaret(hStdWinWnd);
+				}
+			}
+		/* advance until a control character */
+		while(*ptr2)
+			{
+			if((*ptr2 == 0x1b) && (*(ptr2 + 1) == '['))
+				break;
+			if((*ptr2 == 0x0d) || (*ptr2 == 0x0a))
+				break;
+			else NewLineState = 0;
+			if(*ptr2 == '\b')
+			   break;
+			if((DisplayCol + CharCount) >= MAXCOLUMNS)
+				break;
+			CharCount++;
+			if(*ptr == '\t')    /* expand tab to spaces */
+				{
+				i = strlen(TextBuffer);
+				memmove(ptr2 + TABSIZE-1,ptr2,
+					i - (ptr2-TextBuffer)+1);
+				i = TABSIZE;
+				while(i--) *ptr2++ = ' ';
+				CharCount += TABSIZE-1;
+				}
+			ptr2++;
+			}
+
+		if(DisplayLine >= MAXROWS)
+			yCurrentPos = Scrollup(hStdWinWnd,yCurrentPos);
+
+		HideCaret(hStdWinWnd);
+		TextOut(hDC,xCurrentPos,yCurrentPos,ptr,CharCount);
+		xCurrentPos +=
+			LOWORD(GetTextExtent(hDC,ptr,CharCount));
+		SetCaretPos(xCurrentPos,yCurrentPos);
+		ShowCaret(hStdWinWnd);
+		/* copy the new characters to the screen buffer */
+		for(i = DisplayCol;i < DisplayCol + CharCount;i++)
+			{ ScreenBuffer[DisplayLine][i].Char = *ptr;
+			  ScreenBuffer[DisplayLine][i].xExtent =
+					LOWORD(GetTextExtent(hDC,ptr++,1));
+			  ScreenBuffer[DisplayLine][i].Color =
+				rgbTextColor;
+			  ScreenBuffer[DisplayLine][i].hFont = hFont;
+			  if(i < MAXCOLUMNS){
+			  ScreenBuffer[DisplayLine][i+1].Char = 0;
+			  ScreenBuffer[DisplayLine][i+1].Color = 0L;
+			  ScreenBuffer[DisplayLine][i+1].hFont = 0;
+			  }
+			}
+		DisplayCol += CharCount;
+
+		if((DisplayCol >= MAXCOLUMNS) && !iscntrl(*ptr2)){
+			/* force a newline for a wrap */
+			NewLineState = 1;
+			DisplayCol = 0;
+			if(hOutFile) write(hOutFile,"\r",1);
+			xCurrentPos = 0;
+			}
+		if(*ptr2 == 0x0d){
+			DisplayCol = 0;
+			if(hOutFile) write(hOutFile,"\r",1);
+			xCurrentPos = 0;
+			if(!NewLineState) ptr2++;
+			NewLineState = 1;}
+
+		if((*ptr2 == 0x0a) || NewLineState)
+			{
+			DisplayLine++;
+			if(!NewLineState)
+				{
+				DisplayCol = 0;
+				if(hOutFile) write(hOutFile,"\r",1);
+				xCurrentPos = 0;
+				}
+			if(*ptr2 == 0x0a) ptr2++;
+			NewLineState = 0;
+			dwExtent = GetTextExtent(hDC,"A",1);
+			yCurrentPos += LineExtents[DisplayLine] =
+				HIWORD(dwExtent);
+
+			HideCaret(hStdWinWnd);
+			SetCaretPos(xCurrentPos,yCurrentPos);
+			ShowCaret(hStdWinWnd);
+			}
+		SelectObject(hDC, hOldFont);
+
+		ptr = ptr2;
+		}
+	break;
+	/* process an ANSI.SYS command */
+	case ANSI:
+
+		ptr += 2;
+		ptr2 = number;
+		while(isdigit(*ptr)) {*ptr2++= *ptr++;}
+		*ptr2 = 0;
+		n = atoi(number);
+		switch(*ptr++) {
+			case ';':       /* cursor position */
+				ptr2 = number;
+				while(isdigit(*ptr)) {*ptr2++= *ptr++;}
+					*ptr2 = 0;
+				i = atoi(number);
+				if((*ptr != 'H') && (*ptr != 'F'))
+					{ptr -= 3; *ptr2 = 0x1b;break;}
+				ptr++;
+				_settextposition(n-1,i-1);
+				break;
+
+			case 'J':       /* clear the screen */
+				_clearscreen(0);
+				break;
+
+			case 'm':       /* bold on/off */
+				switch(n){
+					case 1:
+						SelectObject(hDC,hBoldFont);
+						break;
+					case 2:
+						SelectObject(hDC,hFont1);
+						break;
+					}
+				break;
+			case 'o':       /* red */
+				rgbTextColor = RGB(255,0,0);
+				SetTextColor(hDC,rgbTextColor);
+				break;
+			case 'p':       /* green */
+				rgbTextColor = RGB(0,255,0);
+				SetTextColor(hDC,rgbTextColor);
+				break;
+			case 'q':       /* blue */
+				rgbTextColor = RGB(0,0,255);
+				SetTextColor(hDC,rgbTextColor);
+				break;
+			default:
+				break;
+			}/* switch(ANSI control code) */
+		 }/* switch(AnsiTextState)*/
+
+	}/* while(ptr)*/
+
+
+	ReleaseDC(hStdWinWnd, hDC);
+	return(strlen(TextBuffer));
+}
+
+/***************************************
+function : Scrollup
+
+This function is a support function for
+printf, it should not be called directly
+***************************************/
+
+WORD Scrollup(hWnd,LinePos)
+HWND hWnd;
+WORD LinePos;
+{
+  WORD i,n,x=0,lines;
+
+  /* find the number of lines at the top to match one
+	line at the bottom */
+  for(lines=0;lines < DisplayLine;lines++)
+	{
+	/* add up the number of pixels to scroll */
+	x+=LineExtents[lines];
+	if(x >= LineExtents[DisplayLine]) break;
+	}
+  lines++;
+  ScrollWindow(hWnd,0,-x ,  NULL, NULL);
+  DisplayLine -= lines;
+  /* copy the screen information up one line */
+  for(i=lines;i<= DisplayLine;i++)
+	{
+	for(n = 0;n < MAXCOLUMNS;n++)
+		{ScreenBuffer[i-lines][n] = ScreenBuffer[i][n];}
+	LineExtents[i-lines] = LineExtents[i];
+	}
+  return(LinePos - x);
+}
+
+
+
+/***************************************
+function : getche
+***************************************/
+
+int getche(void)
+{
+ int c;
+ c = getch();
+ printf("%c",c);
+ return(c);
+}
+
+/***************************************
+function : getch
+***************************************/
+
+int getch(void)
+{
+	MSG msg;
+	int c;
+
+	while (GetMessage(&msg, NULL, NULL, NULL)) {
+		TranslateMessage(&msg);
+		DispatchMessage(&msg);
+		if(KeyHead != KeyTail)
+			{
+			c = KeyBuffer[KeyTail];
+			KeyTail = ++KeyTail & KeyMask;
+			return(c);
+			}
+
+	}
+	return(-3);
+}
+
+/***************************************
+function : gets
+***************************************/
+
+char *gets(buffer)
+char *buffer;
+{
+ int i = 0,c;
+ while((c = getche()) != '\r') buffer[i++] = c;
+ buffer[i] = 0;
+ return(buffer);
+}
+
+/***************************************
+function : _outtext
+***************************************/
+
+void far _outtext(string)
+const unsigned char far *string;
+{
+ while(*string)
+	printf("%c",*string++);
+}
+
+/***************************************
+function : puts
+***************************************/
+
+int puts(string)
+const char *string;
+{
+ while(*string)
+	printf("%c",*string++);
+ printf("\n");
+ return(1);
+}
+
+/***************************************
+function : _clearscreen
+***************************************/
+
+void far _clearscreen(area)
+short area;
+{
+ int i,n;
+ HideCaret(hStdWinWnd);
+ InvalidateRect(hStdWinWnd,NULL,TRUE);
+ DisplayCol = DisplayLine = xCurrentPos = yCurrentPos = 0;
+ SetCaretPos(xCurrentPos,yCurrentPos);
+ ShowCaret(hStdWinWnd);
+ for(i = 0;i < MAXROWS;i++)
+	{
+	 for(n=0;n< MAXCOLUMNS ;n++)
+		{ScreenBuffer[i][n].Char = 0;
+		 ScreenBuffer[i][n].Color = rgbTextColor;
+		 }
+
+	}
+}
+
+/***************************************
+function : _settextposition
+***************************************/
+
+struct rccoord far _settextposition(row,column)
+short row;
+short column;
+{
+ static struct rccoord pos;
+ pos.row = DisplayLine;
+ pos.col = DisplayCol;
+ DisplayCol = DisplayLine = yCurrentPos = xCurrentPos = 0;
+ HideCaret(hStdWinWnd);
+ while(DisplayLine < row)
+	yCurrentPos += LineExtents[DisplayLine++];
+ while(DisplayCol < column)
+	{xCurrentPos +=
+		ScreenBuffer[DisplayLine][DisplayCol].xExtent;
+	 DisplayCol++;}
+ SetCaretPos(xCurrentPos,yCurrentPos);
+ ShowCaret(hStdWinWnd);
+
+ return(pos);
+}
+
+
+/*  dos color pallet table
+   0           Black      8           Dark gray
+   1           Blue       9           Light blue
+   2           Green      10          Light green
+   3           Cyan       11          Light cyan
+   4           Red        12          Light red
+   5           Magenta    13          Light magenta
+   6           Brown      14          Yellow
+   7           White      15          Bright white
+*/
+COLORREF ColorTable[16] = {
+	BLACK,DARK_GRAY,BLUE,LIGHT_BLUE,GREEN,
+	LIGHT_GREEN,CYAN,LIGHT_CYAN,RED,LIGHT_RED,
+	MAGENTA,LIGHT_MAGENTA,BROWN,YELLOW,WHITE,BRIGHT_WHITE};
+
+/***************************************
+function : _settextcolor
+***************************************/
+
+short far _settextcolor(color)
+short color;
+{
+ int i;
+ long oldcolor = (long)rgbTextColor;
+ color &= 0xf;
+ rgbTextColor = ColorTable[color];
+ for(i=0;i<16;i++){
+	if(oldcolor = ColorTable[i]) break;
+	}
+ return(i);
+}
+
+/***************************************
+function : _setbkcolor
+***************************************/
+
+long far _setbkcolor(color)
+long color;
+{
+ int i;
+ long oldcolor = rgbBkColor;
+ rgbBkColor = ColorTable[color];
+ for(i=0;i<16;i++){
+	if(oldcolor = ColorTable[i]) break;
+	}
+ return (i);
+}
+
+/***************************************
+function : atexit
+***************************************/
+
+int atexit(ExitFunc)
+void (*ExitFunc)(void);
+{
+  ExitCallFunc = ExitFunc;
+  ExitCallInit = 1;
+  return(1);
+}
+

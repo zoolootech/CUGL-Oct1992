@@ -1,0 +1,103 @@
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-Begin Listing 7-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+/*****************************************************/
+/* mlecptn.c                                         */
+/* -- Module to implement an MLE with a caption.     */
+/*****************************************************/
+
+#include <windows.h>
+#include "mlecptn.h"
+
+/* Class name for MLE's parent. */
+#define szCaptionedMleClass "CaptionedMle"
+
+BOOL
+FInitCaptionedMle(HANDLE hins)
+/*****************************************************/
+/* -- Create a class for the MLE's parent window.    */
+/* -- Call this routine when initializing the first  */
+/*    instance of the application.                   */
+/* -- Return false if the class could not be         */
+/*    registered.                                    */
+/* -- hins  : Application's instance handle.         */
+/*****************************************************/
+    {
+    WNDCLASS    wcs;
+
+    /* The parent window doesn't have to do anything */
+    /* except call DefWindowProc(), so we take the */
+    /* easy way out and just use DefWindowProc() as */
+    /* the window proc itself. */
+    wcs.style = CS_HREDRAW | CS_VREDRAW;
+    wcs.lpfnWndProc = DefWindowProc;
+    wcs.cbClsExtra = 0;
+    wcs.cbWndExtra = 0;
+    wcs.hInstance = hins;
+    wcs.hIcon = LoadIcon(NULL, IDI_APPLICATION);
+    wcs.hCursor = LoadCursor(NULL, IDC_ARROW);
+    wcs.hbrBackground = GetStockObject(WHITE_BRUSH); 
+    wcs.lpszMenuName = NULL;
+    wcs.lpszClassName = szCaptionedMleClass;
+    return RegisterClass(&wcs);
+    }
+
+HWND
+HwndCaptionedMle(HWND hwndOwner, RECT * prect,
+    char * szCaption, BOOL fPopup)
+/*****************************************************/
+/* -- Create an MLE with a captioned parent.         */
+/* -- Return the window handle of the parent.        */
+/* -- hwndOwner : Window to own parent.              */
+/* -- prect     : Location of parent window.         */
+/* -- szCaption : Title to put in caption.           */
+/* -- fPopup    : Create parent as a popup window if */
+/*                set, otherwise as a child.         */
+/*****************************************************/
+    {
+    RECT    rect;
+    HWND    hwnd;
+    HANDLE  hins;
+
+    hins = GetWindowWord(hwndOwner, GWW_HINSTANCE);
+
+    /* Create the MLE's parent. */
+    if ((hwnd = CreateWindow(
+      szCaptionedMleClass,
+      szCaption,
+      WS_VISIBLE | WS_CAPTION |
+        (fPopup ? WS_POPUPWINDOW :
+          (WS_CHILD | WS_BORDER | WS_SYSMENU)),
+      prect->left,
+      prect->top,
+      prect->right - prect->left,
+      prect->bottom - prect->top,
+      hwndOwner,
+      NULL,
+      hins,
+      NULL)) == NULL)
+        return NULL;
+
+    /* Create the MLE to just fill the client area. */
+    GetClientRect(hwnd, &rect);
+    if (CreateWindow(
+      "edit",
+      NULL,
+      WS_CHILD | WS_VISIBLE | WS_VSCROLL | ES_LEFT |
+        ES_MULTILINE | ES_AUTOHSCROLL | ES_AUTOVSCROLL,
+      rect.left,
+      rect.top,
+      rect.right - rect.left,
+      rect.bottom - rect.top,
+      hwnd,
+      0,
+      hins,
+      NULL) == NULL)
+        {
+        DestroyWindow(hwnd);
+        return NULL;
+        }
+
+    return hwnd;
+    }
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-End   Listing 7-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+

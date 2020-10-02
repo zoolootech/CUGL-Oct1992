@@ -1,0 +1,70 @@
+/* ----------------------------------------------------------
+ *  Turbo C++
+ * ------------------------------------------------------- */
+
+#include <stdio.h>
+#include <string.h>
+#include <conio.h>
+#include <stdlib.h>
+#include "snooper.h"
+
+#define  strequ(a,b)         (strcmp(a,b) == 0 ? 1 : 0)
+
+/* ------------------------------------------------------- */
+static void print_help(DEBUG_ARGS *argtab)
+{
+   /* Print debug help messages ..... */
+    int i;
+
+    for( i = 0; argtab[i].arg; i++ )
+            cprintf( "<%s>: %s\r\n",
+                       argtab[i].arg, argtab[i].help );
+    exit(0);
+}
+
+static void findarg(const char *p, DEBUG_ARGS *argtab)
+{
+       /* Attempt to find p in argtab[]. If found, set
+        * corresponding variable to 1.
+        */
+
+        register int i;
+
+        for( i = 0; argtab[i].arg; i++ )    {
+                if( strequ( argtab[i].arg, p ) )    {
+                        *(argtab[i].var) = 1;
+                        return ;        /* ok return */
+                }
+        }
+
+        cprintf( "\r\n'%s' argument not found\r\n", p );
+        exit(1);
+}
+
+void d_getargs( int *argc, char **argv, DEBUG_ARGS *argtab)
+{
+    register int i, n;
+    char *p;
+
+    for( n = 0; argv[n]; ) {
+        if( argv[n][0] == '+' ) {
+               /* process debugger argument ....... */
+                p = &argv[n][1];
+
+                if( strequ( p, "help" ) )
+                        print_help(argtab);
+
+                findarg(p,argtab);
+
+               /* Strip argument from argv[], update argc */
+                *argc -= 1;
+
+                for( i = n; argv[i]; i++ )
+                        argv[i] = argv[i+1];
+        }
+        else
+                ++n;
+    }
+}
+
+/* ------------------------------------------------------- */

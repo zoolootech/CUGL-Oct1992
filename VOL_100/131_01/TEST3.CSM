@@ -1,0 +1,112 @@
+;CRL Assembler Test File
+;
+;Error checks and Reporting
+
+	&^!#%		;(I)llegal characters
+val	set	102b	;	   digit for radix
+val	set	1A	;
+
+	not		;(Q)uestionable syntax: no directive
+val	set	0,	;			extra tokens
+	nop		;		 instuction external
+
+val	set	1+	;(E)xpression error: missing operand
+val	set	$+2	;		     '$' external
+
+val	set	(2+3	;un(B)alanced parentheses
+
+und	equ	undef	;(U)ndefined symbol referance
+
+mul	equ	1	;(M)ultiply defined symbols
+mul	equ	2	;
+
+extra			;(L)abel not used
+	equ	1	;	 missing
+
+
+
+error	FUNCTION ext
+
+	db	1FFh	;(V)alue too large
+	db	-300	;	 too small
+
+	dw	ext+2	;e(X)ternal referance in expression
+	dw	3*ext	;
+
+	ds	$	;(T)ype relocatable illegal in ds
+
+	ds	local	;
+label:			;(P)hase error
+local	equ	5	;  because 'local' was undefined
+			;  in the ds (above) during pass 1
+	FEND
+
+
+;Mixed Absolute and Relocatable expressions
+
+mixed	FUNCTION
+
+	dw	-$	;unarys
+	dw	NOT $
+	dw	HIGH $
+	dw	LOW $
+
+	dw	1 * $	;abs op rel
+	dw	1 / $
+	dw	1 + $	;OK
+	dw	1 - $
+	dw	1 MOD $
+	dw	1 SHR $
+	dw	1 SHL $
+	dw	1 AND $
+	dw	1 OR $
+	dw	1 XOR $
+
+	dw	$ * 1	;rel op abs
+	dw	$ / 1
+	dw	$ + 1	;OK
+	dw	$ - 1	;OK
+	dw	$ MOD 1
+	dw	$ SHR 1
+	dw	$ SHL 1
+	dw	$ AND 1
+	dw	$ OR 1
+	dw	$ XOR 1
+
+label:	dw	label * $	;rel op rel
+	dw	label / $
+	dw	label + $
+	dw	label - $	;OK
+	dw	label MOD $
+	dw	label SHR $
+	dw	label SHL $
+	dw	label AND $
+	dw	label OR $
+	dw	label XOR $
+
+	FEND
+
+
+;Register errors
+
+code	FUNCTION
+
+	lxi	c,0	;(R)egister error
+	ldax	h	;
+	mov	m,m	;		 (hlt)
+
+	mov	a b	;Q - missing comma
+
+	FEND
+
+
+;Nesting Errors
+
+nest	FUNCTION
+bad	FUNCTION	;(N)est error:  already in function
+	FEND
+	FEND		;(N)est error:  not in function
+
+last	FUNCTION
+	end		;(N)est error:  in function
+

@@ -1,0 +1,58 @@
+/*  PUSH_POP.h   */
+
+#define  word   unsigned int
+#define  byte   unsigned char
+
+#define  low(X)  ((byte) X)
+#define  high(X) ((byte) (X>>8))
+
+#define  Signature 0xCb4b
+
+/* 
+    Note that the structure below defines the memory control
+    block (MCB) used by MS-DOS.  This is an undocumented
+    structure.  Through out Push.C and Pop.C the block[] array
+    is used instead of the MCB structure because, although the
+    structure is correct, Microsoft Quick C does not allow the
+    structure to be packed.  As a result the MCB flag occupies
+    two bytes and thus makes the offsets of all of the other
+    variables incorrect.
+*/
+
+union   {
+    byte    block[17];
+    struct  {
+        char    flag;
+        word    owner;
+        word    length;
+        byte    reserved[3];
+        byte    process_name[8];
+        char    path;
+        }       MCB;
+    }       far *mem;
+
+                    /*  MCB flag value indicating the   */
+                    /*    end of the chain of MCBs      */
+#define end_of_MCB   0x5A    
+
+                    /*  MCB flag value indicating that  */
+                    /*    this control block is in the  */
+                    /*    MCB, but is not the end       */
+#define chain_of_MCB 0x4D
+
+                    /*  Allocate memory from the first  */
+                    /*    block of memory that fits.    */
+                    /*    (Bottom-Up)                   */
+#define _allocate_first 0
+
+                    /*  Find the best fit for the memory*/
+                    /*    block with the requested size */
+#define _allocate_best  1
+
+                    /*  Allocate memory from the last   */
+                    /*    block of memory that fits.    */
+                    /*    (Top-Down)                    */
+#define _allocate_last  2
+
+int     _dos_getmemmode(void);
+void    _dos_setmemmode(int strategy);

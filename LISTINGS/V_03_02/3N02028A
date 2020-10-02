@@ -1,0 +1,490 @@
+{Font Preview - 1.5 Program Copyright (C) Doug Overmyer 7/26/91}
+program FontPreview;
+{$S-} {$R PREVIEW.RES}{$R-}
+uses WinTypes, WinProcs, WinDos, Strings, WObjects,StdDlgs,Fonts,Buttons;
+const
+	id_But1    = 201;     {Ownerdraw Button  1  }
+  id_But2    = 202;     {      "           2  }
+  id_But3    = 203;     {      "           3  }
+  id_But4    = 204;     {      "           4  }
+  id_But5    = 205;     {      "           5  }
+  id_D1Lb1   = 301;     {List box  in Dlg1    }
+  id_St1     = 401;     {Static text 1        }
+  id_St2     = 402;     {Static text 2        }
+  id_St3     = 403;     {Static text 3        }
+  id_St4     = 404;     {Static text 4        }
+  id_D3Setup = 501;     {Setup button in  Dlg3}
+  id_D3EC1	 = 506;     {Edit control in  Dlg3}
+  id_D3OK    = 521;		  {OK button in Dlg3    }
+  id_lb2     = 601;     {FBox list box control}
+  idm_About  = 801;     {menu id for PV_About menu}
+  idm_RunCP  = 802;     {menu id for run control panel}
+  idm_RunATM = 803;     {menu id for run ATM  }
+type
+TPVApplication = object(TApplication)
+	procedure InitMainWindow;virtual;
+end;
+
+PPVDlg1 = ^TPVDlg1;                     {Font Sizes Dialog}
+TPVDlg1 = object(TDialog)
+	FontSize: Integer;
+	procedure WMInitDialog(var Msg:TMessage);virtual wm_First+wm_InitDialog;
+  procedure IDD1LB1(var Msg:TMessage);virtual id_First+id_D1Lb1;
+end;
+
+PPVDlg2 = ^TPVDlg2;                     {String Dialog}
+TPVDlg2 = object(TDialog)
+	DCType:Char;
+	procedure WMInitDialog(var Msg:TMessage);virtual wm_First+wm_InitDialog;
+end;
+
+type                            {Child win to display sample text}
+PFontWindow = ^TFontWindow;
+TFontWindow = object(TWindow)
+	FontHeight: LongInt;
+  constructor Init(AParent: PWindowsObject; ATitle: PChar);
+  procedure Paint(PaintDC: HDC; var PaintInfo: TPaintStruct); virtual;
+end;
+
+type                           {MainWindow of Application}
+PPVWindow = ^TPVWindow;
+TPVWindow = object(TWindow)
+	FWin:PFontWindow;     {child window displaying typeface sample}
+  FBox:PListBox;        {List box of available type faces}
+  Fonts:PFonts;
+  LogPixY:Integer;
+  Bn1,Bn2,Bn3,Bn4,Bn5:PODButton;
+  Dlg1 : PPVDlg1;                     {Select font size dialog}
+  St1,St2,St3,St4:PStatic;
+  TextString:Array[0..80] of Char;    {to display in FWin}
+  FontSelection:Integer;              {Index into Fonts }
+  FontSize:Integer;                   {Current font size }
+	constructor Init(AParent:PWindowsObject;ATitle:PChar);
+  destructor Done;virtual;
+  procedure SetupWindow;virtual;
+  procedure Paint(PaintDC:HDC;var PaintInfo:TPaintStruct);virtual;
+  procedure	LoadFBox;
+  procedure	WMDrawItem(var Msg:TMessage);virtual wm_First + wm_DrawItem;
+  procedure WMSize(var Msg:TMessage);virtual wm_First+wm_Size;
+  procedure WMSetFocus(var Msg:TMessage);virtual wm_First+wm_SetFocus;
+  procedure IDBut1(var Msg:TMessage);virtual id_First+id_But1; {Information}
+	procedure IDBut2(var Msg:TMessage);virtual id_First+id_But2; {Size}
+  procedure IDBut3(var Msg:TMessage);virtual id_First+id_But3; {String}
+  procedure	IDBut4(var Msg:TMessage);virtual id_First+id_But4; {Text Metrics}
+  procedure IDBut5(var Msg:TMessage);virtual id_First+id_But5; {Exit}
+  procedure	IDLB2(var Msg:TMessage);virtual  id_First+id_lb2;
+  procedure EnumerateFonts;virtual;
+  procedure	WMSysCommand(var Msg:TMessage);virtual wm_First+wm_SysCommand;
+  function GetIC:HDC;virtual;
+end;
+{*************************** G l o b a l s **************************}
+var
+	MainWin:PPVWindow;
+{*************************** M e t h o d s  *************************}
+procedure TPVApplication.InitMainWindow;
+begin
+	MainWindow := New(PPVWindow,Init(nil,'Font Preview'));
+  MainWin := PPVWindow(MainWindow);
+end;
+{************************** TPVWindow  ******************************}
+constructor TPVWindow.Init(AParent:PWindowsObject;ATitle:PChar);
+begin
+	TWindow.Init(AParent,ATitle);
+  Attr.X := 20; Attr.Y := 25; Attr.W := 595; Attr.H := 260;
+  Bn1 := New(PODButton,Init(@Self,id_But1,'About',0,0,50,50,False,'PV_Bn1'));
+  Bn2 := New(PODButton,Init(@Self,id_But2,'Font Size',50,0,50,50,False,'PV_Bn2'));
+  Bn3 := New(PODButton,Init(@Self,id_But3,'String',100,0,100,50,False,'PV_Bn3'));
+  Bn4 := New(PODButton,Init(@Self,id_But4,'TM',200,0,50,50,False,'PV_Bn4'));
+  Bn5 := New(PODButton,Init(@Self,id_But5,'Exit',250,0,50,50,False,'PV_Bn5'));
+   St1 := New(PStatic,Init(@Self,id_St1,'',315,5,240,18,75));
+   St2 := New(PStatic,Init(@Self,id_St2,'',315,26,240,18,75));
+   St3 := New(PStatic,Init(@Self,id_ST3,'',310,3,250,44,75));
+   St4 := New(PStatic,Init(@Self,id_St4,'',5,55,100,18,75));
+   St2^.Attr.Style := St2^.Attr.Style or ss_LeftNoWordWrap;
+   St3^.Attr.Style := St3^.Attr.Style or ss_BlackFrame;
+   St4^.Attr.Style := St4^.Attr.Style or ss_Left;
+  FontSelection := 0;
+  FontSize := 48;
+  StrCopy(TextString,'');
+  Fonts := New(PFonts,Init);
+  EnumerateFonts;
+  FWin := New(PFontWindow,Init(@Self,ATitle));
+  With FWin^.Attr do Style := Style or ws_Child or ws_HScroll or ws_VScroll or ws_Border ;
+  FBox := New(PListBox,Init(@Self,id_lb2,0,0,0,0));
+  With FBox^.Attr do Style := Style and not lbs_Sort;
+end;
+
+procedure TPVWindow.SetupWindow;
+begin
+	TWindow.SetupWindow;
+	SetClassWord(HWindow,GCW_HIcon,LoadIcon(HInstance,'PV_Icon'));
+  AppendMenu(GetSystemMenu(hWindow,false),MF_Separator,0,nil);
+  AppendMenu(GetSystemMenu(hWindow,false),0,idm_RunCP,'Run Control Panel');
+  AppendMenu(GetSystemMenu(hWindow,false),0,idm_RunATM,'Run ATM');
+  AppendMenu(GetSystemMenu(hWindow,false),MF_Separator,0,nil);
+  AppendMenu(GetSystemMenu(hWindow,false),0,idm_About,'About...');
+	LoadFBox;
+end;
+
+procedure TPVWindow.Paint(PaintDC:HDC;var PaintInfo:TPaintStruct);
+var
+	ThePen,OldPen:HPen;
+  TheBrush,OldBrush:HBrush;
+begin
+	TheBrush := GetStockObject(LtGray_Brush);
+	ThePen := CreatePen(ps_Solid,1,$00000000);
+  OldPen := SelectObject(PaintDC,ThePen);
+  OldBrush := SelectObject(PaintDC,TheBrush);
+  Rectangle(PaintDC,0,0,1024,50);
+  SelectObject(PaintDC,OldBrush);
+  SelectObject(PaintDC,OldPen);
+  DeleteObject(ThePen);
+end;
+
+procedure	TPVWindow.WMDrawItem(var Msg:TMessage);
+var
+	PDIS : ^TDrawItemStruct;
+begin
+	PDIS := Pointer(Msg.lParam);
+   case PDIS^.CtlType of
+   	odt_Button:
+			case PDIS^.CtlID of
+      	id_But1 :Bn1^.DrawItem(Msg);
+				id_But2 :Bn2^.DrawItem(Msg);
+				id_But3 :Bn3^.DrawItem(Msg);
+				id_But4 :Bn4^.DrawItem(Msg);
+				id_But5 :Bn5^.DrawItem(Msg);
+        end;
+   end;
+end;
+
+destructor TPVWindow.Done;
+begin
+	Dispose(BN1,Done);Dispose(Bn2,Done);Dispose(Bn3,Done);
+  Dispose(Bn4,Done);Dispose(Bn5,Done);Dispose(St1,done);
+  Dispose(St2,Done);Dispose(St3,Done);Dispose(St4,Done);
+	TWindow.Done;
+end;
+
+procedure TPVWindow.WMSize(var Msg:TMessage);
+begin
+	SetWindowPos(FBox^.HWindow,0,-1,75,(Msg.LParamLo div 3)+1,
+   	((Msg.LParamHi-70)  ),swp_NoZOrder);
+	SetWindowPos(FWin^.HWindow,0,(Msg.LParamLo  div 3)-1,49,
+   	(Msg.LParamLo * 2 div 3)+1,(Msg.LParamHi-48),swp_NoZOrder);
+end;
+
+procedure TPVWindow.WMSetFocus(var Msg:TMessage);
+begin
+	SetFocus(FBox^.HWindow);
+end;
+
+procedure TPVWindow.IDBut1(var Msg:TMessage);
+begin
+	Application^.ExecDialog(New(PDialog,Init(@Self,'PV_About')));
+end;
+
+procedure TPVWindow.IDBut2(var Msg:TMessage);
+begin
+	Dlg1 := new(PPVDlg1,Init(@Self,'PV_Dlg1'));
+  Application^.ExecDialog(Dlg1);
+  if (Dlg1^.FontSize) <> 0 then InvalidateRect(Fwin^.HWindow,nil,True);
+end;
+
+procedure TPVWindow.IDBut3(var Msg:TMessage);
+begin
+   If Application^.ExecDialog(New(PInputdialog,Init(@Self,'Font String',
+   	'Enter text:',TextString,SizeOf(TextString)))) <> 1 then StrCopy(TextString,'');
+  InvalidateRect(FWin^.HWindow,nil,True);
+end;
+
+procedure TPVWindow.IDBut4(var Msg:TMessage);
+var
+	Dlg : PPVDlg2;
+begin
+	Dlg :=New(PPVDlg2,Init(@Self,'PV_Dlg2'));
+  Dlg^.DCType := 'S';
+	Application^.ExecDialog(Dlg);
+	Dlg :=New(PPVDlg2,Init(@Self,'PV_Dlg2'));
+  Dlg^.DCType := 'P';
+	Application^.ExecDialog(Dlg);
+end;
+
+procedure TPVWindow.IDBut5(var Msg:TMessage);
+begin
+	CloseWindow;
+end;
+
+procedure TPVWindow.LoadFBox;
+var
+	Indx : Integer;
+  Font : PFontItem;
+  Buf1 :Array[0..20] of Char;
+  Buf2 :Array[0..5] of Char;
+begin
+	Str(Fonts^.Count,Buf2);
+	StrECopy(StrECopy(StrECopy(Buf1,'*'),Buf2),' Type Faces*');
+  St4^.SetText(Buf1);
+	for indx := 0 to (Fonts^.Count -1) do
+    FBox^.InsertString(PFontItem(Fonts^.At(Indx))^.LogFont.lfFaceName,-1);
+end;
+
+procedure TPVWindow.IDLB2(var Msg:TMessage);
+var
+  Indx:Integer;
+begin
+	case Msg.lParamHi of
+   	lbn_DblClk, lbn_SelChange:
+    	begin
+      Indx := FBox^.GetSelIndex;
+      FontSelection := Indx;
+      InvalidateRect(FWin^.HWindow,nil,True);
+      end;
+   end;
+end;
+
+procedure TPVWindow.EnumerateFonts;
+var
+	IC :HDC;
+begin
+	IC := GetIC;
+  Fonts^.Enumerate(IC);
+  DeleteDC(IC);
+end;
+
+procedure	TPVWindow.WMSysCommand(var Msg:TMessage);
+begin
+	case Msg.Wparam of
+		idm_About:Application^.ExecDialog(New(PDialog,Init(@Self,'PV_About')));
+    idm_RunCP:
+			begin
+    	WinExec('Control',1);
+      Fonts^.ReInit;
+      EnumerateFonts;
+    	end;
+    idm_RunATM:
+    	WinExec('ATMCNTRL',1);
+   	else
+  		DefWndProc(Msg);
+   end;
+end;
+
+function TPVWindow.GetIC:HDC;
+	function StrTok(P:PChar;C:Char):PChar;
+	const
+		Next:Pchar = nil;
+	begin
+		if P = NIL then P := Next;
+  	Next := StrScan(P,C);
+  	If Next <> NIL then
+  		begin
+    	Next^ := #0;
+    	Next := Next+1;
+  	end;
+  	StrTok := P;
+	end;
+var
+	Buf1 :Array[0..80] of Char;
+  DeviceName:Array[0..79] of Char;  {win.ini device= }
+  DriverName:Array[0..79] of Char;
+  OutPort:Array[0..79] of Char;
+begin
+	GetProfileString('Windows','device',',,',Buf1,SizeOf(Buf1));
+  StrCopy(DeviceName,StrTok(Buf1,','));
+  StrCopy(DriverName,StrTok(nil,','));
+  Strcopy(OutPort,StrTok(nil,','));
+  GetIC := CreateIC(DriverName,DeviceName,OutPort,nil);
+end;
+
+{**************************  TFontWindow    ************************}
+constructor TFontWindow.Init(AParent: PWindowsObject; ATitle: PChar);
+begin
+  TWindow.Init(AParent, ATitle);
+  Attr.Style := Attr.Style or ws_VScroll or ws_HScroll or ws_Border;
+  FontHeight := 0;
+  Scroller := New(PScroller, Init(@Self, 12, 12,0,0));
+end;
+
+procedure TFontWindow.Paint(PaintDC: HDC; var PaintInfo: TPaintStruct);
+var
+  VPosition: Integer;
+  FontItem :PFontItem;
+  AFont,OldFont:HFont;
+  Extent:LongRec;
+  Text:Array[0..80] of Char;
+  Buf:Array[0..80] of Char;
+  FH:Real;
+  szFH:Array[0..5] of Char;
+  LPY:Integer;
+  FontMetrics:TTextMetric;
+begin                                             {build text display}
+	LPY := GetDeviceCaps(PaintDC,LogPixelsY);
+	FontItem := MainWin^.Fonts^.At(MainWin^.FontSelection);
+  FontHeight := MainWin^.FontSize * LPY div 72;
+  FontItem^.LogFont.lfHeight := FontHeight;
+  FontItem^.LogFont.lfWidth := 0;
+  FontItem^.LogFont.lfWeight := 0;
+	FontItem^.LogFont.lfQuality := Proof_Quality;
+  VPosition := 5;
+  if StrComp(MainWin^.TextString,'') = 0 then
+  	StrCopy(Text,FontItem^.LogFont.lfFaceName)
+  else
+  	StrCopy(Text,MainWin^.TextString);
+  AFont := CreateFontIndirect(FontItem^.LogFont);
+  OldFont := SelectObject(PaintDC, AFont);
+	GetTextMetrics(PaintDC,FontMetrics);
+  LongInt(Extent) := GetTextExtent(PaintDC,Text,StrLen(Text));
+  Scroller^.SetRange(Extent.lo div 12, Extent.Hi div 12);
+  TextOut(PaintDC, 10,VPosition, Text,StrLen(Text));
+	StrCopy(Buf,'Face: ');
+	MainWin^.St1^.SetText(StrCat(Buf,FontItem^.LogFont.lfFaceName));
+  FH :=(FontMetrics.tmHeight)*72 / LPY;
+  Str(FH:5:1,szFH);
+  StrECopy(StrECopy(Buf,'Actual :'),szFH);
+  if FontItem^.FontType and Raster_FontType = 0 then
+		StrCat(Buf,'  Type:Vector,') else StrCat(Buf,'  Type:Raster,');
+  if FontItem^.FontType and Device_FontType = 0 then
+		StrCat(Buf,'GDI') else StrCat(Buf,'Device');
+  MainWin^.St2^.SetText(Buf);
+  SelectObject(PaintDC,OldFont);
+  DeleteObject(AFont);
+end;
+
+procedure TPVDlg1.IDD1LB1(var Msg:TMessage);
+var
+  Buf:Array[0..5] of Char;
+  Ptr : PChar;
+  Idx,ErrCode:Integer;
+begin
+	case Msg.lParamHi of
+    lbn_SelChange,lbn_DblClk:
+   	begin
+      Ptr := Buf;
+      Idx := SendDlgItemMsg(id_D1Lb1,lb_GetCurSel,0,0);
+      SendDlgItemMsg(id_D1Lb1,lb_GetText,word(Idx),LongInt(Ptr));
+      val(Ptr,FontSize,ErrCode);
+      MainWin^.FontSize := FontSize;
+      end;
+   end;
+end;
+
+procedure TPVDlg1.WMInitDialog(var Msg:TMessage);
+var
+	pTextItem:PChar;
+  Buf:Array[0..5] of Char;
+	Indx,Indx2:Integer;
+  DSN,ErrCode :Integer;
+  FontItem:PFontItem;
+  LPY : Integer;
+  Height:Integer;
+begin
+	TDialog.WMInitDialog(Msg);
+  FontItem := MainWin^.Fonts^.At(MainWin^.FontSelection);
+  Indx := 12;  Indx2 := 0;
+  pTextItem := Buf;
+  If (FontItem^.FontType and Raster_FontType) = 0 then   {0 = vector font}
+   	begin
+   	Str(Indx:3,Buf);
+   	while Indx < 200 do
+   		begin
+   		SendDlgItemMsg(id_D1Lb1,lb_AddString,word(0),LongInt(pTextItem));
+			Inc(Indx,12);
+    	Str(Indx:3,Buf);
+   		end;
+   	end
+  else
+   	for Indx2 := 0 to FontItem^.Sizes^.Count-1  do
+    	begin
+      Height := PIntObj(FontItem^.Sizes^.At(Indx2))^.Int;
+      Str(Height * 72 div MainWin^.Fonts^.LogPixY:3,Buf);
+   		SendDlgItemMsg(id_D1Lb1,lb_AddString,word(0),LongInt(pTextItem));
+      end;
+end;
+
+{***************************  TPVDlg2    ***************************}
+procedure TPVDlg2.WMInitDialog(var Msg:TMessage);
+const
+	FontFamily : Array[0..5,0..11] of Char = ('Don''t Care', '     Roman',
+   				'     Swiss','    Modern', '    Script', 'Decorative');
+var
+	FontItem:PFontItem;
+	TextItem:PChar;
+  Buf:Array[0..3] of Char;
+  Buf60:Array[0..60] of Char;
+  FontMetrics:TTextMetric;
+  IC:HDC;
+  OldFont,NewFont:hFont;
+  LogFont:TLogFont;
+  DeviceName:Array[0..30] of Char;
+  ScreenDC:hDC;
+begin
+  FontItem := MainWin^.Fonts^.At(MainWin^.FontSelection);
+  if DCType = 'P' then
+ 	begin
+   IC := MainWin^.GetIC;
+   StrCopy(DeviceName,'Printer');
+	 FontItem^.LogFont.lfHeight := MainWin^.FontSize *
+   		GetDeviceCaps(IC,LogPixelsY) div 72;
+   FontItem^.LogFont.lfQuality := Proof_Quality;
+   FontItem^.LogFont.lfWeight := fw_Normal;
+   NewFont := CreateFontIndirect(FontItem^.LogFont);
+   OldFont := SelectObject(IC,NewFont);
+   GetTextMetrics(IC,FontMetrics);
+   SelectObject(IC,OldFont);
+   DeleteObject(NewFont);
+   DeleteDC(IC);
+   end
+  else
+   begin
+   StrCopy(DeviceName,'Screen Display');
+   ScreenDC :=GetDC(MainWin^.HWindow);
+	 FontItem^.LogFont.lfHeight := MainWin^.FontSize *
+   GetDeviceCaps(ScreenDC,LogPixelsY) div 72;
+   FontItem^.LogFont.lfQuality := Proof_Quality;
+   FontItem^.LogFont.lfWeight := fw_Normal;
+   NewFont := CreateFontIndirect(FontItem^.LogFont);
+   OldFont := SelectObject(ScreenDC,Newfont);
+   GetTextMetrics(ScreenDC,FontMetrics);
+   SelectObject(ScreenDC,OldFont);
+   DeleteObject(NewFont);
+   ReleaseDC(MainWin^.HWindow,ScreenDC);
+   end;
+
+	TDialog.WMInitDialog(Msg);
+   StrECopy(StrECopy(StrECopy(Buf60,FontItem^.LogFont.lfFaceName),' - '),DeviceName);
+   SetDlgItemText(HWindow,601,Buf60);
+   Str(FontMetrics.tmHeight:3,Buf); SetDlgItemText(HWindow,612,Buf);
+   Str(FontMetrics.tmAscent:3,Buf); SetDlgItemText(HWindow,613,Buf);
+   Str(FontMetrics.tmDescent:3,Buf); SetDlgItemText(HWindow,614,Buf);
+   Str(FontMetrics.tmInternalLeading:3,Buf); SetDlgItemText(HWindow,615,Buf);
+   Str(FontMetrics.tmExternalLeading:3,Buf); SetDlgItemText(HWindow,616,Buf);
+   Str(FontMetrics.tmAveCharWidth:3,Buf); SetDlgItemText(HWindow,617,Buf);
+   Str(FontMetrics.tmMaxCharWidth:3,Buf); SetDlgItemText(HWindow,618,Buf);
+   Str(FontMetrics.tmWeight:3,Buf); SetDlgItemText(HWindow,619,Buf);
+   Str(FontMetrics.tmItalic:3,Buf); SetDlgItemText(HWindow,620,Buf);
+   Str(FontMetrics.tmUnderlined:3,Buf); SetDlgItemText(HWindow,621,Buf);
+   Str(FontMetrics.tmStruckOut:3,Buf); SetDlgItemText(HWindow,632,Buf);
+   Str(FontMetrics.tmFirstChar:3,Buf); SetDlgItemText(HWindow,633,Buf);
+   Str(FontMetrics.tmLastChar:3,Buf); SetDlgItemText(HWindow,634,Buf);
+   Str(FontMetrics.tmDefaultChar:3,Buf); SetDlgItemText(HWindow,635,Buf);
+   if FontMetrics.tmPitchandFamily and 1 > 0 then SetDlgItemText(HWindow,636,'Variable')
+   	else SetDlgItemText(HWindow,636,'Fixed');
+	 SetDlgItemText(HWindow,637,FontFamily[FontMetrics.tmPitchAndFamily shr 4] );
+   if FontMetrics.tmCharSet = ANSI_CharSet  then SetDlgItemText(HWindow,638,'Ansi')
+   else if FontMetrics.tmCharSet = OEM_CharSet  then SetDlgItemText(HWindow,638,'OEM')
+   else if FontMetrics.tmCharSet = Symbol_CharSet  then SetDlgItemText(HWindow,638,'Symbol')
+   else if FontMetrics.tmCharSet = ShiftJis_CharSet  then SetDlgItemText(HWindow,638,'ShiftJis')
+   else SetDlgItemText(HWindow,638,' ');
+   Str(FontMetrics.tmOverHang:3,Buf); SetDlgItemText(HWindow,639,Buf);
+   Str(FontMetrics.tmDigitizedAspectX:3,Buf); SetDlgItemText(HWindow,640,Buf);
+   Str(FontMetrics.tmDigitizedAspectY:3,Buf); SetDlgItemText(HWindow,641,Buf);
+end;
+
+{***********************   TPVApplication     **************************}
+var
+	PVApp : TPVApplication;
+begin
+	PVApp.Init('Font Preview');
+  PVApp.Run;
+  PVApp.Done;
+end.

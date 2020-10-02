@@ -1,0 +1,130 @@
+/* Demonstration program:  serial poll of HP-IB device
+ * J. M. Anderson, F&M College, 1989
+ */
+#include <stdio.h>
+#include <strings.h>
+#include <unix.h>
+#include "HPIB.h"
+ 
+#define PENPRESS (tstatus & 0x04)	/* status bit 2 indicates pen press */
+#define MENUPICK (tstatus & 0x80)	/* status bit 7 indicates menu pick */
+ 
+void terminate()
+/* A function which waits for some event before allowing
+   the program to halt.  In this case, "Q" or "q" key pressed.
+   This allows one to read what's in the "console" window before it
+   is dismissed.
+*/
+{
+	EventRecord myEvent;
+	int done;
+	int charCode;
+	
+	done = 0;
+	puts("Press 'Q' or 'q' to QUIT");
+	do
+	{
+		if (GetNextEvent(keyDownMask, &myEvent))
+		{
+			charCode = myEvent.message & charCodeMask;
+			if ((charCode == 'Q') || (charCode == 'q')) done = TRUE;
+		}
+	} while (!done);
+}
+
+int process()
+{
+	/* Process the interrupt.
+	 * This function is called when an interrupt
+	 * is detected on the bus.
+	 *
+	 * For the purpose of this demo, SRQ must be asserted by the
+	 * tablet for pen press or menu pick.
+	 */
+	 
+	int bstatus, tstatus;	/* bus status, tablet status */
+	int x, y, p, k;			/* pen position, menu key */
+	
+	/* See if interrupt was caused by an SRQ */
+	ieeewt("spoll\n");
+	ieeescnf("%d", &bstatus);
+	if (bstatus != 0)			/* all we want is an SRQ */
+	{
+		/* Poll the tablet to find its status;
+		 * At this point, if there were more than one device on the bus,
+		 * we would have a loop to poll all devices.  As it is, we have
+		 * only one device (the graphics tablet), whose address is 06.
+		 */
+		ieeewt("spoll 06\n");
+		ieeescnf("%d", &tstatus);
+		if PENPRESS
+		{
+			ieeewt("output 06;OD\n");
+			ieeewt("enter 06\n");
+			ieeescnf("%d,%d,%d",&x, &y, &p);
+				/* beep high for stylus press on tablet */
+			ieeewt("output 06;BP 48,150,4\n");
+			printf("\ndigitized point: %d %d\n",x, y);
+			return(0);
+		}
+		
+		if MENUPICK
+		{
+			ieeewt("output 06;RS1\n");
+			ieeewt("enter 06\n");
+			ieeescnf("%d", &k);
+				/* beep low for stylus press on menu square */
+			ieeewt("output 06;BP 8,150,4\n");
+			printf("Menu square %d touched.\n", k);
+			return(1);
+		}
+	}
+}
+		
+main()
+{
+	char response[256];
+	int done;			/* stop polling loop */
+
+	/* Try to open driver to HPIB bus controller */
+	if (ieeeinit() != noErr)
+	{
+		printf("ieeeinit failed!\n");
+		exit();
+	}
+	
+	/* Clear the bus and devices
+	 * These steps are possibly gratuitous; they help illustrate
+	 * obtaining responses from the bus controller and the tablet 
+	 */
+	ieeewt("clear\n");
+	
+	/* Read the MacDriver488 ID */
+	ieeewt("hello\n");
+	ieeerd(response);
+	printf("%s\n", response);
+	
+	/* initialize the tablet */
+	ieeewt("output 06;IN\n");
+	ieeewt("output 06;OI\n");
+	ieeewt("enter 06\n");
+	ieeerd(response);
+	printf("%s\n", response);
+
+	/* enable interrupt checking and establish interrupt service routine */
+	/* set up for single-point digitizing */
+	ieeewt("output 06;DF;SG\n");
+	/* set up for SRQ on pen-press or menu-pick; 132 = 0x84: menu or pen */
+	ieeewt("output 06;IM ,132\n");
+	ieeewt("arm srq\n");
+	
+	done = 0;
+	/* now we wait for something to happen; i.e., we wait for an SRQ */
+	do 
+	{
+		 if (ckactive()) done = process();
+	} while (!done);
+	
+	/* interrupt processing is done; let's quit */
+	terminate();
+}

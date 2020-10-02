@@ -1,0 +1,35 @@
+Ioctl_rp r_ioctl_pack;  // request packet
+Ainfo_cb acb;           // control block for audio info
+Tinfo_cb tcb;           // control block for track info
+(_far *strategy)();     // strategy entry
+(_far *intrpt)();       // interrupt entry
+unsigned char unit;     // sub-unit ID
+
+        // clear request packet
+memset(&r_ioctl_pack, 0, sizeof r_ioctl_pack);
+
+        // get audio info
+r_ioctl_pack.i_rh.rh_lth = sizeof r_ioctl_pack;
+r_ioctl_pack.i_rh.rh_sub_unit = unit;
+r_ioctl_pack.i_rh.rh_cc = 3;  // IOCTL READ
+r_ioctl_pack.i_cb = (unsigned char _far *) &acb;
+acb.sf_di = 10;               // AUDIO DISC Info
+call_driver(&r_ioctl_pack, strategy, intrpt);
+if (r_ioctl_pack.i_rh.rh_stat & 0x8000)
+   { /* error on audio info */ }
+else
+   {   // now get track info for low track
+   tcb.track_no = acb.low_track;
+   r_ioctl_pack.i_rh.rh_stat = 0;
+   r_ioctl_pack.i_cb = (unsigned char _far *) &tcb;
+   tcb.sf_ti = 11;            // AUDIO TRACK Info
+   call_driver(&r_ioctl_pack, strategy, intrpt);
+   if (r_ioctl_pack.i_rh.rh_stat & 0x8000)
+     { /* error on track info */ }
+   else
+      { /*  start track in tcb.stsect
+            in Red Book format         */ }
+   }
+
+/* End of File */ 
+

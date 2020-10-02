@@ -1,0 +1,233 @@
+                   /* Listing 3 */
+
+/*****************************************************
+           File Name: C_W_DEMO.C
+       Expanded Name: Center Window Demo
+         Description: Center Window Demo Program
+        Program List: C_W_DEMO.C CNTR_WND.C
+Global Function List: CenterWindow
+Static Function List: CenterWindowDialog
+    Local Macro List: 
+         Global Data: 
+         Static Data: _hInstance _hWnd
+         Portability: MS Windows, Any memory model,
+                      Any windows compatable C Compiler
+******************************************************/
+/* MS Windows */
+#include <windows.h>
+
+/* Types and Prototypes */
+#include <cntr_wnd.h>
+
+/* Own */
+#include <c_w_demo.h>
+
+/* Prototypes of functions called only by windows. */
+LONG FAR PASCAL CenterWindowDemoProc(
+      HWND hWnd, WORD iMessage, WORD wParam,
+      LONG lParam );
+
+BOOL FAR PASCAL CenterWindowDialogProc(
+      HWND hDlg, WORD iMessage, WORD wParam,
+      LONG lParam );
+
+/* static data */
+static HWND _hWnd;
+static HANDLE _hInstance;
+
+/*****************************************************
+       Name: WinMain
+Description: Program entry point.
+*****************************************************/
+int PASCAL WinMain( HANDLE hInstance,
+      HANDLE hPrevInstance, LPSTR lpszCmdParam,
+      int nCmdShow )
+   {
+
+   MSG Message;
+   WNDCLASS WndClass;
+   char *CenterWindowDemoName = "CenterWindowDemo";
+
+   _hInstance = hInstance;
+
+   if ( !hPrevInstance )
+      {
+      WndClass.style = CS_HREDRAW | CS_VREDRAW;
+      WndClass.lpfnWndProc = CenterWindowDemoProc;
+      WndClass.cbClsExtra = 0;
+      WndClass.cbWndExtra = 0;
+      WndClass.hInstance = _hInstance;
+      WndClass.hIcon = LoadIcon( _hInstance,
+            CenterWindowDemoName );
+      WndClass.hCursor =
+            LoadCursor( NULL, IDC_ARROW );
+      WndClass.hbrBackground = COLOR_WINDOW + 1;
+      WndClass.lpszMenuName =
+            CenterWindowDemoName;
+      WndClass.lpszClassName =
+            CenterWindowDemoName;
+      if ( RegisterClass( &WndClass ) == FALSE )
+         {
+         MessageBeep( 0 );
+         return ( FALSE );
+         }
+      }
+
+   /* Create the window with default pos. and size */
+   _hWnd = CreateWindow( CenterWindowDemoName,
+         "Center Window Demo",
+         WS_OVERLAPPEDWINDOW | WS_VISIBLE |
+         WS_VSCROLL | WS_HSCROLL,
+         CW_USEDEFAULT, CW_USEDEFAULT,
+         CW_USEDEFAULT, CW_USEDEFAULT,
+         NULL, NULL, _hInstance, NULL );
+
+   if ( _hWnd == NULL )
+      {
+      /* If window could not be created, return. */
+      MessageBeep( 0 );
+      return ( FALSE );
+      }
+
+   ShowWindow( _hWnd, nCmdShow );
+   UpdateWindow( _hWnd );
+
+   while ( GetMessage( &Message, NULL, NULL, NULL ) )
+      {
+      TranslateMessage( &Message );
+      DispatchMessage( &Message );
+      }
+
+   return ( (int)Message.wParam );
+
+   }   /* function WinMain */
+
+
+/*****************************************************
+       Name: CenterWindowDemoProc
+Description: Window Procedure for center window demo
+             program.  This is called by Windows only.
+*****************************************************/
+long FAR PASCAL CenterWindowDemoProc( HWND hWnd,
+      WORD iMessage, WORD wParam, LONG lParam )
+   {
+   switch ( iMessage )
+      {
+      case WM_CREATE:
+         {
+         CenterWindow( NULL, hWnd, FALSE );
+         break;
+         }
+      case WM_COMMAND:
+         {
+         switch ( wParam )
+            {
+            case IDM_CENTER_MAIN:
+               {
+               CenterWindow( NULL, hWnd,
+                     TRUE );
+               break;
+               }
+            case IDM_DIALOG:
+               {
+               FARPROC lpfCenterWindowDialog;
+
+               lpfCenterWindowDialog =
+                     MakeProcInstance(
+                     CenterWindowDialogProc,
+                     _hInstance );
+               DialogBox( _hInstance,
+                     "CenterWindowDialog",
+                     hWnd,
+                     lpfCenterWindowDialog );
+               FreeProcInstance(
+                     lpfCenterWindowDialog );
+               break;
+               }
+            case IDM_EXIT:
+               {
+               SendMessage( hWnd,
+                     WM_CLOSE, 0, 0L );
+               break;
+               }
+            default:
+               {
+               break;
+               }
+            }
+         break;
+         }
+      case WM_DESTROY:
+         {
+         PostQuitMessage( 0 );
+         break;
+         }
+      default:
+         {
+         return ( DefWindowProc( hWnd, iMessage,
+               wParam, lParam ) );
+         }
+      }   /* switch iMessage */
+
+   return ( FALSE );
+
+   }   /* function CenterWindowDemoProc */
+
+
+/*****************************************************
+       Name: CenterWindow
+Description: Dialog Procedure for center window demo.
+             Processes commands to center the dialog
+             box within the parent window or within
+             the desktop.  This function is called
+             by Windows only.
+*****************************************************/
+BOOL FAR PASCAL CenterWindowDialogProc( HWND hDlg,
+      WORD Message, WORD wParam, LONG lParam )
+   {
+
+   switch ( Message )
+      {
+      case WM_INITDIALOG:
+         {
+         CenterWindow( _hWnd, hDlg, FALSE );
+         return ( TRUE );
+         }
+      case WM_COMMAND:
+         {
+         switch ( wParam )
+            {
+            default:
+               {
+               break;
+               }
+            case IDCANCEL:
+            case IDOK:
+               {
+               EndDialog( hDlg, FALSE );
+               return ( TRUE );
+               }
+            case IDD_PARENT:
+               {
+               CenterWindow( _hWnd, hDlg,
+                     TRUE );
+               break;
+               }
+            case IDD_DESKTOP:
+               {
+               CenterWindow( NULL, hDlg,
+                     TRUE );
+               break;
+               }
+            }   /* switch wParam */
+         break;
+         }
+      default:
+         {
+         break;
+         }
+      }   /* switch message */
+
+   return ( FALSE );
+
+   }   /* function CenterWindowDialogProc */

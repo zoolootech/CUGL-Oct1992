@@ -1,0 +1,188 @@
+
+Listing 2.
+
+/* skiplist.c */
+
+#define SLTEST  1
+#include <stdlib.h>
+#include <setjmp.h>
+#include "skiplist.h"
+#ifdef SLTEST
+#define NOMEM   1
+#endif
+
+/*
+ *  Skip list routines based on algorithms described
+ *  by William Pugh, SKIP LISTS:  A PROBABILISTIC
+ *  ALTERNATIVE TO BALANCED TREES.  CACM, XXXIII, 6,
+ *  June, 1990.  Pp. 668 - 676.
+ */
+
+NODE *newlist()
+{
+    NODE *temp;
+
+    if(temp = (NODE *)calloc(sizeof(NODE) +
+        (sizeof(NODE *) * (DMAX - 1)), 1))
+    {
+        temp->korl.level = 1;
+    }
+    return(temp);
+}
+
+NODE *search(searchlist, searchkey)
+NODE *searchlist;
+KEYTYPE searchkey;
+{
+    NODE *list, *temp;
+    int i, probe;
+
+    list = searchlist;
+    for(i = searchlist->korl.level; --i >= 0; )
+    {
+        while(temp = list->pointers[i])
+        {
+            if((probe = COMPARE(temp->korl.key, searchkey))
+                < 0)
+            {
+                list = temp;
+            }
+            else if(probe == NIL)   /* key found */
+                return(temp);
+            else
+                break;
+        }
+    }
+    return(NIL);
+}
+
+NODE *insert(searchlist, searchkey)
+NODE *searchlist;
+KEYTYPE searchkey;
+{
+    NODE *lnode, *tnode;
+    int i, newlevel, probe;
+    NODE *tempptrs[MAXLEVEL];
+
+    lnode = searchlist;
+    for(i = searchlist->korl.level; --i >= 0; )
+    {
+        while(tnode = lnode->pointers[i])
+        {
+            if((probe = COMPARE(tnode->korl.key, searchkey))
+                < 0)
+            {
+                lnode = tnode;
+            }
+            else if(probe == NIL)   /* already present */
+                return(tnode);
+            else
+                break;  /* break from while loop */
+        }
+        tempptrs[i] = lnode;
+    }
+    /* key not yet present in list -- insert it */
+    newlevel = randomlevel();
+    if(newlevel > searchlist->korl.level)
+    {
+        for(i = searchlist->korl.level; i < newlevel; ++i)
+        {
+            tempptrs[i] = searchlist;
+        }
+        searchlist->korl.level = newlevel;
+    }
+    lnode = newnode(newlevel, searchkey);
+    for(i = 0; i < newlevel; ++i)
+    {
+        lnode->pointers[i] = tempptrs[i]->pointers[i];
+        tempptrs[i]->pointers[i] = lnode;
+    }
+    return(lnode);
+}
+
+int delete(searchlist, searchkey)
+NODE *searchlist;
+KEYTYPE searchkey;
+{
+    NODE *lnode, *tnode;
+    int i;
+    NODE *tempptrs[MAXLEVEL];
+
+    lnode = searchlist;
+    for(i = lnode->korl.level; --i >= 0; )
+    {
+        while((tnode = lnode->pointers[i])
+            && (COMPARE(tnode->korl.key, searchkey) < 0))
+        {
+            lnode = tnode;
+        }
+        tempptrs[i] = lnode;
+    }
+    tnode = lnode->pointers[0];
+    if(tnode && (COMPARE(tnode->korl.key, searchkey) == 0))
+    {
+        lnode = searchlist;
+        for(i = 0; i < lnode->korl.level; ++i)
+        {
+            if(tempptrs[i]->pointers[i] != tnode)
+                break;
+            tempptrs[i]->pointers[i] = tnode->pointers[i];
+        }
+        free(tnode);
+        while((i = lnode->korl.level) > 1
+            && lnode->pointers[i] == NIL)
+        {
+            lnode->korl.level = --i;
+        }
+        return(TRUE);
+    }
+    else
+        return(FALSE);
+}
+
+NODE *newnode(nlevel, nkey)
+int nlevel;
+KEYTYPE nkey;
+{
+#ifdef SLTEST
+    extern jmp_buf errbuf;
+    extern int *emptr;
+    extern int nnodes;
+    extern int levels[];
+#endif
+    NODE *temp;
+
+    temp = (NODE *)malloc(sizeof(NODE) +
+                    sizeof(NODE *) * (nlevel - 1));
+#ifdef SLTEST
+    if(temp == NIL)
+        longjmp(errbuf, NOMEM); /* best we can do */
+    emptr[nnodes] = nkey;   /* record keys as entered */
+    nnodes += 1;            /* track number allocated */
+    levels[nlevel - 1] += 1;    /* track distribution */
+#endif
+    temp->korl.key = nkey;  /* NOTE!!! no error checking */
+    return(temp);
+}
+
+int randomlevel();
+{
+    int slrandom();
+    int newlevel;
+
+/*
+ *  NMAX/DMAX constitute a ratio n/d, such that (d-n)/d
+ *  of all nodes will have only 1 pointer and n/d of all
+ *  nodes with pointers at any level N will also have
+ *  pointers at level N+1
+ */
+
+    newlevel = 1;
+    while(slrandom(DMAX) < NMAX)
+        newlevel += 1;
+    if(newlevel > DMAX)
+        return(DMAX);
+    else
+        return(newlevel);
+}
+

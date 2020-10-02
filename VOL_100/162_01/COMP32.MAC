@@ -1,0 +1,120 @@
+;	Float and long comparisons
+	NAME	('COMP32')
+	INCLUDE DEQ.MAC
+
+;	AM9511 STATUS BYTE EXPANDED TO "FLAG" INTEGERS
+;	All int values will be either one or zero.
+;	First group is one bit flags, direct conversion (not reversed).
+B0CARY:: DW	0 ; Represents bit zero only.
+;	If flag value = 1, then AM9511 performed
+;	a carry or borrow in the previous operation.
+B1OFLO:: DW	0	; 1= overflow, else 0
+B2UFLO:: DW	0	; 1= underflow, else 0
+B3NEGL:: DW	0	; 1= sqrt or log of neg num
+B4DIVZ:: DW	0	; 1= divide by zero
+B5ZERO:: DW	0	; 1= zero value result
+B6SIGN:: DW	0	; 1= neg value result
+;  Bit 7 of the AM9511 status byte is 'device busy/not busy'.
+
+; Multiple bit flags
+B56POS:: DW	0	; 0= non zero pos result (bits 5,6)
+NOERR:: DW	0	; 0= no error (bits 1,2,3,4)
+NOBITS:: DW	0	; 0= no status bits (0 thru 6)
+B34ARG:: DW	0	; 1= arg too large for pwr,e^x
+;
+; Reversed flags
+B5NZ::	DW	0	; 1= non-zero result
+B6NSGN:: DW	0	; 1= pos or zero result
+B56NEG:: DW	0	; 1= greater than zero
+	EXTRN	CMDBYT,STATUS,CMDIO
+	EXTRN	FLSD.B,FLRD
+	.Z80
+FLCMP	MACRO	CPBYT,XPWRD
+	LD	HL,XPWRD
+	LD	A,CPBYT
+	JP	ST.C32
+	ENDM
+
+; Toolworks labels as entry points
+; 'cf.' labels are compare-float operations
+cf.ge:: FLCMP	.FSUB,B6SIGN
+cf.lt:: FLCMP	.FSUB,B6NSGN
+cf.eq:: FLCMP	.FSUB,B5NZ
+cf.ne:: FLCMP	.FSUB,B5ZERO
+cf.gt:: FLCMP	.FSUB,B56POS
+cf.le:: FLCMP	.FSUB,B56NEG
+
+; 'cl.' labels are compare-long operations
+cl.ge:: FLCMP	.LSUB,B6SIGN
+cl.lt:: FLCMP	.LSUB,B6NSGN
+cl.eq:: FLCMP	.LSUB,B5NZ
+cl.ne:: FLCMP	.LSUB,B5ZERO
+cl.gt:: FLCMP	.LSUB,B56POS
+cl.le:: FLCMP	.LSUB,B56NEG
+
+SAVHL:	DW	0
+
+ST.C32: LD	(SAVHL),HL
+	LD	(CMDBYT),A
+
+	EQUJPS	,FLSD.B,FLRD,CMDIO,CLXPAN
+
+CLXPAN: CALL	XPAND1
+	LD	HL,(SAVHL)
+	LD	A,(HL)
+	DEC	A
+	RET
+;
+; The following routine refreshes the 14 integers declared
+; at the beginning of this file.
+;
+XPAND1::
+	LD	HL,B0CARY	; initialize at B0CARY
+	LD	B,10D		; set up, 10 loops
+	LD	IY,BITS
+	LD	A,(STATUS)	; from most recent device operation
+	LD	D,A
+	CALL	XLUP
+	LD	(HL),0
+	LD	A,D
+	AND	00011000B	; bits 3 & 4, BOTH
+	CP	00011000B
+	JR	NZ,ELSE2
+	LD	(HL),1
+	LD	HL,B3NEGL
+	XOR	A
+	LD	(HL),A
+	INC	HL
+	INC	HL
+	LD	(HL),A
+ELSE2:
+	LD	HL,B5NZ
+	LD	B,2
+	LD	IY,BITS+5
+	LD	A,D
+	CPL
+	LD	D,A
+	CALL	XLUP
+	LD	A,(B56POS)
+	XOR	1
+	LD	(B56NEG),A
+	RET
+XLUP:	LD	C,(IY+0)
+	INC	IY
+	LD	(HL),0
+	LD	A,D
+	AND	C
+	JR	Z,ELSE1
+	LD	(HL),1
+ELSE1:	INC	HL
+	INC	HL
+	DJNZ	XLUP
+	RET
+
+BITS:	DB	1,2,4,8,16,32,64
+	DB	01100000B
+	DB	00011110B
+	DB	01111111B
+	.8080
+	END
+

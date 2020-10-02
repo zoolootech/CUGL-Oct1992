@@ -1,0 +1,106 @@
+;// DOTBOX2.ASM
+
+INCLUDE sa.mac         ; include macro script
+    DOSSEG             ; Init EXE file
+    .MODEL SMALL
+    .STACK 100h
+    .CODE
+start:
+BFORLTE row,5,16       ; 01 main row  shift loop
+    mov    AH,2        ; 02 move cursor function
+    mov    BH,0        ; 03 on page 0 here
+    mov    DX,[v1row]  ; 04 row value to DL (LSB DX)
+    xchg   DH,DL       ; 05 row value to DH
+    mov    DL,5        ; 06 column 5
+    int    10h         ; 07 move cursor via BIOS
+  BFORLTE col,5,60     ; 08 nested column write loop
+    mov    AH,0Eh      ; 09 write char in teletype fashion
+    mov    BH,0        ; 10 on page 0 here
+    mov    AL,'.'      ; 11 the '.' character
+    int    10h         ; 12 via the BIOS
+  EFOR col             ; 13 end nested column loop
+EFOR row               ; 14 end main row loop
+    mov    AH,4ch      ; exit to DOS
+    int    21h         ;
+    END    start
+
+    
+
+
+;// SA.MAC
+
+;; Macro BIFE name,val1,val2
+BIFE MACRO name,val1,val2
+    push   AX
+    push   DX
+  IFDIFI <AX>,<val1>
+    mov    AX,val1
+  ENDIF
+  IFDIFI <DX>,<val2>
+    mov   DX,val2
+  ENDIF
+    cmp    AX,DX
+    jne    &name&
+    pop    DX
+    pop    AX
+    ENDM
+
+;; Macro: EIF name
+EIF MACRO name
+    LOCAL SkipLabel
+    jmp SkipLabel
+name:
+    pop    DX
+    pop    AX
+SkipLabel:
+    ENDM
+
+;; Macro: BELOOP label
+BELOOP MACRO label
+label:
+    ENDM
+
+;; Macro: EBREAK label
+EBREAK    MACRO label
+    jmp    @@&label&
+    ENDM
+
+;; Macro: EELOOP label
+EELOOP MACRO label
+@&label&:
+	jmp	label
+@@&label&:
+ 	ENDM
+
+;; Macro: BFORLTE label, val1, val2
+BFORLTE MACRO label,val1,val2
+    LOCAL    loc1
+    jmp    loc1
+v1&label&    DW    0 
+v2&label&    DW    0 
+loc1:
+    push   AX
+  IFDIFI <AX>,<val1>
+    mov    AX,val1
+  ENDIF
+    mov    CS:[v1&label&],AX
+  IFDIFI <AX>,<val2>
+    mov    AX,val2
+  ENDIF
+    mov    CS:[v2&label&],AX
+    pop    AX
+    inc    CS:[v2&label&]
+BELOOP    &label&
+    ENDM
+
+;; Macro: EFOR label
+EFOR MACRO label
+    inc    CS:[v1&label&]
+  BIFE loc&label&,CS:[v1&label&],CS:[v2&label&]
+    EBREAK    &label&
+  EIF  loc&label&
+EELOOP    &label&
+    ENDM
+
+
+

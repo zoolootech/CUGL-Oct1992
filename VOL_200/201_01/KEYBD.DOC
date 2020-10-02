@@ -1,0 +1,153 @@
+	
+	
+	Referenced article:  User Wants Inkey () In C Libraries
+			     The C Users' Group Newsletter
+			     September 1986
+	
+	I agree with Phillip Emerson that it would be nice if C compiler 
+	vendors provided an Inkey type of function in their libraries.  
+	However, I would recommend that such an inkey() function allow all 
+	possible combinations of keyboard entries, including the NULL or 
+	CNTL @ character, whose value is zero.  This can be done by 
+	specifying that inkey() return -1, or better yet -129, whenever the 
+	keyboard is not ready to send a character.  
+	
+	Perhaps preferable to inkey(), would be a pair of functions such as 
+	kbd_rdy() and kbd_in().  kbd_rdy() would return either TRUE or 
+	FALSE, according to whether the keyboard is ready to send a 
+	character.  kbd_in() would return a character, looping if necessary 
+	until a character became available.
+	
+	This would result in code such as:
+	
+		if (kbd_rdy())
+			{
+			ch = kbd_in();
+			/* ready path */
+			}
+		else
+			/* not ready path */
+	
+	rather than,
+	
+		#define NOT_RDY	-129
+		...
+		
+		if ((ch = inkey()) == NOT_RDY)
+			/* not ready path */
+		else
+			/* ready path */
+		
+	In the first case, "ch" can be a char, but in the latter case, "ch" 
+	must be an int to allow for 256 character possibilities in addition 
+	to NOT_RDY.  
+	
+	In cases where the programmer knows there is nothing for the 
+	program to do until a character is available, we have:
+	
+		ch = kbd_in();
+		
+	rather than,
+	
+		while ((ch = inkey()) == NOT_RDY)
+			{}
+		
+	kbd_in() and kbd_rdy() can be implemented directly or in terms of 
+	inkey().  Here they are in terms of inkey():
+	
+	#define	NOT_RDY	-129
+	
+	int	gotten_char;
+	int	got_char = FALSE;
+	
+	kbd_rdy()
+	{
+	if (got_char)
+		return TRUE;
+	if ((gotten_char = inkey()) != NOT_RDY)
+		got_char = TRUE;
+	return got_char;
+	}
+	
+	kbd_in()
+	{
+	while ( ! kbd_rdy())
+		{}
+	got_char = FALSE;
+	return gotten_char;
+	}
+	
+	The reason -129 is chosen, is that it works both for machines which 
+	do sign extension as well as those which do not.  This is for 
+	portability.  2's complement representation is assumed in both 
+	machine types.
+	
+	A not-ready indicator of -1 is fine for machines which don't do 
+	sign extension, but on those which do, it would collide with a 
+	character value of 255.  255 is a signed character with value -1.  
+	Extending its sign gives a signed integer of -1.  Signed characters 
+	only go as low as -128, hence -129.  
+	
+	Here are kbd_rdy() and kbd_in() implemented directley (for running 
+	under MS-DOS or PC-DOS) using DesMet C (C WARE Corp):
+	
+		char	gotten_char;
+		char	got_char = FALSE;
+	
+		kbd_rdy()
+		{
+		if (got_char)
+			return TRUE;
+		
+		/* in-line assembly follows: */
+		#asm
+			mov	dl,255
+			mov	ah,6
+			int	21h
+			mov	sp,bp
+			jz	not_rdy
+			mov byte got_char_,1
+			mov byte gotten_char_,al
+		    not_rdy:
+		#
+		
+		return (int) got_char;
+		}
+	
+		kbd_in()
+		{
+		while ( ! kbd_rdy())
+			{}
+		got_char = FALSE;
+		return (int) gotten_char;
+		}
+		
+	To show that kbd_rdy() and kbd_in() can supplant inkey(), here is 
+	inkey() in terms of kbd_in() and kbd_rdy():
+	
+		#define NOT_RDY -129
+		
+		inkey()
+		{
+		return (kbd_rdy() ? kbd_in() : NOT_RDY);
+		}
+		
+	Finally, another useful function is kbd_purge().
+	
+		kbd_purge()	/* keyboard purge */
+		{
+		while (kbd_rdy())
+			kbd_in();
+		}
+		
+	Following is a program, using the three "kbd" functions.  It 
+	illustrates having a "background" process.  The "foreground" 
+	process is simply getting and putting keyboard characters to the 
+	console.  The "background" process is sending periods to the 
+	console, and it is initiated and stopped by typing a period.  The 
+	program ends with control C.
+	
+	Richard Hilburger
+	195 S.E. 26th Ave.
+	Hillsboro OR 97123
+

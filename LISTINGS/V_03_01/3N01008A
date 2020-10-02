@@ -1,0 +1,124 @@
+/*****************************************************/
+/* dlgaccel.c                                        */
+/* -- Module implements a routine to create a dialog */
+/*    with an accelerator table.                     */
+/* -- Make sure you EXPORT AcceleratorHook() in your */
+/*    .def file!                                     */
+/*****************************************************/
+
+/*****************************************************/
+/* Header files.                                     */
+/*****************************************************/
+#include <windows.h>
+#include "dlgaccel.h"
+
+/*****************************************************/
+/* Private static variables.                         */
+/*****************************************************/
+static  FARPROC lpfnAccelSav;   /* Previous hook. */
+static  HANDLE  hmemAccel;      /* Accel. table. */
+
+/*****************************************************/
+/* Private prototypes.                               */
+/*****************************************************/
+int FAR PASCAL  AcceleratorHook(int, WORD, DWORD);
+
+/*****************************************************/
+/* Routines.                                         */
+/*****************************************************/
+
+VOID
+AcceleratedDialog(LPSTR lszDialog, LPSTR lszAccel,
+    FARPROC lpfnDialog, HANDLE hins, HWND hwndOwner)
+/*****************************************************/
+/* -- Create a dialog with an accelerator table.     */
+/* -- lszDialog : Name of dialog resource.           */
+/* -- lszAccel  : Name of accelerator table.         */
+/* -- lpfn      : Actual address of DialogProc.      */
+/* -- hins      : App's instance handle.             */
+/* -- hwndOwner : Dialog owner window.               */
+/*****************************************************/
+    {
+    FARPROC lpfnInstance;   /* DialogProc instance. */
+    FARPROC lpfnAccel;      /* Hook instance. */
+    HANDLE  hmemAccelSav;   /* Last accel. table. */
+
+    /* If this is the first instance of this routine */
+    /* (since it can be called recursively), create */
+    /* and install the message hook. */
+    if (hmemAccel == NULL)
+        {
+        lpfnAccel =
+          MakeProcInstance(AcceleratorHook, hins);
+        lpfnAccelSav =
+          SetWindowsHook(WH_MSGFILTER, lpfnAccel);
+        }
+
+    /* Create an instanced dialog proc address. */
+    lpfnInstance = MakeProcInstance(lpfnDialog, hins);
+
+    /* Load up the dialog's accelerator table and */
+    /* create the dialog.  Save the previous */
+    /* accelerator table handle, so we can restore */
+    /* the previous instance of this routine, if */
+    /* any. */
+    hmemAccelSav = hmemAccel;
+    hmemAccel = LoadAccelerators(hins, lszAccel);
+    DialogBox(hins, lszDialog, hwndOwner,
+      lpfnInstance);
+    FreeResource(hmemAccel);
+    hmemAccel = hmemAccelSav;
+    FreeProcInstance(lpfnInstance);
+
+    if (hmemAccel == NULL)
+        {
+        UnhookWindowsHook(WH_MSGFILTER, lpfnAccel);
+        lpfnAccelSav = NULL;
+        FreeProcInstance(lpfnAccel);
+        }
+    }
+
+int FAR PASCAL
+AcceleratorHook(int msgf, WORD wParam, DWORD lParam)
+/*****************************************************/
+/* -- Message filter windows hook.                   */
+/* -- Look for keystrokes and invoke                 */
+/*    TranslateAccelerator().                        */
+/*****************************************************/
+    {
+    DWORD   lVal;
+
+    if (msgf >= 0 && hmemAccel != NULL)
+        {
+        switch (((LPMSG)lParam)->message)
+            {
+        default:
+            break;
+
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+        case WM_SYSKEYDOWN:
+        case WM_SYSKEYUP:
+            {
+            HWND    hwnd    = ((LPMSG)lParam)->hwnd;
+
+            /* Make sure we don't do this for a child */
+            /* window, since Windows will think the */
+            /* id is a menu handle! */
+            if (GetWindowLong(hwnd, GWL_STYLE) &
+              WS_CHILD)
+                hwnd =
+                  GetWindowWord(hwnd, GWW_HWNDPARENT);
+
+                if (TranslateAccelerator(hwnd,
+                  hmemAccel, (LPMSG)lParam))
+                    return TRUE;
+            }
+            break;
+            }   /* End switch message. */
+        }       /* End if hmemAccel != NULL. */
+
+    lVal =  DefHookProc(msgf, wParam, lParam,
+      (FARPROC FAR *)&lpfnAccelSav);
+    return msgf < 0 ? LOWORD(lVal) : FALSE;
+    }

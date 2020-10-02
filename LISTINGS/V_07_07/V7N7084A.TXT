@@ -1,0 +1,57 @@
+
+#ifndef BLKIO_H         /* prevent multiple includes */
+#define BLKIO_H
+
+#include <stddef.h>
+#include <stdio.h>
+
+/* blkio constants */
+#define BOPEN_MAX       FOPEN_MAX       /* max # block files open at once */
+
+/* blkio type definitions */
+typedef size_t  bpos_t;         /* block file position */
+
+typedef struct {                /* block buffer control structure */
+        bpos_t bn;              /* block number [1...] */
+        int flags;              /* block status flags */
+        size_t more;            /* link to more recently used block */
+        size_t less;            /* link to less recently used block */
+} block_t;
+
+typedef struct {                /* block file control structure */
+        int fd;                 /* file descriptor */
+        int flags;              /* status flags */
+        size_t hdrsize;         /* size of file header */
+        size_t blksize;         /* size of blocks */
+        size_t bufcnt;          /* number blocks to buffer (0 if unbuffered) */
+        bpos_t endblk;          /* first block past end of file */
+        size_t most;            /* most recently accessed block [1..bufcnt] */
+        size_t least;           /* least recently accessed block [1..bufcnt] */
+        block_t *block_p;       /* doubly linked list of blocks */
+        void *blkbuf;           /* buffer storage for header and blocks */
+} BLKFILE;
+extern BLKFILE biob[BOPEN_MAX]; /* BLKFILE control struct table declaration */
+
+/* block_t flag bits */
+#define BLKREAD           (01)  /* block can be read */
+#define BLKWRITE          (02)  /* block needs to be written to disk */
+
+/* biob flag bits */
+#define BIOOPEN           (03)  /* open status bits */
+#define BIOREAD           (01)  /* block file is open for reading */
+#define BIOWRITE          (02)  /* block file is open for writing */
+#define BIOUSRBUF         (04)  /* user supplied buffer */
+
+/* block file error codes */
+#define BEOS            (0)             /* start of blkio error code domain */
+#define BEMFILE         (BEOS - 1)      /* too many block files open */
+#define BENOPEN         (BEOS - 2)      /* block file is not open */
+#define BENBUF          (BEOS - 3)      /* buffering is off */
+#define BEBUF           (BEOS - 4)      /* buffering is on */
+#define BEBOUND         (BEOS - 5)      /* block boundary error */
+#define BEEOF           (BEOS - 6)      /* past end of file */
+#define BENFL           (BEOS - 7)      /* no free list */
+#define BEPANIC         (BEOS - 10)     /* internal blkio error */
+
+#endif  /* #ifndef BLKIO_H */
+

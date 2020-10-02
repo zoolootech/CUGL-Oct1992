@@ -1,0 +1,478 @@
+;
+;
+;
+; Contains:
+;
+;	timdif		a generic time difference routine
+;                       originally written by Sigi Kluger, and
+;                       modified to work as a .CSM for BDS-C.
+;
+;	daytim		returns in HL, a pointer a
+;                       null-terminated string of the form:
+;
+;			dd mmm yy hh:mm:ss
+;
+;			uses CPM+ and MPM function #105
+;
+; Note: this module should work with the following operating systems:
+;
+;	CPM 3.x  (aka "CPM+")
+;	MP/M 2.x and higher
+;	TurboDOS 1.2x, 1.3x, and, presumably, higher
+;	Not (of course) CPM 1.x and 2.x, which have no real-time functions
+;
+; Note that it has only been tested with CP/M 3.1.      --Ron Fowler
+;	
+;
+	INCLUDE "a:bds.lib"
+
+;
+;TIMEDIF.ASM v1.10
+;12/28/83
+;By S. Kluger
+;
+;Converted to CSM file by FJW 12/31/83
+;
+;
+; Purpose:
+; Evaluate two ASCII character strings in HH:MM:SS format and
+; return their difference.
+;
+; Entry point:	TIMDIF
+; Externals:	STTIME
+;		ENTIME
+;		ELAPTM
+;
+; Input parameters:
+; STTIME holds a time string of HH:MM:SS format. STTIME must point
+; to the tens hours digit. The time string must be in 24 hour format.
+; The time stored there should be the beginning time of an event.
+;
+; ENTIME holds a string with the same format. The time stored there
+; should be the end of an event.
+;
+; On return, ELAPTM will be filled with the elapsed time in
+; hours and minutes and the accumulator will be cleared with the
+; ZERO flag SET. If either entry parameter contained an illegal
+; quantity, the CARRY flag will be SET and ELAPTM will be undefined.
+; NOTE: TIMDIF will not place delimiters into ELAPTM!
+;
+; Only the first 8 characters of the strings are processed and checked
+; for proper range. Be sure to zero the seconds field if not needed!
+;
+; NOTE:
+; If ENTIME is smaller than STTIME, then 24 hours are added to ENTIME.
+;
+; This routine is intended for application where the event time will
+; never be greater than 23:59:59 (RCPM and BBS use mainly).
+;
+;	PUBLIC	TIMDIF		;entry point
+;	EXTRN	STTIME		;start time field
+;	EXTRN	ENTIME		;end time field
+;	EXTRN	ELAPTM		;elapsed time field
+;
+;	cseg
+;
+; Entry point. All registers meet their doom...
+;
+	FUNCTION	timdif
+
+timdif:	call	arghak
+	push	b
+	lhld	arg1		;point to start time (sttime)
+	call	chform		;check proper format
+	jc	exit		;return if error
+	lhld	arg2		;point to end time (entime)
+	call	chform		;check that too
+	jc	exit
+;
+; The stage is set - let's get down to business...
+;
+	lhld	arg1
+	lxi	d,6
+	dad	d		;point to seconds start (sttime+6)
+	call	getbin		;get binary
+	mov	d,a		;save it
+	push	d
+	lhld	arg2
+	lxi	d,6
+	dad	d		;seconds end (entime+6)
+	pop	d
+	call	getbin		;get binary
+	mvi	e,0		;reset our private borrow flag
+	sub	d		;subtract
+	jnc	skbs		;skip if no borrow
+	dcr	e		;set our borrow flag
+	adi	60		;make mod 60
+skbs:	push	d
+	lhld	arg3
+	lxi	d,7
+	dad	d
+	pop	d		;store as result (elaptm+7)
+	call	stora
+;
+; Do the same stuff for minutes
+;
+	push	d
+	lhld	arg1
+	lxi	d,3
+	dad	d		;minutes start (sttime+3)
+	pop	d
+	call	getbin		;get binary
+	mov	d,a		;save binary
+	push	d
+	lhld	arg2
+	lxi	d,3
+	dad	d		;minutes end (entime+3)
+	pop	d
+	call	getbin		;get binary
+	inr	e		;if not borrow...
+	jnz	skbm1		;then skip...
+	inr	d		;...else add borrowed value
+skbm1:	mvi	e,0		;make sure borrow flag reset
+	sub	d		;subtract
+	jnc	skbm2		;skip if no borrow
+	dcr	e		;set borrow
+	adi	60		;make mod 60
+skbm2:	push	d
+	lhld	arg3
+	lxi	d,4
+	dad	d		;store elapsed minutes (elaptm+4)
+	pop	d
+	call	stora
+;
+; Finally, here go the hours.
+;
+	lhld	arg1		;hours start (sttime)
+	call	getbin		;get 'em
+	mov	d,a		;save start hours
+	lhld	arg2		;hours end (entime)
+	call	getbin		;get binary
+	inr	e		;if not borrow...
+	jnz	skbh1		;...then skip...
+	inr	d		;...else add borrowed hour
+skbh1:	sub	d		;subtract
+	jnc	skbh2		;jump if no borrow
+	adi	24		;else add 24 hours
+skbh2:	lhld	arg3
+	inx	h		;save as hours (elaptm+1)
+	call	stora
+	xra	a		;make sure error is reset
+exit:	pop	b
+	ret			;end of execution, back to caller.
+;
+; Get the ASCII value at HL as a binary into A
+;
+getbin:	mov	a,m		;get tens
+	ani	0fh		;strip ASCII offset
+	mov	b,a		;save tens
+	xra	a		;set accumulator
+	mvi	c,10		;set up cheap multiplier
+mul:	add	c
+	dcr	b
+	jnz	mul
+	mov	b,a		;save tens
+	inx	h		;point to units
+	mov	a,m		;get units
+	ani	0fh		;same treatment
+	add	b		;add the tens
+	ret
+;
+; Check format of HH:MM:SS string. Checks all digits for presence
+; and validity.
+;
+chform:	mov	a,m		;get 10s H
+	cpi	'0'
+	rc
+	cpi	'3'
+	cmc
+	rc
+	inx	h
+	mov	a,m		;get 1s H
+	call	ck10		;check decimal
+	rc
+	inx	h		;get colon
+	mov	a,m
+	cpi	':'
+	stc
+	rnz
+	inx	h		;point to 10s M
+	mov	a,m
+	call	ck6		;check hex
+	rc
+	inx	h
+	mov	a,m		;1s M
+	call	ck10
+	rc
+	inx	h
+	mov	a,m		;get delimiter
+	cpi	':'
+	stc
+	rnz
+	inx	h
+	mov	a,m		;get 10s S
+	call	ck6
+	rc
+	inx	h
+	mov	a,m
+ck10:	cpi	'0'
+	rc
+	cpi	'9'+1
+	cmc
+	ret
+;
+ck6:	cpi	'0'
+	rc
+	cpi	'7'
+	cmc
+	ret
+;
+; Store accumulator as ASCII digits at HL and HL+1
+;
+stora:	mvi	b,0ffh		;-1
+tlp:	inr	b
+	sui	10		;subtract 10
+	jnc	tlp		;until borrow
+	adi	10		;make mod 10
+	ori	'0'		;make ASCII
+	mov	m,a
+	dcx	h
+	mvi	a,'0'
+	add	b
+	mov	m,a
+	ret
+;
+	ENDFUNC
+;
+	FUNCTION	daytim
+;
+	push	b
+	lxi	d,jdate		;pointer to date/time bufr
+	mvi	c,105		;C=return date/time function
+	call	0005h		;get date/time
+	sta	secs		;cpm3 returns seconds in a
+	lxi	d,datbuf	;get date buffer
+	lhld	jdate		;fetch julian date
+	call	dspdat		;display date in date buffer
+	call	dsptim		;display time in time buffer
+	lxi	h,datbuf	;get date buffer
+	xra	a
+	pop	b
+	ret
+;
+; Function 'dspdat' converts a Julian Date to ASCII.
+;
+; Call dspdat with address of ASCII string return buffer (9 bytes long)
+; in DE, and Julian date to be converted in HL.
+;
+;
+; Registers AF-BC-DE-HL-IX are destroyed.
+;
+dspdat:	push	d		;save return address
+	lxi	d,yyear		;pass buffer to fmjul
+	call	fmjul		;calculate y-m-d
+	pop	h		;return address to hl
+	lda	yday		;check for error
+	ora	a
+	jz	err
+	call	decmem		;convert to decimal
+	mvi	m,' '		;move in a space
+	inx	h
+	push	h		;save pointer
+	lhld	ymonth		;get month number
+	mvi	h,0		;make double length
+	dcx	h		;make base 0
+	mov	d,h		;multiply by 3
+	mov	e,l
+	dad	d
+	dad	d
+	lxi	d,months	;calculate month table address
+	dad	d
+	pop	d		;recover pointer
+	lxi	b,3		;length of move
+	db	0edh,0b0h	;LDIR		;move month into string
+	xchg			;pointer back to hl
+	mvi	m,' '		;move in a space
+	inx	h
+	lda	yyear		;get year
+	call	decmem		;convert to decimal
+	jmp	x		;done
+err:	mvi	b,9		;error, return 9 *'s
+erl:	mvi	m,'*'
+	inx	h
+	db	010h,0fbh	;DJNZ	erl
+x:	mvi	m,' '		;insert delimeter
+	ret			;done
+;
+;
+; Function 'dsptim' converts a bcd hours, minutes, and seconds to ASCII.
+;
+dsptim:	lxi	h,timbuf	;get time buffer
+	lxi	d,hours		;get hours/minutes/seconds
+	ldax	d		;get hours
+	inx	d		;advance pointer
+	call	bcdout		;convert hours to ascii
+	mvi	m,':'		;inset colon
+	inx	h
+	ldax	d		;get minutes
+	inx	d		;advance pointer
+	call	bcdout		;convert minutes to ascii
+	mvi	m,':'		;insert colon
+	inx	h
+	ldax	d		;get seconds
+	call	bcdout		;convert seconds to ascii
+	mvi	m,0		;insert delimeter
+	ret			;done
+;
+decmem:	mvi	b,'0'-1		;convert a-reg to decimal
+dec:	inr	b
+	sui	10
+	jp	dec
+	mov	m,b
+	inx	h
+	adi	10+'0'
+	mov	m,a
+	inx	h
+	ret
+;
+bcdout:	push	psw		;convert a-reg (bcd) to decimal
+	rrc			;hi nybble
+	rrc
+	rrc
+	rrc
+	call	bcd1		;process hi nybble
+	pop	psw		;then lo
+bcd1:	ani	0fh		;4 bits only
+	adi	'0'		;add ascii bias
+	mov	m,a		;store it
+	inx	h
+	ret
+;
+; routine to convert modified julian date  passed in hl to
+; yy/mm/dd form, into buffer passed in de. passed buffer
+; looks like this:
+;
+;	db	year  (bcd)
+;	db	month	"
+;	db	date	"
+;
+; returned julian date is the day number using a base date
+; of jan 1 of "baseyr" (defined below)
+;
+;
+baseyr	equ	78		;base year of date system (1978)
+;
+; we begin...
+;
+fmjul:	push	d		;save buffer pointer (for later)
+	mvi	b,baseyr 	;base year in b
+;
+; scan through years starting at baseyr
+; subtracting days from our current date
+;
+julp:	mov	a,b		;fetch current year
+	ani	3		;test for leap year
+	lxi	d,365		;first get # lp yr # days
+	jnz	nleap		;and skip if not lp year
+	inx	d		;is leap year, fix up days
+nleap:	inr	b		;bump yr for next pass
+	call	subde		;subtract days in cur year
+	jz	endy		;jump if last day of yr
+	jnc	julp		;continue till we overshoot
+endy:	dad	d		;overshot, correct days
+	dcr	b		;and year
+	mov	a,b		;fetch calculated year
+	cpi	100		;rewind every century
+	jc	pyr		;(now that's accuracy!)
+	mvi	b,0		;rewind yr 100 to 0
+pyr:	push	b		;save year (in b, we'll pop it into d later)
+	mov	a,b		;now check for leap again
+	ani	3
+	mvi	a,28		;28 days for feb
+	jnz	feb28		;go store if not lp year
+	inr	a		;adjust for leap year
+feb28:	sta	mfeb		;fix month table
+	lxi	d,mtbl	 	;point to month table
+	mvi	b,0		;init month number
+;
+; scan through months in curnt yr, subtracting days
+;
+mnthlp: push	d		;save month table pointer
+	ldax	d		;get days in curnt month
+	mov	e,a		;get in de as 16 bits
+	mvi	d,0
+	call	subde		;subtract
+	jc	mfound		;exit loop when overshoot
+	jz	mfound		;last day of month?
+	inr	b		;bump to next month
+	pop	d		;retrieve month tbl pointer
+	inx	d		;bump to next month
+	jmp	mnthlp		;and continue
+;
+mfound:	pop	psw		;clear stack
+	dad	d		;fix overshoot
+	inr	b		;make month 1-relative
+	mov	c,l		;get remainder in c (date)
+;
+	pop	d		;recall year in d
+	pop	h		;recall buffer pointer
+	mov	m,d		;stuff year
+	inx	h
+	mov	m,b		;put month in buffer
+	inx	h
+	mov	m,c		;remainder is date
+	ret
+;
+; utility routine to subtract de from hl and set flags
+;
+subde:	mov	a,l		;lo byte first
+	sub	e		;(carry doesn't count yet)
+	mov	l,a
+	mov	a,h		;hi byte
+	sbb	d		;(carry counts now)
+	mov	h,a
+	jc	subde1		;keep the carry flag
+	ora	l		;no carry, set the z on hl=0
+	ret
+subde1:	ora	l		;set the z flag on hl=0
+	stc			;restore the carry
+	ret
+;
+; table of months for tojul and fmjul
+;
+mtbl:	db	31			;jan
+mfeb:	db	28			;feb
+	db	31,30,31,30		;mar-jun
+	db	31,31,30,31,30,31	;jul-dec
+;
+;
+;
+ldays:	db	31,28,31,30,31,30,31,31,30,31,30,31
+months:	db	'JanFebMarAprMayJunJulAugSepOctNovDec'
+;
+datbuf:	db	'31 Dec 77 '	;date buffer
+;
+timbuf:	db	'00:00:00',0	;time buffer
+;
+yyear:	ds	1
+ymonth:	ds	1
+yday:	ds	1
+;
+jdate:	ds	2
+hours:	ds	1
+mins:	ds	1
+secs:	ds	1
+;
+; buffer passed to the o/s
+;
+osbufr:	ds	4
+;
+	ENDFUNC
+
+	END
+date)
+;
+	pop	d		;recall year in d
+	pop	h		;recall buffer pointer
+	mov	m,d		;stuff year
+	inx	h

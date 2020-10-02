@@ -1,0 +1,35 @@
+
+USE Goods ORDER Part_id
+mpart_id = SPACE(4)
+@ 6,4 SAY "Part Number:  " GET mpart_id FUNCTION "!999" VALID duplicat(mpart_id) ;
+   VALID Duplicat(&key.) ERROR "Duplicate part number, please re-enter";
+   MESSAGE "Enter a part number or press ESC to quit."
+FUNCTION Duplicat
+   PARAMETERS key
+   rec_is_dup = .F.
+   IF RECCOUNT() = 0 .OR. "" = TRIM(key)
+      RETURN rec_is_dup
+   ENDIF
+   record_num = RECNO()
+   SEEK TRIM(key)
+   DO CASE
+      CASE PROMPT() = "Edit record"
+         rec_is_dup = record_num <<>> RECNO() .AND. FOUND()
+      CASE PROMPT() = "Add record"
+         rec_is_dup = FOUND()
+   ENDCASE
+   IF rec_is_dup
+      ACTIVATE WINDOW duplicat
+      CLEAR
+      DO warnbell
+      ?"                      DUPLICATE RECORD!!!"
+      ?"                   Duplicates not allowed..."
+      ?" " + part_id + " " + part_name
+      ?"This is the existing part whose number you just entered"
+      ?"Please check the part number and re-enter a different one"
+      WAIT "     Press <<spacebar>> to continue"
+      DEACTIVATE WINDOW duplicat
+   ENDIF
+   GO record_num
+RETURN .NOT. rec_is_dup     
+

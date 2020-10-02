@@ -1,0 +1,17 @@
+redmain.obj+
+redglb.obj+
+redcmnd.obj+
+reded.obj+
+redfmt.obj+
+redout.obj+
+redoutan.obj+
+redpmt.obj+
+redsys.obj+
+redutl.obj+
+redbuf1.obj+
+redbuf2.obj+
+redbuf3.obj+
+redbuf4.obj
+mred
+nul.map
+c:\lib\msc\;

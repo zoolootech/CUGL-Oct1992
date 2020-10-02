@@ -1,0 +1,61 @@
+Listing 2
+
+/*****************************************************/
+/* fpumsg.c                                          */
+/* -- Module to implement PeekMessage() with a check */
+/*    of the FPU's status word.                      */
+/*****************************************************/
+
+#include <windows.h>
+#include "fpumsg.h"
+
+BOOL
+FPeekMessageLpfn(LPMSG lpmsg, HWND hwnd,
+  WORD wMsgFilterMin, WORD wMsgFilterMax,
+  WORD wRemoveMsg, LPFN_NOTIFY lpfnNotify)
+/*****************************************************/
+/* -- PeekMessage() wrapper.                         */
+/* -- Get a message from the queue.                  */
+/* -- Check the FPU's status first, and if we have   */
+/*    racked up exceptions, call lpfnNotify.         */
+/* -- Makes sure all exceptions are masked after the */
+/*    call to PeekMessage(), so win87em won't UAE us */
+/*    if we do generate an exception.                */
+/* -- lpmsg         : Store message here.            */
+/* -- hwnd          : Get message for this window,   */
+/*                    NULL for all windows.          */
+/* -- wMsgFilterMin : Least message.                 */
+/* -- wMsgFilterMax : Greatest message.              */
+/* -- wRemoveMsg    : PeekMessage() flags.           */
+/* -- lpfnNotify    : Callback in case of FPU        */
+/*                    exception.                     */
+/*****************************************************/
+    {
+    BOOL    fGotMessage;
+    WORD    wStatus, wControl;
+
+    /* Get the status of the FPU. */
+    _asm fstsw   wStatus;
+    _asm wait;
+
+    /* Get rid of any exceptions. */
+    _asm fclex;
+
+    /* Did an exception occured? */
+    if (wStatus & 0x003f)
+        Notify(wStatus, lpfnNotify);
+
+    /* Get a message. */
+    fGotMessage = PeekMessage(lpmsg, hwnd,
+      wMsgFilterMin, wMsgFilterMax, wRemoveMsg);
+
+    /* Mask all exceptions to prevent win87em from */
+    /* blowing us away. */
+    _asm fstcw   wControl;
+    _asm wait;
+    wControl |= 0x003f;
+    _asm fldcw   wControl
+
+    return fGotMessage;
+    }
+

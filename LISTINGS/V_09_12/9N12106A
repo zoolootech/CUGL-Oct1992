@@ -1,0 +1,31 @@
+//  Listing 5 - Functions to read records for class binaryfile
+//  (See Listing 3 for the class definition)
+
+//  =============================================
+//  Function for class binaryfile to read sequentially
+//      forwards and backwards through the file, or to
+//      read the first or last record in the file
+//
+int binaryfile::fileread (enum READMODE r) {
+    return fileread (r == FirstRecord ? 1L :
+           (r == NextRecord ? recnbr + 1L :
+              (r == PreviousRecord ? recnbr - 1L :
+                  /*LastRecord*/ getcount())));
+}
+
+//  =============================================
+//  Function for class binaryfile to read a specific record
+//
+int binaryfile::fileread (long number) {
+    if (number > count && share == WriteShared) {
+	countrecords(); // recount number of records in file 
+    }
+    if (number <= 0L || number > count) return 0; // out of bounds
+    recnbr = number;
+    if (share == WriteShared 
+	&& (mode == Update || mode == AnyWrite) 
+	&& lockrecord (number)) 
+	return -10;  // error trap for lock failure
+    lseek (handle, ((recnbr - 1) * length) + header, SEEK_SET);
+    return read (handle, record, length);
+}

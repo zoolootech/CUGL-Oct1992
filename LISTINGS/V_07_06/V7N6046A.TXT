@@ -1,0 +1,78 @@
+
+void plotx (ws,f,n,theta,phi,x1,x2,y1,y2)
+double (*f)(),theta,phi,x1,x2,y1,y2;
+int n,ws;
+{
+double px[50],py[50],pz[50],m,interpy,incx,incy;
+Gpoint p[50],q[50],pp[100],qq[100];
+int i,j,k,kp,kq,tk,bk,prev,ind;
+/*
+ *   Compute first contour and initialize.
+ */
+incx = (x2-x1)/(double)(n-1); incy = (y2-y1)/(double)(n-1);
+for (i=0; i<n; i++)
+  {
+    px[i] = x1 + i*incx; py[i] = y1; pz[i] = (*f)(px[i],py[i]);
+  }
+settran (theta,phi);
+transform (px,py,pz,p,n);
+initialmask (p,n);
+polyline (ws,n,p);
+/*
+ *  Do the rest of the contours.
+ */
+for (i=1; i<n; i++)
+  {
+    for (j=0; j<n; j++)      /*  Compute points.   */
+      {
+        py[j] = y1 + i*incy; pz[j] = (*f)(px[j],py[j]);
+      }
+    transform (px,py,pz,p,n);
+    top[0].x = bottom[0].x = p[0].x;  
+    k = 0; tk = bk = 0;
+    prev = place (&tk,&bk,p,0);   /* Do point 0.  */
+    switch (prev) {
+      case -1:
+        pp[0] = top[0]; qq[0] = p[0];
+        break;
+      case 0:
+        pp[0] = top[0]; qq[0] = bottom[0];
+        break;
+      case 1:
+        pp[0] = p[0]; qq[0] = bottom[0];
+        break;
+    }
+    if (prev != 0) q[k++] = p[0];
+    kp = kq = 1;
+    for (j=1; j<n; j++)   /*  Consider all other points.   */
+      {
+        ind = place(&tk,&bk,p,j);
+        switch (ind) {
+          case 1:     /*  point above mask.  */
+            pp[kp++] = p[j]; qq[kq++] = bottom[bk];
+            if (prev == -1) polyline (ws,k,q);
+            if (prev != 1) k = 0;
+            q[k++] = p[j];
+            break;
+          case 0:     /*   Point inside mask.  */
+            pp[kp++] = top[tk]; qq[kq++] = bottom[bk];
+            if (prev != 0) polyline (ws,k,q);
+            break;
+          case -1:    /*  Point below mask.   */
+            pp[kp++] = top[tk]; qq[kq++] = p[j];
+            if (prev == 1) polyline (ws,k,q);
+            if (prev != -1) k = 0;
+            q[k++] = p[j];
+            break;
+          }
+        prev = ind;
+      }
+    if (k != 0) polyline(ws,k,q);
+    topn = copyvec (pp,top,kp-1); 
+    bottomn = copyvec (qq,bottom,kq-1);
+  }
+}
+
+
+
+

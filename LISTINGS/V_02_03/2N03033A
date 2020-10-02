@@ -1,0 +1,248 @@
+/*--------------------------------------------------------------*/
+/*- This file is the sample C program to draw Lines, Squares   -*/
+/*- and Ovals randomly in SuperVGA mode. It calls the assembly -*/
+/*- language routines contained in the svgalib.asm file.       -*/
+/*- Compiler: Microsoft C 6.0                                  -*/
+/*--------------------------------------------------------------*/
+
+#include <stdio.h>          /** Standard MSC libraries **/
+#include <conio.h>
+#include <math.h>
+
+#include "svgalib.h"  /** Prototypes for svga assembly routines **/  
+
+#define XRES         800
+#define YRES         600
+#define NUM_OF_COLOR 256
+#define NUM_OF_RANDOM_RECTS 50
+#define NUM_OF_RANDOM_LINES 100
+#define NUM_OF_RANDOM_OVALS 100
+#define ASPECT_RATIO    5
+
+typedef struct POINT_STRUCT
+{
+    int x;
+    int y;
+} POINT;
+typedef POINT * PPOINT;
+
+
+/************* Function Prototypes **************/
+
+void Square(PPOINT pPoint1,PPOINT pPoint2,int Color);
+void Line(PPOINT pP1,PPOINT pP2,int Color);
+void Oval(PPOINT pP1,int Radius,int Color,float Aspect);
+void RandomLines(int x);
+void RandomSquares(int x);
+void RandomOvals(int x);
+
+
+
+/*** This is rudimentary square drawing function ***/
+/*** It is not intended to be anything put an example ***/
+/*** on using the SVGA assembly routines from C ***/
+
+void Square(PPOINT pPoint1,PPOINT pPoint2,int Color)
+{
+    POINT TopRight,BottomLeft;      /** For Rectangle **/
+
+    TopRight.x = pPoint2->x;  
+    TopRight.y = pPoint1->y;
+    BottomLeft.x = pPoint1->x;
+    BottomLeft.y = pPoint2->y;
+
+    Line(pPoint1,&TopRight,Color);
+    Line(&BottomLeft,pPoint2,Color);
+    Line(pPoint1,&BottomLeft,Color);
+    Line(&TopRight,pPoint2,Color);
+}
+
+
+/** This function will draw a line using the "Bresenham's Algorithm **/
+/** Algorithm taken from the "Graphics Programming in C Book" **/
+void Line(PPOINT pP1,PPOINT pP2,int Color)
+{
+    #define sign(x) ((x) > 0 ? 1 : ((x) == 0 ? 0 : (-1)))
+
+    int xSlope,ySlope,xAbs,yAbs,i,px,py,signX,signY,x,y;
+
+    xSlope = pP2->x - pP1->x;
+    ySlope = pP2->y - pP1->y;
+
+    signX = sign(xSlope);
+    signY = sign(ySlope);
+
+    xAbs = abs(xSlope);
+    yAbs = abs(ySlope);
+
+    x=0;
+    y=0;
+
+    px = pP1->x;
+    py = pP1->y;
+
+    if(xAbs >= yAbs)
+    {
+        for(i=0;i <= xAbs; i++)
+        {
+            y += yAbs;
+            if( y >= xAbs)
+            {
+                y -= xAbs;
+                py += signY;
+            }
+            SetPixel(px,py,Color);
+            px += signX;
+        }
+
+    }
+    else
+    {
+        for(i=0;i <= yAbs;i++)
+        {
+            x += xAbs;
+            if(x >= yAbs)
+            {
+                x-= yAbs;
+                px += signX;
+            }
+            SetPixel(px,py,Color);
+            py += signY;
+        }
+    }
+
+}
+
+/** This function will draw a Oval using the "Bresenham's Algorithm **/
+/** Algorithm taken from the "Graphics Programming in C Book" **/
+
+void Oval(PPOINT pP1,int Radius,int Color,float Aspect)
+{                               
+    int col,i,row;
+    float Aspect_Sqr;
+    long d,a_Square,b_Square;
+    long Two_a_Square,Two_b_Square,Four_a_Square,Four_b_Square;
+
+    int LINEWIDTH = 1;
+
+    Aspect_Sqr = Aspect * Aspect;
+    Radius -=LINEWIDTH / 2;
+
+    for(i=1;i <= LINEWIDTH; i++)
+    {
+        b_Square = Radius * Radius;
+        a_Square = b_Square / Aspect_Sqr;
+        row = Radius;
+        col = 0;
+        Two_a_Square = a_Square << 1;
+        Four_a_Square = a_Square << 2;
+        Two_b_Square = b_Square << 1;
+        Four_b_Square = b_Square << 2;
+
+        d = Two_a_Square * ((row - 1) * (row)) + 
+            a_Square + Two_b_Square * (1 - a_Square);
+
+        while(a_Square * (row) > b_Square * (col))
+        {
+            SetPixel(col + pP1->x, row + pP1->y, Color);
+            SetPixel(col + pP1->x, pP1->y - row, Color);
+            SetPixel(pP1->x - col, row + pP1->y, Color);
+            SetPixel(pP1->x - col, pP1->y - row, Color);
+            if(d >= 0)
+            {
+                row--;
+                d -= Four_a_Square * (row);
+            }
+            d+= Two_b_Square * (3 + (col << 1));
+            col++;
+        }
+
+        d = Two_b_Square * (col + 1) * col +
+            Two_a_Square * (row * (row - 2) + 1) +
+            (1 - Two_a_Square) * b_Square;
+
+        while((row) + 1)
+        {
+            SetPixel(col + pP1->x, row + pP1->y,Color);
+            SetPixel(col + pP1->x, pP1->y - row,Color);
+            SetPixel(pP1->x - col, row + pP1->y,Color);
+            SetPixel(pP1->x - col, pP1->y - row,Color);
+            if(d <= 0)
+            {
+                col++;
+                d+= Four_b_Square * col;
+            }
+            row--;
+            d+=Two_a_Square * (3 - (row << 1));
+        }
+        Radius++;
+    }
+}
+
+
+void RandomSquares(int x)
+{
+    int i,color;
+    POINT TopLeft,BottomRight;      /** For Rectangle **/
+
+    for(i=0;i<x;i++)
+    {
+        TopLeft.x = rand() % XRES;
+        TopLeft.y = rand() % YRES;
+        BottomRight.x = rand() % XRES;
+        BottomRight.y = rand() % YRES;
+        color = rand() % NUM_OF_COLOR;
+        Square(&TopLeft,&BottomRight,color);
+    }
+}
+
+void RandomLines(int x)
+{
+    int i,color;
+    POINT Pt1,Pt2;      
+
+    for(i=0;i<x;i++)
+    {
+        Pt1.x = rand() % XRES;
+        Pt1.y = rand() % YRES;
+        Pt2.x = rand() % XRES;
+        Pt2.y = rand() % YRES;
+        color = rand() % NUM_OF_COLOR;
+        Line(&Pt1,&Pt2,color);
+    }
+}
+
+void RandomOvals(int x)
+{
+    int i,Color,Aspect,Radius;
+    POINT Center;      
+
+    for(i=0;i<x;i++)
+    {
+        /** Calculate the Center,Radius,Color and Aspect for Oval **/
+        Center.x = rand() % XRES;
+        Center.y = rand() % YRES;
+        Radius = rand() % (XRES / 4);
+        Color = rand() % NUM_OF_COLOR;
+        Aspect = (rand() % ASPECT_RATIO) + 1;
+
+        Oval(&Center,Radius,Color,(float)Aspect);
+    }
+}
+
+void main()
+{
+    int c;
+
+    SvgaMode();     /** Set Video card to SVGA (800x600x256) mode **/
+    RandomLines(NUM_OF_RANDOM_LINES);
+    c = getch();
+    SvgaMode();
+    RandomSquares(NUM_OF_RANDOM_RECTS);
+    c = getch();
+    SvgaMode();
+    RandomOvals(NUM_OF_RANDOM_OVALS);
+    c = getch();
+    TextMode();     /** Set to Color 80 Col Text **/
+}
+

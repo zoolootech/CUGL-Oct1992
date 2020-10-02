@@ -1,0 +1,44 @@
+        PAGE ,132
+
+;  Figure 3
+;
+;  Access the BIOS screen printing functions
+
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros, e.g.
+                                        ;MASM /Dmemodel=LARGE /Dlang=C
+
+        .CODE
+
+;
+;  Function to return the status of of PrintScreen operations
+;
+
+PrScrStat       PROC    USES ES
+        mov     AX,50h                  ;Byte at 0050:0000 has status
+        mov     ES,AX                   ;0 = OK
+        mov     AL,ES:0                 ;1 = Screen printing in process
+        xor     AH,AH                   ;2 = Error occured
+        ret
+
+PrScrStat       ENDP
+
+;
+;  Function to dump the current screen to the printer
+;
+
+PrScr   PROC
+        call    PrScrStat               ;Are we dumping a screen right now?
+        cmp     AL,1
+        jne     prscr1                  ;No, continue
+        mov     AX,-1                   ;Yes, abort with an error code
+        ret
+prscr1:
+        int     5                       ;Call Int 05h to print the screen
+        xor     AX,AX                   ;Return zero for success
+        ret
+
+PrScr   ENDP
+
+        end

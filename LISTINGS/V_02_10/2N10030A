@@ -1,0 +1,970 @@
+	Page	60,132
+;---------------------------------------------------------------
+;			   BEGIN LISTING 1
+;---------------------------------------------------------------
+;
+; 286LOAD.ASM	Copyright (c) 1991 Robert Collins
+;
+;	This program demonstrates various aspects of CPU
+;	behavior that become apparent when using LOADALL.
+;
+;	Test 1:  Checks that LOADALL loads all the general-
+;		 purpose registers; loads the segment registers
+;		 with values that are inconsistant to their
+;		 respective descriptor cache registers.
+;
+;	Test 2:  Access extended memory in real mode.
+;
+;	Test 3:  Tests that the Present bit in a descriptor
+;		 table can be loaded using LOADALL without
+;		 generating exception 11.  But when the segment
+;		 is accessed, exception 13 is generated.
+;		 NOTE:	This test should be done in protected
+;		 mode, but can be done in real mode.  1) In real
+;		 mode, no error code is pushed on the stack
+;		 (possibly due to a bug in the CPU).  2) Also
+;		 in real mode, when this program is emulated on
+;		 a '386, the '386 fails to set the Present bit
+;		 when any subsequent segment in loaded.  This
+;		 latter condition is clearly a bug in the '386.
+;
+;	This program was written for Microsoft MASM 5.1, and
+;	MS DOS 3.3.  This program contains compiler directives
+;	and branching techniques that might not be available
+;	on previous versions of the Macro Assembler, nor in
+;	competitive products.  If this program is executed on
+;	any version of DOS prior to 3.3, it will most certainaly
+;	cause the system to crash.  No attempt is made in this
+;	program to be compatible with previous versions of DOS,
+;	but compatibility can be done, and is left as an
+;	exercise to the reader.
+;
+;---------------------------------------------------------------
+
+;---------------------------------------------------------------
+; Compiler directives
+;---------------------------------------------------------------
+	Title	LOADALL_286
+	.radix	16
+	.8086
+
+
+;---------------------------------------------------------------
+; Interrupt vector segment
+;---------------------------------------------------------------
+ABS0	segment at 0
+	org 06h*4			; INT 06h vector
+	INT_6		dd	?
+
+	org	  0467h 		; PM Return address
+	PM_Ret_off	dw	?	;  Offset
+	PM_Ret_seg	dw	?	;  Segment
+
+	org	800h			; LOADALL table loc'n.
+	Loadall_Locn	label	word
+
+ABS0	ends
+
+
+;---------------------------------------------------------------
+; Structure definitions
+;---------------------------------------------------------------
+Desc_cache	STRUC		;; Hidden descriptor cache
+	A15_A00 dw	?	;;  format.
+	A23_A16 db	?
+	_Type	db	?
+	_Limit	dw	?
+Desc_cache	ENDS
+
+
+Loadall_struc	STRUC		;; LOADALL memory image format
+			dw	3 dup (0)
+	_Msw		dw	0
+			dw	7 dup (0)
+	_Tr		dw	0
+	_Flags		dw	2
+	_Ip		dw	0
+	_Ldt		dw	0
+	_Ds		dw	2222h
+	_Ss		dw	4444h
+	_Cs		dw	1111h
+	_Es		dw	3333h
+	_Di		dw	6666h
+	_Si		dw	7777h
+	_Bp		dw	5555h
+	_Sp		dw	8888h
+	_Bx		dw	2222h
+	_Dx		dw	4444h
+	_Cx		dw	3333h
+	_Ax		dw	1111h
+	ES_Desc 	db	00,00,03,93h,0ffh,0ffh
+	CS_Desc 	db	00,00,00,9bh,0ffh,0ffh
+	SS_Desc 	db	00,00,04,93h,0ffh,0ffh
+	DS_Desc 	db	00,00,02,93h,0ffh,0ffh
+	Gdt_Desc	db	00,00,00,00h,000h,000h
+	Ldt_Desc	db	00,00,06,82h,088h,000h
+	Idt_Desc	db	00,00,00,00h,0ffh,003h
+	TSS_Desc	db	00,00,05,89h,000h,008h
+Loadall_Struc	ENDS
+
+
+Descriptor  STRUC
+    Seg_limit	    dw	    ?	; Segment limit
+    Base_A15_A00    dw	    ?	; A00..A15 of base address
+    Base_A23_A16    db	    ?	; A16..A23 of base address
+    Access_rights   db	    ?	; Segment access rights
+    Limit_A19_A16   db	    ?	; Granularity, Op-size,
+				;  Limit A16..A19
+    Base_A31_A24    db	    ?	; A24..A31 of base address
+Descriptor  ENDS
+
+
+INT_Desc    STRUC
+    IGate_Offset    dw	    ?	; Offset of handler
+    CSEG_Sel	    dw	    ?	; Code segment selector
+		    db	    0
+		    db	    86h ; 286 interrupt gate=16bit
+				;  CS:IP, FLAGS
+    Resvd	    dw	    0	; Reserved=0
+INT_Desc    ENDS
+
+
+;---------------------------------------------------------------
+; Macro definitions
+;---------------------------------------------------------------
+FARJMP	MACRO	destination,selector	; dynamic JMP FAR SEG:OFF
+	db	0eah			;; jmp instruction
+	dw	offset destination	;; offset word
+	dw	selector		;; segment selector word
+	endm
+
+
+IO_DELAY	MACRO
+	out	0edh,ax
+	endm
+
+LOADALL 	MACRO
+	mov	cx,ABS0
+	mov	es,cx
+	mov	cx,(size Loadall_struc) / 2
+	mov	si,offset Loadall_tbl
+	mov	di,800h
+	rep	movsw
+	db	0fh,05
+	ENDM
+
+PRINT_STRING	MACRO	MSG_NAME
+	mov	ah,9
+	mov	dx,offset MSG_NAME
+	int	21h
+	ENDM
+;--------------------------------------------------------------
+
+
+	_DATA	 SEGMENT PARA PUBLIC 'DATA'
+;---------------------------------------------------------------
+; Equates & local variables
+;---------------------------------------------------------------
+; Protected mode access rights
+;---------------------------------------------------------------
+	CS_access	equ	10011011b
+	DS_access	equ	10010011b
+
+;---------------------------------------------------------------
+; Text equates
+;---------------------------------------------------------------
+	CRLF		equ	<0dh,0ah>
+	CRLF$		equ	<CRLF,'$'>
+	INT6		equ	[bp-4]
+
+;---------------------------------------------------------------
+; Conditional compilation.  Set USE_386=1 if you plan to execute
+; this program on a '386 using EMULOAD.
+;---------------------------------------------------------------
+	USE_386 	equ	0
+
+
+;---------------------------------------------------------------
+; Loadall table(s)
+;---------------------------------------------------------------
+	Loadall_tbl	Loadall_struc <>
+	Machine_State	Loadall_struc <>
+
+;---------------------------------------------------------------
+; Global Descriptor Table
+;---------------------------------------------------------------
+	GDT_286 Descriptor	<Gdt2_len-1,,,DS_access>
+	CSEG2	Descriptor	<0ffffh,,,CS_access>	; CS
+	DSEG2	Descriptor	<0ffffh,,,DS_access>	; DS
+	Gdt2_len      equ	$-Gdt_286
+
+;---------------------------------------------------------------
+; Interrupt Descriptor Table
+;---------------------------------------------------------------
+IDT_286 INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT00
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT01
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT02
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT03
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT04
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT05
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT06
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT07
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT08
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT09
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT0a
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT0b
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT0c
+	INT_Desc	<Offset INT13,CSEG2-GDT_286>	; INT0d
+IDT2_Len	equ	$-IDT_286
+
+;---------------------------------------------------------------
+; Misc. local variables
+;---------------------------------------------------------------
+Mem_buffer	db	400h dup (0)
+Results 	dw	0
+i8259_1 	db	?	; Status for master device
+i8259_2 	db	?	; Status of slave device
+
+
+;---------------------------------------------------------------
+; String Messages
+;---------------------------------------------------------------
+Passed	db	"    PASSED.",CRLF$
+Failed	db	"--> FAILED <--",CRLF$
+Not_286 db	"Not 80286 class computer.",CRLF$
+Rmvd	db	"LOADALL removed from 80286 mask.",CRLF$
+RFail	db	"Registers weren't loaded correctly."
+LF	db	 CRLF$
+
+;---------------------------------------------------------------
+; I'm doing this wierd string definition technique to limit the
+; page width to 64 characters.
+;---------------------------------------------------------------
+Test_1	label	word
+db	"Test 1:  Testing 286 LOADALL instruction:         ",24
+
+Test_2	label	word
+db	"Test 2:  Testing extended memory in real mode:    ",24
+
+Test_3	label word
+db	"Test 3:  Testing Present BIT in descriptor:       ",24
+
+_DATA	 ends
+
+
+	_TEXT	SEGMENT PARA PUBLIC 'CODE'
+	ASSUME	CS:_TEXT, DS:_DATA, ES:_DATA, SS:STACK
+	.286p
+;---------------------------------------------------------------
+; A little CS-relative data for the stack pointer.  This is
+; to avoid using other kludge techniques, caused by using
+; LOADALL, that make using the data segment undesirable.
+;---------------------------------------------------------------
+	Stack_ptr	dw	0
+			dw	0
+
+;---------------------------------------------------------------
+  LOADALL_286	proc	far
+;---------------------------------------------------------------
+	PUSH	DS			; Setup the stack to
+	XOR	AX,AX			;  return to DOS
+	PUSH	AX
+
+	MOV	AX,_Data
+	MOV	DS,AX
+	MOV	ES,AX
+
+;---------------------------------------------------------------
+; Check CPU type, and set up a minimal invalid opcode handler
+; in case LOADALL has been removed from the CPU mask.
+;---------------------------------------------------------------
+      IFE	USE_386
+	Call	CPU_Type		; 286, 386?
+	cmp	ax,2			; 286?
+	je	short @F		; yep
+	Print_String	LF
+	Print_String	Not_286
+	retf				; go split
+
+@@:	enter	4,0			; create stack frame
+	mov	word ptr INT6,offset INT6_handler
+	mov	INT6[2],cs
+	call	set_INT6_vector 	; set our INT6 handler
+      ENDIF
+
+	cli
+	Call	Save_State		; Save the current CPU
+	Print_String	LF		;  state
+	Print_String	Test_1
+
+
+;---------------------------------------------------------------
+;
+; TEST1:  Real mode
+;	  Test general purpose registers
+;	  Test Segment registers
+;	  Test Descriptor cache base address
+;
+;  (1) Setup LOADALL structures, and pointers
+;  (2) Execute LOADALL
+;  (3) Verify results of the test
+;
+;---------------------------------------------------------------
+	mov	ax,cs			; Prepare 24-bit
+	mov	es,ax			;  physical address that
+	mov	si,0			;  is put in the LOADALL
+	call	Calc_pm_address 	;  descriptor cache
+	mov	Loadall_tbl.CS_Desc.A15_A00,ax	; entry.
+	mov	Loadall_tbl.CS_Desc.A23_A16,dl
+	smsw	ax
+	mov	Loadall_tbl._Msw,ax
+	mov	Loadall_tbl._Ip,offset Verify_State
+	mov	word ptr cs:stack_ptr,sp	; save SS:SP
+	mov	word ptr cs:stack_ptr[2],ss
+	LOADALL 			; If LOADALL is removed
+	nop				;  from the CPU mask,
+	Print_String	failed		;  then fall through
+	Print_String	Rmvd		;  to here.
+
+Loadall_RET:
+	call	Restore_state
+
+      IFE	USE_386
+	call	set_INT6_vector 	; set our INT6 handler
+	leave
+      ENDIF
+
+	retf
+
+;---------------------------------------------------------------
+  Verify_State: 		; Verify that LOADALL worked
+;---------------------------------------------------------------
+; This is where we land for the first test of '286 LOADALL.
+; The purpose of this test is to verify that all the general
+; purpose registers get loaded correctly.  Specifically, we are
+; testing to verify that all segment registers contain values
+; that don't correspond to the memory addresses they appear to
+; be pointing to.  In other words, we are checking that the
+; that the segment registers have one value, while their
+; associated hidden descriptor cache registers have different
+; values.
+;---------------------------------------------------------------
+	cmp	ax,1111h		; Test AX
+	jne	@F
+	cmp	bx,2222h		; Test BX
+	jne	@F
+	cmp	cx,3333h		; Test CX
+	jne	@F
+	cmp	dx,4444h		; Test DX
+	jne	@F
+	cmp	bp,5555h		; Test BP
+	jne	@F
+	cmp	di,6666h		; Test DI
+	jne	@F
+	cmp	si,7777h		; Test SI
+	jne	@F
+	cmp	sp,8888h		; Test SP
+	jne	short @F
+	mov	ax,cs			; Test CS
+	cmp	ax,1111h
+	jne	short @F
+	mov	ax,ds			; Test DS
+	cmp	ax,2222h
+	jne	short @F
+	mov	ax,es			; Test ES
+	cmp	ax,3333h
+	jne	short @F
+	mov	ax,ss			; Test SS
+	cmp	ax,4444h
+	jne	short @F
+	cmp	word ptr ds:[0],0202h	; Test DS Desc Cache
+	jne	short @F
+	cmp	word ptr es:[0],0303h	; Test ES Desc Cache
+	jne	short @F
+	cmp	word ptr ss:[0],0404h	; Test SS Desc Cache
+	jne	short @F
+	mov	ax,_Data
+	mov	ds,ax
+	mov	es,ax
+
+	mov	ax,cs:stack_ptr[2]
+	mov	ss,ax
+	mov	sp,cs:stack_ptr
+	FARJMP	<@Test1_Pass>,<seg _Text>
+
+;---------------------------------------------------------------
+; Loadall failed the REGISTERs test.
+;---------------------------------------------------------------
+@@:	mov	ax,_Data
+	mov	ds,ax
+	mov	es,ax
+	mov	ax,cs:stack_ptr[2]
+	mov	ss,ax
+	mov	sp,cs:stack_ptr
+	FARJMP	<@F>,<seg _Text>
+
+@@:	Print_String	failed
+	Print_String	RFail
+	jmp	loadall_ret
+
+;---------------------------------------------------------------
+; LOADALL passed
+;---------------------------------------------------------------
+@Test1_Pass:
+	Print_String	passed
+
+;---------------------------------------------------------------
+;
+; TEST2:  Access extended memory while in real mode.
+;
+;  (1) Enable A20
+;  (2) Save contents of extended memory
+;  (3) Write data pattern in extended memory
+;  (4) Set IP & ES descriptor cache pointing to extended memory
+;  (5) LOADALL
+;  (6) Verify results
+;  (7) Restore original data in extended memory
+;
+;----------------------------------------------------------------
+	Print_String	Test_2
+	Call	Enable_Gate20		; Enable extended memory
+	mov	bx,0ffffh		; Point to extended mem.
+	mov	ds,bx			;  as FFFF:0010
+	mov	si,10h
+	mov	di,offset Mem_buffer
+	mov	cx,400h / 2		; 1k data block to test
+	rep	movsw			; save extended memory
+	mov	ax,5aa5h		; test pattern
+	mov	es,bx			; point to extended mem.
+	mov	cx,400h / 2
+	mov	di,10h
+	rep	stosw			; store pattern in mem.
+	mov	ax,_data
+	mov	ds,ax
+	mov	Loadall_tbl._AX,5aa5h
+	mov	Loadall_tbl._CX,400h / 2
+	mov	Loadall_tbl._DI,0h
+	mov	Loadall_tbl._SP,sp	; save SP
+	mov	Loadall_tbl._IP,offset @F
+	mov	Loadall_tbl.ES_Desc.A15_A00,00
+	mov	Loadall_tbl.ES_Desc.A23_A16,10
+	LOADALL
+
+@@:	repz	scasw			; data match?
+	lahf				; get flags
+	mov	bx,_Data
+	mov	ds,bx
+	mov	cx,0ffffh
+	mov	es,cx
+	mov	cx,400h / 2
+	mov	si,offset Mem_buffer
+	mov	di,10h
+	rep	movsw			; restore data
+	mov	es,bx
+	mov	cx,cs:stack_ptr[2]
+	mov	ss,cx
+	FARJMP	<@F>,<seg _Text>
+@@:	sahf				; restore flags
+	jz	@Test2_Pass
+	PRINT_STRING	failed
+	jmp	Loadall_RET
+
+@Test2_Pass:
+	PRINT_STRING	passed
+
+;---------------------------------------------------------------
+;
+; TEST3:  Test that the Present bit gets loaded w/out exception,
+;	  but when a segment is accessed INT13 get generated.
+;
+;	  If LOADALL works even remotely like we think it does,
+;	  then this test will work in REAL MODE!  And as this
+;	  test was originally programmed, it did!  However, I
+;	  was doing my testing by emulating '286 LOADALL with
+;	  '386 LOADALL, where I could use an ICE for debug
+;	  purposes.  The code worked on a '286, but failed on a
+;	  '386!  I found that the '386 fails to clear the
+;	  Present bit in the descriptor cache register when a
+;	  segment register is loaded in real mode.  This is
+;	  obviously a bug in the '386.  Since the CPU is in a
+;	  state that can never be duplicated under any program
+;	  control, except by using LOADALL (Present=0), the bug
+;	  will never be manifested in any production code.  As a
+;	  result, I reprogramed this example to use protected
+;	  mode so it would work on both the '286 and '386.
+;
+;  (1) Prepare GDT & IDT descriptor cache registers and
+;      descriptor tables, & segment selectors
+;  (2) Set protected mode bit, clear Present bit, set IP
+;  (3) Save the 8259 masks, set the PM return address, and set
+;      CMOS shutdown=5
+;  (4) LOADALL
+;  (5) Generate the exception
+;  (6) Reset ES to a valid segment selector & save results of
+;      test.
+;  (7) Reset the CPU, restore 8259 masks, inhibit A20 from the
+;      CPU bus, restore segment registers to real mode values.
+;  (8) Verify the results
+;
+;---------------------------------------------------------------
+; Test Present bit:  verify that P=0 in a descriptor cache
+; register will, even in REAL MODE, will generate an exception
+; 13 when trying to access memory
+;---------------------------------------------------------------
+Test3:	Print_String	Test_3
+	mov	ax,_Data
+	mov	es,ax
+	mov	si,0
+	call	Calc_pm_address
+	mov	DSEG2.Base_A15_A00,ax
+	mov	DSEG2.Base_A23_A16,dl
+	add	ax,offset GDT_286
+	adc	dl,0
+	mov	Loadall_tbl.GDT_Desc.A15_A00,ax
+	mov	Loadall_tbl.GDT_Desc.A23_A16,dl
+	mov	Loadall_tbl.GDT_Desc._Limit,GDT2_Len-1
+	mov	si,offset IDT_286
+	call	Calc_pm_address
+	mov	Loadall_tbl.IDT_Desc.A15_A00,ax
+	mov	Loadall_tbl.IDT_Desc.A23_A16,dl
+	mov	Loadall_tbl.IDT_Desc._Limit,IDT2_Len-1
+	mov	ax,_TEXT
+	mov	es,ax
+	mov	si,0
+	call	Calc_pm_address
+	mov	CSEG2.Base_A15_A00,ax
+	mov	CSEG2.Base_A23_A16,dl
+	mov	Loadall_tbl._CS,CSEG2-GDT_286
+
+	or	Loadall_tbl._MSW,1
+	and	Loadall_tbl.ES_Desc._Type,7fh	; Clear P bit
+	mov	Loadall_tbl._IP,offset @PM_286	; Set IP
+
+	Call	Get_INT_Status		; save PIC masks
+	mov	ax,offset @RM_286	; save real mode return
+	Call	SetPM_RET_addr		;  address
+	Call	Set_shutdown_type	; set shutdown in CMOS
+
+	LOADALL
+
+@PM_286:mov	al,es:[di][2]
+
+	mov	ax,DSEG2-GDT_286
+	mov	es,ax
+	mov	ES:Results,di
+	jmp	RESET_CPU
+
+@RM_286:mov	ax,cs:stack_ptr[2]
+	mov	ss,ax
+	mov	sp,cs:stack_ptr
+	mov	ax,_Data
+	mov	ds,ax
+	mov	es,ax
+	call	Set_INT_Status
+	call	Shut_A20
+
+	mov	di,Results		; If an exception 13 was
+	test	di,1			;  generated, then the
+	jnz	@F			;  low bit of DI is set
+
+
+	Print_String	failed		; Test failed
+	jmp	Loadall_RET
+
+@@:	Print_String	passed		; Test passed
+	jmp	Loadall_RET
+LOADALL_286	endp
+
+
+;---------------------------------------------------------------
+; Minimal exception 13 handler that points past a 4-byte opcode,
+; and sets the lowest bit in DI before returning.
+;---------------------------------------------------------------
+	INT13	label	word
+	push	bp
+	mov	bp,sp
+	add	word ptr [bp][4],4
+	or	di,1
+	pop	bp
+	add	sp,2
+	iret
+
+
+;---------------------------------------------------------------
+; Equates & local variables
+;---------------------------------------------------------------
+; I/O Ports
+;---------------------------------------------------------------
+	Mstrmsk 	equ	021h	; 8259 master mask addr
+	KBC_CTL 	equ	060h	; 8042 control port
+	KBC_STAT	equ	064h	; 8042 status port
+	Cmos_index	equ	070h	; CMOS address port
+	Cmos_data	equ	071h	; CMOS data port
+	Slv_msk 	equ	0a1h	; 8259 slave mask addr
+
+;---------------------------------------------------------------
+; CMOS RAM
+;---------------------------------------------------------------
+	Shut_down	equ	00fh	; CMOS index for shutdwn
+	Type5		equ	5	; Shutdown type-5
+
+;---------------------------------------------------------------
+; Keyboard Controller
+;---------------------------------------------------------------
+	inpt_buf_full	equ	2	; Input buffer full
+	Shutdown_CMD	equ	0feh	; Shutdown CMD for KBC
+	enable_bit20	equ	0dfh	; enable A20 command
+	disable_bit20	equ	0ddh	; disable A20 command
+
+
+;---------------------------------------------------------------;
+  RESET_CPU:; Resets the CPU by sending a shutdown command to
+;	      the keyboard controller.
+;---------------------------------------------------------------
+; Input:   None
+; Output:  None
+; Register(s) modified:  Doesn't matter, the CPU is reset
+;---------------------------------------------------------------
+	mov	al,Shutdown_CMD ; get shutdown command
+	out	KBC_STAT,al	; send command to shutdown CPU
+	cli			; disable interrupts so that
+				;  an INT can't come through
+				;  before the CPU resets
+	hlt			;
+
+
+;---------------------------------------------------------------;
+; SETPM_RET_ADDR:  Save the real-mode return address @ 40:67
+;		   from protected mode.
+;---------------------------------------------------------------
+; Input:   CS:AX = Return address from PM.
+;	   DS	 = Better darn well have a PM segment selector!
+;		   (Or else Kablooie!)
+; Output:  None
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Setpm_ret_addr	proc	near
+;---------------------------------------------------------------
+	push	dx		; save it
+	push	ds
+	mov	dx,ABS0 	;
+	mov	ds,dx
+ASSUME	DS:ABS0
+	mov	DS:PM_Ret_off,ax
+	mov	DS:PM_Ret_seg,cs
+ASSUME	DS:_DATA
+	pop	ds
+	pop	dx
+	ret
+Setpm_ret_addr	endp
+
+
+;---------------------------------------------------------------
+; Get_INT_status:  Saves the master and slave mask register
+;		   contents from the 8259 interrupt controller.
+;---------------------------------------------------------------
+; Input:   DS	   = _DATA SEGMENT
+; Output:  i8259_1 = Status of master device
+;	   i8259_2 = Status of slave device
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Get_int_status	proc	near
+;---------------------------------------------------------------
+	push	ax
+	in	al,mstrmsk	; get master PIC mask
+	mov	i8259_1,al
+	IO_Delay		; I/O delay
+	in	al,slv_msk	; get slave PIC mask
+	mov	i8259_2,al
+	pop	ax
+	ret			; exit
+Get_int_status	endp
+
+
+;---------------------------------------------------------------;
+; Set_INT_status:  Restores the interrupt status of the 8259A
+;		   programmable interrupt controller (PIC).
+;---------------------------------------------------------------
+; Input:   i8259_1 = Status of master device
+;	   i8259_2 = Status of slave device
+;	   DS	   = _DATA SEGMENT
+; Output:  None
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Set_int_status	proc	near
+;---------------------------------------------------------------
+	pushf			; save interrupt flag
+	cli			; we REALLY don't want an int
+				;  to come through while we are
+	push	ax		;  reprogramming the PIC masks
+	mov	al,i8259_1
+	out	mstrmsk,al	; restore master PIC mask
+	IO_Delay		; I/O delay
+	mov	al,i8259_2
+	out	slv_msk,al	; restore slave PIC mask
+	pop	ax
+	popf			; restore interrupt flag
+	ret			; exit
+Set_int_status	endp
+
+
+;---------------------------------------------------------------
+; SET_SHUTDOWN_TYPE:  Set the processor shutdown type-5 in CMOS.
+;---------------------------------------------------------------
+; Input:   None
+; Output:  None
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Set_shutdown_type	proc	near
+;---------------------------------------------------------------
+	pushf			; save interrupt status
+	cli			; disable ints so somebody else
+				;  doesn't do this right now
+	push	ax
+	mov	al,shut_down	; Set shutdown byte
+	out	cmos_index,al	; to shut down x05.
+	IO_Delay		; I/O delay
+	mov	al,Type5	;
+	out	cmos_data,al	; CMOS data port
+	pop	ax
+	popf
+	ret
+set_shutdown_type	endp
+
+
+;---------------------------------------------------------------
+; Enable_gate20:  Turn on A20, and check for errors.
+;---------------------------------------------------------------
+; Input:   None
+; Output:  CY=ERROR
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Enable_gate20 proc	near
+;---------------------------------------------------------------
+	push	ax
+	mov	ah,enable_bit20 	; gate address bit 20 on
+	Call	Gate_A20
+	or	al,al			; command accepted?
+	jz	A20_OK			; go if yes
+	stc				; set error flag
+A20_OK: pop	ax
+	ret				; exit
+Enable_gate20	endp
+
+
+;---------------------------------------------------------------
+; SHUT_A20:  Disable A20 from CPU address BUS.
+;---------------------------------------------------------------
+; Input:   None
+; Output:  CY=ERROR
+; Register(s) modified:  None
+;---------------------------------------------------------------
+  Shut_a20	proc	near
+;---------------------------------------------------------------
+	push	ax
+	mov	ah,disable_bit20	; gate address bit 20 on
+	Call	Gate_A20
+	or	al,al			; was command accepted?
+	jz	A20_Shut		; go if yes
+	stc				; set error flag
+
+A20_Shut:
+	pop	ax
+	ret				; exit
+Shut_a20	endp
+
+
+;---------------------------------------------------------------
+; GATE_A20:  This routine controls a signal which gates address
+;	     line 20 (A20).  The gate A20 signal is an output of
+;	     of the 8042 slave processor (keyboard controller).
+;	     A20 should be gated on before entering protected
+;	     mode, to allow addressing of the entire 16M address
+;	     space of the 80286, or 4G address space of the
+;	     80386 & 80486.  It should be gated off after
+;	     entering real mode -- from protected mode.
+;---------------------------------------------------------------
+; Input:   AH = DD ==> A20 gated off (A20 always 0)
+;	   AH = DF ==> A20 gated on  (CPU controls A20)
+; Output:  AL = 0  ==> Operation successful
+;	   AL = 2  ==> Operation failed, 8042 can't accept cmd
+; Register(s) modified:  AX
+;---------------------------------------------------------------
+  Gate_a20	proc	near
+;---------------------------------------------------------------
+	pushf			; save interrupt status
+	cli			; disable ints while using 8042
+	Call	Empty_8042	; insure 8042 input buffer empty
+	jnz	A20_Fail	; ret: 8042 unable to accept cmd
+	IO_Delay		; I/O Delay
+	mov	al,0D1h 	; 8042 cmd to write output port
+	out	KBC_STAT,al	; output cmd to 8042
+	Call	Empty_8042	; wait for 8042 to accept cmd
+	jnz	A20_Fail	; ret: 8042 unable to accept cmd
+	mov	al,ah		; 8042 port data
+	out	KBC_CTL,al	; output port data to 8042
+	Call	Empty_8042	; wait for 8042 to port data
+	push	cx		; save it
+	mov	cx,14h		;
+@DLY:	IO_Delay		; Wait for KBC to execute the
+	loop	@DLY		;  command.  (about 25uS)
+	pop	cx		; restore it
+
+A20_Fail:
+	popf			; restore flags
+	ret
+Gate_a20	endp
+
+
+;---------------------------------------------------------------
+; EMPTY_8042:  This routine waits for the 8042 buffer to empty.
+;---------------------------------------------------------------
+; Input:   None
+; Output:  AL = 0, 8042 input buffer empty:	ZF
+;	   AL = 2, Time out; 8042 buffer full:	NZ
+; Register(s) modified:  AX
+;---------------------------------------------------------------
+  Empty_8042	proc	near
+;---------------------------------------------------------------
+	push	cx		; save CX
+	xor	cx,cx		; CX=0:  timeout value
+
+Try_KBC:
+	IO_Delay		;
+	in	al,KBC_STAT	; read 8042 status port
+	and	al,inpt_buf_full; input buffer full flag (D1)
+	loopnz	Try_KBC 	; loop until input buffer empty
+				;   or timeout
+	pop	cx		; restore CX
+	ret
+Empty_8042	endp
+
+
+;---------------------------------------------------------------
+; CALC_PM_ADDRESS:  Calculate 32-bit protected mode address.
+;		    Used for building descriptor tables.
+;---------------------------------------------------------------
+; Input:   ES:SI = Real mode address
+; Output:  DX:AX = 32-bit linear address
+; Register(s) modified:  AX, DX
+;---------------------------------------------------------------
+  Calc_pm_address	proc	near
+;---------------------------------------------------------------
+	mov	ax,es		; point to control block
+	xor	dh,dh		; clear upper register
+	mov	dl,ah		; build high byte of 32-bit addr
+	shr	dl,4		; use only high nibble from (AX)
+	shl	ax,4		; strip high nibble from segment
+	add	ax,si		; add GDT offset for low word
+	adc	dx,0		; adj high byte if CY from low
+	ret			; back to calling program
+calc_pm_address endp
+
+
+;---------------------------------------------------------------
+  Save_state	proc	near	; Save the machine state before
+;				; LOADALL
+;---------------------------------------------------------------
+	push	ax
+	push	ds
+	mov	si,0
+	mov	di,offset Machine_State.ES_Desc
+	mov	ax,3000h		; ES descriptor
+	mov	ds,ax
+	mov	bx,0303h
+	movsw
+	mov	word ptr [si-2],bx
+
+	add	ax,1000h		; SS descriptor
+	add	bx,0101h
+	mov	si,0
+	add	di,0ah
+	mov	ds,ax
+	movsw
+	mov	word ptr [si-2],bx
+	sub	ax,2000h		; DS descriptor
+	sub	bx,0202h
+	mov	si,0
+	add	di,4
+	mov	ds,ax
+	movsw
+	mov	word ptr [si-2],bx
+	pop	ds
+
+	smsw	ax
+	mov	Machine_State._Msw,ax
+	pushf
+	pop	ax
+	mov	Machine_State._Flags,ax
+	pop	ax
+	mov	Machine_State._DI,di
+	mov	Machine_State._SI,si
+	mov	Machine_State._BP,bp
+	mov	Machine_State._BX,bx
+	mov	Machine_State._DX,dx
+	mov	Machine_State._CX,cx
+	mov	Machine_State._AX,ax
+	mov	ax,ds
+	mov	Machine_State._DS,ax
+	mov	ax,es
+	mov	Machine_State._ES,ax
+	ret
+Save_state	endp
+
+
+;---------------------------------------------------------------
+  Restore_state proc	near	; Restore the machine state
+;				; after LOADALL
+;---------------------------------------------------------------
+	mov	ax,_data
+	mov	ds,ax
+	mov	ax,3000h		; ES
+	mov	es,ax
+	mov	si,offset Machine_State.DS_Desc
+	mov	di,0
+	movsw
+	add	ax,1000h		; SS
+	add	si,0ah
+	mov	di,0
+	mov	es,ax
+	movsw
+	sub	ax,2000h		; DS
+	add	si,4
+	mov	di,0
+	mov	es,ax
+	movsw
+	mov	ax,Machine_State._ES
+	mov	es,ax
+	mov	ax,Machine_State._DS
+	mov	ds,ax
+	mov	ax,Machine_State._Flags
+	push	ax
+	popf
+	mov	ax,Machine_State._Msw
+	lmsw	ax
+	mov	ax,Machine_State._AX
+	mov	cx,Machine_State._CX
+	mov	dx,Machine_State._DX
+	mov	bx,Machine_State._BX
+	mov	bp,Machine_State._BP
+	mov	si,Machine_State._SI
+	mov	di,Machine_State._DI
+	ret
+Restore_State	endp
+
+
+      IFE	USE_386
+;---------------------------------------------------------------
+; Include the CPU_TYPE procedure & LOADALL test
+;---------------------------------------------------------------
+	Include CPU_TYPE.ASM
+      ENDIF
+
+_text	ends
+
+
+	stack	segment para stack 'stack'
+	db	400h dup (0)
+	stack	ends
+
+	end	LOADALL_286

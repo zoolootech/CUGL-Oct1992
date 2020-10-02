@@ -1,0 +1,219 @@
+/*
+	Supplementary routines for archive program
+	Adapted from supp.bds May 4, 1982 OSCAR GOLDMAN
+
+	source:  ar1/util.bds
+	version: February 24, 1983
+*/
+
+#include "bdscio.h"
+#include "dio.h"
+#include "date.h"
+
+#define EOS 0
+
+
+/* Print "can't open <filename>" and exit. */
+
+cant(filename)
+char *filename;
+{
+	fprintf(STD_ERR, "can not open %s\n", filename);
+	exit();
+}
+
+
+/* Print an error message and exit. */
+
+error(message)
+char *message;
+{
+	fprintf(STD_ERR, "%s\n", message);
+	exit();
+}
+
+
+/*
+	Get a line from the indicated device.
+	Terminate the line with a NEWLINE character.
+	Return the number of characters INCLUDING the NEWLINE.
+	Thus, return 0 on end-of-file.
+*/
+
+int
+get_line (str, fd)
+char *str;
+int fd;
+{
+	/* abort on control-c at console */
+	chkkey();
+
+	if (fgets(str, fd) == 0) {
+		return 0;
+	}
+	else {
+		return strlen(str);
+	}
+}
+
+
+/*
+	Return pointer to current time and date.
+	This version just prompts the console for a string and returns it.
+	Modify this if desired to make use of clock or calendar hardware.
+	Just make sure the sting fits into sys_date (see date.h).
+*/
+
+char *
+getnow ()
+{
+	char *static;
+
+	/* kludge because BDS C lacks true static variables */
+	static = "";
+
+	/*
+		get the date and time from the console only on the FIRST
+		call to this routine.  Whatever is typed will be put
+		into the header fields of the archive.
+	*/
+	
+	if (*static == 0) {
+		*static = 1;
+		fprintf(DEV_TTY, "\nEnter mm/dd/yy <2 spaces> hh:mm:ss  \n");
+		gets(sys_date);
+		if (sys_date [0] == EOS) {
+			sys_date [0] == '\n';
+			sys_date [1] == EOS;
+		}
+	}
+	return sys_date;
+}
+
+
+/*
+	Get nonblank word from in[] into out[];
+	Return the number of characters scanned over.
+*/
+
+char *
+getwrd (in, out)
+char *in, *out;
+{
+	int count;
+
+	/* skip blanks and keep count */	
+	count = 0;
+	while (*in == ' ' || *in == '\t') {
+		in++;
+		count++;
+	}
+
+	while (*in != EOS && *in != ' ' && *in != '\t' && *in != '\n') {
+		*out++ = *in++;
+		count++;
+	}
+	*out = EOS;
+	return count;
+}
+
+
+/* Convert a string to all lower case */
+
+lower(string)
+char *string;
+{
+	while (*string) {
+		*string = tolower( (*string) & 0x7f);
+		string++;
+	}
+}
+
+
+/*
+	Create a temporary file name of the form TEMP.$n$
+	for a given value of n
+*/
+
+mkunik(n,name)
+int	n;
+char *name;
+{
+	strcpy(name, "TEMP.$ $");
+	name [6] = n%10 + '0';
+}
+
+
+/*
+	Put a line to the indicated device.
+	Do NOT end the line with a NEWLINE character.
+*/
+
+put_line (line, fd)
+char *line;
+int fd;
+{
+	fprintf (fd, "%s", line);
+}
+
+
+/* Print a warning message but continue. */
+
+remark(message)
+char *message;
+{
+	fprintf(STD_ERR, "%s\n", message);
+}
+
+
+/*
+	Skip blanks and tabs.
+	Return pointer to next nonblank, non tab character.
+*/
+
+char *
+skipbl(line)
+char *line;
+{
+	while (*line == ' ' || *line == '\t') {
+		line++;
+	}
+	return line;
+}
+
+
+/*
+	Saves a string somewhere, using dynamic storage.
+	return the pointer to location.
+*/
+
+strsav (s)
+char *s;
+{
+	int	j;
+	char	*p;
+
+	j = 0;
+	p = alloc(strlen(s) +1);	/* store the string here */
+	if (p == 0) {
+		error("in strsav:  no more dynamic space.");
+	}
+
+	strcpy(p,s);
+	return p;
+}
+
+
+/* Convert a string to all upper case (for file system) */
+
+upper(string)
+char *string;
+{
+	while (*string) {
+		*string = toupper( (*string) & 0x7f);
+		string++;
+	}
+}
+ystem) */
+
+upper(strin

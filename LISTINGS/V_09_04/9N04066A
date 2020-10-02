@@ -1,0 +1,208 @@
+#include <dos.h>
+#include <stdio.h>
+#define   COM_PORT          2   /* serial port definitions for COM2 */
+#define   COMPARMS       0x83   /* comm. parameters for 1200-n-8-1  */
+#include "serial.h"  /* definitions and constants for this program  */
+
+
+main()      /* main program initializes the hardware, then enters a */
+{        /* loop where it moves characters from receive serial port */
+int ch;     /* to screen, and from keyboard to transmit serial port */
+
+  install();      /* install interrupt handler, initialize COM port */
+  atexit(cleanup);/* post removal routine to execute at program end */
+
+  while( 1 ) {           /* main program loop, repeat over and over */
+
+    while ((ch = sgetch()) != S_EOF) {  /* if serial char available */
+      putch(ch);                        /* put it on the screen     */
+      if (translation && ch == '\r')    /* if translation in effect */
+        putch('\n');                    /* add line feeds to C/R's  */
+    }
+
+    if (kbhit()) { /* keyboard handler, execute if key has been hit */
+
+      ch = getch();         /* read the character from the keyboard */
+      if (ch == 0)          /* if zero, next character is scan code */
+        switch (ch = getch()) { /* read scan code from the keyboard */
+
+          case 0x12:                      /* if character is Alt-E  */
+            echo = !echo;                 /* toggle the screen echo */
+            if (echo) printf("\nEcho on.\n");
+            else printf("\nEcho off.\n");
+            break;
+
+          case 0x14:                      /* if character is Alt-T  */
+            translation = !translation;   /* toggle the translation */
+            if (translation) printf("\nTranslation on.\n");
+            else printf("\nTranslation off.\n");
+            break;
+                                          /* if character is Alt-S  */
+          case 0x1f:                      /* print the modem status */
+            ch = inportb(ACE_MODEM_STAT_REG); /* get current status */
+            printf("\nStatus:  DCD=%1d DSR=%1d CTS=%1d\n",
+              (ch & DCD) ? 1:0, (ch & DSR) ? 1:0, (ch & CTS) ? 1:0);
+            if (break_detect || frame_error
+                    || char_overrun || parity_error) {
+                printf("Errors:\n");                /* error report */
+                printf("  overrun      = %4d\n", char_overrun);
+                printf("  frame error  = %4d\n", frame_error );
+                printf("  break detect = %4d\n", break_detect);
+                printf("  parity error = %4d\n", parity_error);
+                break_detect = frame_error =
+                    char_overrun = parity_error = 0;
+            }
+            else printf("No errors.\n");
+            if (echo) printf("Echo on.\n");
+            if (translation) printf("Translation on.\n");
+            break;
+
+          case 0x2d:                       /* if character is Alt-X */
+            exit();                        /* terminate the program */
+        }
+      else {     /* otherwise, the character was a normal character */
+        sputch(ch);         /* so send it to the serial transmitter */
+        if (echo) {                      /* if echo is on           */
+          putch(ch);                     /* echo char to the screen */
+          if (ch == '\r') putch('\n');   /* add line feeds to C/R's */
+        }
+      }
+    }                                    /* end of keyboard handler */
+
+    if (ring_detect) {     /* if ring is detected, beep the speaker */
+      putch('\a');         /* requires modem cable pin 22 connected */
+      ring_detect = 0;     /* then reset ring detect for next time  */
+    }
+  }
+}
+
+
+
+void interrupt serial_isr(void)   /* interrupt service routine      */
+{                                 /* executed when receive data is  */
+char ch;                          /* available, or when line status */
+int temp_index;                   /* or modem status changes        */
+
+  enable();                       /* re-enable the other interrupts */
+
+  ch = inportb(ACE_INT_IDENT_REG); /* examine IIR for cause of int. */
+  switch (ch) {
+
+    case 6:                            /* if line status interrupt  */
+      ch = inportb(ACE_LINE_STAT_REG); /* read line status register */
+      if (ch & PE) parity_error++;     /* then increment the error  */
+      if (ch & OE) char_overrun++;     /* counters according to     */
+      if (ch & FE) frame_error++;      /* which error bits are set  */
+      if (ch & BI) break_detect++;
+      inportb(ACE_DATA_REG);  /* read the data register to empty it */
+      break;
+
+    case 4:                         /* if received data available   */
+      ch = inportb(ACE_DATA_REG);   /* read character from the ACE  */
+      temp_index = input_index + 1; /* temporary value              */
+      if (temp_index >= QUELEN)     /* test for index past buf. end */
+        temp_index = 0;             /* if so, reset to beginning    */
+      if (temp_index != output_index) { /* test for queue overflow  */
+        queue[temp_index] = ch;         /* put character into queue */
+        input_index = temp_index;       /* and update the index     */
+      }              /* if the queue overflows, characters are lost */
+      break;
+
+    case 0:                            /* if modem status interrupt */
+      ch = inportb(ACE_MODEM_STAT_REG);   /* read modem status reg. */
+      if (ch & DCTS) {                  /* if clear to send changed */
+                     /* a routine to handle CTS changes may go here */
+      }
+      if (ch & DDSR) {                 /* if data set ready changed */
+                     /* a routine to handle DSR changes may go here */
+      }
+      if (ch & TERI) {       /* if trailing edge ring indicator was */
+        ring_detect = 1;           /* asserted, turn on ring detect */
+      }
+      if (ch & DDCD) {            /* if data carrier detect changed */
+                     /* a routine to handle DCD changes may go here */
+      }
+  }
+
+  outportb(PIC_CTL_REG, NON_SPEC_EOI);         /* finally, send the */
+                           /* non-specific EOI to re-enable the PIC */
+}
+
+
+
+int sgetch(void)   /* read a character from the serial input buffer */
+{
+char ch;
+int temp_index;     /* temporary index value avoids a conflict with */
+                    /* interrupt routine updating the same variable */
+
+  if (output_index != input_index) {  /* test for char. available   */
+    temp_index = output_index + 1;    /* increment temporary index  */
+    if (temp_index >= QUELEN)         /* is index past buffer end ? */
+      temp_index = 0;                 /* if so, reset to beginning  */
+    ch = queue[temp_index];           /* get character from buffer  */
+    output_index = temp_index;        /* update the output index    */
+    return(ch);                       /* character is return value  */
+  }
+  else return(S_EOF);   /* if no chars available, return serial EOF */
+}
+
+
+
+void sputch(char ch)    /* output a character to serial transmitter */
+{
+  while( inportb(ACE_LINE_STAT_REG) & THRE == 0 ) /* buffer empty ? */
+    ;             /* if transmit buffer not empty, wait, do nothing */
+  outportb(ACE_DATA_REG, ch);  /* when empty, send char to the 8250 */
+}
+
+
+
+void install(void)    /* installs the interrupt service routine and */
+{                 /* initializes the 8250 for active communications */
+char ch;
+
+  bioscom(0, COMPARMS, COM_PORT - 1); /* set communications params. */
+
+  /* enable ACA modem status, line status & receive data interrupts */
+  outportb(ACE_INT_ENB_REG, 0xd); /* enable modem/line/rcvdata ints */
+  inportb(ACE_DATA_REG);          /* empty receive data register    */
+  inportb(ACE_LINE_STAT_REG);     /* clear the line status register */
+
+  old_vector = getvect(COM_INT_NUM);   /* save previous int. vector */
+  setvect(COM_INT_NUM, *serial_isr);   /* set vector to our routine */
+
+  ch = inportb(PIC_INT_MASK_REG);   /* get current interrupt mask   */
+  ch &= IRQ_MASK;                   /* unmask our IRQ (set it to 0) */
+  outportb(PIC_INT_MASK_REG, ch);   /* and write it back to the PIC */
+
+  outportb(ACE_MODEM_CTL_REG, 0xb); /* set RTS, DTR to enable modem */
+   /* and turn on OUT2 to enable the 8250's IRQ interrupt to system */
+
+  printf("\nCOM%d initialized.\n", COM_PORT);    /* sign-on message */
+}
+
+
+
+void cleanup(void)   /* routine resets the serial port at exit time */
+{
+char ch;
+
+  outportb(ACE_INT_ENB_REG, 0);      /* disable all 8250 interrupts */
+
+  outportb(ACE_MODEM_CTL_REG, 0);/* clear RTS, DTR to disable modem */
+      /* and turn off OUT2 to disable the 8250's IRQ int. to system */
+
+  ch = inportb(PIC_INT_MASK_REG);   /* get current interrupt mask   */
+  ch |= !IRQ_MASK;                  /* mask our IRQ (set it to 1)   */
+  outportb(PIC_INT_MASK_REG, ch);   /* and write it back to the PIC */
+
+  setvect(COM_INT_NUM, old_vector); /* restore previous int. vector */
+
+  printf("\nProgram terminated.\n\n");          /* sign-off message */
+}
+
+
+
+/* end of program */
+

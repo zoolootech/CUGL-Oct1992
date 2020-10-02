@@ -1,0 +1,99 @@
+#include	"sm.h"
+#include	<stdio.h>
+#include	<string.h>
+#include	<conio.h>
+#include	<io.h>
+#include	<fcntl.h>
+#include	<sys\stat.h>
+#include	<stdlib.h>
+
+/******************************************************************
+*	Output speech file stored using record().
+*
+*	Parameters:
+*		Filename to output.
+*
+*	Notes:
+*		1.	This routine will output any file, using any compression
+*			scheme supported by Covox.  It outputs the entire file.
+*
+*		2.	Compiled using TurboC's large memory model.
+*
+*		3.	Requires sm.h and cvxtlcc.lib, supplied by Covox.
+*
+*		4.	As written, the routine outputs to the Voice Master speaker.
+*
+*	Copyright:
+*		Original code by William H. Roetzheim (619) 669-6970
+*		Copyright 1990 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************/
+
+void main (int argc, char *argv[])
+{
+	int		i;
+	long	lLength;
+	char	*lpBuffer;
+	char	szFileName[15];
+	int		nFile;
+
+	if (argc != 2)
+	{
+		printf ("\nsyntax:  Say filename");
+		exit (-1);
+	}
+
+	/* test for extension in filename */
+	for (i = 0; i < strlen (argv[1]); i++)
+	{
+		if (argv[1][i] == '.')
+		{
+			printf ("\n File name should not have an extension.");
+			exit (-1);
+		}
+	}
+
+	strcpy (szFileName, argv[1]);
+	strcat (szFileName, ".v3s");
+	printf ("\nOpening %s.", szFileName);
+	nFile = open (szFileName, O_BINARY | O_RDONLY, S_IREAD | S_IWRITE);
+	if (nFile == -1)
+	{
+		printf ("\nError opening file.");
+		exit (-1);
+	}
+
+	lLength = filelength(nFile);
+	if (lLength > 0xFFFF)
+	{
+		printf ("\nFile too large.");
+		exit (-1);
+	}
+
+	lpBuffer = malloc ((size_t) lLength);
+	lseek (nFile, 0, SEEK_SET);
+	if (read (nFile, lpBuffer, (unsigned) lLength) != lLength)
+	{
+		printf ("\nError reading file.");
+		exit (-1);
+	}
+
+	/* The four main parameters for this function are as follows */
+	/* 		lpBuffer points to the start of the buffer to be output */
+	/*			for PCM files (not compressed), this can be a location */
+	/*			within the file.  For compressed data, it MUST be the start */
+	/*			of the buffer so the header can be found. */
+	/*		lLength is the number of samples to be output.  For all files */
+	/*			(including compressed files), this can be less than the full */
+	/*			sample size. */
+	/*      The fourth parameter (second zero here) is the port number */
+	/*			Of particular interest are 0 for Voice Master (factory default) */
+	/*			4 for LPT1: as used by the Speech Thing and the Sound Master, and */
+	/*			8 for the PC's internal speaker. */
+	if (say (lpBuffer, lLength, 0, 0, 0, 0) == 1)
+	{
+		printf ("\nError during playback.");
+	}
+	close (nFile);
+	free (lpBuffer);
+}

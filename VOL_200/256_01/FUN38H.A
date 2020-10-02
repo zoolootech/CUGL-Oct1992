@@ -1,0 +1,66 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     FUN38H.A    Get Country Data
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          int FUN38H(country, buf, &_carryf)
+;	-----           int country;
+;	                char *buf, *_carryf;
+;
+;	                Where country = 0 means return information
+;	                about current settings.   If country > 0ffh
+;	                then this value must be placed in BX instead
+;	                of AL and 0ffh must be placed in AL.   The
+;	                country code is usually the International
+;	                Telephone prefix code.   On success the 
+;	                date/time data is returned in the 32-byte
+;	                buffer.
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC FUN38H_
+
+FUN38H_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; get country code
+	mov	dx,[bp+6]	; get address of buffer
+	mov	ah,38h	; the function No.
+	mov	al,0ffh	; ready for extended code
+	cmp	bx,0feh	; see if we should use AL for code
+	ja	FUN38H_INT
+	mov	al,bl	; must be small code No.
+	xor	bx,bx	; zero out BX
+FUN38H_INT:
+	int	21h
+	jc	FUN38H_ERROR	; do this if error
+	jmp	FUN38H_QUIT	; else terminate normally
+FUN38H_ERROR:
+	mov	si,[bp+8]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+FUN38H_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

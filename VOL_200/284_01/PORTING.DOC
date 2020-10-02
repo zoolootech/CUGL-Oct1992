@@ -1,0 +1,118 @@
+Porting Portable 8080 system to other systems
+
+
+Introduction
+
+	Although this program was carefully created considering the 
+	portability, the porting of the program requires more than 
+	recompiling the program.
+	In this documentation, topics important to the porting are 
+	explained.
+	
+1. The nature of compilers
+
+	The characteristics of a C compiler changes as the system changes.
+	Particularly, the difference of data type and expression between
+	two systems is very significant.
+	You need to make changes in the program with taking special care 
+        because the program is very sensitive with the data expression on
+	memory. The include file, "compile.h" is prepared for this purpose.
+	You need to appropriately set macros defined in this file.
+
+	In multi-byte integers, when a least significant byte locates first 
+	in memory, it is called Little Indian, when a most significant byte
+	locates first, it is called Big Indian.
+	Intel micro processors and DEC VAX-11 use a Little Indian scheme
+	whereas Motolora processors and IBM370 architecture use Big Indian
+	scheme.
+	There are macros, LITTLEINDEAN and BIGINDEAN in compile.h.
+	You need to preset these for your machine.
+
+	In compile.h, there are four other definitions that define
+	basic data type: BYTE(1 byte), WORD(2 bytes), BOOL(1 bit) and EXTRA
+	(3 bytes)(all are unsigned integer).
+	Although the size of BYTE and WORD must be 1 byte and 2 bytes 
+	respectively, the size of BOOL and EXTRA can be longer, so please 
+	select fast access one.
+
+	Besides the points discussed above, it is assumed that memory is 
+	addressed by byte unit (1 byte represents 8 bits), a number is 
+	expressed in two's complement .. etc.
+	Although this assumption doesn't cause any problems, the situation
+	could be changed in the future.
+
+2. Low-level Input/Output (BIOS)
+
+	In portable 8080, a module corresponding to BIOS for CP/M is written 
+	in C.
+	You need to create this part suitable for your host operating system
+	because it plays an important role as interface between CP/M 
+	and the host operating system.
+
+	The file, "bios.c" performs four things: simulation of direct
+	I/O, access to a virtual disk, access to a physical disk, character
+	I/O. In the current version, the program is created based on the 
+	assumption
+	of the combination of MS-DOS and NEC PC-9801. Turbo C special features
+	are used to call ROM-BIOS in NEC.
+
+	Direct I/O access simulates 8080 instructions IN and OUT and 
+	has nothing to do with CP/M. When you create functions that simulate
+	devices attached to an I/O port, you can execute special programs.
+	This module includes an IoMap table, in which you can set a validity of
+	each port for all 256 ports. Currently, all ports are set as invalid.
+	When you set a macro INOUT in config.h to 1, this feature is available.
+
+	Access to virtual disk simulates a floppy disk drive under virtual 
+	CP/M. In the virtual CP/M, a floppy disk under CP/M becomes a file.
+	The virtual CP/M also allows you to access up to 8 disk drives 
+	assigning each disk drive to a file in the host operating system.
+	The contents of each file is the same as an 8 inch single sided
+	single density when it is dumped from the first sector of the disk.
+	That part is written using only UNIX standard functions. Therefore,
+	would be no trouble to port to the other operating system.
+
+	Access to a physical disk allows you to assign one of  eight virtual
+	disk drives to a physical eight inch disk drive.
+	This feature is intended to transfer files between other real CP/Ms.
+	This part of the program is hardware dependent because it uses
+	a sector-address scheme.
+	In the current version, it is set in such a way that it calls ROM-BIOS
+	in NEC PC-9801. When using other hardware, the program needs to be
+	rewritten.
+
+	The character I/O part performs CP/M console, printer output, and
+	auxiliary input and output. They make use of system calls 
+	in the host operating system. In the current MS-DOS version, they are
+	mapped to four file handles: 0, 1, 3 and 4.
+	As for the console input, you have to handle a raw character input
+	, that is, no echo and no buffering, and control C character under
+	MSDOS, moreover, newline character under UNIX.
+
+3. Command Line Interface and Boot File
+
+	To start portable 8080, you need to give program options in the command
+	line. Although the current version distinguishes lower-case letters from
+	upper-case letters in the option characters, some systems don't.
+	In that case, you need to make a change to the program so that 
+	all lower-case letters are converted to upper-case letters (The same
+	is true for console output. CP/M application programs are designed in 
+	such a way that it can run with input of upper-case letters.)
+
+	Some options that require a file name have a default file name.
+	You need to use a default file name suitable for the host operating
+	system. All default filenames are defined in "mon.h".
+
+	Among default files, there is a boot file. This is the file that
+	includes a program read into 8080 when the portable 8080 starts.
+	In the current version, the boot program is recorded in the Intel
+	hexa format. If there is a better format for the host operating 
+	system, you might make a change. The boot file is read every time
+	CP/M does a warm boot. When you have a slow file access system or
+	small CPU, you need to make a change such as changing a format of the 
+	boot file, which will be processed faster or modifying the program
+	so that it will record a boot image in the first place and it will 
+	not have to read the boot file from the second time.
+
+
+

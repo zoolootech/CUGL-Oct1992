@@ -1,0 +1,118 @@
+
+
+long FAR PASCAL ExampleWndProc( hWnd, uMsg, wParam, lParam)
+HWND    	hWnd;
+unsigned uMsg; 
+WORD		wParam; 
+LONG		lParam;
+{ 
+LONG lReply; 
+RECT rRect;
+
+if ( NW_MessageFilter( hWnd, message, wParam, lParam (LONG FAR *) &lReply) )
+	return( lReply);
+
+switch ( message)
+	{
+	
+	case WM_PAINT:
+		...
+		/* normal paint processing */
+		...
+		break;
+
+	case WM_COMMAND:
+		switch ( wParam)
+			{
+			case WM_CLOSE:
+				ShowWindow( hWnd, SW_HIDE);
+				UpdateWindow( hWnd);
+				GetWindowRect( hWnd, (LPRECT) rRect);
+				OMF_Closing (ghOMF, (LPRECT) rRect);
+				break;
+
+			/* other menu command processing */
+			...
+			}
+
+	case WM_SYSCOMMAND:
+		switch ( wParam & 0xFFF0)
+			{
+			case SC_MAXIMIZE:
+				if ( isZoomed( hWnd))
+					NW_Restore( hWnd);
+				else
+					NW_Maximize( hWnd);
+				break;
+
+			case SC_RESTORE:
+				NW_Restore( hWnd);
+				break;
+			}
+		break;
+
+	case WM_OMF:
+		return( MessageFromOMF( hWnd, wParam, lParam) );
+
+	default:
+		return( DefWindowProc( hWnd, message, wParam, lParam);
+	}
+return( 0L);
+}
+
+long PASCAL MessageFromOMF( hWnd, wParam, lParam)
+HWND 	hWnd;
+WORD 	wParam;
+LONG		lParam;
+{
+RECT rRect;
+
+switch( wParam)
+	{
+	case CREATE_OMF:
+		...
+		/* Initialize object. Read in data (gFile has file root) */
+		...
+		return( CO_OK);	/* CO_ERROR if failed */
+
+	case OPEN:
+		...
+		/* set title text, other window init */
+		...
+		GetWindowRect( hWnd, (LPRECT) &rRect);
+		OMF_Opening( ghOMF, (LPRECT) &rRect);
+		NW_Restore( hWnd);
+		UpdateWindow( hWnd);
+		break;
+
+	case HAS_METHOD:
+		switch( (unsigned) LOWORD( lParam))
+			{
+			case CREATE_OMF:
+			case OPEN:
+			case TERMINATE:
+			case DIE_PLEASE:
+				return( METHOD_PRESENT);
+
+			default:
+				return( NO_METHOD);
+			}
+
+	case TERMINATE:
+		...
+		/* save data, state, etc. */
+		...
+		OMF_Term( ghOMF);
+		return( TERMINATE_OK);
+
+	case DIE_PLEASE:
+		DestroyWindow( hWnd);
+		PostQuitMessage( 0);
+		break;
+
+	}
+return( 0L);
+}
+...
+/* end of code fragment */
+

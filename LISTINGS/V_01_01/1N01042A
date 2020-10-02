@@ -1,0 +1,112 @@
+        PAGE ,132
+
+;  Figure 5
+;
+;  Print spooler routines
+;
+;  All rountines return an error code in AX as follows:
+;
+;       0000 - No error
+;       0001 - Function invalid
+;       0002 - File not found
+;       0003 - Path not found
+;       0004 - Too many open files
+;       0005 - Access denied
+;       0008 - Queue full
+;       0009 - Spooler busy
+;       000C - Name too long
+;       000F - Invalid drive
+;       FFFF - Spooler not installed
+
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros, e.g.
+                                        ;MASM /Dmemodel=LARGE /Dlang=C
+
+        .DATA
+
+packet  db      0
+p_ofs   dw      ?
+p_seg   dw      ?
+
+        .CODE
+
+;
+;  Call this to add a file to the PRINT.COM spool queue
+;
+
+spoolcheck:
+        mov     ax,0100h                ;Is spooler installed?
+        int     2Fh
+        cmp     AL,0FFh
+        ret
+
+SpoolAdd        PROC    USES ES DX, filename:PTR
+        call    spoolcheck
+        jz      addin                   ;Yes, continue
+        mov     ax,-1                   ;No, return an error
+        jmp     addbye
+addin:
+        IF      @DataSize               ;Put filename pointer in packet
+        les     dx,filename
+        mov     p_seg,ES
+        mov     p_ofs,DX
+        ELSE
+        mov     p_seg,DS
+        mov     dx,filename
+        mov     p_ofs,dx
+        ENDIF
+        mov     AX,0101h                ;Call the spooler
+        mov     DX,offset packet
+        int     2Fh
+        jc      addbye                  ;Error?
+        xor     AX,AX                   ;No, return zero
+addbye:  
+        ret                             ;Yes, return error code
+
+SpoolAdd        ENDP
+
+;
+;  Call this to delete a file or files from the PRINT.COM spool queue
+;
+
+SpoolDel        PROC    USES DX, filename:PTR
+        call    spoolcheck
+        jz      delin                   ;Yes, continue
+        mov     ax,-1                   ;No, return an error
+        jmp     delbye;
+delin:
+        IF      @DataSize               ;Put filename pointer in packet
+        lds     dx,filename
+        ELSE
+        mov     dx,filename
+        ENDIF
+        mov     AX,0102h                ;Call the spooler
+        int     2Fh
+        jc      delbye                  ;Error?
+        xor     AX,AX                   ;No, return zero
+delbye:  
+        ret                             ;Yes, return error code
+
+SpoolDel        ENDP
+
+;
+;  Call this to cancel all pending files from the PRINT.COM spool queue
+;
+
+SpoolCan        PROC
+        call    spoolcheck
+        jz      canin                   ;Yes, continue
+        mov     ax,-1                   ;No, return an error
+        jmp     canbye
+canin:
+        mov     AX,0103h                ;Call the spooler
+        int     2Fh
+        jc      canbye                  ;Error?
+        xor     AX,AX                   ;No, return zero
+canbye:  
+        ret                             ;Yes, return error code
+
+SpoolCan        ENDP
+
+        end

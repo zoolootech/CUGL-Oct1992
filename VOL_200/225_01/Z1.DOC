@@ -1,0 +1,161 @@
+HEADER:         ;
+TITLE:          ;
+VERSION:        ;
+
+DESCRIPTION:    Describes Z1.COM in terms of changes to Z80MR.COM;
+
+KEYWORDS:       ;
+SYSTEM:         CP/M-80, V2.2;
+FILENAME:       Z1.DOC;
+WARNINGS:       Describes only the new features.  Original Z80MR and
+                associated doc files available on disk #B25 from Micro
+                Cornucopia Magazine;
+
+SEE-ALSO:       Z1.COM;
+AUTHORS:        Neil Koozer;
+COMPILERS:      ;
+
+Z1.DOC   by   Neil R. Koozer, Kellogg Star Rt. Box 125, Oakland, OR 97462
+
+     Z1.COM  is  my own modification of Z80MR.COM.   The original  Z80MR  and 
+associated  DOC files are on disk #B25 from Micro Cornucopia  Magazine,  P.O. 
+box 223, Bend, OR 97709.  The following is a description of the changes:
+
+LIST  C.   Using  the  C option causes the assembler to produce  a  COM  file 
+directly  without producing a HEX file.   In this mode,  the gaps left by ORG 
+and  DS statements are filled with 00's except at the beginning of the  file.  
+If  you  put a bunch of buffers at the beginning,  they will not add  to  the 
+stored code in the COM file.  See the source listing Z1.AZM for an example of 
+using an up-loader to put the code where it runs.
+
+LIST P.  Using the P option invokes single-pass operation.  In order for LIST 
+P  to be recognized,  it must be in the very first line of the  source  file.  
+The  regular  labels  can't  be used for  forward  reference  in  single-pass 
+operation,  so  the  source  needs  to be arranged  like  a  Pascal  program.  
+Subroutines,  jump destinations,  and data objects need to be defined  before 
+they are used.   In the few places where this can not be done, we use psuedo-
+labels (see below) for forward references.
+
+PSUEDO-LABELS.   These are abbreviated symbols intended for use in very short 
+jumps and for forward references in single pass operation.  They are actually 
+embellished  versions of the $ symbol.   They consist of two characters,  the 
+first of which is $.
+
+$0 thru $9,  $%,  $!, $@, $? are backward symbols and work almost the same as 
+regular symbols:
+          $0   LD A,B         ;this line same as    $0 DEFL $
+               DJNZ $0        ;                        LD A,B  
+               LD B,85
+          $0   CALL DOSUMPN
+               DJNZ $0
+These symbols don't go into the symbol table,  so there is no search time  to 
+find  them.   Using  these  symbols prevents a lot of nonsense  symbols  from 
+bloating  the  symbol  table,  thereby making large  programs  assemble  more 
+efficiently.   These  symbols can be redefined at will and can be  referenced 
+any number of times after each definition.
+
+$A thru $Z are forward symbols:
+               JR NZ,$A       ;symbol $A initialized here
+               LD A,45
+               JR $B
+          $A   LD A,73        ;symbol $A resolved here
+          $B   LD (THERE),A
+               ....
+Each  of  these symbols can only be used (or initialized) once  until  it  is 
+resolved.   After being resolved,  it is free to be used again.   Since these 
+symbols must toggle between active (initialized) and inactive (resolved), the 
+assembler can recognize an unbalance and issue an error code.   A 'W' in  the 
+left  margin  denotes  such a phase error.   If two lines must  make  forward 
+reference to the same spot, then two psuedo labels can be used:
+               JR Z,$C
+               CP 'S'
+               JR Z,$D
+               ...
+          $C
+          $D   LD A,B
+The  psuedo-labels  can  be used in expressions,  but the  forward  varieties 
+suffer  the  same  restrictions  as  external  symbols.   The  expression  is 
+restricted  to  effectively  adding  a forward symbol  to  the  rest  of  the 
+expression.   The  'E'  error code shows up for invalid  expressions.   Since 
+these  symbols  do not nest,  there are two separate symbols with  a  nesting 
+property,  $$ for backward and $_ for forward.   They are primarily for  jump 
+tables:
+          $$   <routine1>
+          $$   <routine2>
+          $$   <routine3>
+               ...
+          JMPTABL DW $$,$$,$$,...
+Another usage:
+               LD B,0
+          $$   PUSH BC
+               LD B,0
+          $$   DJNZ $$        ;this one references the second $$
+               POP BC
+               DJNZ $$        ;this one references the first $$
+Because  of  their  nesting property,  the symbols $$ and $_ can be  used  in 
+macros, thereby preventing macros from filling the symbol table with nonsense 
+symbols.   The maximum nesting depth of $$ and $_ is set by a couple of EQU's 
+at the beginning of the source code of the assembler.  They are presently set 
+at 40 for $$ and 10 for $_.
+     The forward psuedo-labels only work when outputting a COM file.   If you 
+want to make a HEX file,  you have to use two-pass operation if there are any 
+forward references.
+
+LIST  and  *LIST  are  now  the  same.   They both  will  accept  a  list  of 
+single_character options as well as the words ON and OFF.
+          *LIST A,B,ON
+               LIST A,ON,B
+               LIST A,B,S     ;all three are equivalent.
+It is best to keep the ON or OFF at the end of the list because the statement
+               LIST A,OFF,B
+will also turn off B.
+
+INTERNAL CHANGES.   In order to resolve forward references during single-pass 
+assembly  I  changed the buffering of the object output to  use  demand-paged 
+virtual  memory.   To speed up the handling of text,  I changed the buffering 
+method  for the input,  include,  and listing files.   The method essentially 
+adds some auxilliary space to the length of the buffer so that you never have 
+to worry about the end of the buffer occuring in the line you are working on.  
+This obviates many operations and allows some operations to be done with  Z80 
+block  move instructions.   To speed up symbol search,  I replaced the linear 
+search  with a binary search.   When symbols are created,  they are  inserted 
+into the table alphabetically.   At first thought,  this seemed like too much 
+moving,  but it is very mush faster than sorting and makes the binary  search 
+possible during the first pass.   To speed up the search for mnemonics, I put 
+them all into a 'state machine'.  This is faster than a binary search because 
+it never has to start over at the beginning of the next word.  It essentially 
+does a multi-way branch on each character.   For example,  in the words DEFL, 
+DEFS,  DEFW,  and  DEFM,  after getting through DEF,  it only uses the fourth 
+character  to  determine if it has one of these words.   It doesn't  have  to 
+go  through DEF again.   The 'state machine' is also fast because there is no 
+looping involved;  it consists entirely of compares and branches.  I took the 
+register  names  out of the symbol table and put them into their  own  little 
+state machine.  Ditto for the flag-condition mnemonics.
+
+SPEED.   This  thing  assembles  itself to a COM file in 15.8 sec on  my  Z80 
+system (3.68 Mhz, 1 wait, RAM disk).  This is around 17 times faster than the 
+original Z80MR can assemble itself and be LOADed.  For another comparison, it 
+takes  the  CPM LOAD program 9 seconds to translate the equivalent  HEX  file 
+into a COM file.
+
+OTHER NOTES.   If you run this assembler you may notice in the listing output 
+that  the  addresses are printed in 24-bit format.   This is because  I  have 
+begun  to  convert the assembler to a 32000 cross  assembler.   It  currently 
+handles  the program counter as a 32-bit value and is able to make COM  files 
+larger than 64k (if you can train your Z80 to use them).   The  psuedo-labels 
+store  32-bit values,  but the regular symbols still use only 16-bit  values.  
+If  you  look  at the source listing,  you will notice that  some  lines  are 
+indented  with a space and some are indented with a tab.   This is because  I 
+have  started using the space-only indenting to indicate which lines  I  have 
+written  or  changed.   I  hope  that I didn't mess up any  of  the  original 
+features, but I have not done enough testing to be sure.  I can't really test 
+the  features pertaining to relocatable code since there is no  linker.   I'm 
+also  planning  to  change  the way symbols are  stored  in  order  to  allow 
+arbitrary-length  symbols.   This  will probably gain some additional  speed, 
+too.
+
+                                                  Neil R. Koozer
+
+P.S.   My  32000 cross assembler is now operational.   Anyone desiring a copy 
+please send a card.
+

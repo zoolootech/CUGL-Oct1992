@@ -1,0 +1,250 @@
+.ce 2
+Add an  Execution Time Profiler to your System
+by Robert Ramey
+
+I really wanted to know how much computer time was consumed by
+each part of my program.  Without this information, I couldn't
+determine which sections (if any) should be recoded.
+For any test run, I wanted to be able to produce a table like
+table 1.  This shows the name of each function, the number of
+tenths of a second, as well as the percentage of total time
+the cpu spent executing that function.
+In short, I needed an execution time profiler.  So, I wrote one.
+
+My equipment consists of CPM compatible SB-180 single board
+computer with 1 MB add on ram, 380K floppy, and a WYSE terminal.
+I use the Q/C C compiler from Quality Computer Systems and
+the ZAS and ZLINK assembler and linker from Mitek.
+The SB-180 uses a Z-80 compatible Hitachi 64180.
+The program presented here is hardware dependent.
+However, except for 17 lines of code, it is written in C so it
+should be adaptable to other environments.
+
+1. How to use the profiler.
+
+Normally I link a program with the command:
+
+	ZLINK <program name>,CRUNLIB/
+
+and execute with the following:
+
+	<program name> <command line>
+
+When I want to generate an execution profile table, I link with
+the command:
+
+	ZLINK PROFILE,<program name>,CRUNLIB/ $S
+
+On encountering the $S in the link command line,  ZLINK generates
+a symbol table named PROFILE.SYM which is the key to generating
+the execution profile table.
+Finally, I execute with the following:
+
+	PROFILE <command line>
+
+When execution of PROFILE ends, my default disk contains a file
+named PROFILE which contains the execution profile table.  This
+can be displayed, printed, sorted, etc. as desired.
+
+2. How the execution profiler works.
+
+The profiler depends on the clock interrupt facility of my machine.
+Ten times per second, any running program is interrupted and the
+clock is updated.
+When the profiler is in use, program execution can be summarized:
+
+	Before program starts:
+		read file PROFILE.SYM into memory and sort by address.
+		redirect exit() to special windup() function.
+		redirect timer interrupt so that function tick()
+			is called instead of clock update function.
+		continue on to program execution.
+
+	When timer interrupt occurs:
+		search table in memory using return address as a key.
+		increment counter associated with interrupted function.
+		continue normal interrupt processing.
+		return to point in program where timer interrupt
+			occured.
+
+	When program exits:
+		enter windup() function.
+		write out file PROFILE containing symbols and counters.
+		continue with normal exit processing.
+
+
+3. Installing the Profiler in Your Environment.
+
+The profiler is written almost entirely in C.  This doesn't mean
+it is necessarily portable.  It is heavily dependent on the
+idiosyncracies of my machine and C compiler.  Never the less
+it could be implemented on many machines with very little change.
+The changes are small but do requier that the implementor have an
+intimate understanding of his machine and compiler.
+Below I'll describe the issues which have to be dealt with when
+this program is implemented on another machine.
+
+3.1. Getting Started.
+
+The setup routine must execute before the rest of the program.
+An easy way to do this is to edit the program so that setup()
+is the first function called.  This will work fine in all environments.
+If you have access to the startup code in your library there is
+a much more elegant solution.
+I chose to alter my library startup code so that setup() is
+always called before main(). My library also contains a null
+setup() function which inmediatly returns.  This adds 4 bytes to
+all my programs which do not use the profiler.
+However, when I want to use the profiler I only have to relink
+not recompile.
+
+On my machine as well as almost all Z-80 machines, the address of
+the clock interrupt function is found in a table.  The address of
+that table element is related to the IR register.  The ir() function
+retrieves that address so that clock interrupt can be redirected
+is entered.  This will almost certainly requiere modification
+for another machine.
+
+In order to redirect exit() processing to windup(),  I simply
+copy a JP WINDUP instruction in to the first three bytes of
+the exit() function.  One of the things windup() does is to
+restore the original contents of the first three bytes of the
+exit function so that windup() can call exit() when it finishes.
+This or something similar will probably function on a
+variety of machines.
+
+If you have access to the code of your exit() function you
+can include a modified 
+version of the original exit() which combines the functions
+of windup() and exit().
+
+Finally, if your compiler is in accordance with Draft Proposed
+ANSI C, you can include the statement:
+
+	atexit(windup);
+
+in the function setup().  This will "register" windup() as a
+function to be called after exit() is called but before
+starting normal exit processing.
+
+3.2. Interrupt Processing
+
+A timer interrupt is a function call which can take place anywhere
+within the program.  Like any function call, the return address
+is pushed on to the stack and control is passed to the called
+function.  By placing the address of tick() in the appropriate slot
+of the interrupt vector table  setup() makes sure that the called
+function is tick().  Unlike a normal function call, tick() must leave
+all registers in the same state it found them.
+
+The principal function of tick() is to modify the stack so that
+normal timer interrupt processing will occur when tick() returns,
+and save and restore appropriate registers while bump()
+is called.  This is extremely dependent on the machine
+and compiler.  Fortunately, it is only 14 statements long.
+
+bump() is the principle function of the profiler.  It does a
+binary search of the symbol table using the interrupt return
+address as the key.  The corresponding counter is incremented.
+My version of bump() uses only static variables.
+This means that I don't have to complicate the program with
+issues of stack frame management during interrupt processing.
+Also its faster on my machine.
+
+3.3. Finishing Up.
+
+If you've come this far finishing up is trivial.  Its a straight
+forward C function which writes the execution profile to disk.
+For each function interrupted at least once, the name of the
+function, number of times interrupted and percentage of total
+interrupts is written to the file PROFILE.  This is completely
+portable to any C compiler.
+
+4. Summing Up.
+
+The sample execution profile in the table corresponds to a program
+which reads a 22K text file from disk and writes out a table
+indicating how many times each word appears in the text file.
+All input/output was from/to ramdisk.
+Functions whose names start
+with ? implement primitive operations such as integer and stack
+manipulation.
+20 percent of execution time was consumed by
+?enr and ?exr which allocate and save register
+variables.  13 percent was consumed by putc() and getc().  There is
+not much point in trying to optimize this program until the
+performance of the C library is improved.
+Without the execution time profile,  many hours might have been
+wasted.
+
+I think this shows how useful C can for a job which one would
+normally think to apply assembler programming.
+It also shows that being written in C doesn't necessarily make it
+portable.
+However, this program could be ported to many other environments
+with very little effort.  The utility of this tool is far out
+proportion to the size of the program and the effort requiered
+to implement it.
+
+Bibliography
+
+O'Connell, Patrick, Relocating Macro Assembler and Linker for Z-80
+and HD64180.  Echelon Inc. 101 First Street, Los Altos CA 94022
+
+Colvin, Jim Q/C Users Manual. The Code Works. Santa Barabara,
+California
+
+Harbison, Samuel P. and Steele, Guy L.   C:A Reference Manual.
+Prentice-Hall, Inc.  Englewood Cliffs, New Jersey 07632
+.bp
+.nf
+Table 1
+
+MAIN?	    1	  0
+LDWORD	    2	  1
+GETWRD	    9	  3
+SYMDMP	    1	  0
+SYMLKU	    6	  2
+SYMADD	    3	  1
+SYMDAT	    1	  0
+@NXTSY	    2	  1
+@HASH?	   10	  3
+PRINTF	    1	  0
+@FMT?	   10	  3
+GETC?	   26	  9
+PUTC?	   11	  4
+FREE?	    2	  1
+ISALNU	   10	  3
+ISALPH	    2	  1
+STRCPY	    1	  0
+STRCMP	    6	  2
+ITOB?	    3	  1
+IMAX?	    6	  2
+BDOS1?	    1	  0
+?GC	    4	  1
+?SXT	    8	  3
+?GCS	    3	  1
+?G	   18	  6
+?GLS	    2	  1
+?P	   12	  4
+?SA	    4	  1
+?SE	    9	  3
+?SN	   12	  4
+?UGT	    2	  1
+?SLE	    4	  1
+?ULE	    3	  1
+?SGE	    3	  1
+?UGE	    8	  3
+?S1S	    1	  0
+?SDIV	    1	  0
+?UDIV	   11	  4
+?SW	    1	  0
+?EN	    4	  1
+?ENR	   32	 11
+?ENSR	    1	  0
+?ENS	    2	  1
+?EXR	   27	  9
+?EXS	    1	  0
+ZRDOS	    2	  1
+BIOS	    3	  1
+

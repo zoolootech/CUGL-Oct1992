@@ -1,0 +1,160 @@
+#include <stdio.h>
+
+#define MAXNAME 128
+#define MAXOPTS 20
+#define MAXLINE 80
+
+#include "scr_def.h"
+
+#define NONE 2
+#define BACKUP 3
+#define DONE 4
+
+#define CLEAR_STR "\f"
+
+#define ANS_X 0
+#define ANS_Y 23
+
+#define ESC 0x1b
+#define CNTRL_E 0x05
+
+#define TRUE 1
+#define FALSE 0
+
+#ifdef DEBUG
+#define DBG(x) printf x
+#else
+#define DBG(x)
+#endif
+
+main(argc,argv)
+int argc;
+char *argv[];
+{
+int stat;
+char *dirname, fname[MAXNAME], *getenv();
+char mname[MAXNAME];
+FILE *mfile;
+void domenu();
+void bldfname();
+
+scr_init();
+if ((dirname = getenv("MENUS")) == NULL){
+   dirname = "menus/";
+   }
+if (argc > 1){
+   strcpy(fname,argv[1]);
+   }
+else strcpy(fname,"main");
+bldfname(mname,dirname,fname);
+DBG(("effective menu name = /%s/\n",mname));
+
+while ((stat=strncmp(fname,"exit",4))!= 0){
+   if((mfile = fopen(mname,"r")) == NULL){
+      fprintf(stderr,"%s: Can't find menu %s.\n",argv[0],mname);
+      scr_end();
+      exit(1);
+      }
+   domenu(mfile,fname);
+   fclose(mfile);    
+   bldfname(mname,dirname,fname);
+   } /* end while */
+scr_end();
+exit(0);
+}   
+
+void domenu(file,nxbuf)
+FILE *file;
+char *nxbuf;
+{
+char options[MAXOPTS+1];
+char backup[MAXNAME+1];
+char buf[MAXLINE+1];
+char dflt,sel, get_sel();
+void do_sel();
+
+scr_cls();
+fscanf(file,"%[^|]%*c%[^|]%*c%c%*c%s",options,backup,&dflt,nxbuf);
+DBG(("options set to /%s/\n",options));
+while (strncmp(fgets(buf,MAXLINE,file),"END",3)) scr_put(buf);
+sprintf(buf,"ENTER selects %c\n",dflt);
+scr_put(buf);
+sel=get_sel(options);
+if (sel == NONE) sel = dflt;
+if (sel == BACKUP) strncpy(nxbuf,backup,MAXNAME);
+else if (sel == DONE) strcpy(nxbuf,"exit");
+else do_sel(file,sel,nxbuf);
+DBG(("next menu set to %s\n",nxbuf));
+}
+
+char get_sel(opts)
+char *opts;
+{
+char buf[MAXLINE+1];
+
+do {
+   scr_mv_xy(ANS_X, ANS_Y);
+   scr_eol();
+   scr_mv_xy(ANS_X, ANS_Y);
+   scr_put("Selection...");
+   if (opts[0] == 'Y') scr_put("ESC backs up...");
+   if (opts[1] == 'Y') scr_put("CNTRL_E exits...");
+   scr_get(buf);
+   } while  (! in_set(buf[0],opts)); 
+if (buf[0] == '\n') return NONE;
+if (buf[0] == ESC) return BACKUP;
+if (buf[0] == CNTRL_E) return DONE;
+return buf[0];
+}
+
+int in_set(ch,opts)
+char ch, *opts;
+{
+int i;
+
+if (ch == '\n') return TRUE;
+if ((ch == ESC) && (opts[0] == 'Y')) return TRUE;
+if ((ch == CNTRL_E) && (opts[1] == 'Y')) return TRUE;
+for (i=2; opts[i]; i++){
+   if (ch == opts[i]) return TRUE;
+   }
+return FALSE;
+}
+
+
+void bldfname(buf,dir,file)
+char *buf, *dir, *file;
+{
+buf[0] = '\0';
+strncat(buf,dir,MAXNAME);
+strncat(buf,file,MAXNAME-strlen(dir));
+} 
+
+void do_sel(file,sel,next)
+FILE *file;
+char sel, *next;
+{
+char l_sel,l_next[MAXLINE+1];
+char action[MAXLINE+1], atype;
+int args;
+
+for (;;){
+   if ((args=fscanf(file,"%c%c%*c%[^|]%*c%[^\n]%*c",
+                    &l_sel,&atype,&l_next[0],&action[0])) ==EOF){
+      fprintf(stderr,"Error in menu specification, can't find %c\n",sel);
+      return;
+      }
+   if (sel == l_sel) {
+      DBG(("\nmatches = %d",args));
+      DBG(("\naction = %s",action));
+      DBG(("\nlsel,atype = %c %c ", l_sel, atype));
+      if (atype == 'P') system(action);
+      else strcpy(next,action);
+      if ((l_next[0] != ' ') && (atype != 'M')) strcpy(next,l_next);
+      return;
+      }
+   } 
+}
+
+
+

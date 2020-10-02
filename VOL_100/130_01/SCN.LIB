@@ -1,0 +1,117 @@
+/*
+	General formatted input conversion routine. "line" points
+	to a string containing ascii text to be converted, and "fmt"
+	points to an argument list consisting of first a format
+	string and then a list of pointers to the destination objects.
+
+	Appropriate data is picked up from the text string and stored
+	where the pointer arguments point according to the format string.
+	See K&R for more info. The field width specification is not
+	supported by this version.
+
+	NOTE: the "%s" termination character has been changed
+	from "any white space" to the character following the "%s"
+	specification in the format string. That is, the call
+
+		sscanf(string, "%s:", &str);
+
+	would ignore leading white space (as is the case with all
+	format conversions), and then read in ALL subsequent text
+	(including newlines) into the buffer "str" until a COLON
+	or null byte is encountered.
+
+	Returns the number of tokens assigned from the source line
+	(a number from 0 to <number of control string conversions,
+	or '%'s>), unassigned elements are set to 0 (including strings).
+*/
+
+int _scn(line,fmt)
+char *line, **fmt;
+{
+	char eolf, sf, c, base, n, *sptr, *format;
+	int sign, val, **args;
+
+	format = *fmt++;	/* fmt first points to the format string */
+	args = fmt;		/* now it points to the arg list */
+
+	n = eolf = 0;
+	while (c = *format++) {
+	   if (!*line) eolf = 1;	/* end of input string */
+	   if (isspace(c)) continue;	/* skip white space in format string */
+	   if (c != '%') {		/* if not %, must match text */
+		if (c != _igs(&line)) eolf = 1;
+		else line++;
+	    }
+	   else {			/* process conversion */
+		sign = 1;
+		base = 10;
+		val = sf = 0;
+		if ((c = *format++) == '*') {
+			sf++;		/* if "*" given, supress assignment */
+			c = *format++;
+		 }
+		switch (toupper(c)) {
+		   case 'X': base = 16;
+			     goto doval;
+
+		   case 'O': base = 8;
+			     goto doval;
+
+		   case 'D': if (eolf) break;
+			     if (_igs(&line) == '-') {
+				sign = -1;
+				line++;
+			      }
+
+	   doval:  case 'U': if (eolf) break;
+			     if (_bc(_igs(&line),base) == ERROR) {
+				eolf = 1;
+				break;
+			     }
+			     while ((c = _bc(*line++,base)) != 255)
+				val = val * base + c;
+			     line--;
+			     break;
+
+		   case 'S': sptr = *args;
+			     if (!sf) *sptr = '\0';
+			     if (eolf) {
+		   skiparg:	if (!sf) ++args;
+				continue;
+			     }
+			     _igs(&line);
+			     while (c = *line++)   {
+				if (c == *format) {
+					format++;
+					break;
+				 }
+				if (!sf) *sptr++ = c;
+			      }				
+			     if (!c) --line; /* point to end of string */
+			     if (!sf) {
+				n++;
+				*sptr = '\0';
+				args++;
+			      }
+			     continue;
+
+		   case 'C': if (!sf) poke(*args, '\0');
+			     if (eolf) goto skiparg;
+			     if (!sf) {
+				poke(*args++, *line);
+				n++;
+			     }
+			     line++;
+			     continue;
+
+		   default:  eolf = 1;
+			     continue;
+		 }
+		if (!sf) {
+			**args++ = val * sign;
+			if (!eolf) n++;
+		 }
+	}}
+	return n;
+}
+

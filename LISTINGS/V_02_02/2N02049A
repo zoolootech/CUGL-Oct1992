@@ -1,0 +1,39 @@
+
+#include        <string.h>
+#include        "netbios.h"
+
+/******************************************************
+* dg_read - read a datagram over the network
+* Parameters:
+*   number (in) - your name table address number
+*   from (out)  - name of user sending datagram
+*   buffer (in) - location to put received data
+*   length (in) - maximum number of bytes to receive
+* Global: net_error - used to store NetBIOS return 
+*                     code for error processing.
+* Returns: Number of bytes received for success, 
+*          -1 for failure
+* Notes: Number is the value returned from a successful 
+*        init_netbios(). This code assumes that you are 
+*        using a memory model which will result in 
+*        buffer being a far pointer. From must point to 
+*        a block of memory at least 16 bytes long.
+* History: Original code by William H. Roetzheim, 1990
+*******************************************************/
+
+int dg_read(unsigned int number, char *from, 
+            char *buffer, int length)
+{
+   struct  net_control_block       ncb;
+
+   init_ncb(&ncb);
+   ncb.command = NCB_RECEIVE_DATAGRAM;
+   ncb.length = length;
+   ncb.buffer = buffer;
+   ncb.number = number;
+   int_netbios(&ncb);
+   memcpy(from, ncb.l_name, 16);
+   if (ncb.retcode == 0) return ncb.length;
+   else return -1;
+}
+

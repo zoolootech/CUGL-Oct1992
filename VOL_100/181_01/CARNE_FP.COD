@@ -1,0 +1,716 @@
+Reprinted from: Micro/Systems Journal, Volume 1. No. 5. Nov/Dec 1985    
+Article Title: "Faster Floating Point Math"
+Author: Ted Carnevale
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+
+                                  Listing 1
+
+                                  =========
+
+/* fpc.c--tests conversion to/from amd9511 fpp format */
+
+#include fprintf.h
+#include c80def.h
+
+#define MESSAGE  "\nFloating-point format conversion program")
+#define DASHES "\n\n----------------------------------------")
+
+#define MAX 6   /* how many different values to feed 
+                     to the format conversion routines */
+
+/* replace the next two functions with 
+     your own format conversion routines as needed */
+extern long c2amd();    /* link .rel file containing these */
+extern float amd2c();   /*   to fpc.rel */
+
+main()
+{
+        int i;
+        static int sx=10;
+        float x;
+        static float dx=1.0;
+
+        printf(MESSAGE);
+        printf(DASHES);
+
+        /* a geometric series of positive values */
+        for (i = 0, x = 100.0; i<=MAX; x /= sx, i++) showbits(x);
+        printf(DASHES);
+
+        /* a geometric series of negative values */
+        for (i = 0, x = -100.0; i<=MAX; x /= sx, i++) showbits(x);
+        printf(DASHES);
+
+        /* a linear series of positive and negative values */
+        for (i = -MAX, x=(float)(-MAX); i<=MAX; x += dx, i++) showbits(x);
+}
+
+
+/* show bit patterns used by C80 and AMD FPP floating point formats 
+     to represent the float n */
+showbits(n)
+float n;
+{
+        int i;
+        union {
+                float f;
+                long l;
+        } x,z;  /* unions are easier to use here than pointers */
+        long y;
+
+        x.f=n;
+
+        /* show C80's preconversion bit pattern */
+        printf("\n\nx = %e,\t\tBCDE = ",x.f);
+        prntlong(x.l);
+
+/* eliminate next few lines if you just want to check the format
+     used by your version of C */
+        /* show AMD formatted data */
+        y=c2amd(x.f);
+        printf("\n\t\t\t\t AMD = ");
+        prntlong(y);
+
+        /* convert back to C80's format */
+        z.f=amd2c(y);
+        printf("\nz = %e,\t\tBCDE = ",z.f);
+        prntlong(z.l);
+/* end of C80 -> AMD -> C80 format conversion test */
+}
+
+
+/* print bit pattern of a long, starting with the high-order bit
+     of the most significant byte, working down from left to right */
+prntlong(k)
+long k;
+{
+        int i;
+        union {
+                long l;
+                char b[4];
+        } datum;
+
+        datum.l=k;
+        for (i=3; i>=0; i--) {
+                prntbyt(datum.b[i]);
+                printf(" ");
+        }
+}
+
+
+/* print the bit pattern for a byte from left to right, 
+     high order bit first (does the dirty work for prntlong) */
+prntbyte(i)
+int i;
+{
+        int j;
+        char bit;
+
+        for (j=0x80; j>0; j=j>>1) {
+                if (i & j) bit='1';
+                else bit='0';
+                printf("%c",bit);
+        }
+}
+                                  Listing 2
+                                  =========
+
+        TITLE FLTLB
+        PAGE 64
+; Floating point library
+; C/80 3.0 (7/7/83) - (c) 1983 Walter Bilofsky
+;MODIFIED 8/84 to use amd9511 for floating point multiply/divide 
+;and MATHLIB functions as well.  
+;Replaces modules FLTLIB and MATHLIB
+; -- N.T.Carnevale
+;
+;
+;these were gleaned from LIB's listing of FLIBRARY.REL:
+;
+ENTRY Bf.Bl,Bf.Hc,Bf.Hi,Bf.Hu,Bl.Bf
+ENTRY cf.eq,cf.ge,cf.gt,cf.le,cf.lt,cf.ne
+ENTRY div10.,mul10.
+ENTRY dum_
+ENTRY errcod
+ENTRY F.add,F.div,F.mul,F.neg,F.not,F.sub
+ENTRY facl_,facl_1,facl_2,fac_,fac_1
+ENTRY fadd.,fadda.,fcomp.,fdiv_a,fdiv_b,fdiv_c,fdiv_g
+ENTRY flneg.,float.,flt.0,flt_pk
+ENTRY fmlt_1,fmlt_2
+ENTRY Hc.Bf,Hi.Bf,Hu.Bf
+ENTRY inxhr.
+ENTRY movfm.,movfr.,movmf.,movrf.
+ENTRY pushf.,qint.,save_,save_1,sign.,zero.
+;
+EXTRN c.neg,c.sxt,eq.4,g.,Hc.Bl,Hi.Bl,Hu.Bl,L.add,L.neg
+EXTRN llong.,movrm.,neq.4,slong.
+;
+;this preserves the 15 byte data area revealed by LIB:
+        DSEG
+;
+facl_:  DB      0
+facl_1: DB      0
+facl_2: DB      0
+fac_:   DB      0
+fac_1:  DB      0
+save_:  DB      0
+fmlt_1: DB      0
+fmlt_2: DB      0
+dum_:   DB      0
+save_1: DB      0
+errcod: DB      0
+fdiv_a: DB      0
+fdiv_b: DB      0
+fdiv_c: DB      0
+fdiv_g: DB      0
+;
+;       CSEG
+;
+flt_pk: DS      0
+F.add:  XRA     A
+        JMP     Dual
+F.sub:  MVI     A,1
+        JMP     Dual
+F.mul:  JMP     fpmul           ;jump to new routines
+;       MVI     A,2
+;       JMP     Dual
+F.div:  JMP     fpdiv
+;       MVI     A,3
+Dual:   CALL    movfr.
+     
+
+                                  Listing 3
+                                  =========
+
+Ftab:   DW      fadd.
+        DW      fsub            ;next two addresses not used
+;       DW      fpmul
+;       DW      fpdiv
+                                  Listing 4
+                                  =========
+
+;<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;
+;
+;What follows replaces the original code in the FLTLIB section of
+;FLOATLIB.ASM that started with fmult3: and ended just before pophrt:.
+        ;
+        ;
+CR      EQU 0DH
+LF      EQU 0AH
+BDOS    EQU 5
+BOOT    EQU 0
+PSTRNG  EQU 9
+        ;
+        ;
+        ;send message to console
+PRMSG:
+        PUSH PSW
+        PUSH B
+        PUSH D
+        PUSH H
+        MVI C,PSTRNG
+        CALL BDOS
+        POP H
+        POP D
+        POP B
+        POP PSW
+        RET
+        ;
+;**************************************************************
+        ;
+        ;
+        ;Port addresses
+        ;
+BASE    EQU 050H        ;base address of Compupro SS1 board
+CREG    EQU BASE+9      ;location of 9511's control & data ports
+DREG    EQU BASE+8
+        ;
+        ;
+        ;FPP error codes
+        ;
+ERRBITS EQU 1EH         ;the status register's error bits
+OVRFLO  EQU 2           ;overflow
+UNRFLO  EQU 4           ;underflow
+NEGARG  EQU 8           ;negative argument to sqrt or log function
+DIVZER  EQU 10H         ;divide by zero
+TOOBIG  EQU 18H         ;arg of asin, acos, or exp too big
+        ;
+        ;
+        ;FPP command codes
+        ;
+FMUL    EQU 12H
+FDIV    EQU 13H
+XCHF    EQU 19H         ;swap top two locations in fpp's stack
+FSQRT   EQU 1
+FSIN    EQU 2
+FCOS    EQU 3
+FTAN    EQU 4
+FASIN   EQU 5
+FACOS   EQU 6
+FATAN   EQU 7
+FLOG    EQU 8           ;log base 10
+FLN     EQU 9           ;natural logarithm
+FEXP    EQU 0AH         ;e^x
+FPWR    EQU 0BH         ;x^y
+        ;
+;**************************************************************
+;**************************************************************
+;
+;
+;note:  timing indicated for some of the following
+;
+;This block converts c80 float in BD to FPP format, then loads it into FPP.  
+;If out of range for FPP, aborts with warning.
+;
+;Data format conversion routine C2AMD--
+;converts c80's float to amd's fp format.
+;Based on suggestions by J.Shook, Electronics Lab, Dept.of Chemistry,
+;SUNY Stony Brook
+;
+;Floating point formats
+;----------------------
+;C80 stores floats as:
+;        mantissa sign in C7
+;        mantissa  =  24 bit two's complement in CDE, 
+;                        with bit 23 assumed = 1.
+;        exponent is added to 128 (80H) and stored in B.  
+;                        If the number is 0, B=0.
+;
+;FPP stores floats as:
+;        mantissa sign in B7
+;        mantissa  =  24 bit two's complement in CDE,
+;                        with bit 23 = 1.  However, 
+;                        the value 0 is represented by BD=0.
+;        exponent sign in B6
+;        exponent in B5-B0 (only 6 bits).
+;
+;
+        ;Call with value to convert in BD.
+C2AMD:
+        MOV A,B         ; 4
+        ORA A           ; 4
+        JZ FPPZERO      ;10--B=0 implies x=0
+        ;take care of register B
+        SUI 80H         ; 7--corrects exponent
+        ;does exponent lie in FPP's range?
+        CPI 64          ; 7
+        JP EXPHI        ;10--exceeds 2^63
+        CPI -64         ; 7
+        JM EXPLO        ;10--smaller than 2^-64
+        ;exponent ok, proceed
+        ANI 7FH         ; 7--mask out hi bit of B
+        MOV B,A         ; 4-- and save til later
+        MOV A,C         ; 4
+        ANI 80H         ; 7--isolate mantissa sign bit
+        ORA B           ; 4--fix mantissa sign bit for FPP
+        MOV B,A         ; 4--done with B
+        ;take care of C
+        MVI A,80H       ; 7
+        ORA C           ; 4--set hi bit of C
+        MOV C,A         ; 4
+        JMP LOADFPP     ;10--put data in FPP
+        ;114 t cycles @ 4mHz = 28.5usec
+        ;
+FPPZERO:                ;x=0
+        XRA A
+        MOV C,A
+        MOV D,A
+        MOV E,A
+        ;a short cut, time not calculated
+        ;fall through to next routine
+        ;
+        ;
+        ;Data transfer routine
+        ;LOADFPP puts BD into fpp
+LOADFPP:
+        MOV A,E         ; 4
+        OUT DREG        ;11
+        MOV A,D         ; 4
+        OUT DREG        ;11
+        MOV A,C         ; 4
+        OUT DREG        ;11
+        MOV A,B         ; 4
+        OUT DREG        ;11
+        RET             ;10
+        ;70 t cycles = 17.5usec
+        ;
+        ;TOTAL TIME for C2AMD & LOADFPP = 46usec
+        ;
+;**************************************************************
+        ;
+        ;
+        ;C2AMD found float to be out of range for FPP--warn & abort
+EXPHI:
+        LXI D,HIMSG
+        JMP ERREXIT
+EXPLO:
+        LXI D,LOMSG
+ERREXIT:
+        CALL PRMSG
+        JMP BOOT        ;bail out!
+        ;
+        ;
+HIMSG:  DB CR,LF,'float --> FPP exponent overflow ( > 2^63)$'
+LOMSG:  DB CR,LF,'float --> FPP exponent underflow ( < 2^-64)$'
+        ;
+;**************************************************************
+;**************************************************************
+        ;
+        ;
+        ;
+        ;FLD1 gets 1 float from the stack, puts it into fpp,
+        ;and DOES NOT restore stack.  Called by "intrinsic"
+        ;float arithmetic operations, e.g. fpmul and fpdiv.
+FLD1:
+        POP H           ;10--return addr for this block
+        SHLD RETADR     ;16
+        POP H           ;10--return addr for calling function
+        POP D           ;10
+        POP B           ;10--BD = argument
+        CALL C2AMD      ;17--convert format & load FPP
+        ;
+        PUSH H          ;11--restore return address of calling function
+        LHLD RETADR     ;16--return to calling function
+        PCHL            ; 4--  without disturbing stack
+        ;104 t cycles = 26usec, + 46 for C2AMD = 72usec
+        ;
+;**************************************************************
+        ;
+        ;
+        ;FLOAD1 gets 1 float from the stack, puts it into fpp,
+        ;and restores stack for c80.  Called by "user-defined"
+        ;functions, not by fpmul or fpdiv.
+FLOAD1:
+        POP H           ;10--return addr for this block
+        SHLD RETADR     ;16
+        POP H           ;10--return addr for calling function
+        POP D           ;10
+        POP B           ;10--BD = argument
+        CALL C2AMD      ;17--convert format & load FPP
+        ;fix stack for c80
+        PUSH H          ;11
+        PUSH H          ;11
+        PUSH H          ;11--restore return address of calling function
+        LHLD RETADR     ;16--return to calling function
+        PCHL            ; 4--  without disturbing stack
+        ;126 t cycles = 31.5usec, + 46 for C2AMD = 77.5usec
+        ;
+;**************************************************************
+        ;
+        ;
+        ;FLOAD2 gets 2 floats from the stack, puts them into fpp,
+        ;  and restores the stack for c80
+FLOAD2:
+        POP H           ;10--return addr for this block
+        SHLD RETADR     ;16
+        POP H           ;10--return addr for calling function
+        POP D           ;10
+        POP B           ;10--BD = second argument
+        CALL C2AMD      ;17--convert format & load FPP
+        POP D           ;10
+        POP B           ;10--BD = first argument
+        CALL C2AMD      ;17
+        ;fix stack for c80
+        PUSH H          ;11 x 5 = 55
+        PUSH H
+        PUSH H
+        PUSH H
+        PUSH H          ;restore return address of calling function
+        LHLD RETADR     ;16--return to calling function
+        PCHL            ; 4--  without disturbing stack
+        ;185 t cycles = 46.25usec, + 2 * 46 (for C2AMD) = 138.25usec
+        ;
+RETADR: DS 2            ;used by all FPP load routines
+        ;
+;**************************************************************
+;**************************************************************
+        ;
+        ;
+        ;
+        ;fpmask() allows the user to specify which error bits
+        ;are tested for error detection.  The argument to fpmask
+        ;becomes the ERRMASK that is ANDed with the status word 
+        ;to detect a hardware (FPP) error.
+
+        PUBLIC fpmask
+fpmask: 
+        POP H           ;return address
+        POP B           ;argument
+        PUSH B          ;fix stack
+        PUSH H
+        MOV A,C         ;get the user-specified error mask
+        ANI ERRBITS     ; and mask out all but the genuine error bits
+        STA ERRTEST+1
+        RET
+        ;
+;**************************************************************
+        ;
+        ;
+        ;FPP Error handling routine
+        ;print message according to what sort of error occurred
+FPERR:
+        LXI D,EMSG0
+        CALL PRMSG      ;print general message
+        MOV C,A         ;save error code
+        MVI B,MSGPTR-ETYPES     ;# of codes to check
+        LXI H,ETYPES    ;M=first code in the list
+        LXI D,MSGPTR    ;(DE) = address that contains 
+                        ;  location of message for first error code
+ERCHEK:
+        ANA M
+        JMP ERMATCH
+        MOV A,C         ;restore error code
+        INX H           ;advance to next code and message
+        INX D
+        INX D
+        DCR B
+        JNZ ERCHEK      ;more codes to test
+        ;should never fall through, but if it does, will print 'huh?'
+        ;
+ERMATCH:
+        XCHG            ;(HL) holds address of error message
+        MOV E,M
+        INX H
+        MOV D,M
+        JMP ERREXIT     
+        ;
+        ;
+EMSG0:  DB CR,LF,,LF,'FPP error:  $'
+EMSG1:  DB 'overflow$'
+EMSG2:  DB 'underflow$'
+EMSG3:  DB 'sqrt or log of negative number$'
+EMSG4:  DB 'divide by 0$'
+EMSG5:  DB 'argument of asin, acos, or exp too large$'
+EMSGX:  DB 'huh?$'      ;should never occur!
+        ;
+        ;
+ETYPES: DB OVRFLO,UNRFLO,TOOBIG,NEGARG,DIVZER
+MSGPTR: DW EMSG1,EMSG2,EMSG5,EMSG3,EMSG4,EMSGX
+        ;
+;**************************************************************
+;**************************************************************
+        ;
+        ;
+        ;Next come the hardware floating point routines themselves.
+        ;The multiplcation routine contains most of what the 
+        ;other routines use, so it is listed first.
+        PUBLIC  fpmul
+fpmul:
+        ;Note:  for fp multiply and divide,
+        ;c80 passes the first arg in the stack, the second in BD.
+        ;For the intrinsic multiply and divide operations, 
+        ;the calling program does NOT have to remove args 
+        ;from the stack upon return!  This is quite different from
+        ;the situation with user-defined functions.
+        ;
+        ;take 2nd arg from BD, convert to amd format, and pass to fpp
+        CALL C2AMD      ;17
+        ;take 1st arg from stack, convert format, and pass to fpp
+        CALL FLD1       ;17
+        ;send command, test for error, return with result in BD
+        MVI A,FMUL      ; 7
+        ;fall through to DOIT-ERRTEST-GETIT-AMD2C
+        ;
+        ;
+        ;DOIT-GETIT starts an FPP operation, tests for error,
+        ;gets the result & converts to c80 format
+        ;
+        ;send command in A to FPP
+DOIT:   OUT CREG        ;11--send command
+WAIT:   IN CREG         ;10
+        ORA A           ; 4
+        JM WAIT         ;10--until done
+        ;11 + n*24 t cycles = 2.75 + 6n usec (X)
+        ;
+        ;A contains error code
+ERRTEST:
+        ANI ERRBITS     ; 7--default = test all error bits
+        JNZ FPERR       ;10--if error found, else fall through to GETIT
+        ;
+        ;get top of fpp's stack into BD
+GETIT:
+        IN DREG         ;10
+        MOV B,A         ; 4
+        IN DREG         ;10
+        MOV C,A         ; 4
+        IN DREG         ;10
+        MOV D,A         ; 4
+        IN DREG         ;10
+        MOV E,A         ; 4
+        ;
+        ;Fall through to AMD2C, which converts FPP format in BD
+        ;to c80 float
+        ;AMD2C is based on suggestions by J.Shook, Electronics Lab, 
+        ;Dept.of Chemistry, SUNY Stony Brook
+        ;
+AMD2C:
+        MOV A,C         ; 4
+        ORA A           ; 4
+        JP C80ZERO      ;10--bit 7=0 implies value is 0
+        ;take care of mantissa sign
+        XRA B           ; 4--complements bit 7 of B, among other things
+        ANI 80H         ; 7--mask out all the garbage
+        XRA C           ; 4--hi bit of C was 1 in AMD format, so this
+        MOV C,A         ; 4--  sets the hi bit of C to mantissa sign
+        ;take care of exponent sign
+        MVI A,40H       ; 7
+        ANA B           ; 4--is exponent negative?
+        MOV A,B         ; 4
+        JZ POSEXP       ;10--no, set hi bit to 1 (add 128)
+        ANI 7FH         ; 7--  yes, mask out hi bit
+        MOV B,A         ; 4
+        RET             ;10
+        ;
+POSEXP:
+        ORI 80H         ;set hi bit for positive exponent
+        MOV B,A
+        RET
+        ;format conversion delay identical whether exponent is + or -
+        ;
+C80ZERO:
+        XRA A
+        MOV B,A
+        RET
+        ;short cut--no time calculated
+        ;
+        ;(DOIT-ERRTEST-GETIT-AMD2C takes 156 t cycles 
+        ;  = 39usec, + X (for operation))
+        ;
+        ;41 t cycles = 10.25usec, + 46 (C2AMD) + 72 (FLD1) + 39 
+        ;  + X (DOIT) = 167.25 + X usec
+
+;
+;float sqrt(x) float x;
+        PUBLIC  sqrt
+sqrt:
+        CALL FLOAD1
+        MVI A,FSQRT
+        JMP DOIT
+
+;float sin(x) float x;
+        PUBLIC  sin
+sin:
+        CALL FLOAD1
+        MVI A,FSIN
+        JMP DOIT
+
+;float cos(x) float x;
+        PUBLIC  cos
+cos:
+        CALL FLOAD1
+        MVI A,FCOS
+        JMP DOIT
+
+;float tan(x) float x;
+        PUBLIC  tan
+tan:
+        CALL FLOAD1
+        MVI A,FTAN
+        JMP DOIT
+;float asin(x) float x;   /* arc sin in radians */
+        PUBLIC  asin
+asin:
+        CALL FLOAD1
+        MVI A,FASIN
+        JMP DOIT
+
+;float acos(x) float x;
+        PUBLIC  acos
+acos:
+        CALL FLOAD1
+        MVI A,FACOS
+        JMP DOIT
+
+;float atan(x) float x;
+        PUBLIC  atan
+atan:
+        CALL FLOAD1
+        MVI A,FATAN
+        JMP DOIT
+
+;float log(x) float x;  /* log10 */
+        PUBLIC  log
+log:
+        CALL FLOAD1
+        MVI A,FLOG
+        JMP DOIT
+
+;float ln(x) float x;   /* log e */
+        PUBLIC  ln
+ln:
+        CALL FLOAD1
+        MVI A,FLN
+        JMP DOIT
+
+;float exp(x) float x;
+        PUBLIC  exp
+exp:
+        CALL FLOAD1
+        MVI A,FEXP
+        JMP DOIT
+
+;float pwr(x,y) float x,y;      /* x to the yth power */
+        PUBLIC  pwr
+pwr:
+        CALL FLOAD2
+        ;
+        MVI A,XCHF
+        OUT CREG        ;11--send command
+PWAIT:  IN CREG         ;10
+        ORA A           ; 4
+        JM PWAIT        ;10--until done
+        ;
+        MVI A,FPWR
+        JMP DOIT
+;
+;<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;briefly back to the original source for fltlib--
+;
+;
+pophrt: POP     H
+        RET
+;
+;since div10.: is called by an external routine, I left it alone.  
+div10.: CALL    pushf.
+        LXI     B,8420H
+        LXI     D,0000H
+        CALL    movfr.
+fdivt:  POP     B
+        POP     D
+;
+;<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;the fdiv: routine is replaced by fpdiv:, and muldiv: is not needed
+
+        PUBLIC  fpdiv
+fpdiv:
+        ;take 2nd arg from BD, convert to amd format, and pass to fpp
+        CALL C2AMD      ;17
+        ;take 1st arg from stack, convert format, and pass to fpp
+        CALL FLD1       ;17
+        ;swap fpp's A and B registers
+        MVI A,XCHF      ; 7
+        OUT CREG        ;11--send command
+DWAIT:  IN CREG         ;10
+        ORA A           ; 4
+        JM DWAIT        ;10--until done
+        ;send command, test for error, return with result in BD
+        MVI A,FDIV      ; 7
+        JMP DOIT        ;10
+        ;takes 169.75usec + X plus delay for register swap
+
+;END OF MODIFICATIONS TO FLTLIB.MAC<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+;back to the original code again at mul10.:
+mul10.: CALL    movrf.
+

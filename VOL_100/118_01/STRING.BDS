@@ -1,0 +1,311 @@
+/* Sting manipulation routines for Software Tools
+ * source:  string.bds
+ * version: July 25, 1981
+ */
+
+
+#include tools.h
+
+
+/*  concat - concatenate two strings together */
+
+concat (buf1, buf2, outstr)
+char *buf1, *buf2, *outstr;
+{
+
+	int i;
+
+	i = 0;
+	stcopy (buf1, 0, outstr, &i);
+	scopy  (buf2, 0, outstr,  i);
+}
+
+/*  getwrd - get non-blank word from in [i] into out []
+ *           increment i.
+ *           return j = the number of characters copied.
+ *
+ * calling sequence:  j = getwrd (in, &i, out);
+ */
+
+int getwrd (in, ii, out)
+char *in, *out;
+int  *ii;
+{
+
+	int i, j;
+
+	i = *ii;
+
+	while (in[i] == ' ' || in[i] == TAB) {
+		i++;
+	}
+
+	j = 0;
+	while ( in[i] != EOS &&
+	        in[i] != ' ' &&
+	        in[i] != TAB &&
+	        in[i] != NEWLINE
+	      ) {
+		out[j++] = in[i++];
+	}
+	out[j] = EOS;
+	*ii = i;
+	return(j);
+}
+
+/*  sdrop --- drop chars from a string APL-style
+ *            if chars <  0 drop chars from end of string
+ *            if chars >= 0 drop chars from start of string
+ *            return length of new string
+ */
+
+int sdrop (from, to, chars)
+char *from, *to;
+int chars;
+{
+
+	int len, start;
+
+	len = length (from);
+	if (chars < 0) {
+		return (ctoc (from, to, len + chars));
+	}
+	else {
+		start = min (chars, len);
+		return (ctoc (from + start, to, len));
+	}
+
+}
+
+/*  stake --- take chars from a string APL-style
+ *            if chars <  0  take chars from end
+ *            if chars >= 0  take chars from beginning
+ *            return number of chars taken
+ */
+
+int stake (from, to, chars)
+char *from, *to;
+int chars;
+{
+
+	int len, start;
+
+	len = length (from);
+	if (chars < 0) {
+		start = max(len + chars, 0);
+		return (ctoc (from + start, to, len));
+		}
+	else {
+		return (ctoc (from, to, chars));
+	}
+}
+
+/*  strcmp - compare 2 strings
+ *  return -1 if <, 0 if =, +1 if >
+ */
+
+int strcmp (str1, str2)
+char *str1, *str2;
+{
+
+	int i;
+
+	for (i = 0; str1[i] == str2[i]; i++) {
+		if (str1[i] == EOS) {
+			return(0);
+		}
+	}
+
+	if (str1[i] == EOS) {
+		return(-1);
+	}
+	else if (str2[i] == EOS) {
+		return(1);
+	}
+	else if (str1[i] < str2[i]) {
+		return(-1);
+	}
+	else {
+		return(1);
+	}
+}
+
+/*  strim - trim trailing blanks and tabs from a string
+ *          return number of characters in str []
+ */
+
+int strim (str)
+char *str;
+{
+
+	int i, j;
+
+	for (i = 0, j = 0; str[i] != EOS; i++) {
+		if (str[i] != BLANK && str[i] != TAB) {
+			j = i;
+		}
+	}
+	str [j + 1] = EOS;
+	return (j);
+}
+
+/*  slstr --- slice a substring from a string
+ *            if first < 0  count backwards from end
+ *            if chars < 0  count backwards from first
+ *            return the number of characters in the slice
+ */
+
+int slstr (from, to, first, chars)
+char *from, *to;
+int first, chars;
+{
+
+	int i, k, last, len;
+
+	len = length (from);
+
+	if (first < 0) {
+		/* count backwards from end */
+		first += len;
+	}
+	if (chars < 0) {
+		/* count backwards from first */
+		first += chars;
+		chars = - chars;
+	}
+
+	first = max (0, first);
+	last  = min (len, first + chars);
+
+	for (k = 0, i = first; k < last; ) {
+		to [k++] = from[i++];
+	}
+	to [k] = EOS;
+	return(k);
+}
+
+/*  type - determine type of char */
+
+char type (c)
+int c;
+{
+	if (('a' <= c && c <= 'z') || ('A' <= c && c <= 'Z')) {
+		return('a');
+	}
+	else if ('0' <= c && c <= '9') {
+		return('0');
+	}
+	else {
+		return(c);
+	}
+}
+
+/*  skipbl - skip blanks and tabs at lin[i]
+ *           point i past blanks.
+ *	     calling sequence:  skipbl(lin, &i);
+ */
+
+skipbl(lin, i)
+char *lin;
+int *i;
+{
+	while (lin [*i] == BLANK || lin [*i] == TAB) {
+		(*i)++;
+	}
+}
+
+/*  equal - compare str1 to str2 */
+
+BOOL equal (str1, str2)
+char *str1, *str2;
+{
+
+	int i;
+
+	for (i = 0; str1 [i] == str2 [i]; i++) {
+		if (str1 [i] == EOS) {
+			return (YES);
+		}
+	}
+	return (NO);
+}
+
+/*  locate --- look for c in char class at pat (offset) */
+
+BOOL locate (c, pat, offset)
+char c, *pat;
+int offset;
+{
+
+	int i;
+
+	/*  size of class is at pat [offset], chars follow */
+
+	for (i = offset + pat [offset]; i > offset; i--) {
+		if (c == pat [i]) {
+			return (YES);
+		}
+	}
+	return (NO);
+}
+
+/*  scopy - copy string at from (i) to to (j) */
+
+scopy (from, i, to, j)
+char *from, *to;
+int i, j;
+{
+	while ((to [j++] = from [i++]) != EOS) {
+		;
+	}
+}
+
+/* stcopy - copy string at from [i] to to [j]
+ *          update j to point AT the EOS
+ *
+ * calling sequence: stcopy (from, i, to, &j);
+ */
+
+stcopy (from, i, to, j)
+char *from, *to;
+int i;
+int *j;
+{
+	while ((to [*j] = from [i++]) != EOS) {
+		(*j)++;
+	}
+}
+
+/*  index - find char  c  in string  str */
+
+int index (str, c)
+char *str, c;
+{
+
+	int i;
+
+	for (i = 0; str [i] != EOS; i++) {
+		if (str [i] == c) {
+			return(i);
+		}
+	}
+	return (-1);
+}
+
+/*  length - compute length of string
+ *           do not count EOS in length
+ */
+
+int length (str)
+char *str;
+{
+	int i;
+
+	for (i = 0; str [i] != EOS; i++) {
+		;
+	}
+	return(i);
+}
+
+
+

@@ -1,0 +1,100 @@
+----------
+WRITTEN:        25/10/87
+-------
+PURPOSE:        This is one of a series of files which take
+-------         advantage of INT 21H functions under MS-DOS.
+                In each case the error situation is marked by
+                the carry flag being set.   We use the De Smet
+                external variable '_carryf' to see whether the
+                carry is set on return from the function.
+                If so, the error code can be used to obtain
+                information about the specific error.
+
+USAGE:          int FUN3CH(name, attr, &_carryf)
+-----           char *name;  (ASCIIZ string)
+                int attr;
+                char *_carryf;
+
+DEPENDENCIES:           De Smet C V 2.44+
+------------
+Copyright 1987 - Cogar Computer Services Pty. Ltd
+---------------------------------------------------------------------
+
+/*
+    First declare the name of the routine under the heading 'CSEG'.
+    Note the underscore needed at the end of the name.
+*/
+
+CSEG
+PUBLIC FUN3CH_
+
+/*
+    The actual coding of the function follows.   Note the technique
+    to save the setting of the base pointer.   For the purposes of
+    these programmes it is not necessary to make ES common with DS,
+    but this is generally useful in ASM88 programmes.
+*/
+
+FUN3CH_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+----------------------------------------------------------------------
+       The unique programme follows.
+----------------------------------------------------------------------
+/*
+    Take the values we need off the stack.   Note the first value is
+    located at 'bp+4' because the return address is pushed first and
+    then 'bp' was pushed by us as we started the programme.
+    The values are placed into the three registers as required by
+    MS-DOS so that INT 21H can be used.
+*/
+
+	mov	dx,[bp+4]	; put address of file name into DX
+	mov	cx,[bp+6]	; put the file attribute into CX
+	mov	ah,3ch	; put the Function No. into AH
+	int	21h
+
+/*
+    Now test to see whether the carry flag is set, which will tell
+    us that an error has occurred.   If there is an error we use
+    a conditional jump to the code to handle this situation.
+*/
+
+	jc	FUN3CH_ERROR
+
+/*
+    If there is no error then we just jump over the error coding
+    to the normal return routine.
+*/
+
+	jmp	FUN3CH_QUIT
+
+/*
+    If there has been an error then we get the address of the
+    (external) carry flag variable and send the value of one
+    to this address.   This is an example of the coding which
+    can be used to send a value to any external variable which
+    has previously had its address passed to the function.
+*/
+
+FUN3CH_ERROR:
+	mov	si,[bp+8]	; put address of '_carryf' variable into SI
+	mov	byte [si],1	; and then return with _carryf = 1
+
+/*
+    From this point the error routine just 'falls through' to the
+    normal programme termination where both the starting stack
+    conditions are restored and the starting Base Pointer is
+    restored.
+*/
+
+----------------------------------------------------------------------
+       Normal programme termination.
+----------------------------------------------------------------------
+FUN3CH_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+----------------------------------------------------------------------
+

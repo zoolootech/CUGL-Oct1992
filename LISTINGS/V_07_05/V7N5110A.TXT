@@ -1,0 +1,304 @@
+Listing 1
+
+
+/*  FFT - Cooley-Tukey Fast Fourier Transform
+ *
+ *  Purpose:   To calculate the discrete Fast
+ *             Fourier Transform (or its inverse)
+ *             of a set of complex data elements.
+ *
+ *  Setup:     COMPLEX data[];
+ *             int n;
+ *             int flag;
+ *             void fft();
+ *
+ *  Call:      fft(data, n, flag);
+ *
+ *  Where:     data is an array of n+1 data
+ *               elements, where data[0] is
+ *               unused.
+ *             n is the number of valid data
+ *               elements in "data" ( i.e. -
+ *               data[1...n] ). It MUST be
+ *               an integer power of two.
+ *             flag is a Boolean flag which
+ *               if zero indicates that the
+ *               inverse Fourier transform is
+ *               to be calculated; otherwise
+ *               the Fourier transform is
+ *               calculated.
+ *
+ *  Result:    The Fourier transform (or the
+ *             inverse Fourier transform) is
+ *             calculated in place and returned
+ *             in "data"; the original data
+ *             elements are overwritten.
+ *
+ *  Note:      The data type COMPLEX is:
+ *
+ *                  typedef struct complex
+ *                  {
+ *                    float real;
+ *                    float imag;
+ *                  }
+ *                  COMPLEX;
+ */
+
+void fft(data, n, flag)
+COMPLEX data[];
+int n;
+int flag;
+{
+  int a, b, c, d, e; /* Counter variables */
+  COMPLEX temp;      /* Swap variable */
+  COMPLEX u, v;      /* Temporary variables */
+  double theta;
+  double PI = 3.14159265358979;
+
+  /* Perform bit reversal */
+
+  theta = flag ? PI : -PI;
+  b = n/2 + 1;
+  for (a = 2; a < n; a++)
+  {
+    if (a < b)
+    {
+      temp.real = data[a].real;
+      temp.imag = data[a].imag;
+      data[a].real = data[b].real;
+      data[a].imag = data[b].imag;
+      data[b].real = temp.real;
+      data[b].imag = temp.imag;
+    }
+    c = n/2;
+    while (c < b)
+    {
+      b -= c;
+      c /= 2;
+    }
+    b += c;
+  }
+
+  /* Calculate Fourier transform */
+
+  c = 1;
+  while (c < n)
+  {
+    d = c;
+    c *= 2;
+    u.real = 1.0;
+    u.imag = 0.0;
+    v.real = cos(theta/d);
+    v.imag = sin(theta/d);
+    for (b = 1; b <= d; b++)
+    {
+      for (a = b; a <= n; a += c)
+      {
+        e = a + d;
+        temp.real = data[e].real * u.real -
+                    data[e].imag * u.imag;
+        temp.imag = data[e].real * u.imag -
+                    data[e].imag * u.real;
+        data[e].real = data[a].real - temp.real;
+        data[e].imag = data[a].imag - temp.imag;
+        data[a].real += temp.real;
+        data[a].imag += temp.imag;
+      }
+      temp.real = u.real;
+      u.real = u.real * v.real -
+               u.imag * v.imag;
+      u.imag = temp.real * w.imag +
+               u.imag * v.real;
+    }
+  }
+
+  /* Normalize if not inverse transform */
+
+  if (flag)
+    for (a = 1; a <= n; a++)
+    {
+      data[a].real /= n;
+      data[a].imag /= n;
+    }
+}
+
+
+Listing 1 - Fast Fourier Transform (Cooley-Tukey)
+-------------------------------------------------
+
+
+
+
+
+Listing 2
+
+
+/*  FWT - Shank's Fast Walsh Transform
+ *
+ *  Purpose:   To calculate the discrete Fast
+ *             Walsh Transform (or its inverse)
+ *             of a set of real data elements.
+ *
+ *  Setup:     float data[];
+ *             int n;
+ *             int flag;
+ *             void fwt();
+ *
+ *  Call:      fwt(data, n, flag);
+ *
+ *  Where:     data is an array of n+1 data
+ *               elements, where data[0] is
+ *               unused.
+ *             n is the number of valid data
+ *               elements in "data" ( i.e. -
+ *               data[1...n] ). It MUST be
+ *               an integer power of two.
+ *             flag is a Boolean flag which
+ *               if zero indicates that the
+ *               inverse Walsh transform is
+ *               to be calculated; otherwise
+ *               the Walsh transform is
+ *               calculated.
+ *
+ *  Result:    The Walsh transform (or the
+ *             inverse Walsh transform) is
+ *             calculated in place and returned
+ *             in "data"; the original data
+ *             elements are overwritten.
+ *
+ *  Note:      The Walsh function coefficients
+ *             returned in data are arranged in
+ *             increasing Paley (dyadic) order.
+ */
+
+void fwt(data, n, flag)
+float data[];
+int n;
+int flag;
+{
+  int a, b, c, d, e; /* Counter variables */
+  double temp;       /* Swap variable */
+
+  /* Perform bit reversal */
+
+  b = n/2 + 1;
+  for (a = 2; a < n; a++)
+  {
+    if (a < b)
+    {
+      temp = data[a];
+      data[a] = data[b];
+      data[b] = temp;
+    }
+    c = n/2;
+    while (c < b)
+    {
+      b -= c;
+      c /= 2;
+    }
+    b += c;
+  }
+
+  /* Calculate Walsh transform */
+
+  c = 1;
+  while (c < n)
+  {
+    d = c;
+    c *= 2;
+    for (b = 1; b <= d; b++)
+      for (a = b; a <= n; a += c)
+      {
+        e = a + d;
+        temp = data[e];
+        data[e] = data[a] - temp;
+        data[a] += temp;
+      }
+  }
+
+  /* Normalize if not inverse transform */
+
+  if (flag)
+    for (a = 1; a <= n; a++)
+      data[a] /= n;
+}
+
+
+Listing 2 - Fast Walsh Transform (Shank)
+----------------------------------------
+
+
+
+
+Figure 1
+
+
+                            |<-------- ONE PERIOD -------->|
+
+                         +1 |-------------------------------
+WAL(0), PAL(0), CAL(0)    0 +-------------------------------->
+                         -1 |
+
+                         +1 |--------------+
+WAL(1), PAL(1), SAL(1)    0 +--------------|----------------->
+                         -1 |              +----------------
+
+                         +1 |-------+               +-------
+WAL(2), PAL(3), CAL(1)    0 +-------|---------------|-------->
+                         -1 |       +---------------+
+
+                         +1 |-------+       +-------+      
+WAL(3), PAL(2), SAL(2)    0 +-------|-------|-------|-------->
+                         -1 |       +-------+       +-------
+
+                         +1 |---+       +-------+       +---
+WAL(4), PAL(6), CAL(2)    0 +---|-------|-------|-------|---->
+                         -1 |   +-------+       +-------+
+
+                         +1 |---+       +---+   +-------+
+WAL(5), PAL(7), SAL(3)    0 +---|-------|---|---|-------|---->
+                         -1 |   +-------+   +---+       +---
+
+                         +1 |---+   +---+       +---+   +---
+WAL(6), PAL(5), CAL(3)    0 +---|---|---|-------|---|---|---->
+                         -1 |   +---+   +-------+   +---+
+
+                         +1 |---+   +---+   +---+   +---+
+WAL(7), PAL(4), SAL(4)    0 +---|---|---|---|---|---|---|---->
+                         -1 |   +---+   +---+   +---+   +---
+
+                         +1 |-+   +---+   +---+   +---+   +-
+WAL(8), PAL(12), CAL(4)   0 +-|---|---|---|---|---|---|---|-->
+                         -1 | +---+   +---+   +---+   +---+
+
+                         +1 |-+   +---+   +-+ +---+   +---+
+WAL(9), PAL(13), SAL(5)   0 +-|---|---|---|-|-|---|---|---|-->
+                         -1 | +---+   +---+ +-+   +---+   +-
+
+                         +1 |-+   +-+ +---+   +---+ +-+   +-
+WAL(10), PAL(15), CAL(5)  0 +-|---|-|-|---|---|---|-|-|---|-->
+                         -1 | +---+ +-+   +---+   +-+ +---+
+
+                         +1 |-+   +-+ +---+ +-+   +-+ +---+
+WAL(11), PAL(14), SAL(6)  0 +-|---|-|-|---|-|-|---|-|-|---|-->
+                         -1 | +---+ +-+   +-+ +---+ +-+   +-
+
+                         +1 |-+ +-+   +-+ +---+ +-+   +-+ +-
+WAL(12), PAL(10), CAL(6)  0 +-|-|-|---|-|-|---|-|-|---|-|-|-->
+                         -1 | +-+ +---+ +-+   +-+ +---+ +-+
+
+                         +1 |-+ +-+   +-+ +-+ +-+ +---+ +-+
+WAL(13), PAL(11), SAL(7)  0 +-|-|-|---|-|-|-|-|-|-|---|-|-|-->
+                         -1 | +-+ +---+ +-+ +-+ +-+   +-+ +-
+
+                         +1 |-+ +-+ +-+ +-+   +-+ +-+ +-+ +-
+WAL(14), PAL(9), CAL(7)   0 +-|-|-|-|-|-|-|---|-|-|-|-|-|-|-->
+                         -1 | +-+ +-+ +-+ +---+ +-+ +-+ +-+
+
+                         +1 |-+ +-+ +-+ +-+ +-+ +-+ +-+ +-+
+WAL(15), PAL(8), SAL(8)   0 +-|-|-|-|-|-|-|-|-|-|-|-|-|-|-|->
+                         -1 | +-+ +-+ +-+ +-+ +-+ +-+ +-+ +-
+    
+
+Figure 1 - Walsh Functions WAL(0) through WAL(15)
+-------------------------------------------------

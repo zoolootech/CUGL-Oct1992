@@ -1,0 +1,37 @@
+/*
+ * redir.c:
+ *
+ * C version of redir() redirection detection function.
+ */
+
+#include <dos.h>
+#include <stdlib.h>
+
+unsigned char redir (void)  /* Test for redirection of standard devices */
+{
+  unsigned char far *fht_ptr;       /* File Handle Table pointer */
+  int i;                              /* loop counter */
+  unsigned char ret_val, handle_bit;  /* return value and bit-setter */
+  const unsigned char nrml_hndl[5] =
+      { 0x01,    /* STDIN default CON: */
+        0x01,    /* STDOUT default CON: */
+        0x01,    /* STDERR default CON: */
+        0x00,    /* AUXIO default AUX: */
+        0x02     /* LSTOUT default PRN: */
+      };
+  
+  /* Set fht_ptr at File Handle Table */
+  fht_ptr = *(unsigned char far * far *)MK_FP(_psp,0x0034);
+
+  ret_val = 0x00;                  /* Assume no redirection */
+  handle_bit = 0x01;               /* Set bit 0 of handle_bit */
+
+  for (i = 0; i < 5; ++i)          /* There are five defaults */
+  {
+    if (*(fht_ptr++) != nrml_hndl[i])  /* ith value in Table == default? */
+      ret_val |= handle_bit;       /* If not, set bit (2 ** i) in ret_val */
+    handle_bit <<= 1;              /* Shift to set next bit in handle_bit */
+  }
+
+  return(ret_val);
+}

@@ -1,0 +1,140 @@
+	TITLE	BIOSLB Routine to interface 'C' to 'BIOS'
+	;
+	;
+	;	Anyone may use this (or not as they please)
+	;	for whatever purpose they wish
+	;	H.R.Moran Jr. 1/31/80
+	;
+	;++ **************************************************
+	;
+	; TO USE THIS ROUTINE:
+	;
+	;	M80 BIOSLB,BIOSLB=BIOSLB	...Microsoft 'M80'
+	;	L80 BIOSYB,BIOSLB/N/E		...Microsoft 'L80'
+	;	REN BIOS.CRL=BIOS.COM
+	;
+	;	BIOS.CRL WILL BE A 'BDS C' COMPATIBLE RELOCATABLE FILE
+	;	WHICH CAN BE REQUESTED AT CLINK OR INTEGRATED
+	;	INTO YOUR LIBRARY WITH CLIB
+	;
+	;	'BDS C' calling sequence samples
+	;
+	;#define WARMBOOT 0
+	;#define CONST 1
+	;#define CONIN 2
+	;#define CONOUT 3
+	;#define LIST 4
+	;#define PUNCH 5
+	;#define READER 6
+	;#define HOME 7
+	;#define SELECT_DISK 8
+	;#define SET_TRACK 9
+	;#define SET_SECTOR 10
+	;#define SET_DMA 11
+	;#define READ_SECTOR 12
+	;#define WRITE_SECTOR 13
+	;
+	;
+	;char *dma_address;
+	;char c;
+	;int bios();  /* both B and C regs are loaded from 2'nd param */
+	;	      /*            A reg  is  returned as fn value */
+	;int track,sector;
+	;	.
+	;	.
+	;	.
+	;  bios(SELECT_DISK,disk-'A');
+	;  bios(SET_TRACK,track);
+	;  bios(SET_SECTOR,sector);
+	;  bios(SET_DMA,dma_address);
+	;
+	;
+	;	if( (c=bios(READ_SECTOR,DUMMY_ARGUMENT)) != 0 )
+	;	  exit(puts("\nError in reading absolute sector"));
+	;	.
+	;	.
+	;	.
+	;
+	;	while(1) {
+	;	  if( (c=bios(CONST,DUMMY_PARAMETER) )	/* keystruck */
+	;	    break;
+	;	  .
+	;	  .
+	;	  .
+	;	  } /* end while */
+	;	c = bios(CONIN,DUMMY_PARAMETER);	/* get the char */
+	;	if( c >= ' ' )				/* it is visable */
+	;	  bios(CONOUT,c);
+	;	else {			/* make it visable */
+	;	  bios(CONOUT,'^');
+	;	  bios(CONOUT,c +'A');
+	;	  }
+	;
+	;
+	;
+	;-- **************************************************
+	;
+MAGIC	EQU	3F7H		;'BDS C' PARAMETER PASSING BUFFER
+	;
+	ASEG
+	ORG	100H
+	.PHASE	0
+	;
+ZERO:	DC	'BIOS'		;MODULE NAME
+	DW	BIOSHEAD	;LOCATION OF LABEL 'BIOSHEAD' IN FILE
+	DB	80H		;END OF DIRECTORY ENTRIES
+	DW	FINIS - 100H	;POINTER TO NEXT AVAIL LOCATION IN FILE
+	DS	(512 -($-ZERO))	;PAD REST OF DIRECTORY
+	DS	5		;RESERVED FOR 'CLIB'
+	;
+	.DEPHASE
+	;
+	PAGE
+	;
+	; THE BIOS() CODE HEADER ENTRY
+	;
+	.PHASE	$-100H
+	;
+BIOSHEAD:
+	DB	0		;NO EXTERNAL 'BDS C' ROUTINES NEEDED
+	DW	BIOSSTOP-BIOS	;LENGTH OF THIS ROUTINE
+	;
+	.DEPHASE
+	;
+	; THE BODY OF BIOS()
+	;
+	.PHASE	0
+	;
+BIOS:	PUSH	B		;SAVE TH 'BDS C' STACK POINTER
+	LXI	H,BIOSBACK	;INTERMEDIATE RETURN ADRESS
+	PUSH	H		;STACK IT
+	LHLD	MAGIC + 2	;HL = PARAMETER TO PASS TO BIOS
+	MOV	B,H
+	MOV	C,L		;BC = PARAMETER TO PASS TO BIOS
+	LDA	MAGIC		; A = FUNCTION NUMBER
+	MOV	D,A
+	ADD	A
+	ADD	D		; A = (FUNCTION NUMBER)*3
+	LHLD	1		; HL = .(BIOS JUMP TABLE)
+	ADD	L
+	MOV	L,A
+	ADC	H
+	SUB	L
+	MOV	H,A		; HL = (BIOS JUMP TABLE)[FUNCTION NUMBER]
+	PCHL			; GO TO BIOS ROUTINE, RETURN TO 'BIOSBACK'
+	;
+BIOSBACK:
+	MVI	H,0
+	MOV	L,A
+	POP	B		;RESTORE THE 'BDS C' STACK POINTER
+	RET			;TO THE 'BDS C' ROUTINE WHICH INVOKED 'BIOS'
+	;
+BIOSSTOP:
+	;
+	; RELOCATION PARAMETERS
+	;
+	DW	1			;NUMBER OF NEEDED RELOCATION PARAMS
+	DW	BIOS + 2		;POINTER TO ADDRESS NEEDING RELOC
+	.DEPHASE
+FINIS:	END	ZERO
+

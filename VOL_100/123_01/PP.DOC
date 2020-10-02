@@ -1,0 +1,278 @@
+.bp 1
+.in 0
+.he 'PP (1)'10/1/79'PP (1)'
+.fo ''-#-''
+.in 7
+.ti -7
+NAME
+.br
+pp - pre-processor for the C programming language
+
+.ti -7
+SYNOPSIS
+.br
+pp <infile> [<outfile>] [-d]\n");
+
+.ti -7
+DESCRIPTION
+.br
+PP is a pre-processor for use with the C programming language.
+PP is not simply a transliteration of the RATFOR tool called MACRO;
+it conforms to the "official" format of the C preprocessor as defined
+in the K&R C Programming Language book.
+The output file can be fed into the BDS C compiler;
+or any other compiler (and other languages?) for
+which the input was intended.
+
+PP reads its input file and writes to its output file.
+if <outfile> is not given, output will be placed in
+<infile>.PP.
+The optional -d turns on the debug mode which is only
+useful if you want to watch what goes on inside the
+program as it crunches files.
+
+PP has #include file capability and
+symbolic parameter substitution (macros).
+
+Macros permit the definition of
+symbolic constants so that subsequent
+occurrences of the constant are replaced by the defining
+string of characters.
+The general form of a macro definition is
+
+	#define name replacement-text
+
+All subsequent occurrences of "name" in the file will be replaced
+by "replacement-text".
+The placement of blanks in definitions is significant;
+they should only appear in the replacement
+text where desired.
+Upper and lower case letters are also significant.
+The replacement text may be more than one
+line long.
+However, when an entire macro definition is followed immediately by a newline,
+the newline is discarded.
+This prevents extraneous blank lines from appearing in the output.
+
+Nesting of macros is allowed, as is recursion.
+
+An elementary example of a macro is:
+
+	#define EOF -1
+
+Thereafter, all occurrences of "EOF" in the file would be replaced
+by "-1".
+
+Macros with arguments may also be specified.
+That means you can write something like:
+
+	#define max(a,b) (a) > (b) ? (a) : (b)
+
+which will replace:
+
+	max(x+1,y-1)
+
+with:
+
+	(x+1) > (y-1) ? (x+1) : (y-1)
+
+Here "max(a,b)" is a template with two parameters: a and b.
+When the preprocessor sees "max(x+1,y-1)"
+it replaces the first parameter (a) in the definition
+with "x+1" and the second parameter ("b") with "y-1".
+Notice that the "(" must follow "max" with no intervening spaces.
+That's so the preprocessor can differentiate
+between argumented and non-argumented macros, e.g.,
+"#define ERROR (-1)".
+
+Notice that the a and b in the definition of max are surrounded
+by parentheses. This is often a good idea; it avoids
+problems that might occur with precedence rules, e.g.:
+
+	#define div(a,b) a/b
+	... div(x+2,5)
+
+would result in "x+2/5" which is interpreted as x+(2/5)
+instead of the intended "(x+2)/5".
+
+As another example, 
+
+.nf
+#define copen(filename,mode,filedes)\n
+	filedes = open(filename,mode)\n
+	if (filedes == ERROR) {\n
+		cant(filename);\n
+	}
+.br
+.fi
+
+would define a macro called copen that, when called by
+
+	copen(name, READ, fd)
+
+would expand into
+
+.nf
+	fd = open(name,READ)
+	if (fd == ERROR) {
+		cant(name);
+	}
+.br
+.fi
+
+.ti -7
+FILES
+.br
+None
+
+.ti -7
+SEE ALSO
+.br
+Kernighan and Plauger's "Software Tools", pages. 251-283
+.br
+
+.ti -7
+DIAGNOSTICS
+.br
+arith evaluation stack overflow
+.in +5
+The max level of nested arithmetic expressions has been exceeded.
+The size is set by the MAXSTACK definition in the source code.
+.sp
+.in -5
+arg stack overflow
+.br
+.in +5
+The maximum number of total arguments has been exceeded;
+the size is set by the ARGSIZE definition in the source code.
+.in -5
+.sp
+call stack overflow
+.br
+.in +5
+The maximum level of nesting of definitions has been exceeded.
+The size is set by the CALLSIZE definition in the source code.
+.in -5
+.sp
+EOF in string
+.br
+.in +5
+An end-of-file has been encountered before a bracketed string has
+been terminated.
+.in -5
+.sp
+evaluation stack overflow
+.br
+.in +5
+The total number of characters permitted for
+name, definition, and arguments
+has been exceeded.
+Set by the EVALSIZE definition in the source code.
+.in -5
+.sp
+unexpected EOF
+.br
+.in +5
+An end-of-file was reached before the macro definition was terminated.
+.in -5
+.sp
+filename: can't open
+.br
+.in +5
+The indicated file could not be opened.
+.in -5
+.sp
+filename: can't #include
+.br
+.in +5
+The indicated file could not be included via the includ builtin.
+.in -5
+.sp
+#includs nested too deeply
+.br
+.in +5
+#includes were nested deeper than the system would allow.
+The number is determined by the MAXOFILES definition in the
+general symbols definition file.
+.in -5
+.sp
+expression: invalid infix expression
+.br
+.in +5
+There is a syntax error in the indicated infix expression as
+passed to the expr builtin.
+.in -5
+.sp
+too many characters pushed back
+.br
+.in +5
+A macro expansion is too large to be rescanned.
+The size is set by the BUFSIZE definition in the source code.
+.in -5
+.sp
+name: too many definitions
+.br
+.in +5
+The table space for macro definitions has been exhausted; this
+occurred upon the definition of the indicated macro.
+.in -5
+.sp
+token too long
+.br
+.in +5
+A name or symbol in the input was longer than the token buffer.
+Size is determined by the MAXTOK definition in the source code.
+.in -5
+.sp
+.ti -7
+AUTHORS
+.br
+Original by Kernighan and Plauger, with enhancements by
+David Hanson and friends (U. of Arizona) and Philip
+Scherrer (Stanford U.)
+
+Modifications for "C" syntax by:
+
+	Robert T. Pasky
+	36 Wiswall Rd
+	Newton Centre, MA 02159
+	(617) 964-3641
+
+A stab at documentation made by:
+
+	Edward K. Ream
+	1850 Summit Ave.
+	Madison, WI 53705
+	(608) 231 - 2952
+
+.fi
+.sp
+.ti -7
+BUGS/DEFICIENCIES
+.br
+1.  This macro processor is incompatible with the one included
+in the ratfor preprocessor.
+I (E. K. Ream) would also be quite surprised (shocked may be more like it)
+if it also followed all the subtle nuances of the Unix C preprocessor.
+
+2.  This program has NOT been rigorously tested
+and, as provided here, is quite limited in its array
+size (it's easy enough to increase the defines for
+the array sizes if you have lots of memory).
+The proportions allocated among the various arrays
+may also need tuning. For example, if you like to use
+lots of short define strings you might increase MAXTOK
+and MAXDEF. On the other hand, if you have relatively
+few defines but they tend to be long-winded, you could
+shorten these in favor of increasing MAXTBL (and
+possibly DEFSIZ).
+
+3.  This preprocessor does not suppost the #if, #ifdef, #ifndef,
+#else, #endif or #line preprocessor directives.
+
+4.  Almost all of this documentation may be in error, since it
+was not written by the author of the program.
+ directives.
+
+4.  Almost all of this documentation may be in error, since it
+was not written by the author of th

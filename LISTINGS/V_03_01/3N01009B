@@ -1,0 +1,88 @@
+/*****************************************************/
+/* menu.c                                            */
+/* -- Popup menu routines.                           */
+/* -- Don't forget to export FEnumWnd() in your .def */
+/*    file!                                          */
+/*****************************************************/
+
+/*****************************************************/
+/* Header files.                                     */
+/*****************************************************/
+#include <windows.h>
+#include "menu.h"
+
+/*****************************************************/
+/* Private prototypes.                               */
+/*****************************************************/
+BOOL FAR  PASCAL  FEnumWnd(HWND, DWORD);
+
+/*****************************************************/
+/* Routines.                                         */
+/*****************************************************/
+
+VOID
+DrawMenu(HDC hdc, POINT pt, HANDLE hins)
+/*****************************************************/
+/* -- Capture the popup menu if it ie visible.       */
+/* -- hdc     : DC to receive menu image.            */
+/* -- pt      : Where to paint image in hdc.         */
+/* -- hins    : Application's instance handle.       */
+/*****************************************************/
+    {
+    HWND    hwndMenu    = HwndGetPopupMenu(hins);
+    HDC     hdcMenu;
+    RECT    rectMenu;
+    int     dx, dy;
+
+    /* Make sure popup menu is visible. */
+    if (!IsWindow(hwndMenu) ||
+      !IsWindowVisible(hwndMenu))
+        return;
+
+    /* Get a DC for the menu, and copy its image. */
+    hdcMenu = GetDC(hwndMenu);
+    GetWindowRect(hwndMenu, &rectMenu);
+    dx = rectMenu.right - rectMenu.left;
+    dy = rectMenu.bottom - rectMenu.top;
+    BitBlt(hdc, pt.x, pt.y, dx, dy, hdcMenu, 0, 0,
+      SRCCOPY);
+    ReleaseDC(hwndMenu, hdcMenu);
+    }
+
+HWND
+HwndGetPopupMenu(HANDLE hins)
+/*****************************************************/
+/* -- Find the window handle of the shared popup    */
+/*    menu.                                          */
+/* -- hins    : Application's instance handle.       */
+/*****************************************************/
+    {
+    FARPROC lpfn;
+    HWND    hwndMenu    = NULL;
+
+    lpfn = MakeProcInstance(FEnumWnd, hins);
+    EnumWindows(lpfn, (LONG)(WORD)&hwndMenu);
+    FreeProcInstance(lpfn);
+    return hwndMenu;
+    }
+
+
+
+BOOL FAR PASCAL
+FEnumWnd(HWND hwnd, DWORD lParam)
+/*****************************************************/
+/* -- EnumWindows() callback to get popup menu       */
+/*    window handle.                                 */
+/*****************************************************/
+    {
+    char    szBuf[40];
+
+    GetClassName(hwnd, szBuf, sizeof szBuf);
+    if (!lstrcmp(szBuf, "#32768"))
+        {
+	*(HWND *)lParam = hwnd;
+        return FALSE;
+        }
+
+    return TRUE;
+    }

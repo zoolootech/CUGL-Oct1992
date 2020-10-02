@@ -1,0 +1,196 @@
+; (c) Copyright 1991, Martin Stitt
+; xmit_par.asm - tsr program, doesparallel port output
+; to be loaded in the test machine.
+
+outport	equ	03bch	; parallel port base addr
+
+include	dumpmacs.inc	; include for intvect equate
+
+_TEXT	segment para public 'CODE'
+        assume  cs:_TEXT,ds:_TEXT,es:_TEXT,ss:_TEXT
+	org	0100H
+start:
+	jmp	begin
+
+int_tbl label word
+	dw	xmit_al, xmit_str, xmit_byte, xmit_word
+int_tbl_wrds equ $-int_tbl
+
+hex_table 	db	'0123456789ABCDEF'
+byte_buff	db	'   ',0
+word_buff	db	'     ',0
+
+;= xmit_al ============================================
+; in:	al = the character to transmit
+;	dx = the output port's base address
+;
+; out:	all registers preserved 
+;	interrupt flag setting preserved 
+;======================================================
+	assume	ds:nothing,es:nothing,ss:nothing
+xmit_al:
+	push	ax
+	push	ax		; save the byte to xmit
+	inc	dx		; address base+1
+wait1:
+	in	al,dx		; loop until ready 
+	jmp	$+2		; signal is high
+	test	al,80h
+	jz	wait1
+	pop	ax		; recover data byte
+	dec	dx
+	pushf			; save int flag state
+	cli			; no irqs here  
+	out	dx,al		; write data to port
+	jmp	$+2
+	inc	dx
+	inc	dx		; address base+2
+	in	al,dx		; read current states
+	jmp	$+2
+	xor	al,1		; toggle the strobe bit
+	out	dx,al
+	jmp	$+2
+	dec	dx		; back to base+1
+wait2:
+	in	al,dx		; loop until ready 
+	jmp	$+2		; signal is low
+	test	al,80h
+	jnz	wait2
+	dec	dx		; restore entry dx
+	popf			; restore int flag
+	pop	ax
+	ret
+
+;= xmit_str ===========================================
+; in:	ds:si -> the asciiz string to dump
+;	dx = the output port's base address
+;
+; out:	all registers preserved 
+;======================================================
+xmit_str:
+	push	ax
+	push	si
+	cld
+xs1:
+	lodsb			; pull in each char 
+	or	al,al		; of the string
+	jz	xs2		; done yet?
+	call	xmit_al		; xmit the character
+	jmp	short xs1
+xs2:
+	pop	si
+	pop	ax
+	ret
+
+;= byte2hex ===========================================
+; in:	al = the byte to be converted
+;	ds:si -> buffer in which to write result
+;
+; out:	buffer at ds:si contains two ascii characters
+;======================================================
+	assume	ds:nothing,es:nothing,ss:nothing
+byte2hex:
+	push	ax
+	push	bx
+	push	si
+	mov	bx,offset hex_table
+	push	ax
+	shr	al,1
+	shr	al,1
+	shr	al,1		; convert byte to 2 hex
+	shr	al,1		; chars and stuff 
+	xlat	hex_table	; in buffer
+	mov	[si],al
+	pop	ax
+	and	al,0fh
+	xlat	hex_table
+	mov	[si+1],al
+	pop	si
+	pop	bx
+	pop	ax
+	ret
+
+;= xmit_byte ==========================================
+; in:	al = byte to convert and xmit
+;
+; out:	all registers preserved 
+;======================================================
+	assume	ds:nothing,es:nothing,ss:nothing
+xmit_byte:
+	push	si
+	push	ds
+	mov	si,cs
+	mov	ds,si
+	mov	si,offset byte_buff
+	call	byte2hex
+	call	xmit_str	; xmit the buffer
+	pop	ds
+	pop	si
+	ret
+
+;= xmit_word ==========================================
+; in:	si = word to convert and xmit
+;
+; out:	all registers preserved 		       
+;======================================================
+	assume	ds:nothing,es:nothing,ss:nothing
+xmit_word:
+	push	ax
+	push	si
+	push	ds
+	mov	ax,si
+	mov	si,cs
+	mov	ds,si
+	mov	si,offset word_buff
+	xchg	ah,al
+	call	byte2hex	; convert word to 4 hex
+	add	si,2		; chars and stuff 
+	mov	al,ah		; in buffer
+	call	byte2hex
+	sub	si,2
+	call	xmit_str	; xmit the buffer
+	pop	ds
+	pop	si
+	pop	ax
+	ret
+
+;= int_handler ========================================
+; in:	ah = function selector
+;
+; out:	all registers preserved 
+;======================================================
+	assume	ds:nothing,es:nothing,ss:nothing
+handler:
+	push	bx
+	mov	bl,ah
+	xor	bh,bh		; lookup function and
+	shl	bx,1		; call corresponding 
+	cmp	bx,int_tbl_wrds	; service routine
+	jae	intx
+	push	dx
+	mov	dx,outport	; load base address
+	call	cs:[int_tbl+bx]
+	pop	dx
+intx:
+	pop	bx
+	iret
+
+endres  label   byte
+
+;==== main routine
+	assume  ds:_TEXT,es:_TEXT,ss:_TEXT
+begin:
+	xor	ax,ax		; hook the int vector
+	mov	es,ax
+	assume	es:nothing
+	mov	word ptr es:[intvect*4],offset handler
+	mov	word ptr es:[intvect*4+2],cs
+	mov	dx,offset endres+15
+	mov	cl,4
+	shr	dx,cl		; terminate & stay res
+	mov	ax,3100h
+	int	21h
+_TEXT	ends
+	end	start
+
+

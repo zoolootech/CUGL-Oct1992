@@ -1,0 +1,1890 @@
+
+		/*	Functions	*/
+
+OpenGraph
+---------
+
+    Include	: grph.h
+    Declaration : int far pascal OpenGraph(Byte Mode,Byte Erase)
+    Parameters	: Mode = Bios mode no. to set
+		    Erase = 0 video buffer is cleared
+			    1 video buffer is not cleared
+    Return	: Mode no. if successful.
+    Usage	:
+
+    OpenGraph(0x12,0);
+
+    This will set Video adapter in mode hex 12, and erase the video buffer.
+
+    Description : sets the system in Graphics mode, Video buffer is cleared
+    if Erase = 0, and not cleared when Erase = 1.
+
+    Mode is mapped to BIOS mode no. according to following scheme, which can
+    be modified in GRPH.H
+
+	Mode	Resolutions and colors		     BIOS Mode No
+
+	  0	    640x350x16				0x10
+	  1	    640x480x16				0x12
+	  2	    320x200x256 			0x13
+	  3	    640x400x256 			0x5c
+	  4	    640x480x256 			0x5d
+	  5	    800x600x16				0x5b
+	  6	    1024x768x16 			0x5f
+
+    Mode Nos. 4 and 6 require 512k video memory.
+
+    This function also sets up a no. of graphics state defaults.
+
+    Sets up Graphics controller in the requested mode.
+    Sets current viewport to whole screen, specifically, viewport boundaries
+    will be (0,0) and (XRes,YRes).
+    sets up world co-ordinates same as viewport co-ordinates, i. e.
+    one-to-one mapping between viewport and world co-ordinates.
+    clipping is enabled, drawing color is 7, fillpattern is Solid-fill
+    (Fp[19] in PATTERN.H), all drawing styles also solid.
+    Binary font from file 'v8x8.fnt', and stroked font from file 'sdflt.fnt',
+    these files should be in the current directory.
+
+
+CloseGraph
+----------
+
+    Include	: grph.h
+    Declaration : void far pascal CloseGraph(void)
+    Usage	:
+
+    CloseGraph();
+
+    This call will, normally, return to text mode.
+
+    Description : Resets to Previous mode when OpenGraph was called with
+    Erase = 0, (Modes are not stacked !)
+
+
+SetFillPattern
+--------------
+
+    Include	: grph.h
+    Declaration : void far pascal SetFillPattern(Byte Color,Byte XIndex,
+				   Byte YIndex,void  far *Pattern)
+    Parameters	: Color = culor value of fill, either 0 to 255 or 0 to 15
+			  depending upon mode
+		  XIndex = 0-7, Start index from left within Pattern matrix
+		  YIndex = 0-7, start index from top within pattern matrix
+		  Pattern = 8 bytes Pattern array
+    Usage	:
+
+    SetFillPattern(8,0,0,Fp[0]);
+
+    Will set fill color to 8 (grey), Indexes are zero, and fill pattern
+    to be used is 1st. pattern of the standard patterns Fp defined in
+    PATTERN.H.
+
+    Description :
+
+    This call is used to set either standard or user defined fill patterns,
+    fill color, and fill pattern indices, so subsequent calls to area
+    fill routines will use these parameters.
+
+
+GetFillPattern
+--------------
+
+    Include	: grph.h
+    Declaration : void far pascal GetFillPattern(void *Color,void *XIndex,
+				  void *YIndex, void far *Pattern)
+    Parameters	: Color = Address of Byte variable, will contain color value
+		  XIndex, YIndex = Addresses of integers
+		  Pattern = Address of 8 byte array to return fill pattern
+    Usage	: GetFillPattern(&clr, &ix, &iy, pattern);
+
+    this will return fill pattern parameters in the respective variables
+
+    Description : Returns Fill Parameters
+
+
+SetViewPort
+-----------
+
+    Include	: grph.h
+    Declaration : void far pascal SetViewPort(struct VP vp1)
+    Parameters	: structure VP type variable vp1 containing corner co-ordinates
+		  of the viewport
+    Usage	:
+
+    struct  VP	vp1;
+
+    vp1.x1 = 10;
+    vp1.y1 = 10;
+    vp1.x2 = 120;
+    vp1.y2 = 140;
+
+    SetViewPort(VP);
+
+    This will set up a view port with upper left corner at (10,10) and
+    lower right corner at (120,140), in device co-ordinates.
+
+    Description :
+
+    Sets viewport boundaries, with upper left x , upper left y, lower right x,
+    lower right y device co-ordinates given by x1,y1,x2,y2 of structure VP.
+    With clipping enabled, all drawings can be clipped to this viewport
+    boundary. However, absolute co-ordinates (10,10) will not be translated
+    to (0,0) in the above given example. This can be achieved by a small
+    inteface routine of your own, so can the 'Normalised Device Co-ordinates"
+    be implemented by a small translation routine.
+
+    At mode set, by OpenGraph procedure, default viewport is entire screen and
+    clipping is enabled.
+
+
+GetViewPort
+-----------
+
+    Include	: grph.h
+    Declaration : void far pascal GetViewPort(struct VP *vp1)
+    Parameters	: Address of a variable of type structure VP
+    Usage	: GetViewPort(&vp1);
+
+    Returns current viewport co-ordinates in vp1.
+
+    Description : x1, y1, x2, y2 of structure VP type variable vp1 will
+    contain co-ordinates of upper left corner and lower right corner of
+    the current active v. p.
+
+
+SetXLen
+-------
+
+    Include	: grph.h
+    Declaration : void far pascal SetXLen(Word Length)
+    Parameters	: Word type Length containing no of bytes.
+    Usage	:
+
+    SetXLen(100);
+
+    will set video buffer length to 100 bytes.
+
+    Description : Re-dimensions video buffer with length as Length Bytes,
+    and height as 64*1024/Length bytes, only applicable in modes 0x10 and 0x12.
+
+    This is like having a drawing area larger than what is displayed on
+    screen at a time, function SScroll() can be used to scroll display
+    horizontally or vertically so that portions of video buffer become
+    visible.
+
+
+ImageSize
+---------
+
+    Include	: grph.h
+    Declaration : #define ImageSize(int x1,int y1,int x2,int y2) \
+			     ((abs(x2-x1)+1)*(abs(y2-y1)+1)+5)
+    Parameters	: x1,y1 = upper left corner of the image
+		  x2,y2 = lower right corner of the image
+    Usage	:
+
+    int     isize;
+
+    isize = ImageSize(10,10,120,140);
+
+    will calculate no of bytes required to store an image (rectangular),
+    with upper left corner at device co-ordinates (10,10) and lower right
+    corner at device co-ordinates (120,140)
+
+    Description : Calculates No of bytes required to store Bit image bounded
+    by rectangular region x1,y1,x2,y2, so that memory can be allocated for a
+    buffer of that size for subsequent bit-block moves.
+
+
+GetImage
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal GetImage(int Ulx ,int Uly,int Lrx,int Lry,\
+				 void far *Buffer)
+    Parameters	: Ulx, Uly = co-ordinates of upper left corner
+		  Lrx, Lry = co-ordinates of lower right corner
+		  Buffer   = Address of buffer to store Image
+    Usage	:
+
+    void    far *pB;
+
+    pB = (void far *)malloc(ImageSize(10,10,120,140));
+
+    GetImage(10,10,120,140,pB);
+
+    will calculate size of the image and store it in buffer, the image
+    bounded by upper left corner at (10,10) and lower right corner at
+    (120,140).
+
+    Description : Returns Bit-Image bounded by rectangular region Ulx,Uly and
+    Lrx, Lry in Buffer, for subsequent Bit block moves
+
+
+PutImage
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal PutImage(int Ulx,int Uly,void  far *Buffer)
+    Parameters	: Ulx, Uly = co-ordinates of left corner of position
+		  where to store image.
+		  Buffer = Address of buffer containig bit image, previously
+		  obtained by a call to GetImage, or read from file by a
+		  call to LoadImage.
+    Usage	:
+
+    GetImage(10,10,110,110,pB); 	/* assume pB is allocated */
+
+    for (i=10; i<530; i++)
+	PutImage(i,220,pB);
+
+    will put image on screen from pB from x-co-ordinate 10 to 520 and y = 220,
+    if left vertical edge of the image is same as background, then this will
+    have an effect of sliding the image from left to right.
+
+    Description : Displays Bit Image stored in Buffer, obtained by a call to
+    GetImage, at (Ulx,Uly) as upper left corner
+
+
+CopyImage
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal CopyImage(int Ulx,int Uly,int Lrx,int Lry,\
+			   int x,int y)
+    Parameters	: Ulx, Uly = upper left corner co-ordinates
+		  Lrx, Lry = Lower right corner co-ordinates
+		  x,y	   = upper left corner do-ordinates of the destination
+    Usage	:
+
+    CopyImage(8,10,63,60,64,61);
+
+    will copy rectangular block bounded by (8,10) and (63,60) to (64,61).
+
+    Description : Copies within video buffer rectangular region bounded by
+    (Ulx,Uly) and (Lrx,Lry) to location x,y. x,y can not be within the
+    source region. In 16 colour modes, only byte-aligned extents are allowed.
+    i.e. Ulx and x must be mod 8, and Lrx must be mod 7. In 256 colour modes,
+    these can be any valid values.
+
+
+SaveImage
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal SaveImage(void *FileName,void far *Buffer,\
+					    Word Size)
+    Parameters	: FileName = character string containig valid DOS file name
+		  Buffer   = Address of buffer containing bit image to store
+		  Size	   = size of buffer in no. of bytes
+    Usage	:
+
+    isize = ImageSize(10,10,110,110);
+    pB = (void far *)malloc(isize);
+    GetImage(10,10,110,110,pB);
+    SaveImage("image1.dat",pB,isize);
+
+    will save the bit image bounded by (10,10) and (110,110) in file
+    "image1.dat"
+
+    Description : Save Bit image in a file given by FileName, Buffer contains
+    Bit Image of size Size bytes
+
+
+LoadImage
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal LoadImage(void *FileName,\
+					    void far *Buffer,Word Size)
+    Parameters	: FileName = character string containig name of file
+		  Buffer   = address of memory to store image in
+		  Size	   = size of Image to load from file = size of buffer
+    Usage	:
+
+    pB = (void	far*)malloc(isize);
+    LoadImage("image1.dat',pB,isize);
+
+    will load image from file "image1.dat" into buffer pB of isize bytes.
+
+    Description : Loads a Bit image from a file previously saved by a call
+    to SaveImage.
+
+
+WindScrollUp
+------------
+
+    Include	: grph.h
+    Declaration : void far pascal WindScrollUp(int x1,int y1,\
+					       int x2,int y2, int N);
+    Parameters	: x1,y1 = co-ordinates of upper left corner of the
+			    window to scroll
+		  x2,y2 = co-ordinates of lower right corner
+		  N	= No. of scan lines to scroll
+    Usage	:
+
+    WindScrollUp(8,10,114,110,1);
+
+    will scroll window bounded by (8,10) and (114,110) 1 scan line up.
+
+    Description : Scrolls window bounded by (x1,y1) and (x2,y2) by N scan
+    lines up. The bottom N scan lines are not modified and will be same as
+    before, you must fill them up with whatever color or drawing. In 16
+    colour modes, window must be byte-aligned.
+
+
+WindScrollDown
+--------------
+
+    This function is very similar to WindScrollUp described above, except
+    that N scan lines are scrolled down.
+
+
+WindScrollLeft
+--------------
+
+    Similar to WindScrollUp, but Image is scrolled left, so N vertical
+    lines on right are left as before. In 16 colour modes, N must be a
+    multiple of 8.
+
+
+WindScrollRight
+---------------
+
+    Similar procedure to WindScrollLeft, now we are talking about scrolling
+    window right.
+
+
+PolyLineD
+---------
+
+    Include	: grph.h
+    Declaration : int far pascal PolyLineD(Word N,int far *X,int far *Y);
+    Parameters	: N = No. of points in X,Y below
+		  X = array of N integers containing x co-ordinates
+		  Y = array of N integers containing y co-ordinates
+    Return	: 0 if N<1, otherwise N
+    Usage	:
+
+    int     x[6],y[6];
+
+    x[0] = 10; y[0] = 10;
+    x[1] = 100; y[1] = 10;
+    x[2] = 100; y[2] = 100;
+    x[3] = 50;	y[3] = 150;
+    x[4] = 10;	y[4] = 100;
+    x[5] = 10;	y[5] = 10;
+
+    PolyLineD(6,x,y);
+
+    will draw a closed polygon with 5 sides, note that last vertex = first
+    vertex to close the polygon.
+
+    Description :
+
+    Draws connected lines between N points given in arrays X and Y, in
+    device co-ordinates, if N < 1 then nothing is done and a 0 is returned,
+    if N=1, a single pixel is set given by first co-ordinate in X and Y,
+    otherwise N-1 line segments are drawn. to close polygon, last co-ordinate
+    must equal first co-ordinate.
+
+    Current settings of LineStyle, drawing color, drawing mode and clipping
+    is used.
+
+
+Rectangl
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal Rectangl(int Ulx,int Uly,int Lrx,int Lry);
+    Parameters	: Ulx,Uly = upper left corner co-ordinates,
+		  Lrx,Lry = Lower right cotner co-ordinates.
+    Usage	:
+
+    int     i;
+    SetDraw(3); 	  /* set XOR drawing mode */
+    PxlClr = 15;	    /* drawing color = white */
+    LineStyle = 15;	    /* solid line style      */
+    SetClipOff();
+
+    for (i=0; i<101; i++)
+	{
+	    Rectangl(i+10,10,i+110,110);	/* draw rectangle   */
+	    Rectangl(i+10,10,i+110,110);       /* Erase rectangle  */
+	}
+
+    draws a sliding rectangle from bounds (10,10), (110,110) to
+    (110,10), (210,110).
+
+    Description : Draws a rectangle with upperleft corner as Ulx,Uly and
+    lower-right corner as Lrx,Lry, given in device co-ordinates,
+    in current settings.
+
+
+EllipseD
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal EllipseD(int cx,int cy,int a,int b);
+    Parameters	: x,y = co-ordinates of the center
+		  a   = axis 1 (major axis along x)
+		  b   = axis 2 (minor axis along y)
+    Usage	:
+
+    int     i;
+    SetClipOff();
+    SetDraw(3);
+
+    for (i=0; i<401; i++)
+	{
+	    EllipseD(0,0,i,i);
+	    EllipseD(0,0,i,i);
+	}
+
+    draws an exploding circle from origin
+
+    Description : Draws Ellipse in device co-ordinates (Bresenham algorithm)
+    with center at cx,cy, and X and Y-axes as a and b, in current settings.
+
+
+FillPolyD
+---------
+
+    Include	: grph.h
+    Declaration : int far pascal FillPolyD(Word N, int far *X,int far *Y);
+    Parameters	: N = no of vertices in polygon
+		  X,Y = integer arrays containing x and y co-ordinates of
+			polygon vertices
+    Usage	:
+
+    int     x[5],y[5];
+
+    x[0] = 10; y[0] = 10;
+    x[1] = 100; y[1] = 10;
+    x[2] = 100; y[2] = 100;
+    x[3] = 50;	y[3] = 150;
+    x[4] = 10;	y[4] = 100;
+
+    SetFillPattern(14,0,0,Fp[0]);	/* fill settings */
+
+    FillPolyD(5,x,y);
+
+    fills the same polygon as drawn in example of PolyLineD, in current
+    Fill settings, note that polygon is automatcally taken as closed by
+    taking last vertice same as first, hence only 5 vertices are given in
+    first parameter.
+
+    Description : Fills a closed polygon in current Fill pattern parameters,
+    consisting of N points in arrays X and Y, Polygon is automatcally closed.
+
+
+FillArea
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal FillArea(int SeedX,int SeedY,int Color);
+    Parameters	: SeedX,SeedY = co-ordinates of a point in the region
+		  Color = Boundary color of the region
+    Usage	:
+
+    PxlClr = 15;
+    EllipseD(0,0,10,20);		/* draw small ellipse */
+    EllipseD(0,0,30,40);		/* draw large ellipse */
+    SetFillPattern(14,0,0,Fp[1]);	/* set Fill parameters */
+    FillArea(20,0,PxlClr);		/* fill region between Ellipses */
+
+    fills the area between two ellipses in the current settings.
+
+    Description : Fills a closed area bounded by Color Pixels in current
+    fill settings. SeedX and SeedY are co-ordinates of a point in the
+    bounded region, any pixels of same boundary color lying within region
+    will be left as hole.
+
+
+FillRectangle
+-------------
+
+    Include	: grph.h
+    Declaration : void far pascal FillRectangle(int x1,int y1,int x2,int y2);
+    Parameters	: x1,y1 = co-ordinates of the upper left corner
+		  x2,y2 = co-ordinates of the lower right corner
+    Usage	:
+
+    SetFillPattern(13,0,0,Fp[2]);	    /* set fill parameters  */
+    FillRectangle(10,10,110,110);	    /* fill the rectangle   */
+
+    Description : Fills a rectangle in current fill pattern, results in much
+    faster fill.
+
+
+FillAgain
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal FillAgain(void);
+    Parameters	: none
+    Usage	:
+
+    SetDraw(3); 	      /* set XOR mode */
+    FillAgain();		/* last fill be erased ! */
+
+    if called immidiatey after FillArea(), it will erase last fill.
+
+    Description : fills the same area as last call to FillArea, but without
+    calculating area parameters, results in much faster fill.
+
+
+SetPalette
+----------
+
+    Include	: grph.h
+    Declaration : void far pascal SetPalette(int PaletteNo,int ColorNo);
+    Parameters	: PaletteNo = 0 to 15
+		  ColorNo   = 0 to 255
+    Usage	:
+
+    SetPalette(0,100);
+
+    Sets the (hardware) palette given by PaletteNo to value given by ColorNo,
+    no range checking done on  PaletteNo
+
+    Description : Sets a given palette to contain given colour value, colour
+    value is address of colour register in VGA.
+
+
+GetPalette
+----------
+
+    Include	: grph.h
+    Declaration : Byte	  far pascal GetPalette(int PaletteNo);
+    Parameters	: PaletteNo = 0 to 15
+    Return	: Color no.
+    Usage	:
+
+    Byte    Color = GetPalette(0);
+
+    will return color value of palette 0.
+
+    Description : returns  value of (hardware) palette given by PaletteNo
+
+
+SetPalettes
+-----------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SetPalettes(void  far *Buffer);
+    Parameters	: Buffer = address of 17 byte buffer containg colour
+		  values to set
+    Usage	:
+
+    int     i;
+    Byte    aB[17];
+
+    for (int i=0; i<17; i++)
+	aB[i] = i;
+    SetPalettes(aB);
+
+    will set pallettes and over scan to their corresponding values as
+    color values
+
+    Description : Sets all 16 palettes and overscan to values fiven in
+    array Buffer
+
+
+GetPalettes
+-----------
+
+    Include	: grph.h
+    Declaration : void	  far pascal GetPalettes(void  far *Buffer);
+    Parameters	: Buffer = address of 17 byte buffer in which color values
+		  will be returned
+    Usage	:
+
+    Byte	aB[17];
+    GetPalettes(aB);
+
+    will return color values of all 16 palettes and over scan color in aB.
+
+    Description : Returns colour values of all palettes and over-scan in Buffer
+
+
+SetClrReg
+---------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SetClrReg(StructRGB  far *Buffer,int N);
+    Parameters	: Buffer = Address of structure StructRGB type
+		  N	 = 0 to 255, colour register no.
+    Usage	:
+
+    StructRGB	rgb;
+
+    rgb.Red = 10;
+    rgb.Blue = 15;
+    rgb.Green = 20;
+
+    SetClrReg(&rgb, 100);
+
+    sets colour register no. 100 to values specified in struct rgb.
+
+    Description :
+
+    Sets up color register no.N (between 0 and 255)  to RGB value given in
+    Buffer, of type StructRGB, which is 3 byte structure each specifying
+    Red, Green and Blue colour values, only lower 6 bits of each Red, green
+    and blue are significant.
+
+
+GetClrReg
+---------
+
+    Include	: grph.h
+    Declaration : void	  far pascal GetClrReg(void  far *Buffer,int N);
+    Parameters	: Buffer = address of a structure of type StructRGB
+		  N	 = 0 to 255, colour register no.
+    Usage	:
+
+    StructRGB	    rgb;
+    GetClrReg(&rgb,100);
+
+    will return colour values of register no. 100
+
+    Description :
+
+    Returns RGB values of colour register no N in Buffer, red, green and
+    blue components are returned in Red, Green and Blue fields of the
+    structure. Only lower 6 bits are significant
+
+
+SetRGBDAC
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal SetRGBDAC(int StartReg,int N,void  far *Bffr);
+    Parameters	: StartReg = 0,255 the DAC register no. to start from
+		  N	   = No. of registers to update
+		  Bffr	   = array of N elements of type StructRGB
+    Usage	:
+
+    StructRGB	    Bffr[2];
+
+    Bffr[0].Red = 5;	Bffr[0].Green = 10; Bffr[0].Blue = 15;
+    Bffr[1].Red = 25;	Bffr[1].Green = 30; Bffr[1].Blue = 35;
+
+    SetRGBDAC(0,2,Bffr);
+
+    will update two DAC registers 0 and 1 with values in Bffr;
+
+    Description : Sets a No of color registers N, starting with StartReg,
+    to RGB values given by Red,Green and Blue components of Bffr.
+
+
+GetRGBDAC
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal GetRGBDAC(int StartReg,int N,void far *Bffr);
+    Parameters	: StartReg = 0,255, Register No. to start
+		  N	   = no. of registers to get values of
+		  Bffr	   = array of N elements of type StructRGB
+    Usage	:
+
+    StructRGB	    Bffr[256];
+
+    GetRGBDAC(0,256,Bffr);
+
+    will return values of all 256 color registers.
+
+    Description :
+
+    Returns RGB values of a no of consecutive N registers, starting with
+    StartReg into array of N elements of type StructRGB. Each element of the
+    array will contain Red, Green and Blue components in the fields of
+    respective names.
+
+
+GreyScale
+---------
+
+    Include	: grph.h
+    Declaration : void far pascal GreyScale(int StartReg,int N);
+    Parameters	: StartReg = 0-255, register no. to start
+		  N	   = No. of registers to enable grey-scaling
+    Usage	:
+
+    GreyScale(0,256);
+
+    will enable grey scaling on all 256 colour registers
+
+    Description :
+
+    Enables Grey-Scaling on a no of Registers N with   starting register
+    specified by StartReg, immidiate effect will be seen on the screen,
+    To disable, call to mode set function is necessary i. e. call
+    OpenGraph with Erase=1, and set up all other grpaphics state variables
+    same as before if required.
+
+
+ClearScreen
+-----------
+
+    Include	: grph.h
+    Declaration : void	  far pascal ClearScreen(void);
+    Usage	:
+
+    ClearScreen();
+
+    Description : Clears the entire video buffer, all bits are set to 0.
+
+
+SetOrigin
+---------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SetOrigin(int x,int y);
+    Parameters	: x,y = co-ordinates where origin is required
+    Usage	:
+
+    SetOrigin(XRes+1,YRes+1);
+
+    will set upper left corner of the scrren with reference to line YRes+1,
+    coloumn XRes+1 in the video buffer, this is like switching to video page 1
+    in mode hex 10.
+
+    Description : sets video buffer origin so that device co-ordinates x,y
+    are at upper left corner of the screen, Immidiate effect will be seen
+    on screen, this can be used to switch video pages.
+
+
+SplitScreen
+-----------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SplitScreen(int Row);
+    Parameters	: Row = line at which to split screen
+    Usage	:
+
+    int     i;
+
+    for (i=0; i<151; i++)
+	SplitScreen(i);
+
+    will split 150 times from row 1 to row 150 continuously, so will have
+    effect of image appearing from top and moving down.
+
+    Description : Splits the screen at given line no.
+
+
+SScroll
+-------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SScroll(int No,int Direction);
+    Parameters	: No = no of scan line to scroll by
+		  Direction = 0 for left
+			      1 for right
+			      2 for up
+			      3 for down
+    Usage	:
+
+    SScroll(XMax-XRes, 0);
+    SScroll(YMax-YRes, 2);
+    SScroll(XMax-XRes, 1);
+    SScroll(YMax-YRes, 3);
+
+    will display contents of entire video buffer by scrolling first left,
+    then up, then right, and down, all by maximum scan lines possible.
+
+    Description : Smooth scrolls by No lines in left,right,up or down Direction
+    so that different portions of video buffer are visible.
+
+
+SetGC
+-----
+
+    Include	: grph.h
+    Declaration : void	  far pascal SetGC(void);
+    Usage	:
+
+    ReSerGC();
+    printf("This text should be displayed correctly");
+    SetGc();
+
+    first sets graphics board to BIOS deafult parameters, so thar text will
+    be displayed properly, then by a call to SetGC(), graphics output to
+    video can be resumed.
+
+    Description : Sets up Graphics board for current mode, to be called after
+    any video buffer output by other functions not in this library.
+
+
+ReSetGC
+-------
+    Include	: grph.h
+    Declaration : void	  far pascal ReSetGC(void);
+    Usage	:
+
+    see example above for SetGC();
+
+    Description : Sets up Graphic board in BIOS default mode, to be called
+    before invoking any video output function not in this library.
+
+
+SetVdOn
+-------
+
+    Include	: grph.h
+    Declaration : int far pascal SetVdOn(void);
+    Return	: not used
+    Usage	:
+
+    SetVdOn();
+
+    will resume display on monitor.
+
+    Description : Sets the video monitor on, ie display resumes
+
+
+SetVdOff
+--------
+
+    Include	: grph.h
+    Declaration : int	  far pascal SetVdOff(void);
+    Return	: not used
+    Usage	:
+
+    SetVdOff();
+
+    display on monitor will stop, also monitor will be blank
+
+    Description : sets off monitor so nothing will be visible, but output
+    to video buffer can continue, so when SetVdOn() is called, current
+    contents of video buffer will be displayed
+
+
+GetPixel
+--------
+
+    Include	: grph.h
+    Declaration : Byte	  far pascal GetPixel(int x,int y);
+    Parameters	: x,y = device do-ordinates of the point
+    Return value: Colour value at x,y
+    Usage	:
+
+    Byte    c;
+
+    PxlClr = 15;
+    SetPixel(100,100);
+    if ((c=GetPixel(100,100)) != PxlClr)
+	printf ("Error !!!");
+
+    will set pixel value 15 at point (100,100), and test by calling
+    GetPixel.
+
+    Description : returns pixel color value at device co-ordinates x,y
+
+
+SetPixel
+--------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SetPixel(int x,int y);
+    Parameters	: x,y = device co-ordinates of the point
+    Usage	:
+
+    see example above
+
+    Description : Sets the Pixel value to current drawing color given by
+    global variable PxlClr at device co-ordinates x,y
+
+
+LineD
+-----
+
+    Include	: grph.h
+    Declaration : void	  far pascal LineD(int x1,int y1,int x2,int y2);
+    Parameters	: x1,y1 = device co-ordinates of end point 1
+		  x2,y2 = device co-ordinates of other end point
+    Usage	:
+
+    int     i;
+
+    for (i=0; i<=XRes; i++)
+	LineD((XRes>>1,YRes>>1,i,0);
+
+    will draw a no. of lines emanating from center of the screen and ending
+    at top most row.
+
+    Description : Draws a line in device co-ordinates between (x1,y1) (x2,y2)
+    in the color given by global variable PxlClr, and in current settings.
+
+
+SetClipOn
+---------
+
+    Include	: grph.h
+    Declaration : #define SetClipOn() ClipTrue=1
+    Usage	:
+
+    SetClipOn();
+
+    will enable clipping, so all subsequent video outputs will be clipped
+    to current or changing viewport boundaries, until it is disabled by
+    function call SetClipOff().
+
+    Description : Sets clipping active to current active viewport boundaries,
+    all drawings will be clipped
+
+
+SetClipOff
+----------
+
+    Include	: grph.h
+    Declaration : #define SetClipOff() ClipTrue=0
+    Usage	:
+
+    SetClipOff();
+
+    re-sets clipping, so output beyond video buffer boundaries will
+    wrap around, which may not be desirable.
+
+    Description : Re-sets clipping, so no clliping will be done on any
+    of the drawings
+
+
+GetClip
+-------
+
+    Include	: grph.h
+    Declaration : #define GetClip(c) c=ClipTrue
+    Return value: current clipping status 0 = no-clipping, 1 = enabled.
+    Usage	:
+
+    Byte	c;
+
+    GetClip(c);
+    if (c == 0)
+	SetClipOn();
+
+    will enable clipping if it is already not enabled.
+
+    Description : returns the status of the current clipping ,
+    0= dis-abled, 1 = enabled
+
+
+SetDraw
+-------
+
+    Include	: grph.h
+    Declaration : #define SetDraw(Mode) (WrtMd=Mode<<3);SetGc
+    Parameters	: Mode = 0,1,2 or 3
+    Usage	:
+
+    SetDraw(3);
+
+    will set subsequent video buffer update mode to 3 = XOR.
+
+    Description : Sets up drawing mode as one of the following
+	0 = replace
+	1 = and
+	2 = or
+	3 = xor
+
+    All subsequent drawing of any kind will follow this logic
+
+
+GetDraw
+-------
+
+    Include	: grph.h
+    Declaration : #define GetDraw(d) (d=WrtMd>>3)
+    Usage	:
+
+    Byte	m;
+    GetDraw(m);
+
+    will return current drawing mode in m.
+
+    Description : returns current logical drawing mode between 0 and 3
+
+
+SetLineStyle
+------------
+
+    Include	: grph.h
+    Declaration : void far pascal SetLineStyle(Byte Styl);
+    Parameters	: Styl = 8 bit value specifying line-style bit pattern
+    Usage	:
+
+    SetLineStyle(15);
+
+    will set style to dashed lines.
+
+    Description : Sets the line drawing pattern given in Styl byte
+
+
+GetLineStyle
+------------
+
+    Include	: grph.h
+    Declaration : #define GetLineStyle(Styl)   Styl=LineStyle
+    Parameters	: Styl = Byte value to receive current line style bit-pattern
+    Usage	:
+
+    GetLineStyle(l);
+
+    will return current line style in l.
+
+    Description : Returns line drawing pattern given in Styl byte
+
+
+SetEllipseStyle
+---------------
+
+    Include	: grph.h
+    Declaration : SetEllipseStyle(Styl)     EllpsStyle=Styl
+    Parameters	: Style = 8 bit pattern for style
+    Usage	:
+
+    SetEllipseStyle(0xAA);
+
+    will set dots style
+
+    Description : Sets the Ellipse drawing pattern given in Styl byte
+
+
+GetEllipseStyle
+---------------
+
+    Include	: grph.h
+    Declaration : #define GetEllipseStyle(Styl)     Styl=EllpsStyle
+    Parameters	: Styl = return value for bit-pattern byte
+    Usage	:
+
+    Byte	s;
+
+    GetEllipseStyle(s);
+
+    will return current ellipse drawing bit-pattern in s
+
+    Description : Returns current ellipse drawing pattern in Styl byte
+
+
+SFntStClr
+---------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntStClr(Byte c);
+    Parameters	: colour value for stroked font
+    Usage	:
+
+    SFntStClr(14);
+
+    will draw all subsequent stroked font characters in bright yellow (14)
+
+    Description : sets drawing color for stroked fonts
+
+
+SFntStSz
+--------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntStSz(float w,float h);
+    Parameters	: w = width of characters
+		  h = height of characters
+    Usage	:
+
+    SFntStSz(2.0f,3.0f);
+
+    will set horizontal width of character to 2, and vertical height to 3
+
+    Description : sets horizontal w and vertical h sizes for stroked fonts
+
+
+SFntStOrntn
+-----------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntStOrntn(float a);
+    Parameters	: a = angle of rotation +ve is anticlock wise and
+			0 is along x-direction (0=default)
+    Usage	:
+
+    SFntStOrntn(45.0f);
+
+    will output stroked font text at 45.0 degrees from +ve x-axis
+
+    Description : sets the orientation of stroked fonts drawing
+    given by angle a
+
+
+SFntStLctn
+----------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntStLctn(float x,float y);
+    Parameters	: x,y = world co-ordinates of point where next storked
+			font text will be displayed
+    Usage	:
+
+    SFntStLctn(1005.0f,2050.0f);
+
+    will set start co-ordinates of text display
+
+    Description : sets the positions given by world co-ordinates for
+    stroked fonts
+
+
+SFntStDrctn
+-----------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntStDrctn(enum SFntDrctnTp drctn);
+    Parameters	: drctn = left,right,up or down
+    Usage	:
+
+    SFntStDrctn(up);
+
+    will display subsequent text going up
+
+    Description : sets stroked font direction right, left up or down
+
+
+SFntYRflct
+----------
+
+    Include	: grph.h
+    Declaration : void	  far pascal SFntYRflct(void);
+    Usage	:
+
+    SFntYRflct();
+
+    will draw characters reflected about y-axis
+
+    Description : Each character is reflected about Y axis before drawing
+
+
+SFntLd
+------
+
+    Include	: grph.h
+    Declaration : int	  far pascal SFntLd(void *filename);
+    Parameters	: filename = text string containing valid DOS file name
+			     of font
+    Return Value: 0 = successful, 2=can not open file, 1 = file error
+    Usage	:
+
+    SFntLd("sdflt.fnt");
+
+    loads font characters from file "sdflt.fnt'
+
+    Description : loads the font file and makes that font active
+
+
+SFntInit
+--------
+
+    Include	: font.h
+    Declaration : int	 far pascal SFntInit(void *filename);
+    Parameters	: filename = characters strin containt valid DOS file name
+			     of font
+    Return value: 0 = 0.k., 1=file read error, 2=file open error
+    Usage	:
+
+    SFntInit("sdflt.fnt");
+
+    loads font from "sdflt.fnt", and sets default font settings
+
+    Description : Initilises stroked font parameters, loads font
+    from given file name and makes it active
+
+
+SFntDsply
+---------
+
+    Include	: font.h
+    Declaration : void	  far pascal SFntDsply(void *s);
+    Parameters	: s = character string to display
+    Usage	:
+
+    SFntDsply("Test of Display string routine");
+
+    Description :     displays string s in stroked fonts
+
+
+BFntInit
+--------
+
+    Include	: font.h
+    Declaration : int  far pascal BFntInit(void *filename, int Points);
+    Parameters	: filename = string of DOS file name of Font
+		  Points = height of character in pixel, i. e 8 or 16
+    Return Value: 0 = o.k., 1=file read error, 2= file open error
+    Usage	:
+
+    BFntInit("v8x8.fnt",8);
+
+    loads font from "v8x8.fnt" file, character height is 8 pixels;
+
+
+    Description : initializes bit-mapped font parameters and loads font from
+    given file name of Points size and makes it active
+
+
+BFntStLctn
+----------
+
+    Include	: font.h
+    Declaration : void	  far pascal BFntStLctn(int x,int y);
+    Parameters	: x,y = device co-ordinates to output characters
+    Usage	:
+
+    BFntStLctn(10,20);
+
+    following this call, character will be displayed at (10,20)
+
+    Description  : sets the position of bit-mapped character given by device
+    co-ordinates (x,y)
+
+
+BFntStSz
+--------
+
+    Include	: font.h
+    Declaration : void	  far pascal BFntStSz(int w,int h);
+    Parameters	: w = width of characters, actual width in pixels will be 8 * w
+		  h = height, actual will be Points * h
+    Usage	:
+
+    BFntStSz(2,4);
+
+    will display characters twice wide and four times high than normal
+
+
+    Description : sets up logical size of bit-mapped fonts
+
+
+BFntLd
+------
+
+    Include	: font.h
+    Declaration : int	  far pascal BFntLd(void *filename,int charsize);
+    Parameters	: filename = character string, must be valid DOS file name
+		  charsize = height of a character in pixel in font
+
+    Return Value: 0 = o.k., 1 = file error, 2 = can not open file
+    Usage	:
+
+    int     i;
+    if ((i=BFntLd("v8x16.fnt",16)) != 0)
+	printf (" Can't read font from file");
+
+    loads 16 point font from v8x16, displays error if any
+
+    Description : loads the font from a file, vertical height in pixels is
+    given by charsize parameter
+
+
+BFntDsply
+---------
+
+    Include	: font.h
+    Declaration : void	  far pascal BFntDsply(void *s1);
+    Parameters	: s1 = character string to display
+    Usage	:
+
+    BFntStLctn(10,20);
+    BFntDsply("displaying at (10,20)");
+
+    Description : displays string s1 in bit-mapped font
+
+
+BFntStOrntn
+-----------
+
+    Include	: font.h
+    Declaration : void	  far pascal BFntStOrntn(int a);
+    Parameters	: a = angle of rotation, will be always taken mod 90
+    Usage	:
+
+    BFntStOrntn(90);
+    BFntStOrntn(90);
+
+    first call will set text going up, second call will cascade and set
+    text output to horizontal, but from right to left
+
+    Description : sets up  bit-mapped font rotation in multiple of 90 degrees
+    only, applicable only when a 8 by 8 font is active
+
+
+BFntStClr
+---------
+
+    Include	: font.h
+    Declaration : #define     BFntStClr(c)    BFntFClr=c
+    Parameters	: c = colour value to set for text display
+    Usage	:
+
+    BFntStClr(14);
+    BFntStLctn(10,20);
+    BFntStOrntn(100);
+
+    BFntDsply("This must be in Yellow startin from (10,20) and going up");
+
+    Description : sets up bit-mapped font text drawing colour
+
+
+MapWorld
+--------
+
+    Include	: ops2d.h
+    Declaration : void far pascal MapWorld(float x,float y,float x1,float y1);
+    Parameters	: x,y = world co-ordinates of lower left corner
+		  x1,y1 = world co-ordinates of upper right corner
+    Usage	:
+
+    Struct	VP  vp1;
+
+    vp1.x1 = 10, vp1.y1 = 10;
+    vp1.x2 = 310; vp1.y2 = 310;
+
+    SetViewPort(vp1);
+    MapWorld(-1000.0f,-1000.0f,500.0f, 400.0f);
+
+    sets up a view port and maps a world co-ordinate systems on to it
+
+    Description : sets up world co-ordinates system, mapped to current
+    viewport co-ordinates. x,y are co-ordinates of lower-left corner and
+    x1,y1 are co-ordinates of upper right corner
+
+
+WtoDX
+-----
+
+    Include	: ops2d.h
+    Declaration : #define WtoDX(xw) (int)(stvwx*(xw-Wrldxy[0])+Wrldxy[4])
+    Parameters	: xw = world x co-ordinate (float), which will be
+		       converted to corresponding device co-ordinate
+    Usage	:
+
+    int     p = WtoDX(100.0f);
+
+    converts world x co-ordinate 100.0f into device x co-ordinate in p
+
+    Description : returns device x co-ordinate corresponing to world
+    xw co-ordinate
+
+
+WtoDY
+-----
+
+    Include	: ops2d.h
+    Declaration : #define WtoDY(yw) (int)(stvwy*(yw-Wrldxy[1])+Wrldxy[5])
+    Parameters	: yw = world y co-ordinate to convert into device y ordinate
+    Usage	:
+
+    int     y = WtoDY(2500.0f);
+
+    will convert 2500.0f into device y ordinate in y
+
+    Description : returns device y co-ordinate corresponding to world
+    yw ordinate
+
+
+LWtoDX
+------
+
+    Include	: ops2d.h
+    Declaration : #define LWtoDX(xl) abs((int) (stvwx * xl))
+    Parameters	: xl = length in x direction measured in world co-ordinates
+    Usage	:
+
+    int     dxl = LWtoDX(25.0f);
+
+    converts into dxl length in device co-ordinates
+
+    Description : returns the length in x-direction in device co-ordinates
+    corresponding to length xl in world co-ordinates
+
+
+LWtoDY
+------
+
+    Include	: ops2d.h
+    Declaration : #define LWtoDY(yl) abs((int) (stvwy * yl))
+    Parameters	: yl = length in y direction in world co-ordinates
+    Usage	:
+
+    int     dyl = LWtoDY(350.0f);
+
+    converts length into device co-ordinate system length
+
+    Description : returns the length in y-direction in device co-ordinates
+    corresponding to length yl in world co-ordinates
+
+
+Line
+----
+
+    Include	: ops2d.h
+    Declaration : #define Line(x1,y1,x2,y2) LineD(WtoDX(x1),WtoDY(y1),\
+						  WtoDX(x2),WtoDY(y2))
+    Parameters	: x1,y1 = end point 1
+		  x2,y2 = other end point
+
+    Usage	:
+
+    Line(25.00f,25.00f,340.0f,2500.0f);
+
+    will draw a line between two end points in current settings
+
+    Description : draws a line in world co-ordinates connecting points
+    (x1,y1) and (x2,y2)
+
+
+Ellipse
+-------
+
+    Include	: ops2d.h
+    Declaration : #define Ellipse(xc,yc,a,b) EllipseD(WtoDX(xc),WtoDY(yc),\
+						      LWtoDX(a),LWtoDY(b))
+    Parameters	: xc,yc = point of the ellipse center
+		  a,b = axes of ellipse in x,y direction respectively
+    Usage	:
+
+    Ellipse(0.0f,0.0f,150.0f,240.0f);
+
+    will draw ellipse with center at (0.0f,0.0f), x-axis of 150.0f, and
+    y-axis of 240.0f
+
+    Description : draws an ellipse (bresenham's algorithm) whose center
+    is at xc,yc and x-axis and y-axis given by a and b, all in world
+    system
+
+
+Arc
+---
+
+    Include	: ops2d.h
+    Declaration : Word	far pascal Arc(float xc, float yc, float a, float b,\
+			    float t1,float t2, float *x, float *y,Word N)
+    Parameters	: xc,yc = center of ellipse of arc
+		  a,b	= major and minor axes of ellipse
+		  t1,t2 = start and end angles of sweep of arc, +ve is
+		  anticlock wise
+		  x,y	= array of N elements to return arc points, will
+			  return N points, N-1 line segments
+		  N	= No. of points in the arc sweep
+    Return Value: No of arc points generated
+		  0 -> if t1=t2 or N<2 , i.e. no arc points
+		  2 -> If a=0.0f or b=0.0f,
+		  N -> otherwise
+    Usage	:
+
+    float	x[50],y[50];
+    Word	i;
+
+    i = Arc(0.0f,0.0f,100.0f,50.0f,45.0f,135.0f,x,y,50);
+
+    will return 50 points (49 line segments) in arrays x,y, of the arc of
+    an ellipse whose center is at (0.0f,0.0f), axes are 100.0f in x-direction
+    and 50.0f in y-direction, and arc sweeps from angle 45.0 dgrees to 135.00
+    degrees, requiring 50 points while actual no. of points generated will
+    be in i.
+
+    Description : returns a no. of points of an arc segment of an ellipse.
+    Ellipse center is at (xc,yc), axes a and b, the arc starts from angle t1
+    and ends at angle t2, t1 and t2 will be taken modulus 360 degrees, to
+    draw complete ellipse t1=0, t2=359.99
+
+
+PolyLine
+--------
+
+    Include	: ops2d.h
+    Declaration : int far pascal PolyLine(Word N,float far *x,float far *y)
+    Parameters	: N = No. of points in x and y below
+		  x,y = arrays of N floats, each is a polygon vertex
+    Return Value: 0 -> if N < 1, N -> Otherwise
+    Usage	:
+
+    float	x[5],y[5];
+
+    x[0] = 10; y[0]= 10;
+    x[1] = 100; y[1] = 10;
+    x[2] = 100; y[2] = 100;
+    x[3] = 10; y[3] = 100;
+    x[4] = 10; y[4] = 10;
+
+    PolyLine(5,x,y);
+
+    will draw a four sided closed polygon, in particular a rectangle.
+
+    Description : draws (N-1) connected line segments whose points in world
+    co-ordinates are given in arrays x and y, if a single point is given,
+    then pixel value is set at (x[0],y[0]). Current settings are used. To
+    close polygon, last point must given as equal to first point.
+
+
+FillPoly
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal FillPoly(Word N, float far *x,float far *y);
+    Parameters	: N = No. of points in the polygon
+		  x,y = arrays of floats of polygon vertices
+
+    Usage	:
+
+    FillPoly(10,x,y);
+
+    will fill polygon of 10 vertices whose co-ordinates are in arrays x,y
+
+    Description : fills a closed polygon of N points given in arrays
+    x and y, in world co-ordinates, current settings will be used. Also
+    note that polygon will be automatically taken as closed, hence
+    it is not necessary to specify last point equal to first point.
+
+
+MkIdnt2D
+--------
+
+    Include	: ops2d.h
+    Declaration : void	  far pascal MkIdnt2D(float *m);
+    Parameters	: m = array of floats of 9 elements, a 2D matrix.
+    Usage	:
+
+    float	m[9];
+    MkIdnt2D(m);
+
+    will return a 2D identity matrix in m.
+
+    Description : converts a 3x3 array into an identity matrix.
+
+
+PolyCntr2D
+----------
+
+    Include	: ops2d.h
+    Declaration : void far pascal PolyCntr2D(Word N,float *x,float *y,\
+					     float *xc,float *yc);
+    Parameters	: N = No of points in arrays x,y
+		  x,y = arrays of floats
+		  xc,yc = co-ordinates of center point
+    Usage	:
+
+    float	xc,yc;
+    float	x[100],y[100];
+
+    PolyCntr2D(100,x,y,&xc,&yc);
+
+    will return center of gravity of 100 points in x,y; in xc,yc
+
+    Description : returns the average (Bary-Center) of N points given in
+    arrays x,y; in xc,yc
+
+
+TrnsfrmPnts2D
+-------------
+
+    Include	: ops2d.h
+    Declaration : void far pascal TrnsfrmPnts2D(Word N,float *x,\
+						float *y,float *m);
+    Parameters	: N = no. of Points to Transform
+		  x,y = arrays of floats of at least N points
+		  m = 3x3 transformation matrix
+    Usage	:
+
+    float	m[9];
+
+    Trnslt2D(100.0f,50.0f,m);
+    TrnsfrmPnts2D(10,x,y,m);
+
+    will transform 10 points in x,y by matrix m, a translation of 100.0f
+    in x direction and 50.0f in y direction is applied.
+
+    Description : applies transformation matrix m to N point in arrays x,y
+
+
+Scale2D
+-------
+
+    Include	: ops2d.h
+    Declaration : void far pascal Scale2D(float a,float b,float xc,\
+					  float yc,float *m);
+    Parameters	: a = scaling factor in x direction
+		  b = scaling factor in y direction
+		  xc,yc = point about which scaling is to be applied
+		  m = 3x3 matrix.
+    Usage	:
+
+    float	m[9];
+    Scale2D(2.0f,1.5f,0.0f,0.0f,m);
+
+    will generate matrix m, which when applied to a 2d object will make the
+    object twice in size in horizontal direction and 1.5 times in vertical
+    direction, about origin.
+
+    Description : returns scaling matrix in m, scaling center at xc,yc and
+    scaling factors a in x direction and b in y direction
+
+
+Rotate2D
+--------
+
+    Include	: grph.h
+    Declaration : void far pascal Rotate2D(float t,float xc,float yc,float *m);
+    Parameters	: t = angle of rotation, anti-clock wise is +ve
+		  xc,yc = co-ordinates of a point about which rotation
+		  is to be applied
+		  m = a 3x3 return matrix
+    Usage	:
+
+    float	m[9];
+    Rotate2D(45.0f,0.0f,0.0f,m);
+
+    will return rotation matrix of 45 degrees about origin.
+
+    Description : returns rotation  by angle t about a point xc,yc, in m
+
+
+Trnslt2D
+--------
+
+    Include	: ops2d.h
+    Declaration : void far pascal Trnslt2D(float x,float y,float *m);
+    Parameters	: x = translation factor in x-direction
+		  y = translation factor in y-direction
+		  m = 3x3 matrix
+    Usage	:
+
+    float	m[9];
+    Trnslt2D(40.0f,60.0f,m);
+
+    will return a translation matrix of 40 in x and 60 in y directions
+
+    Description : returns translation matrix m, x and y are displacements
+    factors.
+
+
+CmbnTrnsfrm2D
+-------------
+
+    Include	: grph.h
+    Declaration : void far pascal CmbnTrnsfrm2D(float *m1, float *m2);
+    Parameters	: m1 = 3x3 matrix to combine, this will be un-changed
+		  m2 = 3x3 matrix to combine into, will be product of m1 & m2;
+    Usage	:
+
+    float	m1[9],m2[9];
+
+    MkIdnt2D(m2);
+    Trnslt2D(100.0f,200.0f,m1);
+    CmbnTrnsfrm2D(m1,m2);
+    Scale2D(2.0f,4.0f,0.0f,0.0f,m1);
+    CmbnTrnsfrm2D(m1,m2);
+
+    will result in m2 containg a transformation which is a combination
+    of translation and scaling, order of combination is significant, and
+    may produce different result if applied in different order.
+
+    Description : transformation matrices m1 and m2 are combined to form
+    single transformation matrix in m2
+
+
+XRflct2D
+--------
+
+    Include	: ops2d.h
+    Declaration : void	  far pascal XRflct2D(float *m);
+    Parameters	: m = 3x3 matrix for reflection about x-axis
+    Usage	:
+
+    float	m[9];
+    XRflct2D(m);
+
+    will return in m, reflection about x-axis matrix
+
+    Description : returns reflection about x-axis, in matrix m
+
+
+YRflct2D
+--------
+
+    Include	: ops2d.h
+    Declaration : void	far pascal YRflct2D(float *m);
+    Parameters	: m = 3x3 matrix for reflection about y-axis
+    Usage	:
+
+    float	m[9];
+    YRflct2D(m);
+
+    will retun in m, reflection about y-axis, in matrix m
+
+    Description : returns reflection about y-axis in matrix m
+
+
+XShr2D
+------
+
+    Include	: ops2d.h
+    Declaration : void far pascal XShr2D(float a, float *m);
+    Parameters	: a = shearing factor
+		  m = 3x3 result matrix
+    Usage	:
+
+    float	m[9];
+    XShr2D(1.5f,m);
+
+    will return in m, shearin matrix of factor 1.5, about x-axis
+
+    Description : returns shearing about x-axis, matrix m
+
+
+YShr2D
+------
+
+    Include	: ops2d.h
+    Declaration : void far pascal YShr2D(float b, float *m);
+    Parameters	: b = shearing factor
+		  m = 3x3 result matrix
+    Usage	:
+
+    float	m[9];
+    YShr2D(2.0f,m);
+
+    will return in m, shearing matrix of factor 2.0f about y-axis
+
+    Description : returns shearing about y-axis, matrix m
+
+
+PlayNote
+--------
+
+    Include	: sound.h
+    Declaration : void far pascal PlayNote(unsigned f,unsigned d);
+    Parameters	: f = frequency of sound
+		  d = duration for this frequency f
+    Usage	:
+
+    PlayNote(500,10);
+
+    will turn on speaker with frequency 500 for a duration of 10 units
+
+    Description : turns on the speaker for duration d, with frequency f
+
+
+
+	    /*	 Global Variables    */
+
+
+extern	Byte	WrtMd;
+    Current logical drawing mode, 0 = REPLACE, 1=AND, 2=OR, 3=XOR
+
+extern	Byte	ClipTrue;
+    variable to enable or disable clipping 0 = disable, 1= enable
+
+extern	Byte	PxlClr;
+    current drawing color, all video buffer updates done in this color
+    except area fills
+
+extern	Byte	LineStyle;
+    line style bit pattern
+
+extern	Byte	EllpsStyle;
+    ellipse style bit pattern
+
+extern	Byte	FllPttrn[8];
+    8 byte array of fill pattern
+
+extern	Byte	FllClr;
+    color value for fills
+
+extern	Byte	FllPttrnIndxX;
+    starting x index within fill pattern
+
+extern	Byte	FllPttrnIndxY;
+    starting y index within fill pattern
+
+extern	int	XMax;
+    length of video buffer in x-direction in bytes, for the current mode
+
+extern	int	YMax;
+    length in y-direction
+
+extern	int	XRes;
+    resolution in x-direction for the active video mode
+
+
+extern	int	YRes;
+    resolution in y direction
+
+extern	int	XOrgn;
+    x co-ordinate of screen origin
+
+extern	int	YOrgn;
+    y co-ordinate of screen origin
+
+extern	int	XLen;
+    no. of bytes per line in vedio buffer for current mode
+
+extern float  stvwx,stvwy;
+    viewport device co-ordinates to world co-ordinates mapping factors
+
+
+extern float  Wrldxy[8];
+    world co-ordinates in first 4 varables
+
+extern	Byte	_ZMode;
+    equals 0 for 16 colour modes,  1 for 256 colour modes
+
+#define Max_Points	400
+    buffer size for polygon fill routines
+
+#define Max_Fill_Buffer 2500
+    buffer size for area fill routine
+
+struct	VP
+{
+    int x1;
+    int y1;
+    int x2;
+    int y2;
+};
+
+    Structure type for defining viewports
+
+struct	RGBstruct
+{
+    Byte    Red;
+    Byte    Green;
+    Byte    Blue;
+};
+
+    Structure type for defining RGB colour DAC update variables
+
+enum	SFntDrctnTp {left,right,up,down};
+    direction type for text output
+
+extern	Byte	BFntHSz;
+    bit mapped-font logical horizontal size
+
+extern	Byte	BFntVSz;
+    bit mapped font logical vertical size
+
+extern	Byte	BFntFClr;
+    bit-mapped font drawing colour
+
+extern	Word	BFntHght;
+    height of one character in pixels
+
+extern	Word	BFntWdth;
+    width of one character in pixels
+
+extern	float	SFntHght;
+    stroked-font height in pixels
+
+extern	float	SFntWdth;
+    width of stroked fonts in pixels

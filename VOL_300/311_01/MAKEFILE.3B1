@@ -1,0 +1,99 @@
+#
+# makefile - This is a sample makefile for building the DB library and
+# (3B1)	     the test programs. It is to be used with a Unix like MAKE
+#	     utility.  You will need to read through the file and make
+#	     changes needed for your compiler.
+#
+#	     (1) Select desired memory model for 80xxx machines.
+#
+#	     (2) Define the compiler 
+#			MSC     - Microsoft C
+#			TURBO   - Turbo C
+#			SYSV    - AT&T 3B1 
+#			ULTRIX  - DEC Ultrix-32 
+#
+#	     (3) Define ANSI if your compiler supports the ANSI
+#	         function prototypes
+#
+#	     (4) Decide which modules you are going to use. DB_MAIN.C
+#	         has conditional code for each of the file types.
+#		 You can thus built a library which supports only the
+#		 file types you intend to use.
+#			ALL     - All file types
+#			SEQ     - Sequential
+#			RAN     - Random
+#			IDX     - Index
+#			VAR     - Varaible
+
+
+CCFLAGS=-c -g -DSYSV
+CC=cc
+
+all: lib tests
+
+lib: libdb.a 
+
+libdb.a: db_main.o db_seq.o db_ran.o db_idx.o db_var.o fname.o sort.o db_dict.o
+	ar r libdb.a db_main.o db_seq.o db_ran.o db_idx.o db_var.o fname.o sort.o db_dict.o
+
+db_main.o: db_main.c db.h dblib.h
+	$(CC) $(CCFLAGS) -DALL  db_main.c
+
+db_seq.o:  db_seq.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_seq.c
+
+db_ran.o: db_ran.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_ran.c
+
+db_idx.o: db_idx.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_idx.c
+
+db_var.o: db_var.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_var.c
+
+db_dict.o: db_dict.c db.h dblib.h
+	$(CC) $(CCFLAGS) db_dict.c
+
+fname.o: fname.c
+	$(CC) $(CCFLAGS) fname.c
+
+sort.o: sort.c dblib.h
+	$(CC) $(CCFLAGS) sort.c
+
+tests: stest rtest itest vtest dtest sortest
+
+stest: stest.o libdb.a
+	$(CC)  stest.o libdb.a -g -o stest
+
+rtest: rtest.o libdb.a
+	$(CC)  rtest.o libdb.a -g -o rtest
+
+itest: itest.o libdb.a
+	$(CC)  itest.o libdb.a -g -o itest
+
+vtest: vtest.o libdb.a
+	$(CC)  vtest.o libdb.a -g -o vtest
+
+dtest: dtest.o libdb.a
+	$(CC)  dtest.o libdb.a -g -o dtest
+
+sortest: sortest.o libdb.a
+	$(CC)  sortest.o libdb.a -o sortest
+
+stest.o: stest.c db.h
+	$(CC) $(CCFLAGS) stest.c
+
+rtest.o: rtest.c db.h
+	$(CC) $(CCFLAGS) rtest.c
+
+itest.o: itest.c db.h
+	$(CC) $(CCFLAGS) itest.c
+
+vtest.o: vtest.c db.h
+	$(CC) $(CCFLAGS) vtest.c
+
+dtest.o: dtest.c db.h
+	$(CC) $(CCFLAGS) dtest.c
+
+sortest.o: sortest.c
+	$(CC) $(CCFLAGS) sortest.c

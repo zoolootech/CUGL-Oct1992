@@ -1,0 +1,25 @@
+copy   SORT.c     %1
+copy   CHANGE.c   %1
+copy   FIND0.c    %1
+copy   FIND1.c    %1
+copy   FRQNCY.c   %1
+copy   KWIC.c     %1
+copy   UNIQUE.c   %1
+copy   MACRO.c    %1
+copy   UNROT.c    %1
+copy   FORMAT.c   %1
+copy   MSORT.c    %1
+copy   ARCHIVE.c  %1
+copy   COMPARE.c  %1
+copy   COMPRESS.c %1
+copy   CONCAT0.c  %1
+copy   CONCAT1.c  %1
+copy   COUNT.c    %1
+copy   CRYPT0.c   %1
+copy   CRYPT1.c   %1
+copy   DETAB.c    %1
+copy   ENTAB.c    %1
+copy   EXPAND.c   %1
+copy   OVERSTRK.c %1
+copy   TRANSLIT.c %1
+

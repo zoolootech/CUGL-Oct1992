@@ -1,0 +1,85 @@
+******************************************************************************
+*									      *
+*	Author - Nick Makris - STARTECH SYSTEMS - San Francisco, CA	      *
+*	Date -	 DECEMBER 1989						      *
+*									      *
+*	 	 ***********  FIMD TEXT PROGRAM  ************		      *
+*									      *
+*	***********	RELEASED TO THE PUBLIC DOMAIN	   ************	      *
+*									      *
+******************************************************************************
+* This program works in conjunction with the Norton Utilities 4.0, Text Search
+* (TS) program.  Use syntax TS *.PRG '<text to find>' /LOG > <output filename>
+* This program analyzes the resulting file looking for line number references
+* and deletes all other associated lines.  The resulting text file contains
+* only those lines which point to a specific file and line number which
+* may then be printed and used for any intended purpose.
+
+SET DELETED OFF
+ANS = SPACE(12)			&& ASSUMES FILE IS IN DEFAULT DIRECTORY
+@15,16 CLEAR TO 17,63
+@15,16 TO 17,63 DOUBLE
+@16,18 SAY "ENTER THE FILE NAME TO ANALYZE " GET ANS
+READ
+ANS=TRIM(LTRIM(ANS))
+IF LEN(ANS)=0 .OR. READKEY()=12 && USER WANTS OUT
+ RETURN
+ENDIF
+X=AT('.',ANS)
+IF X # 0
+ OUTFILNAME = SUBSTR(ANS,1,X-1)+'.OUT'
+ELSE				&& USER DIDN'T INCLUDE AN EXTENSION NAME
+ IF LEN(ANS) < 9		&& AND THE NUMBER OF CHARS IS NORMAL
+  OUTFILNAME = ANS+'.OUT'
+ ELSE				&& ABNORMAL LENGTH OF FILE NAME
+  OUTFILNAME = SUBSTR(ANS,1,8)+'.OUT'
+ ENDIF
+ENDIF
+FILNAME = ANS
+IF .NOT. FILE("&FILNAME")
+ @15,22 CLEAR TO 18,58
+ @15,22 TO 18,58 DOUBLE
+ @16,24 SAY "UNABLE TO FIND FILE "+FILNAME+"!"
+ @17,24 SAY "Press any key to continue!"
+ zi = 0
+ DO WHILE zi = 0
+  zi=INKEY(1)
+ ENDDO
+ RETURN
+ENDIF
+USE SCREELIN  && A SINGLE FIELD (SCRNLINE) DATABASE - DEFINED AS 80 CHARS
+COPY STRU TO logtxt
+USE logtxt
+APPEND FROM &FILNAME SDF	&& IMPORT THE NORTON TS OUTPUT
+SVLINE=" "
+GO TOP
+DO WHILE .NOT. EOF()
+ IF .NOT. 'Searching' $ SCRNLINE .AND. .NOT. 'Found' $ SCRNLINE
+  DELETE
+ ENDIF
+ IF 'Searching' $ SCRNLINE 	&& RETAIN ONLY ONE REFERENCE TO EACH FILE
+  IF SVLINE=SCRNLINE		&& MULTIPLE APPEARANCES IN THE SAME FILE
+   DELETE
+  ELSE				&& NEW FILE BEING CHECKED
+   SKIP -1
+   RECALL			&& PROVIDES A BLANK LINE FOR REFERENCE
+   SKIP
+  ENDIF
+  SVLINE=SCRNLINE
+ ENDIF
+ IF 'occurren'$ SCRNLINE
+  RECALL
+  SKIP -1
+  RECALL			&& PROVIDES A BLANK LINE FOR REFERENCE
+  SKIP
+ ENDIF
+ SKIP
+ENDDO
+IF FILE("&OUTFILNAME")
+ ERASE &OUTFILNAME
+ENDIF
+COPY TO &OUTFILNAME SDF FOR .NOT. DELETED()
+				&& COPIES FILE TO "<input filename>.OUT"
+USE
+ERASE logtxt.dbf		&& ERASES TEMPORARY DBF CREATED WITH COPY STRU
+RETURN

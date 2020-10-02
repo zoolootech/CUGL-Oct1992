@@ -1,0 +1,187 @@
+		   3-D  Reconstruction User Manual
+		   ===============================
+
+		    Daniel Geist & Michael Vannier
+		 Mallinckrodt Institute of Radiology
+	       Washington University School of Medicine
+		     510 S. Kingshighway Blvd.
+		       St. Louis, Mo. 63110
+
+			  June 1989
+
+The following is a description of how to use the 3-D medical image
+surface reconstruction software package. This software is described
+in "3-D Reconstruction in Medical Imaging" by D. Geist and M. Vannier.
+
+This software was developed in Microscoft "C", Version 5 on a Digital
+Equipment Corporation (DEC) Vaxmate personal computer, an IBM PC/AT clone.
+
+
+1. INPUT
+
+   The input data is assumed to be a sequence of consecutive CT scan image
+   files. The name of the files is assumed to be CTBILD.nnn where nnn is a
+   three digit number (with preceeding zeros if necessary). Each file has 
+   a header of 512 bytes and then 256 lines of CT data. Each line contains 
+   256 CT values (or 512 bytes). A CT value is an unsigned integer 
+   corresponding to an Hounsfield value. 0 is -1024 in Hounsfield units.
+   The input files are assumed to be in the default directory.
+
+2. GRAD 
+
+   This module is the reconstruction program. it creates six main axis
+   views from the CT files. This module may run a couple of hours 
+   depending on the hardwre installed. A floating point co-processor and
+   a main memory disk device will accelerate execution time.
+   
+   The program starts out by askinig you several questions and then it 
+   executes the reconstruction. The program does two passes over the data
+   after each one six images are created, three gradient shaded and three
+   distance (depth) shaded. The program creates output and temporary files.
+
+   These files take about a Mbyte of space. The temporary file are to be
+   later used with the other modules.
+
+   The following is the questions asked by the program and thir meaning:
+    
+   "Enter Zoom factor: "
+
+   The Zoom factor is the ratio of the voxel dimensions between the X and
+   Z dimensions. It is a floating point number 1 =< ZOOM <= 5.
+
+   "Enter Starting scan number: " 
+
+    This is the number of your first CTBILD file.
+
+   "Enter Ending scan number: " 
+
+    This is the number of your last CTBILD file.
+
+   "Enter Threshold value: "
+
+    The threshold value is the value of the voxel threshold to use in
+    the reconstruction. All voxels below this value will be discarded.
+
+    The typical threshold for reconstructing bone surfaces is 175 and
+    for soft tissue image -200.
+
+    "Enter Temporary drive:
+
+    This is the drive letter to use for your temporary disk name.
+    If you have a RAM-DISK this can be useful for speeding execution.
+    If you have no memory disk just enter your default drive.
+
+    Here is an example ofa session:
+
+    Enter Zoom factor: 3.4
+    Enter starting scan number: 1
+    Enter ending scan number: 80
+    Enter Threshold value: 175
+    Enter temporary drive: d
+
+
+    After the run information is recieved the program starts executing.
+
+    It notifies the terminal after passing each slice. The slices are
+    numbered from 0 and onward. This is done twice (once for every pass).
+
+    Example:
+
+    starting forward pass over data
+    did slice 0
+    did slice 1
+    .
+    .
+    .
+    did slice 78
+    starting backward pass over data
+    did slice 0
+    did slice 1
+    .
+    .
+    .
+    did slice 78
+    number of lines = 240.
+
+    The number of lines is the number of lines in the side views it is:
+    number_of_lines = number_of _slices * Zoom_factor.
+    The number of lines in the top and bottom images is always 256.
+
+ OUTPUT
+
+    The output is a set of 8-bit grayscale images. no special format is
+    assumed and they contain no header. you must supply your own program
+    to convert them to your frame buffer format.
+
+    G(D)BO.OUT - bottom gradient (distance) shaded image
+    G(D)RL.OUT - right lateral gradient (distance) shaded image
+    G(D)RE.OUT - rear gradient (distance) shaded image
+    G(D)TO.OUT - top gradient (distance) shaded image
+    G(D)LL.OUT - left lateral gradient (distance) shaded image
+    G(D)FR.OUT - front gradient (distance) shaded image
+    
+    REMARK: G(D)TO, G(D)LL , G(D)RE and G(D)FR need to fliped.
+
+    In addition the files six "&dis#.dat" are created on the temporary
+    drive where & stands for x,y or z and # stands for 1 and 2.
+
+    A "param.dat" file is created on your default drive.
+
+    All these files are needed by "ANG" and "FLIP" so you should not
+    erase them before you have finished processing the case.
+
+3. ANG
+
+   This module creates rotated views of the image aroud the Z -axis.
+   The module uses the temporary files created by GRAD. The program
+   asks for an angle between 0 t0 360 and creates a rotated view in
+   that angle. The output is the two files G(D)ANG.OUT.
+
+   DO NOT ENTER MAIN AXIS ANGLES: (0,90,180,270).
+
+4. FLIP*
+
+   These modules flip an image file around an axis.
+
+	flipd - around the diagonal axis
+	fliph - around the horizotal axis
+	flipv - around the vertical axis
+
+   These programs accept three parameters the input file, the output
+   file and the number of lines in the image (in this sequence).
+   You can either enter all or part of them on the command line or be
+   prompted by the program.
+
+   There is no default input.
+   The default output file is the input file with extension "flp".
+
+   The number of lines can be specified in several ways:
+   1) Directly as a number on the command line or when prompted.
+   2) By specifying /D on the command line - the  number of lines 
+      becomes 256. 
+   3) By specifying /P on the command line - the  number of lines 
+      is taken from the file "param.dat" created by GRAD. 
+
+   Examples:
+   A) FLIPH GFR.OUT GFR.NEW /P
+   B) FLIPV GTO.OUT /D
+   C) FLIPD
+       Enter fin: GLL.OUT
+       Enter fout: GLL.FLP
+       Enter lines: 230
+
+5. Future developments.
+
+   The source programs are supplied. If you are an experienced progammer
+   in C, you are welcome to examine them and modify them to your needs.
+   For more information write to:
+
+		Dr. Michael W. Vannier, M.D.
+		Mallinckrodt Institute of Radiology
+		Washington University School of Medicine
+		510 South Kingshighway Blvd.
+		St. Louis MO 63110   U.S.A.
+
+
+ 
+

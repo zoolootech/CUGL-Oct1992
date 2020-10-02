@@ -1,0 +1,312 @@
+                       micro PLOX                          PLOX.DOC
+                       Version 5.0
+
+                       Bob Patton
+                  1713 Parkcrest Terrace
+                   Arlington, TX 76012
+                       July 1990
+
+Micro PLOX is a plotting language that gives the user direct control
+of the plotting features of a dot matrix printer or a graphics
+monitor.  It was designed with graphs in mind, but it can be used
+to make forms and straight line drawings.
+
+It will draw lines in various patterns and print text in 2 compact
+fonts.  The maximum area of a single drawing is 7 inches wide by
+5 inches high which is roughly half of a standard typewriter page
+with margins allowed.  From data it will draw line or bar graphs.
+The lines may be of various patterns and colors and the points may
+be shown with a symbol or not.  The bars may have various hatching
+patterns.  The text may be located at a specific location with a
+TITLE or may be located relative to data with a LABEL.
+
+Statements in PLOX consist of a keyword (in capitals recommended for
+readability) followed by options in lower case and digits. (Text strings
+should be upper and lower case as wanted.  File names may be upper or
+lower case.) For example:
+
+  *    Sample stock plot
+  PIC size 7 by 2.5  outline
+  TITLE at 3.5,2.4 text NORTHEAST INVESTOR'S TRUST
+  AREA at .5,.5  size 6 by 1.8
+  AXIS left  to 30
+  AXIS below  from 85 to 88 boxes=3
+  LINE file  B:NOEAST.DAT  item 1 is yymmdd
+
+PLOX is interpretive;  items specified are drawn as they are
+encountered so the statements must be pretty much in the order
+shown.  PIC must come first as it starts the process and sets
+the reference point for further dimensions given.
+
+TITLE may come anyplace but its location will be affected by what
+has come before it. In the example above the title is centered at
+coordinates 3.5,2.4 inches with respect to the whole picture which
+has a size of 7 inches wide by 2.5 inches high.
+
+An AREA is a rectangular field in which to put plots.  It has a
+location (of the lower, left corner) and a size.  Any titles given
+after an AREA are located with respect to the location of the AREA.
+
+Both an x and a y AXIS must be specified to scale the data.  An AXIS
+is presumed to start at 0 unless shown otherwise by a "from" option.
+You may specify the number of scale divsions as "boxes" or let PLOX
+do it for you.
+
+A LINE may now be drawn from a data file with a pairs of x and y data
+points.  You must give the name of the data file.  You may have date
+data in the form yymmdd and so specify to PLOX.  These will be converted
+to YY.fract for plotting.  For example 870630 might be converted to
+87.496.
+
+BARS may also be drawn from x and y data pairs.  The bars may be
+horizontal or vertical and will normally extend from the data point to
+the axis, but you may specify a different base (in data-units, not inches).
+You may specify the width of a bar (in inches).
+
+You can in general have more than one of each statement (except PIC).
+Just remember that order counts.  You can have many LINEs in an AREA.
+You can have many AREAs in a PIC, and you can put TITLEs anywhere.
+You can even put more than 2 axes on a area, but the data plotted will
+be scaled to the last x and last y AXIS given.
+
+The options on a given statement may come in any order and may be spaced
+to suit yourself.  The only current exception is the text of a title
+which must be last and may be on a separate TITLE statement if it is
+long.  The title is drawn as soon as the text is encountered.  There are
+optional punctuation and filler words for readability.  You may use
+commas and equal signs anywhere.  The words "by", "is", and "are" are
+ignored.   Comments may be included with PLOX statements by starting
+the comment line with an asterisk.
+
+              Getting a plot printed
+
+This is a two step process.  Write the PLOX statements and provide a
+data file with the numbers to be plotted.  A naming convention is
+recommended.  We suggest .PIC for the PLOX statements and .DAT for
+data files.  Execute the PLOX command giving the name of your file
+of PLOX statements:
+
+               PLOX MYPLOX.PIC
+
+This will create a binary file of plot commands named PLOTCOM.DAT.
+Then run program PLOTEPS or PLOTEPS2 which will output directly to
+your printer.  As the name suggests this device driver is for Epson
+printers, but device drivers for graphics monitors are also provided.
+
+               PLOTEPS   or  PLOTEPS2
+
+That's all there is to it.  PLOTEPS expects its input in PLOTCOM.DAT
+which is a little limiting, but simple to run and less error prone.
+There is really not much need to save the binary file of plot commands
+since it can always be recreated from the PLOX statements, but you
+could rename it if you did want to keep it.
+
+If your printer ribbon is worn or you are making a chart for photo
+copying you can add the letter d after the command to get dark print
+which is done by just printing each line twice.  For example:
+
+              PLOTEPS d
+
+You can also view the chart on a graphics monitor if you have one.
+Simply use PLOTHERC, PLOTCGA, PLOTEGA, or PLOTVGA as the second
+command.  You can use this to debug charts or as the only way you
+look at charts.  If you are debugging for final print, note that the
+binary file still exists so all you have to do is issue a PLOTEPS
+to get the printed version once you like what you see on the screen.
+We recommend PLOTEGA even on a VGA monitor as the lettering size is
+more pleasing.
+
+While PLOX is running it will echo your statements and print any errors
+found underneath them.  You can then correct and rerun before you plot.
+
+
+                    Data for plotting
+
+The data to be plotted must be columns of numbers separated by one or
+more blanks.  You may have up to 14 columns in any one file.  Dates may
+be given in the form yymmdd and they will be translated to YY.frac for
+plotting if the plotting statement (e.g., LINE) specifies it.  Years
+less than 50 will have 100 added to allow for dates in the first half
+of the 21st century.  Missing numbers may be shown by a single asterisk
+(*) and they will be skipped.
+
+The columns are referenced by number (1, 2, etc.) from left to right
+and are known as items to PLOX.  If not specified, PLOX assumes that
+item 1 is the x-value and item 2 the y-value to be plotted.  Plotting
+statements may specify which items to plot as:
+
+       items ix iy
+
+where ix is the x-value column number and iy the y-value column number.
+Thus with 3 sets of numbers to plot versus the same set of dates you
+could put the dates in column 1 and the numbers in columns 2, 3, and 4
+and plot them as follows.
+
+   LINE file DATA.DAT items 1 2  item 1 is yymmdd
+   LINE file DATA.DAT items 1 3  item 1 is yymmdd
+   LINE file DATA.DAT items 1 4  item 1 is yymmdd
+
+You may include comment lines in data by starting the line with a slash.
+Why not an asterisk for consistency?  Because asterisk is reserved to
+show missing values and this in turn is to be consistent with some
+other languages (including main frame PLOX) as was the use of
+asterisk for comments in statements to begin with.  Sorry about that.
+
+You may further elect to have the data for any single plot
+immediately follow the plot statement (LINE or BARS) by specifying
+file *.  Such data must be ended by a dollar sign ($) in column one.
+In this case it would be pointless to have more than 2 columns of
+data as that's all you can plot with a single statement.  See the
+legend data of BIKE.PIC for an example of this.
+
+Another option is to give the data file name as @.  Then you may put
+the actual file to use on the PLOX command line, or if you don't put
+it there you will be prompted for it.  This may be combined with PLOX
+statements allowed in the data file to let you make any number of
+similar charts from a single picture description using a different data
+file for each chart. See the FUNDINFO.PIC file and associated data files
+FUND01.DAT and FUND02.DAT for examples of this.
+
+                 Other PLOX features
+
+The separate reference summary document (PLOX.REF) shows the full
+syntax of the language.  Most of the notation should be clear at this
+point, but here are a few further notes.
+
+As well as setting the size and optionally outlining a PIC, you may
+give margin = <number>.  The number is the column number on the printer
+in which you want the picture to start drawing.  The default is 5.  The
+expected use for this is to put two small pictures side by side or as a
+crude way to mix text and graphics on the same line.  In either case you
+will have to manually roll down the paper on the printer to draw the
+chart that sits beside an existing chart or text.
+
+A TITLE by default is centered on its coordinate, but you may specify left
+or right justified.  The text is horizontal by default, but you may
+specify vertical.  In this case the letters are still upright but stacked
+on top of each other and the lettering starts at the given coordinate
+and goes down.  There are 2 fonts: font 1 (3 by 5 pixels, upper case)
+and font 2 (5 by 6, upper and lower case).
+
+An AREA may be outlined if you wish.  This is one way to create forms.
+
+An AXIS must located relative to an AREA.  Its range is given as
+from value-1 to value-2, but value-1 can be omitted and will default
+to zero.  If no range is given 0 to 100 is assumed.  You can specify
+the number of scale divisions as boxes or you can let the internal
+scaling routines choose for you.  The scaling routines do a pretty
+good job most of the time, but you might not always like their choice.
+Notice that an AXIS can be made invisible.  What for?  Well a series
+of areas right on top of each other might just share one printed axis
+for space saving.  Further you can use this feature to make simple line
+drawings.   Put ranges on the invisible axes that represent the span
+covered in inches.  Then make a set of data points that are the
+coordinates of the line drawing and draw a line through them.
+
+A LINE may be solid or one of several dot or dash patterns.  Be aware
+though that dot matrix lines at angles do not show their patterns well.
+The dotted and spotted patterns are probably the best to use on a slant.
+A LINE may also be invisible, but note that the points on a line can
+be optionally marked by a symbol.  For a scatter diagram turn on the
+points and make the line invisible.  Of course you can have both the
+line and the points show up.  The use of "items ix iy" and "item n is"
+are described under "Data for plotting" above.
+
+BARS may be shaded with a hatch pattern that is left diagonal, right
+diagonal, vertical, horizontal, or square.  You set the spacing between
+lines (in units of line widths) as gap = n.  A gap of 1 for any pattern
+gives a solid bar.  A gap of 2 for a diagonal pattern gives a uniform
+gray shade.  The shading patterns replace what was in the bar, not just
+overlay it.  Thus a grid line will not show inside a bar provided the
+grid line was drawn before the bar was.
+
+Groups of BARS over the same data point may be placed side by side by the
+keyword phrase "abut m of n".  With 3 sets of bars you could: abut 1 of 3,
+abut 2 of 3, and abut 3 of 3.  This abutting feature can also be used to
+offset single sets of bars from their data points.
+
+An ISO is a line of constant value (horizontal or vertical).  ISO's are
+handy for reference lines like time-now lines or data tolerance limits.
+They can also be used to make plot grids (which may be irregularly spaced).
+An ISO is speciifed at a data-value so an AXIS must have already been
+specified to make the data value meaningful.
+
+A LABEL is like a TITLE, except that it is located at a pair of coordinates
+in data-values instead of inches.  This is very handy for annotating plot
+points of interest or annotating reference lines or creating a sort of
+legend by labelling lines or bars.
+
+You specify color in micro PLOX in the simplest way, by a single
+statement of the form:  HUE color-name.  All plot objects following
+the HUE statement will be drawn in that color until another HUE
+statment is encountered.  HUE statements are ignored in monochrome
+device drivers.  The default color is chalk, which is a less bright
+white.   The HUE names are:
+
+                  blue  pea  aqua coral plum  umber chalk
+             gray azure lime cyan peach lilac lemon white
+
+These were chosen to be short and colorful (groan), or in many cases
+flavorful, while fairly well describing what they look like (on my
+monitor at least).
+
+                        PLOX in Data
+
+You have seen above that you can put the numeric data in your PLOX file
+(via file *).  It seems only fair that the converse be true and it is;
+you can put (some) PLOX statements in your numeric data file.  Why would
+you  want to do this you ask?  Well, the utility of it is that you can
+then have a single PLOX picture description file that draws any number of
+similar charts each with its own data.  To make this useful you must be
+able to specify the data file at the time you draw your chart, and you
+can do this, too.  Just specify the data file name as @ on your LINE or
+BARS statement.  Then you can put the data file name on the PLOX command
+line as the second parameter as in: PLOX  FUNDINFO.PIC  FUND02.DAT, or
+if you don't put it there PLOX will stop and ask you for the name when
+it is needed.
+
+Okay that's fine for the different numeric data, but why would you need
+PLOX statements in the data.  The main reason is to allow you to change
+the text of TITLEs and LABELs.  You can also change the range of an AXIS
+and even have a feature on one chart that doesn't appear on another.
+
+The statements you can put in a data file are TITLE, LABEL, AXIS, ISO,
+and HUE.  You identify such a statement as PLOX by starting it with
+an at-symbol, @, such as @TITLE or @AXIS.  A nice feature of TITLE in
+this regard is that the text part can be on a separate statement.  Thus
+you can put the location, size, font, and  color of a title in the
+picture file and just set the text in the data with a statement like:
+
+            @TITLE text <the text here>
+
+This brings to mind a key point.  What happens if you have more than
+one TITLE?  Things get a little tricky here so pay close attention.
+Since PLOX rereads the data file for each LINE or BAR it would tend to
+draw every PLOX feature in your data file for each plot.  What you need
+is a way to tell it during which LINE or BAR drawing action to use a
+given PLOX-in-data statement.  We made a compromise here.  In the typical
+data file with many columns there is one common set of x or horizontal
+data but there is a separate column of y data for each plot.  We have
+chosen to let the y data column number be the key to activating a PLOX-
+in-data statement.  Thus the full statement must consist of @ followed
+immediately by a single digit followed immediately by the PLOX keyword
+followed by the options you choose. For example:
+
+        @2AXIS left range to 500
+
+will draw a left axis on whatever AREA is current when the LINE or set of
+BARS that uses item n 2 is being drawn, i.e., the y item number is 2.
+This is a little subtle, but is a very powerful feature if you have a
+lot of charts that look alike.  It makes it especially easy to change
+the look of the whole set of charts.
+
+With regard to the question of TITLE text you must realize that PLOX
+will already have moved to an AREA to start drawing a LINE or BAR.  Thus
+the TITLE location must be set relative to the location (lower left corner)
+of the AREA.  Okay, all this is difficult, but you don't have to use it,
+and the program is free.  It might help to both study and run the examples
+provided by FUNDINFO.PIC with FUND01.DAT and FUND02.DAT.
+
+A further current limitation (due to the developer's laziness) is that the
+number following the @ before the PLOX keyword must be a single digit only
+so you can't use 10 and up.  Sorry about that one, too.

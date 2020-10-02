@@ -1,0 +1,211 @@
+
+/*
+ * PROGRAM     :  CMOSDUMP.C
+ * AUTHOR      :  Mark R. Nelson
+ * DATE        :  January 13, 1990
+ * DESCRIPTION :  This program dumps out the contents of
+ *             the IBM PC-AT CMOS RAM.  The contents
+ *             are printed in raw format, then displayed
+ *             using the same interpretations the BIOS
+ *             makes regarding their contents.  This
+ *             code should compile under Microsoft C
+ *             5.1 and 6.0, and Turbo C/C++ 2.0 and up.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <ctype.h>
+#include <conio.h>
+#include <dos.h>
+
+#ifdef M_I86    /* Microsoft C */
+#define enable            _enable
+#define disable           _disable
+#define inportb( a )      inp( a )
+#define outportb( a, b )  outp( a, b )
+#endif
+
+int main( void );
+unsigned char read_cmos( int location );
+void dump_cmos( void );
+void dump_setup( void );
+
+int main()
+{
+    printf( "\n  ***  CMOS RAM Contents ***\n\n" );
+    dump_cmos();
+    dump_setup();
+    return( 0 );
+}
+
+/*
+ * This routine assumes that the machine/compiler 
+ * combination is fast enough to test for the absence 
+ * of the UIP bit, then perform an outportb and 
+ * another inportb in less than 244 microseconds. This
+ * may not always be the case.  If accuracy of reading 
+ * the clock bytes is critical, the BIOS functions 
+ * should be used, or code the test portion in assembly 
+ * language.  If the compiler in question can generate 
+ * inline code for input and output instructions, it 
+ * probably will be fast enough.
+ */
+
+unsigned char read_cmos( int location )
+{
+    register unsigned char return_value;
+
+    if ( location < 10 ) {
+        for ( ; ; ) {
+            outportb( 0x70, 10 );
+            disable();
+            if ( (inportb( 0x71 ) & 0x80) == 0 ) {
+                outportb( 0x70, location );
+                return_value = ( unsigned char ) 
+                               inportb( 0x71 );
+                enable();
+                return( return_value );
+            }
+            enable();
+        }
+    }
+    outportb( 0x70, location );
+    return( ( unsigned char ) inportb( 0x71 ) );
+}
+
+void dump_cmos()
+{
+    int i;
+    int j;
+    int val;
+
+    printf( "     " );
+    for ( i = 0 ; i < 16 ; i++ )
+        printf( " %02x", i );
+    printf( "\n      " );
+    for ( i = 0 ; i < 16 ; i++ )
+        printf( "-- " );
+    printf( "\n" );
+    for ( i = 0 ; i < 4 ; i++ ) {
+        printf( "%04x:", i * 16 );
+        for ( j = i * 16 ; j < ( i + 1 ) * 16 ; j++ )
+            printf( " %02x", read_cmos( j ) );
+        printf( " " );
+        for ( j = i * 16 ; j < ( i + 1 ) * 16 ; j++ ) {
+            val = read_cmos( j );
+            if ( isprint( val ) )
+                putchar( val );
+            else
+                putchar( '.' );
+        }
+        printf( "\n" );
+    }
+    printf( "\n" );
+}
+
+void read_time( unsigned char dest[ 3 ] )
+{
+    unsigned char current_seconds;
+    int i;
+
+    do {
+        for ( i = 0 ; i < 3 ; i++ )
+            dest[ i ] = read_cmos( i * 2 );
+            current_seconds = read_cmos( 0 );
+    } while ( current_seconds != dest[ 0 ] );
+}
+
+char *floppy_type( int drive_number )
+{
+    unsigned int drive;
+
+    static char *drives[] = { "None", "360K", "1.2M",
+                              "720K", "1.44M" };
+    if ( drive_number == 1 )
+        drive = read_cmos( 16 ) >> 4;
+    else
+        drive = read_cmos( 16 ) & 15;
+    if ( drive < 5 )
+        return( drives[ drive ] );
+    else
+        return( "?" );
+}
+
+char *hard_type( int drive_number )
+{
+    unsigned int drive;
+    char buffer[ 81 ];
+
+    if ( drive_number == 1 ) {
+        drive = read_cmos( 18 ) >> 4;
+        if ( drive == 15 )
+            drive = read_cmos( 25 );
+    } else {
+        drive = read_cmos( 18 ) & 15;
+        if ( drive == 15 )
+            drive = read_cmos( 26 );
+    }
+    if ( drive != 0)
+        return( itoa( drive, buffer, 10 ) );
+    else
+        return( "None" );
+}
+
+int floppy_count( void )
+{
+    return( ( read_cmos( 20 ) >> 6 ) + 1 );
+}
+
+char *display_type( void )
+{
+    static char *displays[] = { "VGA/EGA",
+                                "Color 40 column",
+                                "Color 80 Column",
+                                "Monochrome" };
+
+    return( displays[ ( read_cmos( 20 ) >> 4 ) & 3 ] );
+}
+
+char *months[] = { "January", "February", "March",
+                   "April", "May", "June", "July",
+                   "August", "September", "October",
+                   "", "", "", "", "", "",
+                   "November", "December" };
+
+void dump_setup()
+{
+    unsigned char time[ 3 ];
+    int memory;
+    int checksum;
+
+    read_time( time );
+    printf( "Current Time      :  %02x:%02x:%02x    ",
+            time[ 2 ], time[ 1 ], time[ 0 ] );
+    printf( "Current Date    :  %s %02x, %x%02x\n",
+            months[ read_cmos( 8 ) - 1 ],
+            read_cmos( 7 ),
+            read_cmos( 50 ),
+            read_cmos( 9 ) );
+    printf( "Alarm Time        :  %x:%02x:%02x\n",
+            read_cmos( 5 ), read_cmos( 3 ),
+            read_cmos( 1 ) );
+    printf( "Floppy drive 1    :  %-12s", floppy_type( 1 ) );
+    printf( "Floppy drive 2  :  %s\n", floppy_type( 2 ) );
+    printf( "Fixed disk 1      :  %-12s", hard_type( 1 ) );
+    printf( "Fixed disk 2    :  %s\n", hard_type( 2 ) );
+    printf( "No. of floppies   :  %d\n", floppy_count() );
+    printf( "Primary display   :  %s\n", display_type() );
+    printf( "Math Coprocessor  :  %s\n",
+            ( read_cmos( 20 ) & 2 ) ? "Yes" : "No" );
+    printf( "Diskettes         :  %s\n",
+            ( read_cmos( 20 ) & 1 ) ? "Installed" : "No" );
+    memory = read_cmos( 21 ) + ( read_cmos( 22 ) << 8 );
+    printf( "Standard RAM      :  %dK\n", memory );
+    memory = read_cmos( 23 ) + ( read_cmos( 24 ) << 8 );
+    printf( "Extended RAM      :  %dK\n", memory );
+    memory = read_cmos( 48 ) + ( read_cmos( 49 ) << 8 );
+    printf( "Extended RAM      :  %dK\n", memory );
+    checksum = read_cmos( 47 ) + ( read_cmos( 46 ) << 8 );
+    printf( "Checksum          :  %04x\n", checksum );
+}
+

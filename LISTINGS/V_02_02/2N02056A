@@ -1,0 +1,117 @@
+
+COMMENT #
+------------------------------------------------------
+
+  FILE   -  PFHT.ASM
+
+  Determine the number of Process File Handle Table entries
+  which are not currently in use.
+
+  Written for Microsoft MASM 5.x to interface with
+  Microsoft C 5.x.
+
+  Module Contents:
+        int process_handles_free(void);
+
+  NOTE:
+    This function makes use of two PSP fields (PFHT_ADDR
+    and PFHT_COUNT) which are present only in DOS versions
+    3.0 and higher.
+
+------------------------------------------------------
+END OF COMMENT #
+
+.model small            ;memory model directive
+
+
+
+;                  --- EQUATES ---
+
+; --- an unused PFHT entry will contain 0ffh
+FOXES           equ     0ffh
+
+; --- offset within the PSP of the dword pointer to the
+;     PFHT
+PFHT_ADDR       equ     34h
+
+; --- offset within the PSP of the word containing the
+;     number of elements in the PFHT
+PFHT_COUNT      equ     32h
+
+
+;                  --- DATA ---
+.data
+
+; --- declare MSC global variable containing the PSP
+;     segment address
+extrn           __psp:word
+
+
+;                  --- CODE ---
+.code
+
+
+;------------------------------------------------------
+; int process_handles_free(void);
+;       Sums the number of elements within the Process File
+;       Handle Table which are unused (contain 0ffh).
+;
+; INPUT:    None
+; OUTPUT:   None
+; RETURNS:  Number of file handles not in use in the
+;           Process File Handle Table in the AX register.
+;           All other registers preserved.
+;------------------------------------------------------
+public _process_handles_free
+_process_handles_free proc
+        push    ds
+        push    si
+        push    bx
+        push    cx
+
+; --- zero out the unused counter
+        xor     bx,bx
+
+; -- obtain the segment address of the psp
+        mov     ax,DGROUP
+        mov     ds,ax
+assume ds:dgroup
+        mov     ax,[__psp]
+        mov     ds,ax
+assume ds:nothing
+
+; --- address the PFHT count and load cx with its value
+        mov     si,PFHT_COUNT
+        mov     cx,word ptr [si]
+
+; --- address the pointer to the PFHT and load ds:si with
+;     the dword pointer found
+        mov     si,PFHT_ADDR
+        lds     si,[si]
+
+; --- setup ah for comparison to an unused entry in the
+;     PFHT
+        mov     ah,FOXES
+
+; --- examine each element in the PFHT.  if it contains
+;     0ffh it is unused so increment the unused count.
+pfht_loop:
+        lodsb                   ;get an elements content
+        xor     al,ah           ;is it unused
+        jnz     not_empty       ;no, take the jump
+        inc     bx              ;yes, inc the count
+not_empty:
+        loop    pfht_loop       ;go back for another
+
+; --- move the total into ax for return to caller
+        mov     ax,bx
+
+        pop     cx
+        pop     bx
+        pop     si
+        pop     ds
+        ret
+_process_handles_free endp
+
+end
+

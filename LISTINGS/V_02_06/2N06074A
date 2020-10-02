@@ -1,0 +1,41 @@
+
+void PrintOutput (HWND hWnd)
+{
+HDC          hPrnDC;
+RECT         rSize;
+FARPROC     lpfnAbortDlgProc, lpfnPrintDlgProc;
+
+if (NULL == (hPrnDC = GetPrinterDC (hWnd)))
+{
+       return;
+}
+
+bUserAbort = FALSE;
+lpfnPrintDlgProc = MakeProcInstance (PrintDlgProc, hInstance);
+hDlgPrint = CreateDialog (hInstance, "PRINTDLGBOX", 
+       hNetworkWnd, lpfnPrintDlgProc);
+lpfnAbortDlgProc = MakeProcInstance (AbortDlgProc, hInstance);
+Escape (hPrnDC, SETABORTPROC, 0, (LPSTR) 
+       lpfnAbortDlgProc, (LPSTR) NULL);
+SetDlgItemText (hDlgPrint, IDD_PAGE, "1 of 1");
+
+/* Output actual data */
+Escape (hPrnDC, STARTDOC, 0, 0, NULL);
+
+rSize.left = 0;
+rSize.top= 0;
+rSize.right = GetDeviceCaps (hPrnDC, HORZRES);
+rSize.bottom = GetDeviceCaps (hPrnDC, VERTRES);
+
+DrawOutput (hPrnDC, &rSize);
+Escape (hPrnDC, NEWFRAME, 0, 0, NULL);
+Escape (hPrnDC, ENDDOC, 0, NULL, NULL);
+
+if (!bUserAbort)
+{
+       EnableWindow (hWnd, TRUE);
+       DestroyWindow (hDlgPrint);
+}
+DeleteDC (hPrnDC);
+}
+

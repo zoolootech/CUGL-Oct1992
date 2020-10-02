@@ -1,0 +1,192 @@
+/*
+ *  File:	Server.C
+ *  Purpose:	Contains CDROM Server program
+ */
+
+#include	<io.h>
+#include	<fcntl.h>
+#include	<stdio.h>
+#include	<stdlib.h>
+#include	<malloc.h>
+#include	<dos.h>
+#include	<bios.h>
+#include	"device.h"
+
+
+/*  External Functions  */
+
+/*  Net work functions return 0 if all went ok  */
+int NetAddname (char *name);
+int NetDelname (char *name);
+int NetListen (char *local, char *remote, BYTE *session);
+int NetHangUp (BYTE session);
+int NetSend (FPTR buf, int size, BYTE session);
+int NetReceive (FPTR buf, int size, BYTE session);
+
+/*  Set es:bx to value of far pointer x  */
+void LoadESBX (FPTR x);
+
+/*  Server data to control driver  */
+void 	(far *DevStrategy)(void);
+void	(far *DevInterrupt)(void);
+
+/*  Server data buffers  */
+char	rhBuf[64];
+char	huge dtaBuf[2532 * 48];
+
+/*  Server network data  */
+char    serverName[] = "CDROM_SERVER";
+char	clientName[17] = "*";
+BYTE	localSession = 0;
+int	dtaInSize[] = { 5, 6, 1, 1,
+			9, 130, 5, 4,
+			5, 2, 7, 7,
+			11, 13, 11, 11 };
+int	dtaOutSize[] = { 1, 2, 1, 9, 130, 1 };
+
+
+/*
+ * main : run the server
+ */
+int main (int argc, char *argv[])
+{
+    int		    handle;
+    int		    ret;
+    char	    ioctlCmd;
+    int	  	    far *devHeader;
+    char	    far *ptr;
+    union REGS	    regs;
+    struct SREGS    sregs;
+    RH_CDREAD	    far *rh;
+    FPTR	    dtaSave;
+
+
+    /**  Validate usage  **/
+    if (argc != 2) {
+	printf ("Usage:  Server driver-name\n");
+	exit (1);
+    }
+
+    /**  Simulate IOCTL Input sub-command 0  **/
+    handle = open (argv[1], O_BINARY | O_RDONLY);
+    if (handle != -1) {
+	dtaBuf[0] = '\0';	
+	ptr = (char far *) dtaBuf;
+
+	/**  Use DOS Device IOCTL call  **/
+	regs.h.ah = 0x44;
+	regs.h.al = 0x02;
+	regs.x.bx = handle;
+	regs.x.cx = 5;
+	sregs.ds = FP_SEG (ptr);
+	regs.x.dx = FP_OFF (ptr);
+	int86x (0x21, &regs, &regs, &sregs);
+	close (handle);
+    }
+    if (handle == -1 || regs.x.cflag) {
+	printf ("Unable to access %s\n", argv[1]);
+	exit (1);
+    }
+
+    /**  build devHeader pointer **/
+    devHeader = (int far *) *((long far *)(dtaBuf+1));
+
+    /**  Print name from device header as  **/
+    /**  verification of devHeader.        **/
+    /**  '%Fs' = Far string pointer        **/
+    printf ("\nConnected to device driver %Fs\n",
+	    devHeader + 5);
+
+    /**  Save the desired function pointers  **/
+    FP_SEG (DevStrategy) = FP_SEG (devHeader);
+    FP_OFF (DevStrategy) = devHeader[3];
+    FP_SEG (DevInterrupt) = FP_SEG (devHeader);
+    FP_OFF (DevInterrupt) = devHeader[4];
+
+    /**  Let people know I am here  **/
+    if (NetAddname (serverName)) {
+	printf ("Unable to add server name\n");
+	exit (1);
+    }
+
+    /**  Wait for a connection  **/
+    printf ("Waiting for a connection...\n\n");
+    if (NetListen (serverName, clientName, &localSession))
+	printf ("No session could be established\n");
+
+    else 
+	/**  Process remote requests while the  **/
+	/**  session remains intact             **/
+							
+	while (1) {
+	    printf ("\n\n");
+	    printf ("Waiting...\r");
+
+	    /**  Get a request header  **/
+	    if (NetReceive (rhBuf, 128, localSession))
+		break;
+			
+	    rh = (FPTR) rhBuf;
+	    printf ("Request Header has been received\n");
+	    printf ("  Command code        : %d\n", 
+		    rh->rh.command);
+
+	    /** If command is IOCTL, get the DTA now  **/
+	    if (rh->rh.command==3 || rh->rh.command==12) {
+		if (NetReceive(dtaBuf,256,localSession))
+		    break;
+
+		ioctlCmd = *dtaBuf;
+	        printf ("  IOCTL Subcommand    : %d\n", 
+			ioctlCmd);
+	    }
+
+	    /**  Set request header to my DTA  **/
+	    dtaSave = rh->dta;
+	    rh->dta = (FPTR) dtaBuf;
+
+	    /**  If ReadLong, check for enough  **/
+	    /**  buffer space                   **/
+	    if (rh->rh.command == 128 && rh->count > 48)
+	        rh->rh.status = DEV_DONE|DEV_ERROR|DEV_EGEN;
+
+	    else {
+		   /**  Run command  **/
+		   LoadESBX (rh);
+		   (*DevStrategy)();
+		   (*DevInterrupt)();
+	    }
+	    printf ("  Return status       : %x\n", 
+		    rh->rh.status);
+
+	    /**  Send back the request header  **/
+	    rh->dta = dtaSave;
+	    if (NetSend (rhBuf,rh->rh.length,localSession))
+		break;
+
+	    /**  Does the DTA go back?  **/
+	    if (rh->rh.status == DEV_DONE) {
+		/**  Determine DTA size to send  **/
+		handle = 0;
+		if (rh->rh.command == 3)
+		    handle = dtaInSize[ioctlCmd];
+
+		else if (rh->rh.command == 12)
+		    handle = dtaOutSize[ioctlCmd];
+
+		else if (rh->rh.command != 131)
+		    handle = (304 * rh->readMode +
+			      2048) * rh->count;
+		
+		if (handle &&
+		    NetSend (dtaBuf,handle,localSession))
+			break;
+	    }
+	
+	} /*  while (1)  */
+
+	printf ("\n\nCommunication has terminated\n");
+
+	NetHangUp (localSession);
+	NetDelname (serverName);
+}

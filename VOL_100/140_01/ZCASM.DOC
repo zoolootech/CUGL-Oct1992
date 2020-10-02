@@ -1,0 +1,137 @@
+ZCASM.DOC 
+
+Copyright (c) 1984 Brian Waldron, Xerox Corp.
+based on CASM.DOC by Leor Zolman
+
+
+
+This document describes the ZCASM Assembly language --> CRL-Format Preprocessor
+for BDS C 1.5. The original program, CASM.C, has been modified to process ZILOG
+mnemonics and  output  short  labels  for  assembly  with  Microsoft's  M80/L80
+combination.
+
+The files making up the ZCASM package are as follows:
+
+ZCASM.DOC	This file
+ZCASM.C		Source file for ZCASM program
+ZCASM.SUB	Submit file for performing entire conversion of CZM
+		file to CRL which looks like this:
+
+				zcasm $1
+				m80 =$1/z
+				l80 $1,$1.crl/n/e
+
+You also need:	M80, L80
+
+ZCASM  is hereby placed in the public domain with  the  restriction that it may
+not be distributed for profit.
+
+Description:
+
+The only  means  previously  provided to  BDS C users for creating  relocatable
+object modules (CRL files)  from  assembly  language  programs  was a painfully
+obscure macro  package  (CMAC.LIB)  that  required   Digital  Research's  macro
+assembler (MAC.COM) in order to work.  Then  came  CASM, written by Leor Zolman
+which greatly simplified  the process.  CASM,  however,  being designed to work
+with  DR's standard  assembler (ASM.COM),  only  digests Intel mnemonics.  This
+document describes "ZCASM", which is a ZILOG mnemonic version of CASM.
+
+ZCASM will read  ZILOG Z80 mnemonics and create  a .MAC file to be processed by
+M80. L80 then creates a .CRL file directly without the need for DDT or the SAVE
+command.
+
+ZCASM takes, as input, an assembly language source file of type ".CZM"(mnemonic
+for C Z80  preprocessor for M80) in a format much closer to  "vanilla" assembly
+language  than  the bizarre  craziness of CMAC.LIB, and  writes out a .MAC file
+which  may  then  be assembled  by  Microsoft's  M80/L80  combination.    ZCASM
+automatically recognizes which assembly language instructions  need  relocation
+parameters and inserts the appropriate pseudo-operations and extra opcodes into
+the output file to  cause  that  file to  properly  assemble  directly into CRL
+format. In addition, some  rudimentary  logic  checking is done; doubly-defined
+and/or undefined labels are detected and reported, with the feature of allowing
+similarly-named labels to exist in different functions.
+
+The pseudo-operations that  ZCASM recognizes as special control commands within
+a .CZM file are as follows:
+
+FUNCTION <name>	  There is no need to specify a directory of included functions
+		  at the start of a .CZM file.  Each  function  must begin with
+		  "function" pseudo-op, where <name> is  the  name that will be
+		  used for the  function in the .CRL file directory.   No other
+		  information should appear on this line.
+
+EXTERNAL <list>	  If a function calls other C or  assembly-coded  functions, an
+		  "external" pseudo-op naming these other functions must follow
+		  immediately after the "function" op.   One or more  names may
+		  appear in the list, and the list may be spread  over  as many
+		  "external" lines as  necessary.   Note  that for the  current
+		  version  of  BDS C,  only   function  names   may  appear  in
+		  "external"  lines;  data names  (e.g. for external  variables
+		  defined  in  C  programs)  cannot  be  placed  in  "external"
+		  statements.
+
+ENDFUNC
+ENDFUNCTION	  This op (both forms are equivalent) must appear after the end
+		  of  the  code  for  a  particular  function.  The name of the
+		  function need not be given as an operand.  The three  pseudo-
+		  ops just listed are the ONLY  pseudo-ops  that need to appear
+		  among the  assembly  language instructions of a ".CZM"  file,
+		  and at no time do the assembly instruction themselves need to
+		  be altered for relocation, as was the case with CMAC.LIB.
+		   
+INCLUDE <filename>
+INCLUDE "filename" This op causes the named file to be inserted at the  current
+		  line of the output file. If the filename is enclosed in angle
+		  brackets (i.e., <filename>)  then a  default  user  area  and
+		  logical drive  are assumed  to contain the  named  file  (the
+		  specific  defaults  for  your  system may  be  customized  by
+		  changing the appropriate defines in ZCASM.C).  If the name is
+		  enclosed in quotes, than the current  drive and user area are
+		  searched. Note that you'll  usually  want to include the file
+		  BDS.LIB at the start of your  .CZM file  (see # 7, additional
+		  notes and bugs), so that  names  of routines  in the run-time
+		  package  are  recognized  by  ZCASM  and  not  interpreted as
+		  undefined local forward references, which would  cause  ZCASM
+		  to  generate  relocation  parameters  for those  instructions
+		  having run-time package routine names as operands.  Note that
+		  the pseudo-op MACLIB is equivalent to INCLUDE and may be used
+		  instead.
+
+Additional notes and bugs:  
+
+0.	If a label  appears  on  an instruction, it MUST begin in column one of
+	the line.  If a label does  not  begin  in  column one,  ZCASM will not
+	recognize it as a label and relocation will not be handled correctly.
+
+1.	Forward  references  to  EQUated symbols in executable instructions are
+	not allowed, although forward references to relocatable symbols are OK.
+	The reason  for  this is that ZCASM is a one-pass preprocessor, and any
+	time a previously  unknown  symbol is encountered  in  an  instruction,
+	ZCASM  assumes  that  symbol is relocatable and  generates a relocation
+	parameter for the instruction.
+
+2.	INCLUDE and MACLIB only work for one level of inclusion.
+
+3.	When a relocatable value is specified in a "DEFW" op, then it  must  be
+	the  ONLY  value  given  in  that  particular  DEFW statement,  or else
+	relocation will not be properly handled.
+
+4.	Characters used in symbol names should  be  restricted  to alphanumeric
+	characters; the dollar sign ($) is also allowed, but may  conflict with
+	labels generated by ZCASM.
+
+5.	The ZCASM.SUB  submit  file may be used to perform the entire procedure
+	of converting  a .CZM file to a .CRL file.  For a file named "FOO.CZM",
+	just say:
+
+	submit zcasm foo
+
+6.	You should  include  the  pseudo-op  ASEG at the beginning of your .CZM
+	file for M80 to properly assemble the code. If you also place a .Z80 at
+	the top of the file, the /z switch in ZCASM.SUB may be omitted.
+
+7.	When #INCLUDEing BDS.LIB, use a version with all DS, DB or DW's removed
+	as this  can  cause problems  with the assembled code.  I use something
+	called RUNDEFS.LIB which  contains EQUates extracted or calculated from
+	BDS.LIB.
+

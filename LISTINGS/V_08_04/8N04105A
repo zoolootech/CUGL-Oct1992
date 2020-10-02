@@ -1,0 +1,34 @@
+
+Listing 2
+=========
+
+/* Borrow Memory */
+
+/* Returns a pointer to the allocated memory, or NULL */
+
+char *borrow(id,need)
+register MemBlock *id;        /* Pointer to first block */
+register int need;            /* Requested memory size */
+{
+   register MemBlock *p=id->mb_pres;  /* Present block pointer */
+   register int oldoffs;              /* Old offset */
+
+   /* Round need up to word multiple */
+   need+=need&1;
+
+   /* Deal with more memory required */
+   if(id->mb_offs+need>id->mb_size) {  /* Too large to fit ? */
+      register MemBlock *q;            /* Get another */
+      if((q=(MemBlock *)allocate(id->mb_size))==0) 
+         return(NULL);
+      p->mb_next=q;                    /* Link to new block */
+      q->mb_next=NULL;                 /* Mark end of list */
+      id->mb_pres=q;                   /* New block is present one */
+      id->mb_offs=sizeof(MemBlock *);  /* Reset offset */
+      p=q;                             /* Present block */
+   }
+   oldoffs=id->mb_offs;                /* Record present offset */
+   id->mb_offs+=need;                  /* Move offset */
+   return((char *)((int)p+oldoffs));   /* Return address of memory */
+}
+

@@ -1,0 +1,34 @@
+        'Listing 2 - EXIST.BAS
+        'Checks for existence of a file.
+    
+        DEFINT A-Z
+        '$INCLUDE: 'qb.bi'
+        DECLARE FUNCTION Exist (FileSpec$)
+
+        INPUT "Enter desired file spec: ", FileSpec$
+        IF Exist(FileSpec$) THEN
+           PRINT FileSpec$ + " exists."
+        ELSE
+           PRINT FileSpec$ + " not found."
+        END IF
+        END
+
+FUNCTION Exist (FileSpec$)
+
+        DIM Regs AS RegTypeX
+
+        Temp$ = FileSpec$ + CHR$(0)
+        Regs.ax = &H4E00                       'Find first matching file
+        Regs.cx = 0
+        Regs.ds = VARSEG(Temp$)
+        Regs.dx = SADD(Temp$)
+        CALL InterruptX(&H21, Regs, Regs)
+
+        IF Regs.ax AND 255 THEN
+           Exist = 0
+        ELSE
+           Exist = -1
+        END IF
+
+END FUNCTION
+

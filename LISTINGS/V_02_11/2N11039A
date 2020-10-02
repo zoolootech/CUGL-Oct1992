@@ -1,0 +1,116 @@
+#include <windows.h>
+
+/*
+ *  CreateDialogMenu - From dialog template, create window w/menu.
+ *
+ */
+
+HWND    CreateDialogMenu(HANDLE Instance,
+            LPSTR TemplateName, HWND Parent,
+            FARPROC DlgFunction, LPSTR MenuName,
+            LONG BorderStyle)
+    {
+    HWND    NewWindow, Menu;
+    LONG    WindowStyle, WindowExStyle;
+    RECT    WindowRect, OldClient, NewClient;
+    int     OldWidth, NewWidth, OldHeight, NewHeight;
+
+    NewWindow   = CreateDialog(Instance,
+                    TemplateName, Parent, DlgFunction);
+    if(NewWindow == NULL)
+        return NULL;
+    GetWindowRect(NewWindow, &WindowRect);
+    GetClientRect(NewWindow, &OldClient);
+    WindowExStyle = GetWindowLong(NewWindow, GWL_EXSTYLE);
+    WindowStyle     = GetWindowLong(NewWindow, GWL_STYLE);
+
+    /* Turn off DLGMODALFRAME bit */
+    WindowExStyle &= ~WS_EX_DLGMODALFRAME;
+    SetWindowLong(NewWindow, GWL_EXSTYLE,
+            WindowExStyle & ~WS_EX_DLGMODALFRAME);
+    /* Turn on style of frame you want */
+    WindowStyle &= ~(WS_BORDER | WS_DLGFRAME | WS_THICKFRAME);
+    switch(BorderStyle)
+        {
+        case    WS_THICKFRAME   :
+            WindowStyle |= WS_THICKFRAME;
+        case    WS_DLGFRAME :
+            WindowStyle |= WS_DLGFRAME;
+            WindowStyle |= WS_BORDER;
+        }
+    SetWindowLong(NewWindow, GWL_STYLE, WindowStyle);
+
+    SetMenu(NewWindow, LoadMenu(Instance, MenuName));
+    GetClientRect(NewWindow, &NewClient);
+
+    OldWidth    = OldClient.right - OldClient.left;
+    NewWidth    = NewClient.right - NewClient.left;
+    OldHeight    = OldClient.bottom - OldClient.top;
+    NewHeight    = NewClient.bottom - NewClient.top;
+
+    SetWindowPos(NewWindow, NULL, 0, 0,
+            (WindowRect.right-WindowRect.left) + (OldWidth - NewWidth),
+            (WindowRect.bottom-WindowRect.top) + (OldHeight-NewHeight),
+            SWP_DRAWFRAME | SWP_NOMOVE);
+    return NewWindow;
+    }
+
+
+
+int PASCAL WinMain(HANDLE Instance,
+    HANDLE Previous, LPSTR CmdLine, int Command)
+    {
+    static  char AppName[] = "DlgMenu";
+    HWND        MainWindow;
+    MSG         Message;
+
+    if(!Previous)
+        {
+        extern long FAR PASCAL WindProc(HWND, WORD, WORD, LONG);
+        WNDCLASS    WindowClass;
+        WindowClass.style           = CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS;
+        WindowClass.lpfnWndProc     = WindProc;
+        WindowClass.cbClsExtra      = 0;
+
+        // Don't forget extra bytes because it is a dialog
+        WindowClass.cbWndExtra      = DLGWINDOWEXTRA;
+
+        WindowClass.hInstance       = Instance;
+        WindowClass.hIcon           = LoadIcon(Instance, IDI_APPLICATION);
+        WindowClass.hCursor         = LoadCursor(NULL, IDC_ARROW);
+        WindowClass.hbrBackground   = GetStockObject(WHITE_BRUSH);
+
+        WindowClass.lpszMenuName    = NULL;
+
+        WindowClass.lpszClassName   = AppName;
+        RegisterClass(&WindowClass);
+        }
+
+    MainWindow  = CreateDialogMenu(Instance, "DLGMENU",
+                        0, NULL, "MAIN_MENU", WS_THICKFRAME);
+    
+    ShowWindow(MainWindow, Command);
+
+    while(GetMessage(&Message, NULL, 0, 0))
+        {
+        if(!IsDialogMessage(MainWindow, &Message))
+            {
+            TranslateMessage(&Message);
+            DispatchMessage(&Message);
+            }
+        }
+    return Message.wParam;
+    }
+
+long FAR PASCAL WindProc(HWND WindowHandle,
+        WORD MsgNum, WORD WordParm, LONG LongParm)
+    {
+    switch(MsgNum)
+        {
+        case    WM_DESTROY:
+            PostQuitMessage(0);
+            return 0;
+        default:
+            return DefWindowProc(WindowHandle, MsgNum, WordParm, LongParm);
+        }
+    }

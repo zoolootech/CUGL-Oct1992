@@ -1,0 +1,51 @@
+
+#include        <string.h>
+#include        "netbios.h"
+
+/*********************************************************
+* dg_write - write a datagram over the network
+* Parameters:
+*    number (in) - your name table address number
+*    destination (in) - destination name (1-15 characters)
+*    buffer (in) - data to be transmitted
+*    length (in) - number of bytes to transmit
+*  Global: net_error - global integer used to return net 
+*                      error codes. net_error is set to 
+*                      zero for normal return
+* Returns: Number of bytes transmitted for success. 
+*          -1 for failure. In the event of failure, the 
+*          global variable net_error is set to the NetBIOS 
+*          return code for error processing.
+* Notes: Destination must have already executed an
+*        NCB_RECEIVE_DATAGRAM command. Number is the value 
+*        returned from a successful init_netbios().
+*        This code assumes that you are using a memory model 
+*        which will result in buffer being a far pointer.
+* History: Original code by William H. Roetzheim, 1990
+*************************************************************/
+
+int dg_write(unsigned int number, char *destination, 
+             char *buffer, int length)
+{
+   struct  net_control_block       ncb;
+   char    dest_name[16];
+   int             i;
+
+   memset(dest_name, 0, 16);
+   for (i = 0; i < 15; i++)
+   {
+      if (destination[i] == 0) break;
+      else dest_name[i] = destination[i];
+   }
+
+   init_ncb(&ncb);
+   ncb.command = NCB_SEND_DATAGRAM;
+   ncb.length = length;
+   ncb.buffer = buffer;
+   ncb.number = number;
+   strcpy(ncb.r_name, dest_name);
+   int_netbios(&ncb);
+   if (ncb.retcode == 0) return length;
+   else return -1;
+}
+

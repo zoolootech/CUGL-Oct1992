@@ -1,0 +1,139 @@
+
+	PAGE  57,130
+	TITLE ^Break and ^C and Prtscn
+	NAME  BREAK
+
+; ========================================================================
+;  DESC:        These routines disable and enable the special
+;               interrupt keyboard buttons.
+;
+;  INTERRUPTS:  0x23  ^C
+;               0xlB  ^Break
+;               0x05  Prtscn
+;
+;  REVISIONS:   JT Jewell   91/01/28.
+;
+;  COMPILER:    Microsoft Assembler  Ver 5.10A
+;
+;  COMPILE:     masm break.asm,break.obj;
+;
+;  ROUTINES:    To call the routines from C:
+;               DISABLE BREAK();
+;               ENABLE_BREAK(),
+; ========================================================================
+
+
+_TEXT SEGMENT  PUBLIC  'CODE'
+  ASSUME   CS:_TEXT
+  ASSUME   DS:_TEXT
+
+  PUBLIC   _DISABLE_BREAK
+
+
+; ******************************************
+
+_DISABLE_BREAK PROC NEAR
+
+  PUSH BP
+  MOV  BP,SP
+
+  PUSH DS
+  PUSH DI
+  PUSH SI
+  PUSH ES
+
+  MOV AX, 3523H             ; SAVE ORIGINAL 0x23 Handle.
+  INT 21H
+  MOV  word ptr cs:ORG_INT23,bx
+  MOV  word ptr cs:ORG_INT23+2,es
+
+  MOV  AX, 351BH            ; SAVE ORIGINAL 0xlB Handle.
+  INT  21H
+  MOV  word ptr cs:ORG_INT1B,bx
+  MOV  word ptr cs:ORG_INT1B+2,es
+
+  MOV  AX, 3505H            ; SAVE ORIGINAL 0x05 Handle.
+  INT  21H
+  MOV  word ptr cs:ORG_INT05,bx
+  MOV  word ptr cs:ORG_INT05+2,es
+
+  MOV  dx,seg _TEXT:NULL_BREAK
+  MOV  ds,dx
+
+  MOV  dx,offset  _TEXT:NULL_BREAK
+
+  MOV  ax,2523H            ; SET INT 23H VECTOR
+  INT  21H
+
+  MOV  ax,251BH            ; SET INT lBH VECTOR
+  INT  21H
+
+  MOV  ax,2505H            ; SET INT 05H VECTOR
+  INT 21H
+
+  POP ES
+  POP SI
+  POP DI
+  POP DS
+  POP BP
+  RET
+
+_DISABLE_BREAK ENDP
+
+
+; *******************************************
+
+  PUBLIC   _ENABLE_BREAK
+
+_ENABLE_BREAK PROC NEAR
+
+  PUSH BP
+  MOV  BP,SP
+
+  PUSH DS
+  PUSH DI
+  PUSH SI
+  PUSH ES
+
+  LDS DX,cs:ORG_INT23             ; RETRIEVE PREVIOUS INT23
+  MOV AX,2523H
+  INT 21H
+
+  LDS DX,cs:ORG_INT1B             ; RETRIEVE PREVIOUS INTlB
+  MOV AX,251BH
+  INT 21H
+
+  LDS DX,cs:ORG_INT05             ; RETRIEVE PREVIOUS INT05
+  MOV AX,2505H
+  INT 21H
+
+  POP ES
+  POP SI
+  POP DI
+  POP DS
+  POP BP
+  RET
+
+_ENABLE_BREAK ENDP
+
+
+;*******************************************
+
+NULL_BREAK PROC FAR
+
+  IRET
+
+NULL_BREAK ENDP
+
+
+; *******************************************
+
+ORG_INT23   dd   0
+ORG_INT1B   dd   0
+ORG_INT05   dd   0
+
+
+; ******************************************
+
+_TEXT   ENDS
+	    END

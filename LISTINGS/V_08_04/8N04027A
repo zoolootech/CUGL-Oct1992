@@ -1,0 +1,51 @@
+*****Listing 2*****
+
+#include <stdio.h>
+#include <setjmp.h>
+
+main()
+{
+	double value, result;
+	jmp_buf context;
+	double mysqrt(double value, jmp_buf context);
+
+	while (1) {
+		if (setjmp(context) != 0)
+			printf("Value is out of the domain for sqrt\n");
+
+		printf("Enter fp value: ");
+		scanf("%lf", &value);
+		if (value == -1.0)
+			return;
+		result = mysqrt(value, context);
+		printf("sqrt(%f) = %f\n", value, result);
+	}
+}
+
+
+#include <errno.h>
+#include <math.h>
+
+double mysqrt(double value, jmp_buf context)
+{
+	double d;
+
+	errno = 0;
+	d = sqrt(value);
+	if (errno == EDOM)
+		longjmp(context, 1);
+	else
+		return (d);
+}
+
+Enter fp value: 1.234
+sqrt(1.234000) = 1.110856
+Enter fp value: 12345
+sqrt(12345.000000) = 111.108056
+Enter fp value: -0.000000
+sqrt(-0.000000) = -0.000000
+Enter fp value: -0.0000001
+Value is out of the domain for sqrt
+Enter fp value: -5
+Value is out of the domain for sqrt
+

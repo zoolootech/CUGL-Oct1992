@@ -1,0 +1,258 @@
+/* stdarg example with prototypes */
+
+#include <stdio.h>
+
+int maxi(int, ...);
+
+main()
+{
+	printf("-> %d\n", maxi(4, 10, 20, -5, 17));
+	printf("-> %d\n", maxi(3, -10, -5, -17));
+
+/* is type of second argument int or long? */
+
+	printf("-> %d\n", maxi(3, 65432, -5, -17));
+
+/* call maxi with count too small or too big */
+
+	printf("-> %d\n", maxi(2, 10, -5, 17));
+	printf("-> %d\n", maxi(4, 10, -5, 17));
+}
+
+#include <stdarg.h>
+#include <limits.h>
+
+int maxi(int parmn, ...)
+{
+	va_list ap;
+	int i, j;
+	int max = INT_MIN;
+
+	va_start(ap, parmn);
+	printf("%2d: ", parmn);
+
+	for (j = 1; j <= parmn; ++j) {
+		i = va_arg(ap, int);
+		printf("%d, ", i);
+		if (max < i)
+			max = i;
+	}
+
+	va_end(ap);
+	return (max);
+}
+
+ 4: 10, 20, -5, 17, -> 20
+ 3: -10, -5, -17, -> -5
+ 3: -104, 0, -5, -> 0
+ 2: 10, -5, -> 10
+ 4: 10, -5, 17, 250, -> 250	/* ??? */
+
+
+
+
+
+/* stdarg example without prototypes */
+
+#include <stdio.h>
+
+int maxi();
+
+main()
+{
+	/* ... */
+}
+
+#include <stdarg.h>
+#include <limits.h>
+
+int maxi(parmn)
+int parmn;
+{
+	/* ... */
+}
+
+
+
+
+
+/* varargs solution */
+
+#include <stdio.h>
+
+int maxi();
+
+main()
+{
+	/* ... */
+}
+
+#include <varargs.h>
+#include <limits.h>
+
+int maxi(va_alist)
+va_list va_alist;
+/* or
+va_decl
+*/
+{
+	va_list ap;
+	int i, j, k;
+	int max = INT_MIN;
+
+	va_start(ap);
+	k = va_arg(ap, int);
+	printf("%2d: ", k);
+
+	for (j = 1; j <= k; ++j) {
+		i = va_arg(ap, int);
+		printf("%d, ", i);
+		if (max < i)
+			max = i;
+	}
+
+	va_end(ap);
+	return (max);
+}
+
+ 4: 10, 20, -5, 17, -> 20
+ 3: -10, -5, -17, -> -5
+ 3: -104, 0, -5, -> 0
+ 2: 10, -5, -> 10
+ 4: 10, -5, 17, 449, -> 449	/* ??? */
+
+
+
+
+
+/* handling a variable number of values via an array */
+
+#include <stdio.h>
+#include <stddef.h>
+
+int maxi1(size_t, int *);
+
+main()
+{
+	static int array[5] = {4, 10, -7, 17, 20};
+	size_t i;
+
+	for (i = 1; i <= sizeof(array)/sizeof(int); ++i)
+		printf("-> %d\n", maxi1(i, array));
+}
+
+#include <limits.h>
+
+int maxi1(size_t count, int table[])
+{
+	size_t i;
+	int max = INT_MIN;
+
+	for (i = 0; i < count; ++i) {
+		printf("%d, ", table[i]);
+		if (max < table[i])
+			max = table[i];
+	}
+
+	return (max);
+}
+
+4, -> 4
+4, 10, -> 10
+4, 10, -7, -> 10
+4, 10, -7, 17, -> 17
+4, 10, -7, 17, 20, -> 20
+
+
+
+
+
+
+/* handling arguments with varying types */
+
+#include <stdio.h>
+
+int output(char *, ...);
+
+main()
+{
+	output("S D C\nS X F E\n", "abcd", 123, 'A',
+		"xyz", 0x12ab, 123.4, 123.4);
+}
+
+#include <stdarg.h>
+#include <string.h>
+
+int output(char *parmn, ...)
+{
+	va_list ap;
+	int count = strlen(parmn);
+	int j;
+
+	va_start(ap, parmn);
+
+	for (j = 1; j <= count; ++j) {
+		switch (*parmn) {
+
+/* string */	case 'S': {
+			char *pc;
+
+			pc = va_arg(ap, char *);
+			printf("%s", pc);
+			break;
+		}
+
+/* decimal */	case 'D': {
+			int i;
+
+			i = va_arg(ap, int);
+			printf("%d", i);
+			break;
+		}
+
+/* character */	case 'C': {
+			int i;
+
+			i = va_arg(ap, int);
+			printf("%c", i);
+			break;
+		}
+
+/* hex digit */	case 'X': {
+			int i;
+
+			i = va_arg(ap, int);
+			printf("%x", i);
+			break;
+		}
+
+/* double */	case 'F': {
+			double d;
+
+			d = va_arg(ap, double);
+			printf("%f", d);
+			break;
+		}
+
+/* exponent */	case 'E': {
+			double d;
+
+			d = va_arg(ap, double);
+			printf("%e", d);
+			break;
+		}
+
+		default: {
+			putchar(*parmn);
+			break;
+		}
+		}
+		++parmn;
+	}
+
+	va_end(ap);
+}
+
+abcd 123 A
+xyz 12ab 123.400000 1.234000e+002
+

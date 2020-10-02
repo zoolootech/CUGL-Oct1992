@@ -1,0 +1,232 @@
+*******************************************************************************
+This file includes the documentation of changes that William Bader
+has made.
+*******************************************************************************
+
+
+< Additions to micro-emacs 3.9 >
+
+For VT100 style terminals, the arrow keys and keypad keys can be
+bound to commands.  The arrow keys are initially bound to single character
+movement commands.  The keypad keys are initially bound to EDT-like commands.
+The only execptions are:
+	HELP - bound to describe-key. This command waits for a key
+to be pressed and tells what the key does.
+	GOLD HELP - bound to apropos. This command prompts for a string
+and displays a list of all commands related to the string in a new window.
+To delete the window, use ^X 0
+	REPLACE - prompts for pattern and replacement and replaces
+all matching strings in buffer.
+	DELETE CHARACTER - does not save the character unless there is a
+repeat count.
+	UNDELETE CHAR/WORD/LINE - there is only one kill buffer, so the
+all the undelete commands are just bound to the yank command.
+	SELECT - the selected region is not highlighted.
+
+Changes from standard emacs:
+	Since arrow keys and function keys generate escape sequences,
+an extra character is read after an escape is typed.
+This means prompts that read a string until <META> will not return
+until another character is types.  As a fix, any function key
+(i.e. an arrow key or a keypad key) can be used to terminate the string.
+For example when entering a search string, terminate the string with
+a keypad key (like in EDT) instead of ESCAPE.
+Also, the GOLD key is bound normally to the meta-prefix command.
+This means to enter a <META> prefixed key to commands that ask for keys
+(like bind-to-key or describe-key), you can must use the ESCAPE.
+For example, describe-key GOLD would immediately come back with
+meta-prefix, while describe-key ESCAPE would wait for another key
+to be pressed.
+
+
+	Other commands:
+
+ESC ^B	Find matching fence	(same as ESC ^F)
+
+ESC J	Fill paragraph		(same as ESC Q)
+
+^X ^D	Describe key		(same as ^X ?)
+
+^@	Set mark		(same as ESC space)
+
+^X 4	Find file into another window
+	If there is another window, go to it, otherwise split the current
+	window.  Find a file in the new window.
+
+char-to-octal-insert (unbound)
+	Insert a C format octal escape sequence for the next key pressed.
+
+string-length (unbound)
+	If the cursor is inside a quoted string, print its length.
+
+auto-mode (bound to ESC ^X FN R)
+	Enters CMODE for .a, .c, .h, .p and .f extensions.
+
+Autosave mode saves the file with a .asv extension instead of
+	its original extension.
+
+recover-file (unbound)
+	Replaces the current file with its autosaved version.
+
+auto-save-file (unbound)
+	Makes a backup the file in the current buffer using the
+	autosave mode .asv extension.
+
+scroll-forward / scroll-backward (unbound)
+	Scrolls the screen horizontally and moves the cursor.
+
+suspend-emacs (ESC S)
+	Attaches to a parent of the current process if possible.
+
+revert-file (unbound)
+	Replaces the current file with the last version written to disk.
+
+previous-buffer (unbound)
+	Displays the previous buffer. (inverse of next-buffer)
+
+yank-character (bound to GOLD ,)
+	Restores the last deleted character.
+
+cut-region (bound to keypad 6)
+	Like kill-region, but also clears the mark.
+
+$advance (environment variable)
+	EDT advance/backup flag
+
+$vt100key (environment variable)
+	When set, the next character after an escape is always read.
+	Default is true on xenix vt200, false otherwise.
+	On xenix, the value may be set by the environment variable vt100key.
+
+smooth-next-page (unbound)
+smooth-previous-page (unbound)
+	Like next-page and previous-page, but only scoll about 2/3 of the
+	window and update after each line on vt100's.
+
+narrow-buffer-to-region (bound to ^X <)
+	Hides all text in the buffer except for the region.
+	Commands that usually operate on the entire buffer will only
+	touch the narrowed region.
+
+widen-buffer (bound to ^X >)
+	Restores the hidden areas of a narrowed buffer.
+
+describe-variables
+describe-functions
+	Displays a list of variables or functions.
+
+display
+	Prompts for a variable and displays its value.
+
+execute-buffer, select-buffer, kill-buffer
+	Now perform command completion on the buffer name.
+
+(mode line)
+	Now shows if a buffer was truncated (#) or narrowed (<>).
+	On machines without virtual memory, buffers are truncated if there
+	is not enough memory to hold the entire file.
+
+$hardtab
+$softtab
+	Hard tab is the size that a TAB character should move.
+	Soft tab is the size that the insert-tab command uses.
+
+In MAGIC mode, & in replace strings are replaced by the matched text.
+
+$hscroll
+$hjump
+	When $hscroll is set, the whole screen will scroll horizontally
+	instead of just the current line.
+	$hjump is the number of spaces to move.
+
+-t (command line option)
+	On Xenix and VMS, keeps flow control to the terminal enabled.
+
+-i<variable name> <initial value> (command line option)
+	Sets an initial value for a variable.
+
+-c (command line option)
+	Clears view mode flag (enabled by a previous -v).
+
+$cbflags
+	The flags for the current buffer.
+	(Bits = invisible, changed, truncated, narrowed)
+
+&gtc, &ban, &bor, &bxo, &bno
+	Functions for getting a command, binary and, binary or,
+	binary xor and binary not.
+
+BINARY mode
+	On MSDOS, opens files in binary mode.
+
+< Internal changed to MicroEmacs >
+
+	Filled in routines in spawn.c for VMS.
+	Added ADM3A support into vmsvt.c for unknown terminals.
+	Added support for 80/132 column mode on VT100 terminals under
+		VMS and TERMCAP.
+	Redid search scanner so no subroutines calls are made until
+		the first character of the pattern is matched.
+	Redid parts of display.c to eliminate processes that require
+		one subroutine call per character.
+	Added fastputc macro that does the equivalent of ttputc
+		under VMS and USG.
+	Changed VMS part of termio not to abort on input data overruns.
+	Added a fast key lookup area so normal keys, the special 'C'
+		function done after every command, and the last command
+		executed can be found directly without looping through all
+		the key bindings.
+	Created a callable interface that allows other programs to
+		link to emacs and call it like a subroutine.
+	Can correcly read, display, and write out files with any ascii
+		character from 0 to 255.
+	Changed routines in fileio.c to use macro versions of fgetc and fputc.
+	Added partial support for vt100 style scrolling regions.
+	Added smooth scroll functions that work like edt.
+	Added functions to scroll the screen left and right.
+	Added support for vt200 style escape sequences.
+		esc [ digits ~ becomes SPEC | c where c is what would be
+		generated if you hit the key with the ascii value of 'digits'.
+	Changed splitwindow to save a pointer to the new window so things
+		that call it have the option of setting curwp to it.
+	For DECEDT, binding meta-prefix or ctlx-prefix does not undo old keys.
+	In macro files, FN# represents esc [ # ~.
+	Next-line and previous-line do not reset goal at buffer boundaries.
+	Added support for ansi color in tcap.c.
+	Added BINARY mode for MSDOS.
+
+	Fixed random bugs due to mismatched arguments on subroutine calls.
+
+< Compilation attempts >
+	Compiled and ran succesfully on
+		Vax11c under VMS 4.1 on a VAX-11/750
+		Microsoft C 5.0 under MSDOS 3.20
+			(compiler crashes or generates incorrect code
+			when full optimization enabled)
+		Turbo C 1.5 under MSDOS 3.20
+		CI86 2.30J under MSDOS 3.20
+		Microsoft C under XENIX 386
+		cc under SunOS 3.5? on a Sun 3/360C
+		cc under SunOS 4.0 on a Sun 386i
+		cc under BSD2.9 on a PDP-11/70
+			(used separate I/D space)
+	Compiled but did not run on
+		decusc under RSX11M on a PDP-11/73
+			(would not link because decusc can not generate
+			I/D tasks)
+
+
+< Menu System >
+			
+To enable the menu bar, run "emacs -m".
+
+The command that goes to the menu area is named "menu", but
+currently not bound to any key.
+
+Move around in the menus with the arrow keys.
+
+On the top line, <- and -> go left and right,
+/\ returns to editing, and \/ pulls down a submenu.
+
+In a submenu, <- goes back one level, -> selects the highlighted option,
+/\ goes up one line, and \/ goes down one line.

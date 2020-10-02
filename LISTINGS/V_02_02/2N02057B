@@ -1,0 +1,239 @@
+
+COMMENT #
+------------------------------------------------------
+        FILE   -  RELOCATE.ASM
+
+  Relocate the Process File Handle Table to the area
+  defined within this module (new_table).  This will allow
+  the number of handles for this process to be expanded up
+  to 255.  The equate NEW_TABLE_SIZE defined below should
+  be adjusted to reflect the application specific handle
+  requirements.
+
+  Written for Microsoft MASM 5.x to interface with
+  Microsoft C 5.x.
+
+  Module Contents:
+        void relocate_pfht(void);       -  public
+        void find_pfht(void);           -  local
+        void init_new_pfht(void);       -  local
+        void copy_old_to_new(void);     -  local
+        void update_pfht_count(void);   -  local
+        void update_pfht_addr(void);    -  local
+
+  NOTE:
+    The function find_pfht() makes use of two PSP fields
+    (PFHT_ADDR and PFHT_COUNT) which are present only in
+    DOS versions 3.0 and higher.
+------------------------------------------------------
+END OF COMMENT #
+
+.model small            ;memory model directive
+
+;                  --- MACROS ---
+
+;push selected registers
+apush   macro   a,b,c,d,e,f,g,h
+        irp x,<a,b,c,d,e,f,g,h>
+        ifnb <x>
+        push    x
+        endif
+        endm
+        endm
+
+;pop selected registers
+apop    macro   a,b,c,d,e,f,g,h
+        irp x,<h,g,f,e,d,c,b,a>
+        ifnb <x>
+        pop     x
+        endif
+        endm
+        endm
+
+
+;                  --- EQUATES ---
+
+; --- this equate should be adjusted to the number of
+;     file/device handles required by your application.
+NEW_TABLE_SIZE          equ     30
+
+; --- offset within the PSP of the dword pointer to the
+;     PFHT
+PFHT_ADDR               equ     34h
+
+; --- offset within the PSP of the word containing the
+;     number of elements in the PFHT
+PFHT_COUNT              equ     32h
+
+; --- an unused PFHT entry will contain 0ffh
+FOXES                   equ     0ffh
+
+
+;                  --- DATA ---
+.data
+
+; --- this is the data area for the expanded PFHT
+public _new_table
+_new_table       db      NEW_TABLE_SIZE dup(0);
+
+; --- declare MSC global variable containing the PSP
+;     segment address
+extrn           __psp:word
+
+
+
+;                  --- CODE ---
+.code
+
+;----------------------------------------------
+; void relocate_pfht(void);
+;       Move the current PFHT to the area allocated in the
+;       data segment above.
+; TRASHES:
+;       AX
+;----------------------------------------------
+public _relocate_pfht
+_relocate_pfht proc
+        apush   ds,si,es,di,cx
+        call    find_pfht
+        call    init_new_pfht
+        call    copy_old_to_new
+        call    update_pfht_count
+        call    update_pfht_addr
+        apop    ds,si,es,di,cx
+        ret
+_relocate_pfht endp
+
+
+;----------------------------------------------
+; local void find_pfht(void)
+;       setup registers with the current PFHT, the
+;       new PFHT and the size of the current PFHT.
+; NOTE:
+;       Uses the global variable __psp defined and
+;       initialized by MSC startup code.
+; RETURNS:
+;       DS:SI pointing to the current PFHT
+;       ES:DI pointing to the new, expanded PFHT
+;       CX    size of the current PFHT
+; TRASHES:
+;       AX
+;----------------------------------------------
+find_pfht proc
+; --- address the MSC data segment
+        mov     ax,DGROUP
+        mov     ds,ax
+assume ds:DGROUP
+
+; --- get the offset of the new table
+        lea     di,_new_table
+
+; --- get the segment of the new table into es
+        mov     ax,seg _new_table
+        mov     es,ax
+
+; --- get the segment of the PSP in ds
+        mov     ds,[__psp]
+assume ds:nothing
+
+; --- load cx with the current PFHT count
+        mov     cx,word ptr ds:[PFHT_COUNT]
+
+; --- address of current PFHT into ds:si
+        lds     si,ds:[PFHT_ADDR]
+        ret
+find_pfht endp
+
+
+
+;----------------------------------------------
+; local void init_new_pfht(void)
+;       initialize the new PFHT to 0FFh.
+; PRESERVES:
+;       DI and CX
+; TRASHES:
+;       AX
+;----------------------------------------------
+init_new_pfht proc
+        apush   di,cx
+
+; --- get the new table size
+        mov     cx,NEW_TABLE_SIZE
+
+; --- load al with 0FFh
+        mov     al,FOXES
+
+; --- move 0FFh into every byte of the table
+        repnz   stosb
+
+        apop    di,cx
+        ret
+init_new_pfht endp
+
+
+
+;----------------------------------------------
+; local void copy_old_to_new(void)
+;       Copies the contents of the current PFHT to the new
+;       PFHT.
+; ON ENTRY:  DS:SI points to current PFHT
+;            ES:DI points to new, expanded PFHT
+;            CX    contains the number of entries (bytes)
+;                  in the current PFHT
+; PRESERVES: DI
+; TRASHES:   CX
+;----------------------------------------------
+copy_old_to_new proc
+; --- save the offset of the new table
+        push    di
+        repnz   movsb
+        pop     di
+        ret
+copy_old_to_new endp
+
+
+
+;----------------------------------------------
+; local void update_pfht_count(void)
+;       Update the PFHT Count contained in the PSP to
+;       reflect the size of the new table.
+; ON ENTRY:  DS    segment of PSP
+; TRASHES:
+;            AX, SI
+;----------------------------------------------
+update_pfht_count proc
+; --- load the size of the new table
+        mov     ax,NEW_TABLE_SIZE
+
+; --- point to the count word and store the new count
+        mov     si,PFHT_COUNT
+        mov     word ptr [si], ax
+        ret
+update_pfht_count endp
+
+
+
+;----------------------------------------------
+; local void update_pfht_addr(void)
+;       Update the pointer to the PFHT contained in the PSP
+;       to point to the new PFHT.
+; ON ENTRY:  ES:DI points to the new, expanded PFHT
+;            DS    segment of PSP
+; TRASHES:
+;            SI
+;----------------------------------------------
+update_pfht_addr proc
+; --- point to the lo word of the address
+        mov     si,PFHT_ADDR
+
+; --- store the offset of the new table
+        mov     [si],di
+
+; --- store the segment of the table
+        mov     [si+2],es
+        ret
+update_pfht_addr endp
+
+
+end
+

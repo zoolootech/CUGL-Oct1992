@@ -1,0 +1,118 @@
+
+ /************************************************************
+  *  Program:    DMENU Menu Object File Analyzer
+  *  Module:     dmenu.c
+  *  dmenu.c:    Reads a menu object file, for debuging menu
+  *              compiler
+  *
+  *  Written by: Leor Zolman, 7/91
+  *
+  *  Menu object file format:
+  *  ---------------------------------------------------------
+  *      <count>         (integer count of # of menus in file)
+  *      MENU 1          (MENU structure for 1st Menu)
+  *          ITEM 1
+  *          ITEM 2
+  *          ...
+  *          ITEM n_items
+  *      MENU 2          (MENU structure for 2nd Menu)
+  *          ...
+  *      .
+  *      .
+  *      .
+  *      MENU <count>    (MENU structure for final Menu)
+  *          ...
+  *
+  *  ---------------------------------------------------------
+  *  Compile:
+  *      Xenix:  cc dmenu.c -o dmenu
+  *      DOS:    bcc dmenu.c     (Borland C++)
+  ************************************************************/
+ 
+ #include <stdio.h>
+ #include "cmenu.h"
+ 
+ #define OK  0
+ 
+ MENU Menu;
+ ITEM Item, *ip = &Item;
+ 
+ char obj_name[MAX_CMD];
+ int n_menus;
+ 
+ int main(argc,argv)
+ int argc;
+ char **argv;
+ {
+     register i, j;
+     int count;
+     FILE *fp;
+     
+     if (argc != 2)
+         exit(puts("usage: dmenu <menu-object>\n"));
+ 
+     strcpy(obj_name, argv[1]);
+     strcat(obj_name, ".mnc");
+     
+     if ((fp = fopen(obj_name, "rb")) == NULL)
+     {
+         fprintf(stderr, 
+             "Cannot open %s for reading.\n", obj_name);
+         return ERROR;
+     }
+     
+     if (fread((Void *)&n_menus, sizeof n_menus, 1, fp) != 1)
+     {
+         fprintf(stderr,
+             "Error reading menu count from %s\n", obj_name);
+         return ERROR;
+     }
+     printf("Menu count = %d\n", n_menus);
+     
+     for (i = 0; i < n_menus; i++)
+     {
+         if (fread((Void *) &Menu, sizeof (MENU), 1, fp) != 1)
+         {
+             fprintf(stderr, 
+                 "Error reading from %s\n", obj_name);
+             return ERROR;
+         }
+ 
+         printf("******** Start of Menu #%d: *********\n", i+1);
+         printf("\tTitle: %s\n", Menu.title);
+         printf("\tPath:  %s\n", Menu.path);
+         printf("\tContains %d items.\n", Menu.nitems);
+         printf("\talign =  %c\n", Menu.align);
+         printf("\tColumns = %d, ", Menu.columns);
+         printf("Spacing = %d, Widest = %d\n",
+                 Menu.spacing, Menu.widest);
+         printf("\tShell escapes are %sallowed",
+                 Menu.escape == YES ? "" : "NOT ");
+         printf("\n");
+         
+         for (j = 0; j < Menu.nitems; j++)
+         {
+             if (fread((Void *) ip, sizeof (ITEM), 1, fp) != 1)
+             {
+                 fprintf(stderr, 
+                     "Error reading from %s\n", obj_name);
+                 return ERROR;
+             }
+             printf("Item #%d:\n", j+1);
+             printf("\tTEXT =   %s\n", ip->text);
+             printf("\tPATH =   %s\n", ip->path);
+             printf("\tACTION = %s\n", ip->action);
+             printf("\tHELP =   %s\n", ip->help);
+             printf("pre-clear =  %c\n", ip->pre_clear);
+             printf("post-clear = %c\n", ip->post_clear);
+             printf("prompt =     %c\n", ip->prompt);
+             printf("acttyp =     %d\n", ip->acttyp);
+             printf("lmenunum =   %d\n", ip->lmenunum);
+             printf("nextcode =   %d\n", ip->nextcode);
+             printf("nextitem =   %d\n", ip->nextitem);
+             printf("\n");
+         }
+         printf("**** END OF MENU #%d ****\n", i+1);
+     }
+     return OK;
+ }

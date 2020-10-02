@@ -1,0 +1,156 @@
+	Bs.use, a tutorial on the use of the binary search file functions.
+
+	The functions and their calling syntax are described in ry.doc.  They
+use the random file functions of ry and the 'long int' code of long.c.  The
+file 'lx.crl' contains the functions from long.c, plus several required
+additional functions.  This code also has the limitation of all ry code in that
+it needs a z-80 machine to run.
+
+	Bs.c consists of functions to manipulate files of records sorted with a
+binary insertion algorithm.  The creation of a 'bs' file actually creates 2
+files.  One is a block of integer pointers to records in a second file.  As
+records are added/deleted from the second file, the pointers in the first are
+modified accordingly.  The first file is kept in core while the files are open,
+and returned to disk when closed.  The records can be of almost any format that
+is convenient to the using program.  The only restriction is that the key must
+be the first item of a record and that the record has to be a consistant size
+throughout the file. (note - these functions have only been used with string
+keys to date, I suspect that there may be a bug or two with other type keys)
+
+	The comparison used to sort the keys is passed as a pointer to a
+comparison function, declared in the file open statement.  This allows a great
+deal of flexability in setting up record types.  For instance, most files will
+be setup on ascii string keyed records.  The standard string comparison
+function will return unequal for upper/lower case differences.  A comparison
+function that ignores case differences could be written, allowing its use to
+index strings as equal if chars are the same, even though in different case.
+
+	As records are removed from the file the storage they use is returned
+to a free list, keeping a highly dynamic file from getting unreasonably large.
+The maximum number of elements kept in a file must be specified at file
+creation time (bsmake()).  Since the pointer file is kept in core the maximum
+number will most likely be limited by the size of core as oppossed to the disk
+space.  Even so, each pointer needing two bytes, most systems should be able to
+handle files of 5,000 records or more (depending of course on the memory needed
+by the rest of the program).
+
+	The primary functions include:
+
+	1: bsmake(), to creat a file set (pointer file and data file).
+	2: bsopen(), to open a file (bsmake only creates a file, doesn't open).
+	3: bswrite(), write a record to file according to sort order specified
+		by the comparison function declared at open.
+	4: bsread(), read a record from file if found, else returns 'BELONGS'.
+	5: bssearch(), searches for a file by the specified key, returns
+		'FOUND', 'BELONGS', (or possibly ERROR).
+	6: bsclose(), flushes buffers, closes files.
+	7: bskey_rmv(), removes the record from the file.
+
+	There are also several lowlevel functions called by the above, but
+these are not usually of concern to the user.
+
+	First an example of the creation of a file set:
+
+	bsmake("datafile", "pointerfile", data_size, max_records);
+
+	"datafile" is any legal file name, it will be the file that holds the
+actual records.  "pointer_file" would be a legal file name, it will hold the
+pointers.  "datafile" will be created as a random file using ry functions, most
+notably the 'bseek()' and 'btell()' functions.  These are functions that do
+block seeks and reports, using a set record size.  "pointer_file" is created
+using the raw file functions, it is swapped into core when the file is opened
+and swapped back to disk when closed.  'bsmake()' only creats and initializes
+as empty the file set, you still have to open them to use them.  Data_size is
+the size of a record in bytes, and max_records is the maximum number of records
+that the file will hold (remember above discussion of maximum records in a
+file). 
+
+	First we declare a pointer to a structure of type _bs:
+
+	BSFILE *bs;
+
+		(note - BSFILE is #defined as 'struct _bs' in ry.h)
+
+	We open the file, saving the result in our file pointer:
+
+	int key_comp();		/* declare compare funct */
+
+	bs = bsopen("foo.dat", "foo.ptr", key_comp, sectors);
+
+	The first 2 strings are the data file and pointer file names.  Key_comp
+is a pointer to a function that compares the keys in the manner that we wish.
+It typically will be the function 'strcmp()' from the standard library.  The
+only necessary conditions for custom comparison functions is that they return 0
+for TRUE compare, <1 for key 1 less than key 2, and >1 for key 1 greater than
+key 2.  Page 101 of K&R gives a complete description of what is necessary here.
+Sectors is a declaration of the number of logical sectors to use for buffering.
+Its value would depend on how precious memory is, but typically would be 8 (or
+whatever multiple of logical sectors is contained in a physical sector on your
+system).  The same considerations in choosing buffer size of random files apply
+here.  Bs is now used to describe the file in all reads, writes, and searches
+
+	To add a keyed record to the file:
+
+	result = bswrite(bs, key, address);
+
+	Bs is the pointer returned by the open.  Key is the key that we want
+the record to be added by.  This key must also be the first item in the record.
+Address is the address in memory where the record (including leading key) is
+contained.  If key[0] is NULL the record is written at the point in the file
+last found by a 'bssearch()'.  If it contains a key 'bssearch()' is called by
+'bswrite()' first to find the appropriate record.  This allows us to look for
+an existing record, and depending on whether or not it does exist, decide to do
+the write.  To clarify, we might not want to write a record if it already
+exists.  By doing a search first we could abort if it exists.  If not, we could
+write it without causing 'bswrite()' to call search again by passing a NULL
+string as the key, thus saving considerable time.  In the case of a non-keyed
+write 'BELONGS' is returned if the record didn't exist prior to the write while
+'FOUND' will be returned if the record existed and is overwritten.  When a
+keyed record write is specified 'OK' will be returned if all goes well.  ERROR
+will be returned on disk error in either case.
+
+	To read a record by key:
+
+	result = bsread(bs, key, address);
+
+	Bs is again the pointer from 'bsopen()', key the string to look for,
+and address the address in memory to place the record.  If found the record is
+written to memory and 'FOUND' is returned.  If not found the memory at address
+will not be disturbed, and 'BELONGS' will be returned.  ERROR would be returned
+on disk error.
+
+	To search for a keyed record:
+
+	result = bssearch(bs, key);
+
+	Bs being the file pointer and key, of course, the key to base the
+search on.  It will return 'FOUND' if it exists and set an internal pointer to
+the disk block containing the record.  This is to allow a non-keyed write as
+discussed above.  It will return 'BELONGS' if not found, again setting the
+internal pointer for non-keyed writes.  It might also return ERROR if disk
+fills up, disk ERROR occurs, etc.
+
+	To remove a keyed record and return its storage to the free list:
+
+	result = bskey_rmv(bs, key);
+
+	Bs the pointer, and key the key, of course, of course (this is getting
+rather boring).  If the keyed record is not found but no file errors occur
+'BELONGS' is returned.  If found it is removed, its storage returned to free
+list, and 'OK' is returned.  File error returns 'ERROR'.
+
+
+	The first block of the blocked, random file used to store the records holds
+info used to access the records.  Thus block 0 is reserved, if you do any
+internal diddling on a bs file.  Block 1 holds the first record entered into
+the file.  Within block 0 the first 2 bytes holds an int, the value being the
+number of records presently in the file.  It is set to 0 by 'bsmake()'.  The
+second 2 bytes hold the int value of the head of the free list.  It initially
+is 0, will point to a record as it is freed.  That record will then hold the
+pointer to next free record, or 0 if end of list, and so on.  The third int
+value in block 0 is the size of a record while the fourth is the maximum number
+of records allowed in a file.  Bytes 8 thru recordsize of block 0 are
+presently unreserved, for use as u like.  This might change in the future
+though, this file structure is rather new and will probably alter with time.
+ed, its storage returned to free
+list, and 'OK' is returned.  F

@@ -1,0 +1,172 @@
+Reprinted from: Micro/Systems Journal, Volume 1. No. 1. March/April 1985
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Subscriptions are $20/yr, $35/2yrs domestic (published bimonthly)
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+
+
+                           THE C FORUM                           
+                               by
+                            Don Libes
+
+
+    What a relief that C is such a "small" language.  Few 
+keywords or restrictions to worry about.  No complex operators or 
+datatypes to mishandle.  The language is surprisingly svelte for 
+all its power.  But while you were able to pick up a book on C 
+and breeze through the first half, you may never have gotten very 
+comfortable with it, even if you're fluent in another programming 
+language.
+     Why?  C abounds with subtleties that are written between the 
+lines in the UNIX manuals and most of the C language books that 
+I've seen.  One of the best places to really see these brought 
+out are the experienced C programmer's code.  They know all the 
+tricks.  If they were nice enough to leave comments, we might 
+learn them also!
+     As UNIX is being distributed more and more in binaries form, 
+it is difficult to learn from UNIX source code samples.  
+Fortunately, many books have come out to fill the void and since 
+they were written for the purpose of education, you would think 
+they could do the job a lot better.  But most of them slanted 
+towards an introduction, while other are references.  Very few 
+discuss intermediate-level topics in detail.  That is what this 
+column will cover.
+     You are encouraged to write to me about topics or problems 
+that you want to know about.  I want this column to be reader 
+driven.  Until it is, I will write about topics that I'm sure are 
+of general interest.  I just happen to have one here!
+
+VARIABLY-SIZED ARRAYS
+If you've ever written generic subroutines that operate on 
+arrays, you've probably run across the problem of trying to pass 
+arrays of arbitrary sizes.  For example, suppose we would like to 
+have a routine that prints out matrices of arbitrary sizes.  We 
+start out:
+
+print_array(array)
+int array[][];
+
+     The C compiler doesn't accept this.  (Mine prints out "null 
+dimension".)  This is because arrays are stored without 
+information such as the number of rows and columns.  Well, then 
+lets try adding the size of the array to the parameters.
+
+print_array(array,r,c)
+int array[r][c];
+
+     The C compiler rejects this also, saying "constant 
+expected".  Variable sizes must be constant in C.  What a pain!
+     There are several ways of getting arbitrarily sized arrays, 
+however.
+     One way is to do the addressing yourself.  With the help of 
+a macro, this solution is readable.
+
+#define MAT(x,y) mat[x*c + y]
+
+print_matrix(mat,r,c)
+int *mat;
+int r, c;
+{
+int i, j;
+
+for (i = 0; i < r; i++) {
+for (j = 0; j < c; j++) {
+printf("%d ",MAT(i,j));
+}
+putchar('\n');
+}
+}
+
+     Now, we can declare the matrix and call our routine as 
+follows:
+
+int matrix[ROWS][COLUMNS];
+
+print_matrix(matrix,ROWS,COLUMNS);
+
+     The main drawback to this solution is that its time-
+expensive.  Each time you reference the array, you perform a 
+multiplication and addition.  Thus, to access every member in the 
+array requires ROWSxCOLUMNS multiplications.  The other drawback 
+is that the macro MAT requires the number of columns being 
+available.  We can do better.
+     You may never have realized that it isn't necessary  to 
+perform those multiplications, simply because it seems inherent 
+in figuring out matrix element addresses.  However, if we are 
+willing to sacrifice some storage we can avoid the 
+multiplication.
+     What we do is calculate the addresses for the base of each 
+row once and store them in a separate (one-dimensional) array.  
+Then we can get to any element simply by adding the column offset 
+to the base address of the appropriate row.
+     For example, a 5x3 array would require a 5 element "dope 
+vector".  Each element of the dope vector is an address of 3 
+elements of the array.
+     Since we can get to every element of the matrix through the 
+dope vector, there is no need to pass the array itself.  So the 
+first argument becomes the dope vector.  (Its still called "mat" 
+though.)
+     Now print_matrix() looks like this:
+
+print_matrix(mat,r,c)
+int *mat[];/* dope vector: array of pointers to ints */
+int r,c;/* rows and columns */
+{
+int i, j;
+
+for (i=0;i<r;i++) {
+for (j=0;j<c;j++) {
+printf("%d ",mat[i][j]);
+}
+putchar('\n');
+}
+}
+
+     This type of array takes a little more work to set up:
+
+int *matrix[ROWS];/* this is the dope vector */
+int i;
+
+/* now initialize each pointer in the dope vector */
+for (i = 0 ; i < ROWS ; i++ ) {
+/* allocate space for the columns */
+matrix[i] = (int *) malloc(COLUMNS * sizeof(int));
+}
+
+print_matrix(matrix,ROWS,COLUMNS);
+
+     This technique has the disadvantages that it takes up a 
+little more space than a true array and it requires 
+initialization (though you can create a subroutine to do this for 
+you).
+
+     But the advantages are many.  Its faster than real arrays 
+because no multiplication is performed to do addressing.  Each 
+row can have a different number of elements.  Applications of 
+this are to store different length strings in an array or keeping 
+an open hash table.
+
+     This technique also extends to higher dimensioned arrays 
+(where time savings become even better). Also, these arrays can 
+be created dynamically.  A final goodie that I'll mention is that 
+by adjusting the dope vector (or the pointer to it), its possible 
+to get 1-based (or any number) indices rather than 0.
+
+Don Libes
+seismo!nbs-amrf!libes
+
+---------------------------------------------------------------
+     Don Libes is a computer scientist working in the Washington 
+DC area.  He works on artifical intelligence as applied to 
+robotic networking systems.  He is also the son of Lennie and Sol 
+Libes.
+

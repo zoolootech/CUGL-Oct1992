@@ -1,0 +1,59 @@
+#include "solid.h"
+
+struct solid_obj *make_object(int this_obj_type)
+/*  Constructs descriptor for instance of a specified
+    object type.  Initializes scaling factor,
+    translation and rotation.  */
+{
+    struct solid_obj *this_obj_ptr, *prev_obj_ptr,
+        *next_obj_ptr;
+    struct vertex *vertex_ptr1, *vertex_ptr2;
+    int coord_index, vertex_index;
+
+    if (defn_ptr[this_obj_type] == (struct obj_defn *)
+        NULL) /* must construct defininition */
+        define_solid(this_obj_type);
+    if ((this_obj_ptr = (struct solid_obj *)malloc
+        (sizeof(struct solid_obj) + (defn_ptr
+        [this_obj_type]->facet_count) * sizeof(BOOL)))
+        == NULL) /* construct object descriptor */
+        quit(ERR_MEMORY, __FILE__, __LINE__);
+    this_obj_ptr->obj_type = this_obj_type;
+    this_obj_ptr->scale = 1.0;
+    for (coord_index = 0; coord_index < 3;
+        ++coord_index) {
+        this_obj_ptr->xlate[coord_index] = 0.0;
+        this_obj_ptr->rotate[coord_index] = 0.0;
+    }
+    if ((this_obj_ptr->vertex_first =
+        (struct vertex *)malloc(defn_ptr[this_obj_type]
+        ->vertex_count * sizeof(struct vertex))) ==
+        NULL) /* construct vertex descriptors */
+        quit(ERR_MEMORY, __FILE__, __LINE__);
+
+    /* copy vertices from definition to instance */
+    for (vertex_ptr1 = this_obj_ptr->vertex_first,
+        vertex_ptr2 = defn_ptr[this_obj_type]->
+        vertex_first, vertex_index = 0; vertex_index <
+        defn_ptr[this_obj_type]->vertex_count;
+        ++vertex_index, ++vertex_ptr1, ++vertex_ptr2)
+        for (coord_index = 0; coord_index < 3;
+            ++coord_index)
+            vertex_ptr1->coord[coord_index] =
+                vertex_ptr2->coord[coord_index];
+            this_obj_ptr->obj_next =
+                (struct solid_obj *)NULL; /* pointer
+                to next object */
+    if (obj_first == (struct solid_obj *)NULL) /* this
+        is first object */
+        obj_first = this_obj_ptr;
+    else {
+        for (prev_obj_ptr = next_obj_ptr = obj_first;
+            next_obj_ptr != (struct solid_obj *)NULL;
+            prev_obj_ptr = next_obj_ptr, next_obj_ptr
+            = next_obj_ptr->obj_next); /* find previous
+            last object */
+        prev_obj_ptr->obj_next = this_obj_ptr;
+    }
+    return(this_obj_ptr);
+}

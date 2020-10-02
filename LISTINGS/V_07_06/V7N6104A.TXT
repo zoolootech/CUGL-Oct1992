@@ -1,0 +1,86 @@
+/* #include file to provide some non-standard definitions 
+** particularly useful for float math */
+#define ROUND(x)	(int)(x+((x>0.)?.5:-.5))
+#ifndef PI
+#define PI 		3.14159265359
+#endif
+
+#ifdef __STDC__
+#include <math.h> /* needed for most traditional K&R compilers also */
+#include <float.h>
+#define ROUNDFCT	1f/FLT_EPSILON /* if no extra precision used */
+#define PIF		3.14159265f
+#define PI2F		PIF*.5f
+#if (FLT_ROUNDS>0)	/* rounding addition used to round to integral float */
+#define ROUNDF(x)     ((x)>0f)?((x)+ROUNDFCT)-ROUNDFCT:((x)-ROUNDFCT)+ROUNDFCT)
+#endif			/* depends on observance of parentheses */
+
+#else			/* if not ANSI C */
+#define FLT_ROUNDS	1	/* check if so */
+#define ROUNDFCT	8388608
+/* add and subtract 2^23 for rounding;
+** 2^52, 2^55 typical for double arith */
+#define PIF		PI	
+#define PI2F		PI*.5
+#define f 			/* ignore float constant specifier */
+#endif
+
+#ifndef min
+#define min(i,j)	((i)<(j)?(i):(j)) /* typeless */
+#endif
+#ifndef max
+#define max(i,j)	((i)>(j)?(i):(j))
+#endif
+
+/* if unable to determine how to round without (long)*/
+#ifndef ROUNDF		
+#define ROUNDF(x)	ROUND(x) /* or floor(x+.5) */
+#endif
+
+#define PCPVL(x,y)	((x)-ROUNDF((x)/(y))*(y)) /* reduce to [-y/2,y/2] */
+#define SQ(x)		(x)*(x)
+
+/* rational polynomial relative error 2e-8
+** not recommended for systems with internal microcode for trig */
+#define PTANNUMF(x)	(x)*(886.77347f+SQ(x)*(-99.398953f+SQ(x)))
+#define PTANDENF(x)	(886.77345f+SQ(x)*(-394.98971f+SQ(x)*14.425694f))
+#define PTANF(x)	PTANNUMF(x)/PTANDENF(x) /* |x| < PI/2 */
+#define tanf(x)		PTANF(PCPVL(x,PIF)) /* |x| <= ROUNDFCT */
+
+#define PSCDENF(x)	(SQ(PTANDENF(x))+SQ(PTANNUMF(x)))
+/* |x| <= PI for PSINF, PCOSF */
+#define PSINF(x)	PTANNUMF(x)*PTANDENF(x)*2.f/PSCDENF(x)
+/* this method is good when both sinf() and cosf() are wanted */
+#define sinf(x)		PSINF(PCPVL((x)*.5f,PIF)) /* |x| <= ROUNDFCT*2 */
+#define PCOSF(x)	(SQ(PTANDENF(x))-SQ(PTANNUMF(x)))/PSCDENF(x)
+#define cosf(x)		PCOSF(PCPVL((x)*.5f,PIF)) /* |x| <= ROUNDFCT*2 */
+
+/* #ifdef PIPELINE
+** Hoerner polynomial split in 2 to help pipeline processors **
+#define PATANF(x)	((x)*(.9999999f+SQ(x)*(-.3333196f+SQ(x)*(.1996924f- \
+				SQ(x)*.1401659f)))+((x)*SQ(SQ(SQ(x)))) \
+				*(.0990610f+SQ(x)*(-.0593671f+SQ(x)* \
+				(.0241662f-SQ(x)*.0046688f))))
+#else */
+#define PATANF(x)	(x)*(.9999999f+SQ(x)*(-.3333196f+SQ(x)*(.1996924f+ \
+/* |x| <= 1 */		SQ(x)*(-.1401659f+SQ(x)*(.0990610f+SQ(x)*(-.0593671f+ \
+				SQ(x)*(.0241662f-SQ(x)*.0046688f)))))))
+/* #endif */
+#define atanf(x)	(((x)>1.f?PI2F:(x)>=-1.f?0.f:-PI2F)+PATANF( \
+/* all x */			(x)<=1.f&&(x)>=-1.f?(x):-1.f/(x)))
+#define atan2f(x,y)	((y)!=0.f?(atanf((x)/(y))+((y)>0.f?0.f:(x)>=0.f?PIF: \
+				-PIF)):((x)>=0.f?PI2F:-PI2F))
+/* better, if compiler deals efficiently with comparisons:
+#define atan2f(x,y)	((fabsf(x)<=fabsf(y)?PATANF((x)/(y):( \
+			((x)>=0.f)==((y)>=0.f)?PI2F:-PI2F)-PATANF((y)/(x))) \
+				+((y)>=0.f?0.f:(x)>=0.f?PIF:-PIF))	*/
+
+#ifndef sqrtf
+#ifndef sqrt
+	double sqrt();
+#endif
+#define sqrtf(x)	sqrt(x)
+#endif
+#define asinf(x)	atanf((x)/sqrtf((1.f+(x))*(1.f-(x))))
+#define acosf(x)	(PI2F-asinf(x))
+

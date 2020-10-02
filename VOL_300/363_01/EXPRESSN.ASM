@@ -1,0 +1,20 @@
+label       equ     2*3+4
+label1      equ     2*(3+4)
+label2      equ     4/2+3
+label3      equ     10/(2+3)
+label4      equ     4+2*3
+label5      equ     3+4/2
+label6      equ     3+5/2
+label7      equ     -3+4/2
+label8      equ     ~0
+label9      equ     1<<3
+label10     equ     8>>2
+label11     equ     5\2
+label12     equ     15&5
+label13     equ     0!5
+label14     equ     $255
+label15     equ     %01010101
+label16     equ     @177
+label17     equ     'ABcd'
+label18     equ     'a''bc'
+            end

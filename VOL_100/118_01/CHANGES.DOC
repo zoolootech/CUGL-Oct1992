@@ -1,0 +1,207 @@
+.cm changes made to primitives
+.cm source:  changes.doc
+.cm version: October 15, 1981
+.bp 1
+.he 'changes.doc''%'
+.fo ''-#-''
+
+   This file discusses changes that I made to
+adapt the primitives from the Software Tools Users Group
+to the environment of BDS C.
+As I mentioned in the file CONTENTS.DOC,
+these changes are not very satisfactory.
+The resulting primitives are compatible with neither
+the Software Tools Primitives nor the Unix primitives.
+
+   However, many of the primitives supplied by the
+Software Tools Users Group have no analog in the
+Unix primitives.
+Thus, it will still pay you to look at the primitives
+and see what you can use.
+
+.ul
+Changes made to BDSCIO.H
+
+   All global definitions used by BDS C and the Software Tools
+have been combined into the file TOOLS.H.
+The following changes have been made to BDSCIO.H:
+
+1.  I have not included the constants for terminal
+characteristics, serial port characteristics or modem
+characteristics.
+I really don't see why these are needed in 
+.ul
+every
+program.
+However, the definition for ESC does appear in TOOLS.H.
+
+2.  The definition of MAXLINE has been moved so that it
+appears with all other constants which affect data structures.
+
+3.  Ditto for NSECTS, BUFSIZ and struct _buf.
+
+4.  Since the Software Tools assume that dynamic storage is
+available, I have removed the ALLOC_ON and ALLOC_OFF
+definitions.
+All tools compiled with TOOLS.H will have access to
+struct _header and the variables _base and _allocp.
+I think this is a reasonable scheme because there are lots
+of variables whose names start with either _ or SYS_.
+We might as well just prevent the user from using variables
+and functions which start with those characters.
+Another reason why this decision seems reasonable is that
+the dsinit() primitive makes it unnecessary for programs to
+access _base and _allocp directly.
+
+.ul
+Changes made to RATDEF:
+
+1.  I have eliminated many of the definitions for ASCII
+control characters.
+This was done in an effort to control the number of 
+names that the system is supposed to define.
+
+2.  I have eliminated all of the definitions for individual
+letters.
+For instance, I see no reason to define BIGA as "A".
+In RATFOR, there is a reason, but not in C.
+
+3.  I have eliminated most, but not all, of the definitions
+for printable ASCII characters.
+I have kept only those characters that may not appear on
+most keyboards or which might be confusing inside quotes.
+
+4.  I have eliminated most RATFOR language extensions because
+they already are a part of C.
+Indeed, their purpose was to make RATFOR look more like C.
+
+5.  I have eliminated most of the "manifest constants".
+These are either unneeded or are duplicates of BDS C constants.
+
+6.  I have (reluctantly) kept most of the constants which
+affect the size of data structures.
+This is one area where having pointers eliminates a lot
+of Mickey Mouse declarations that do absolutely nothing.
+There is a real difference between:
+
+	int vector[]      /* in C */
+ 
+and
+
+	integer vector (ARB)	# in RATFOR.
+
+The diffence is that there are a lot fewer irrelevant names
+(I'm talking about ARB) to worry about.
+
+7.  I have eliminated the DRIVER and DRETURN macros.
+I don't know how to implement them in BDS C.
+
+8.  I have inserted declarations for variables used by
+my implementation of the primitives.
+These declarations are needed in TOOLS.H only because
+BDS C does not have STATIC variables.
+
+.ul
+changes to BDS C routines
+
+   The names
+of several BDS C routines conflict with the names
+of the primitives used by the Software Tools.
+
+   The following BDS C routines were changed by prefixing
+them with an underscore character:
+
+close, creat,
+exit,
+fclose, fcreat, fflush, fopen, flush,
+getc, gets, getchar,
+open,
+putc, puts, putchar,
+read,
+rename, 
+rcfsiz, rreed, rseek, rsrec, rtell, rwrite
+seek,
+ungetch, unlink,
+write
+
+   The routines getc(), putc(), and ungetc() are now defined on
+file FILE.BDS rather than on STDLIB1.C.
+These routines had to be completely rewritten to allow for
+I/O redirection.
+
+   Some other changes were made to the code in TOOLIB1.BDS
+to allow for I/O redirection.
+See that file for more details.
+
+.ul
+Changes made to the Software Tools Primitives
+
+1.  The calling sequence of getch() was changed.
+
+old calling sequence:  c = getch (unit, &c)
+
+new calling sequence:  c = getch (unit)
+
+The change was made because the old calling sequence is
+awkward in a C environment.
+The old sequence was used because the following is not
+legal in a RATFOR environment:
+
+	while ((c = getch(unit)) != EOF) {
+
+2.  The calling sequence of getarg() was changed.
+
+old calling sequence:  arg = getarg (n)
+
+new calling sequence:  p = getarg (n)
+
+In other words, the new version of getarg() returns a pointer
+to the argument where the old version copied the argument.
+The change was made because there is no need for getarg
+to actually copy an argument.
+Returning a pointer to an arg is more natural in C.
+
+3.  Getwrd() changes one of its parameters.
+Thus, the calling sequence must be:
+
+	j = getwrd (in, &i, out);
+
+4.  The old definition of type() is absurd.
+There is, in fact, not much use for this "primitive" in C.
+I suggest that type() return "a" for alphabetic characters,
+"0" for numeric characters, and the character itself for all
+other characters.
+See STRING.BDS for the new definition of type().
+
+5.  Stcopy() changes one of its parameters.
+Thus, the calling sequence must be:
+
+	stcopy (from, i, to, &j);
+
+6.  The C version of index must return one less than the
+RATFOR version of index because C arrays start at 0, not 1.
+
+7.  The length() primitive in RATFOR is a duplicate of the
+BDS C strlen() routine.
+
+8.  The RATFOR ctoi() routine changes one of its arguments.
+Thus, the calling sequence must be:
+
+	ctoi (string, &i);
+
+9.  I have not examined (or converted) many of the routines
+in CONVERT.BDS or PATTERN.BDS.
+I can't say for sure what may have to be done.
+However, many of the routines in PATTERN.BDS change
+their arguments.
+Thus, the calling sequences for these routines will have
+to contain the & character.
+
+10.  As I have said before, I don't exactly know what to
+do with the routines in SYMTAB.BDS.
+The routines there do work, but they assume that the
+information field associated with a symbol is a string
+terminated by an EOS.
+This is not a very good way to design an important primitive.
+See the comments and code in SYMTAB.BDS for more details.
+

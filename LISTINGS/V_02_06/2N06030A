@@ -1,0 +1,85 @@
+/* ----------------------------------------------------------
+ *  Turbo C++
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be used
+ *  only for non-commercial purposes with appropriate
+ *  acknowledgement of copyright.
+ * ------------------------------------------------------- */
+
+#include <stdio.h>
+#include <dos.h>
+#include "snooper.h"
+
+static struct code_profiler    {
+    long    t1;             /* starting tick count */
+    long    t2;             /* ending tick count */
+    long    count;          /* execution count */
+    int     refcnt;         /* reference count */
+    } Area[MAX_AREA_MARKERS];
+
+#define SECS_PER_TICK   0.0549  /* seconds/clock tick */
+
+/* Point to BIOS clock tick record. This avoids messing
+ * with the midnight roll-over flag as done by int 1ah ...*/
+static unsigned long far *BiosTimeCount =
+             (unsigned long far *) MK_FP( 0, 0x46c);
+
+void d_begmark(int id)
+{
+       /* Enter a marked area. Beginning time is assigned
+        * only the first time thru.
+        */
+
+        if( id > MAX_AREA_MARKERS - 1 )  {
+                __BREAK(__SCRN__, d_printf(
+                  "Invalid area marker id %d\n", id));
+                id = 0;
+        }
+
+        if( Area[id].t1 == 0L )
+                Area[id].t1 = *BiosTimeCount;
+
+        ++Area[id].count;
+        ++Area[id].refcnt;
+}
+
+void d_endmark( int id )
+{
+       /* Exit a marked area. Ending time is updated each
+        * time thru. Counts are taken only on entry.
+        */
+
+        if( id > MAX_AREA_MARKERS - 1 )  {
+                __BREAK(__SCRN__, d_printf(
+                  "Invalid area marker id %d\n", id));
+                id = 0;
+        }
+
+        Area[id].t2 = *BiosTimeCount;
+        --Area[id].refcnt;
+}
+
+void d_profile(void)
+{
+   /* Dump all execution statistics to a debugger device
+    * specified as part of a __BREAK statement.
+    */
+
+    int i;
+    d_printf("\n" );
+    d_printf("Profiling statistics:\n\n" );
+    d_printf("Area  Count       RefCnt Time (secs)\n" );
+    d_printf("------------------------------------\n" );
+
+    for( i = 0; i < MAX_AREA_MARKERS; i++ )  {
+        d_printf("%-6d%-12ld%-7d%f\n", i,
+            Area[i].count, Area[i].refcnt,
+            (Area[i].t2 - Area[i].t1) * SECS_PER_TICK );
+
+        Area[i].t1 = 0L;
+        Area[i].count = 0L;
+        Area[i].refcnt = 0;
+    }
+}
+
+/* ------------------------------------------------------- */

@@ -1,0 +1,66 @@
+
+/*  CNTRL_C.C ** Control-C handler within the  program.  
+      -- R.D. Allen, 11/12/87
+*/
+#include  <stdio.h>
+#include  <stdlib.h>
+#include  <dos.h>
+
+#include  <wfc.h>
+
+#include  "pt.h"
+
+int Dev_hndl;
+
+/********
+*   Name:      CNTRL_C
+*    Use:      Handled the control-C problem with MS-DOS. Each time
+               this function is called it tells the driver to send
+               a control-C character.   This function should be passed 
+               to the CTRLBRK function in the TURBO.C library.
+*   Input:     void         
+*  Output:     returns 0 only if Dev_hndl is zero.
+********/
+
+int cntrl_c(void)
+{
+     if(Dev_hndl)  {
+
+            /*  Go  to the trouble of eating  the  ^C displayed */
+          _AH = 3;
+          _BH = 0;
+          geninterrupt(0x10);
+          _AH = 2;
+          _DH -= 1;
+          geninterrupt(0x10);
+          _AX = 0xa20;
+          _CX = 2;
+          geninterrupt (0x10);
+          _AH = 2;
+          _BH = 0;
+          _DX = 0;
+          geninterrupt(0x10);
+
+          computc(Dev_hndl,  3);
+
+            /*  Pass  the  control-c  to  the driver   */
+     }
+     return(Dev_hndl);
+}    
+
+/********
+*   Name:  FH_SAVE
+*    Use:  File handle save. This function saves the file handle for 
+*         of the device driver.  This makes it accessible to  
+CNTRL_C 
+*          handler.
+*  Input:  int fh;  -- File Handle of device driver
+* Output:  void
+********/
+
+void fh_save(int fh)
+{
+     Dev hndl = fh;
+} 
+
+

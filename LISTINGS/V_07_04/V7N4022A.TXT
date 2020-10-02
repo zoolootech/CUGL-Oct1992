@@ -1,0 +1,193 @@
+Listing 1 *******************************
+
+#include <stdio.h>
+
+main(argc, argv)
+int argc;
+char *argv[];
+   {
+   char cmd_str[81];
+   if (argc > 1)
+       {
+       /* Fill in the length byte with the length of variable 
+	   plus "set" */
+
+       cmd_str[0] = (char ) (strlen(argv[1]) + 4);
+       strcpy(&cmd_str[1],"SET ");
+
+       /* Add the command */
+       strcat(&cmd_str[1], argv[1]);
+		/* Put on the carriage return */
+       cmd_str[cmd_str[0] + 1] = 0X0D; 
+
+       /* 
+           Call the 0X2E interrupt.
+
+           ds:si should point to the string.
+
+           The first byte contains the length and 
+           excludes the first byte
+
+           The byte which follows the command is a carriage 
+           return
+       */
+		int_2e(cmd_str);
+       }
+   else
+       printf("\n Usage:  test  environ_variable=value\n\n No spaces");
+   exit(0);
+   } 
+
+; This is the assembly language routine for the small model
+.model small
+.data
+save_ss	dw	?
+save_sp dw	?
+
+.code
+;
+public _int_2e
+_int_2e proc
+	push	bp
+	mov bp,sp
+	push	si
+	push	di
+	push	ds
+	push	es
+	mov 	ax,DGROUP
+	mov		ds,ax
+	mov		save_sp,sp
+	mov		save_ss,ss
+	mov		si,[bp+4]
+	int		2eh
+	mov		ax,DGROUP
+	mov		ds,ax
+	cli
+	mov		sp,save_sp
+	mov		ss,save_ss
+	sti
+	pop		es
+	pop		ds
+	pop		di
+	pop		si
+	pop		bp
+	ret
+_int_2e	endp
+end
+
+			
+Listing 2 ***********************************
+
+/*  This is how you could call the interrupt without assembly */
+
+#include <stdio.h>
+
+struct sregs
+	{
+	int ax;
+	int bx;
+	int cx;
+	int dx;
+	int si;
+	int di;
+	int ds;
+	int es;
+	} ;
+
+char cmd_str[81];
+
+main(argc, argv)
+int argc;
+char *argv[];
+   {
+   struct sregs reg;
+   union {
+   		unsigned long long_number;
+   		char *pc;
+   		} u;				/* For picking apart the address */
+   if (argc > 1)
+       {
+       /* Fill in the length byte with the length of variable 
+		   plus "set" */
+
+       cmd_str[0] = (char ) (strlen(argv[1]) + 5);
+       strcpy(&cmd_str[1],"SET ");
+       /* Add the command */
+       strcat(&cmd_str[1], argv[1]);
+		/* Put on the carriage return */
+       cmd_str[cmd_str[0] + 1] = 0X0D; 
+
+       /* 
+           Call the 0X2E interrupt.
+
+           ds:si should point to the string.
+
+           The first byte contains the length and 
+           excludes the first byte
+
+           The byte which follows the command is a carriage 
+           return
+       */
+
+
+	   	/* Pick apart the address into segment/offset */
+		u.pc = cmd_str;
+		reg.ds = u.long_number >> 16;
+		reg.si = u.long_number & 0XFFFF;
+		reg.es = reg.ds;
+		reg.di = reg.di;
+
+		sysint(0X2E, &reg, &reg);
+
+       }
+   else
+       printf("\n Usage:  test  environ_variable=value\n\n No spaces");
+   exit(0);
+   } 
+
+
+
+
+
+       #include <stdio.h>
+
+       FILE *file_out;
+       FILE *printer;
+       FILE *disk_file;
+       #define SCREEN 0
+       #define PRINTER 1
+       #define DISK 2
+
+       initialize()
+            {
+            printer = fopen("PRN","w");                
+            disk_file = fopen("TEMP","w");
+           ...
+           }
+
+       switch_output(to_where)
+       int to_where;           /* Where to go to */
+           {
+           switch(to_where)
+               {
+           case PRINTER:
+               file_out = printer;
+               break;
+           case DISK:
+               file_out = disk_file;
+               break;
+           case SCREEN:
+               file_out = stdout;      /* This is the screen */
+               break;
+               }
+           return;
+           }
+
+       /*  Somewhere in your program */
+
+           printf("\n Going to printer");
+           switch_output(PRINTER);
+               ....
+           fprintf(file_out, "Output");
+               
+

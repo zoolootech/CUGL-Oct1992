@@ -1,0 +1,123 @@
+/* ----------------------------------------------------------
+ *  Turbo C++
+ * ------------------------------------------------------- */
+
+#define NO_EXT_MALLOC     /* disable malloc front ends */
+
+#include <stdio.h>
+#include <alloc.h>
+#include "snooper.h"
+
+#define MAXBUF  300
+static void *Mbuf[MAXBUF];        /* malloc() debug buffer */
+
+/* ------------------------------------------------------- */
+static void **find_slot( void *hp)
+{
+       /* Find a specified member in Mbuf[] and return a
+        * pointer to the found slot. Return NULL if <hp>
+        * is not in Mbuf[].
+        */
+
+        register void **p;
+
+        for( p = Mbuf; p < (Mbuf + MAXBUF); ++p ) {
+                if( *p == hp )
+                        return p;
+        }
+
+        return (void **) 0;
+}
+
+void *d_malloc(const char *file, int lineno, size_t nbytes)
+{
+    void *pheap;
+    void **slot;
+
+    if( (pheap = malloc(nbytes)) == NULL ) {
+        __BREAK(__SCRN__,
+            d_printf("File %s, Line %d: malloc() error for "
+                     "%u bytes", file, lineno, nbytes ));
+    }
+    else if( (slot = find_slot((void *) 0)) == (void **) 0) {
+            __BREAK( __SCRN__,
+                d_printf( "xmalloc: debug buffer full!" ));
+    }
+    else
+            *slot = pheap;      /* install in debug buffer */
+
+    return pheap;
+}
+
+void *d_calloc(const char *file, int lineno,
+                                size_t nitems, size_t size)
+{
+    void  *pheap;
+    void **slot;
+
+    if( (pheap = calloc(nitems, size)) == NULL ) {
+        __BREAK(__SCRN__,
+             d_printf("File %s, Line %d: calloc() error for "
+                 "%u bytes", file, lineno, nitems * size));
+    }
+    else if( (slot = find_slot((void *) 0)) == (void **) 0) {
+            __BREAK( __SCRN__,
+                  d_printf( "xmalloc: debug buffer full!" ));
+    }
+    else
+            *slot = pheap;      /* install in debug buffer */
+
+    return pheap;
+}
+
+void *d_realloc(const char *file, int lineno,
+                           void *oldp, size_t nbytes )
+{
+    void *newp = (void *) NULL;
+    void **slot;
+
+    if( (slot = find_slot(oldp)) == (void **) 0 ) {
+        #if defined(__SMALL__) || defined(__MEDIUM__)
+            __BREAK(__SCRN__, d_printf("File %s, Line %d: "
+                "realloc() error at address %Xh",
+                                         file,lineno,oldp));
+        #else
+            __BREAK(__SCRN__, d_printf("File %s, Line %d: "
+                "realloc() error at address %lXh",
+                                         file,lineno,oldp));
+        #endif
+    }
+    else if((newp = realloc( oldp, nbytes )) == (void *) 0) {
+        __BREAK(__SCRN__, d_printf("File %s, Line %d: "
+        "realloc() error for %u bytes", file,lineno,nbytes));
+    }
+    else    {
+            *slot = newp;   /* replace new -> in old slot */
+    }
+
+    return newp;
+}
+
+void d_free(const char *file, int lineno, void *pheap )
+{
+    void **slot;
+
+    if( pheap != (void *) NULL )    {
+        if( (slot = find_slot(pheap)) != (void **) 0 ) {
+                *slot = (void *) NULL;
+                free(pheap);
+                return;
+        }
+    }
+
+    #if defined(__SMALL__) || defined(__MEDIUM__)
+        __BREAK(__SCRN__,d_printf("File %s, Line %d: free() "
+                 "error at address %Xh", file,lineno,pheap));
+    #else
+        __BREAK(__SCRN__,d_printf("File %s, Line %d: free() "
+                "error at address %lXh", file,lineno,pheap));
+    #endif
+    return ;
+}
+
+/* ------------------------------------------------------- */

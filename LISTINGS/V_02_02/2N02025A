@@ -1,0 +1,156 @@
+#include <stdio.h>
+#include <dos.h>
+#include "defs.h"
+
+extern int DOS_Extender;
+
+#ifdef __HIGHC__
+typedef _far void (*ISRH)(void);
+#else
+typedef void (_far *ISRH)(void);
+#endif
+
+typedef struct isr_struct
+{
+   ULONG realvector;
+   ISRH  handler;
+} ISR;
+
+ISR OldTimer, NewTimer, OldInt90, NewInt90;
+
+void HookTimer(void);
+void UnHookTimer(void);
+void GetISR(USHORT intnum, ISR *OldISR);
+void SetISR(USHORT intnum, ISR *NewISR, UINT PharlapStrategy);
+#if defined(_I386) || defined(_I486) || defined(__386__)
+   extern void NewTimerISR(void);
+#else
+   extern void _far NewTimerISR(void);
+#endif
+
+#define SET_ISR           0x2500
+#define GET_ISR           0x3500
+#define GET_PROT_ISRH     0x2502
+#define GET_REAL_VECTOR   0x2503
+#define SET_PROT_ISRH     0x2504
+#define SET_REAL_VECTOR   0x2505
+#define SET_PROT_ALLWAYS  0x2506
+#define SET_BOTH          0x2507
+#define GET_HARD_IRQ_BASE 0x250C
+
+void HookTimer(void)
+{
+   GetISR(0x90, &OldInt90);
+   GetISR(0x08, &OldTimer);
+   if (DOS_Extender == PHARLAP_386)
+      NewInt90.realvector = OldTimer.realvector;
+   else
+      NewInt90.handler    = OldTimer.handler;
+   NewTimer.handler = (ISRH)NewTimerISR;
+   SetISR(0x90, &NewInt90, SET_REAL_VECTOR);
+   SetISR(0x08, &NewTimer, SET_PROT_ALLWAYS);
+}
+
+void UnHookTimer(void)
+{
+   SetISR(0x08, &OldTimer, SET_BOTH);
+   SetISR(0x90, &OldInt90, SET_REAL_VECTOR);
+}
+
+void GetISR(USHORT intnum, ISR *OldISR)
+{
+   union REGS regs;
+   struct SREGS segregs;
+
+   if (DOS_Extender == PHARLAP_386)
+      {
+      if ( intnum > 0x07 && intnum < 0x10 ) /* Hardware IRQs are remapped */
+         {
+         /*-------------------------------------------------------------*/
+         /*  Get the interrupt vector base for IRQ0 through IRQ7        */
+         /*  DOS maps these to interrupts 0x08 through 0x0F	        */
+         /*-------------------------------------------------------------*/
+         regs.x.AX = GET_HARD_IRQ_BASE;
+         int86(0x21, &regs, &regs);  /*  get IRQ0-IRQ7 base vector      */
+         intnum += regs.h.al - 0x08; /*  adjust the target intnum       */
+         }
+      regs.x.CX = intnum;              /*specify get interrupt vector   */
+      regs.x.AX = GET_PROT_ISRH;       /*specify protected mode handler */
+      segread(&segregs);
+      int86x(0x21, &regs, &regs, &segregs); /*get the prot handler      */
+      FP_MAK(OldISR->handler, regs.x.BX, segregs.es);
+      regs.x.AX = GET_REAL_VECTOR;          /*specify real mode vector  */
+      segread(&segregs);
+      int86x(0x21, &regs, &regs, &segregs); /*get the real vector       */
+      OldISR->realvector = (ULONG) regs.x.BX;
+      }
+   else  /* REAL MODE or an ERGO extender */
+      {
+      regs.x.AX = GET_ISR | intnum;
+      segread(&segregs);
+      int86x(0x21, &regs, &regs, &segregs);
+      FP_MAK(OldISR->handler, regs.x.BX, segregs.es);
+      }
+}
+
+void SetISR(USHORT intnum, ISR *NewISR, UINT PharlapStrategy)
+{
+   union REGS regs;
+   struct SREGS segregs;
+
+   segread(&segregs);
+#if defined(_I386) || defined(_I486) || defined(__386__)
+   if (DOS_Extender == PHARLAP_386)
+      {
+      if ( intnum < 0x10 && intnum > 0x07 ) /* Hardware IRQs are remapped */
+         {
+         /*-------------------------------------------------------------*/
+         /*  Get the interrupt vector base for IRQ0 through IRQ7        */
+         /*-------------------------------------------------------------*/
+         regs.x.AX = GET_HARD_IRQ_BASE;
+         int86(0x21, &regs, &regs);  /*  get the base interrupt vector  */
+         intnum += regs.h.al - 0x08; /*  adjust the target intnum       */
+         }
+      regs.x.CX  = intnum;
+      switch (PharlapStrategy)
+         {
+         case SET_PROT_ALLWAYS:
+              regs.x.AX  = SET_PROT_ALLWAYS;
+              regs.x.DX  = FP_OFF(NewISR->handler);/*extract ISRH offset */
+              segregs.ds = FP_SEG(NewISR->handler);/*extract ISRH segment*/
+              break;
+         case SET_PROT_ISRH:
+              regs.x.AX  = SET_PROT_ISRH;
+              regs.x.DX  = FP_OFF(NewISR->handler);/*extract ISRH offset */
+              segregs.ds = FP_SEG(NewISR->handler);/*extract ISRH segment*/
+              break;
+         case SET_REAL_VECTOR:
+              regs.x.AX = SET_REAL_VECTOR; /*specify interrupt vector replacement*/
+              regs.x.BX = NewISR->realvector;
+              break;
+         case SET_BOTH:
+              regs.x.AX  = SET_BOTH;
+              regs.x.BX  = NewISR->realvector;
+              regs.x.DX  = FP_OFF(NewISR->handler);/*extract ISRH offset */
+              segregs.ds = FP_SEG(NewISR->handler);/*extract ISRH segment*/
+              break;
+         }
+      }
+   else	
+#endif
+      {	/* Real Mode or ERGO Extenders */
+      regs.x.AX  = SET_ISR | intnum; /*specify interrupt handler*/
+      regs.x.DX  = FP_OFF(NewISR->handler);/*extract isr offset */
+      segregs.ds = FP_SEG(NewISR->handler);/*extract isr segment*/
+      }
+   int86x(0x21, &regs, &regs, &segregs);
+}
+
+#ifdef __HIGHC__
+#pragma Alias(NewTimerISR, "_NewTimerISR");
+#endif
+#ifdef __WATCOMC__
+#pragma aux (OUR_C) NewTimerISR;
+#endif
+
+

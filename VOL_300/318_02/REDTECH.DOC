@@ -1,0 +1,235 @@
+January 29, 1990
+
+
+RED VERSION 7.0 TECHNICAL NOTES
+
+RED first made its appearance in 1983, in an article published in the
+January issue of Dr. Dobb's Journal.  Although some features of RED
+have been surpassed by developments in user interfaces, many technical
+features of RED still merit study.
+
+
+Improvements Made to this Version
+			
+Substantial improvements and modifications have been made in version 7.0.
+
+o RED now will compile with the two most popular compilers for MS-
+DOS, Microsoft C v5.0 and Turbo C v2.0.  Make and link files have been
+included for both compilers.
+
+o The source code has been revised for modern ANSI style C compilers.
+Function prototypes and other modern stylistic devices are used
+throughout.
+
+o Several changes improve the speed and portability of the source code.  A
+number of buffer routines have been replaced by macros for greater speed.
+ For maximum portability, the assembly language screen handler has been
+completely rewritten to use BIOS calls rather than direct manipulation of
+PC hardware.  In spite of this, the screen routines remain very fast.
+
+o The code has been instrumented with the Sherlockt debugging macros.
+These macros provide flexible debugging information and came in handy
+while porting RED to Turbo C and Microsoft C.  Documentation for
+Sherlock is included on this disk.
+
+These technical notes contain four main sections.  Section one discusses
+the technical aspects of RED that still remain interesting after almost 7
+years--notably fast screen update and fast file handling for even very large
+files. Section two lists some areas where RED falls short of the current
+generation of editors and word processors. Section three contains some
+reflections on the programming style used in RED.  Finally, section four
+explains how to port RED to other machines.
+
+
+What's Still Valuable about RED
+
+RED contains two chief technical accomplishments:  the screen is updated
+quickly and arbitrarily large files are handled quickly.  These results were
+produced without sacrificing portability.  In addition, RED's code is small
+enough so that it can be compiled with the small memory model.  RED is
+lean and quick.
+
+RED's editing routines tell the screen update routines how to update the
+screen, not just what to update.  This results in more complicated edit
+routines but much faster screen refreshes.  In addition, an "interrupt-
+driven" screen update policy was adapted.  Output lines are not printed
+immediately but are instead queued by setting some variables in the system
+module, redsys.c.  Lines were output to the screen whenever the keyboard
+polling loop in syscin found no keyboard activity.
+
+RED's file buffering routines, in files redbuf1.c through redbuf4.c, form
+the largest and most complicated part of RED.  I'm still pleased with these
+buffer routines--they handle arbitrarily large files quickly and efficiently.  I
+believe that the scheme used in RED compares favorably with such file
+access methods as B* trees.
+
+Designing such a buffering scheme is far from easy.  Fast screen scrolling
+demands that sequential lines of text be accessed quickly.  Inserting and
+deleting line must be fast.  In particular, the time to move forward and back
+one line, or to insert or delete a line should be constant, i.e., it should not
+depend at all on the size of the file.  Loading a file and saving a file, or
+finding an arbitrary line of the file should require time which is
+proportional to the size of the file.  Disk storage must not become
+fragmented, no matter how much editing is done to a file.  Finally, the
+buffer routines must work well with as few as ten 1K file buffers and must
+be able to use hundreds of buffers effectively if they are available.  RED's
+buffer routines meet all these criteria.
+
+Central to the operation of the buffer routines is the work file.  The file to
+be edited is copied to work file format when the file is first loaded.  Once
+the price for this file conversion has been paid, all other file operations
+become very fast.
+
+The work file is organized as a doubly-linked list of fixed-length blocks.
+Each block contains a block header, one or more complete text lines, and a
+variable-length index table, one entry per text line.  Lines are not permitted
+to be split across lines, so when a line becomes too long to fit in a block, a
+new block must be created and linked into the list.  Adjacent blocks are
+merged at key points so that unneeded blocks never build up.  It is never
+necessary to compact the work file.  The precise algorithms for splitting
+and joining adjacent blocks forms the key code in the RED text editor.
+
+Superimposed on these splitting and joining algorithms is a fairly
+straightforward least-recently-used virtual memory algorithm.  Blocks are
+swapped into and out of memory as required.  The code makes complex
+assumptions about which buffers are in memory while buffers are being
+split and joined.  In retrospect, a "locked" bit would be good to add to the
+entries in the slot table.  Then the code would fail more gracefully if not
+enough buffers were allocated:  there would be no unlocked block to swap
+out.
+
+10 buffers are guaranteed to work in all cases.  For small memory models,
+about 40 buffers in memory at once will be the maximum.  The advantage
+of having more than 40 buffers would be more than offset by the
+disadvantages of using the large data memory models.
+
+
+How RED is Showing its Age
+
+RED was designed in an era when most displays were black and white and
+no inexpensive terminals supported more than one type style.  Multiple
+windows were unheard of.
+
+RED's greatest current weaknesses are its crude methods for selecting text
+In particular, the move and copy commands operate only on lines of text
+that are selected by entering a range of numbers.  This is an area where
+RED is a bit unpleasant to work with.  RED contains no support for a
+mouse, er, "pointing device."
+
+The find and change command could be improved a bit.  Besides searching
+for attributes such as type style or size, RED would benefit by better
+handling of multi-line patterns.  It would also be valuable to be able to
+search and replace more complicated patterns such as those used by the
+famous grep utility.
+
+As far as the source code goes, if I were writing RED today I would use
+some of the insights behind object oriented programming to create multiple
+instances of objects such as internal files, buffers, windows etc.
+However, the design of RED would probably not change very much as the
+result.  Much greater changes would be forced by the user interface
+considerations such as multiple fonts.
+
+
+Professional Programming Style
+
+RED's organization and style can provide a valuable example for beginning
+and intermediate programming students.  For a fascinating series of
+interviews with famous programmers and a discussion of how they work
+and what they think about, I highly recommend the book, Programmers at
+Work, by Susan Lammers, copyright 1986, 1989 by Tempus Books of
+Microsoft Press.  Many of the issues examined in this book are reflected in
+RED's source code.
+
+The most important part of RED's design is its organization into modules.
+Except for the buffer routine module, which spans four source files, each
+module is contained in a single source file.  The determination of which
+routines belonged in which module was a dominant factor in RED's overall
+design.
+
+A system module such as embodied in RED has become a feature of all my
+large projects.  The system module concept has been very successful: it is
+the key to easy portability and fast operation.  As an examination of the file
+redsys.c will show, the system module is still needed, even in the era of
+so-called "standard" ANSI libraries.
+
+As the book Programmers at Work shows, programmers spend a lot of
+time thinking about the details of programs: naming conventions, program
+format, layout and appearance, comments, bracketing conventions,
+simplicity.  RED shows a consistent style that treats these issues as
+important.
+
+
+Porting RED to other Machines
+
+This section tells you how to modify RED's source code to work with
+other compilers and operating systems.  You need not read this chapter if
+you already have a working copy of RED;  indeed, you should be an
+experienced C programmer to attempt such a task.
+
+Compiling the source code should be easy, but getting the compiled code to
+run may be more difficult because every run-time library contains its own
+quirks.  RED solves this problem as follows:  all calls to the operating
+system are made indirectly through the file redsys.c.  For instance, instead
+of calling the fopen() library routine, RED's code calls the sysfopen()
+routine.  The job of sysfopen(), and all the other functions in redsys.c, is
+to massage its parameters as required in order to keep the local run-time
+library happy.  Thus, only redsys.c needs to be changed for different
+libraries.
+On time-sharing machines the biggest problem may be to find or create
+raw, asynchronous system calls which get input from the terminal.  Raw
+input is not automatically echoed by the operating system.  Rather than
+waiting for a keyboard key to be pressed, an asynchronous input system
+call returns a "character not ready" status if nothing is ready.
+
+You shouldn't have to make any changes to the source code except to the
+files red.h and redsys.c.  Be particularly leery of modifying the buffer
+routines.
+
+
+Trouble Shooting
+
+Debugging RED is much easier if you have the Sherlock debugging
+package.  I estimate that I would have saved at least three months of
+debugging had I invented Sherlock before I wrote RED.  Sherlock certainly
+came in handy when porting RED to Turbo C and Microsoft C.
+
+You need not remove the Sherlock macros even if you don't own Sherlock.
+Just rename the file dummysl.h to be sl.h.  All the Sherlock macros will
+then expand to do-nothing code.
+
+If RED crashes after you modify redsys.c you should do the following:
+Always keep in mind as you follow these steps that you are looking for
+bugs in redsys.c, not in RED's buffer routines.  
+
+First, make sure the sysalloc() function is working properly, which
+involves checking sysinit() as well. Storage allocation is a particularly non-
+standard part of any library.  Note that sysalloc() is called only by bufinit()
+at the start of RED's execution.
+
+Many problems with the library routines will crash RED's buffer routines
+on files redbuf1.c through redbuf4.c.  When that happens, RED dumps
+information to the screen.  Now comes the fun part.  You are going to
+deduce which errant library routines on redsys.c cause the buffer routines
+to crash.  Exercise the buffer routines in a controlled manner as follows:
+
+o Get the check_block() and bufdump() routines working.  These functions
+are very effective debugging tools because they stop erroneous execution at
+the earliest point possible.  They are called whenever any block is changed.
+
+o Get read_file() working.  This is most easily done by inserting a call to
+exit() at the very end of the read_file() routine, loading a file using RED's
+load command and then using DDT to look at the work file.  See whether
+the work file has the proper format as described on file redbuf.h.
+
+o Once the read_file() routine is working, use the save command to test the
+write_file() routine.  Examine the newly created file using DDT, or load the
+file into an editor you know is solid.
+
+o Test the bufdel() and the combine() routines.  It is important to do this
+before inserting lines of text because the insert logic calls the delete logic.
+Thus, testing the delete code first is simpler.  Read a large file into RED,
+then delete lines in all sorts of orders.
+
+o Finally, test bufins() and split_block() by inserting and replacing lines.
+The inject command is a way of inserting a large number of lines quickly,
+but the load command is not--it uses separate logic.

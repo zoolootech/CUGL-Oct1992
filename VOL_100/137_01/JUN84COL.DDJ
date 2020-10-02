@@ -1,0 +1,412 @@
+.pl 61
+.po 0
+..
+.. this article was prepared for the C/Unix Programmer's Notebook
+.. Copyright 1984 Pyramid Systems, Inc.
+..
+.. by A. Skjellum
+..
+.. Listing I.  -- lsup.c
+.. Listing II. -- lsup.h
+.. Listing III.-- _lsup.h
+.. Listing IV. -- llsup.asm
+.. Listing V.  -- llint.asm
+.. Listing VI. -- env.asm
+.. 
+.he "C/Unix Programmer's Notebook"   for June, 1984 DDJ. 
+
+                               Introduction
+
+     In  previous columns,  I have alluded to 8086 family C compilers which 
+
+support large memory models.  Before discussing some of the compilers which 
+
+provide such features,  I thought it worthwhile to discuss the memory model 
+
+concepts of the 8086 and how this impacts C compilers implemented for  this 
+
+microprocessor  family.   I  will discuss the advantages and  drawbacks  of 
+
+several memory models used by existing C compilers.  Code will be presented 
+
+to help overcome some of the limitations of small memory model compilers.
+
+     For  those  readers  who are not interested in the details of  8086  C 
+
+compilers,  large  memory models,  or long pointers,  there is  still  some 
+
+interesting material in this column.   Specifically, several routines which 
+
+are  included  here illustrate real-life code to interface C  and  assembly 
+
+language.   Most  compiler  manuals are very terse on this subject so  some 
+
+actual code may help drive home the concepts involved.
+
+                                Background
+
+     Before  plunging  into  a  discussion  of  memory  models,   a   brief 
+
+introduction  to  the 8086 architecture is necessary.   This material  will 
+
+help  to  illustrate  why there are different addressing  schemes  used  by 
+
+different compilers.
+
+     The  8086/88 microprocessors support 20-bit addressing.   This  allows 
+
+the microprocessor to address in excess of one million bytes.  However, all 
+
+the registers are 16-bits wide.  This implies that some segmentation scheme 
+
+must  be  used  in order to address more than 64k  bytes  of  memory.   The 
+
+technique used involves four 16-bit segment  registers:  CS,  DS,  ES,  SS.  
+
+These  registers are the  code-segment,  data-segment,  extra-segment,  and 
+
+stack-segment  registers respectively.   Depending on the instruction used, 
+
+different segment registers come into play in determining the complete  20-
+
+bit address.   In forming a complete address, the segment address is always 
+
+shifted  left four bits.   Note that a segment register by itself addresses 
+
+memory on 16-byte boundaries.   Sixteen byte regions addressable by segment 
+
+registers  are  known  as  paragraphs.    While  paragraphs  and  paragraph 
+
+alignment are not normally of interest to C programmers, they are sometimes 
+
+important when developing assembly language interface code for C.
+
+      When discussing long pointers, a special notation is used.  Since the 
+
+address is split, it is written in the form:
+
+                    segment:byte_pointer
+
+where segment is the segment, and byte_pointer is the 16-bit low order part 
+
+of  the  address.   A typical example of such an address would  be  "es:bx" 
+
+which means `segment specified by es register and offset from this  segment 
+
+specified  by  the  bx  register.'  This notation is  used  throughout  the 
+
+listings included with this column.
+
+     Machine  instructions  often differentiate between  inter  and  intra-
+
+segment  operations.    For  example,  there  are  "near"  and  "far"  CALL 
+
+instructions. 
+
+     With this introduction, I will now outline several memory models. 
+
+                             8080 Memory Model
+
+     The  8080  memory model is just what the name  implies.   All  segment 
+
+registers  are  set equal,  so that only a total of 64K is available for  a 
+
+program.  This model is seen mostly under CP/M-86, but is occasionally used 
+
+by  MS-DOS  programs.   None of the C compilers that I have  seen  restrict 
+
+programs to this model.
+
+                            Small memory model
+
+     Many programs can work comfortably with only 64K of data space and 64K 
+
+of  program space.   Such a model results when the CS and DS registers  are 
+
+set to different blocks of memory (up to 64k each).   Normally,  ES and  SS 
+
+are set equal to DS,  so that all data and stack memory resides in the same 
+
+block  of  memory.   This  model  is  fine as long  as  programs  and  data 
+
+requirements  are  small  enough to fit within  the  64k  limits.   Most  C 
+
+compilers only support this model.
+
+                            Large memory model
+
+     In a large memory model, all addresses refer to the full 20-bit range.  
+
+All subroutine calls are "far" calls, and all data is referred to with long 
+
+pointers.   Long  pointers include a segment and byte address pointer (thus 
+
+occupying 32-bits).  Only a few C compilers support this model.  The reason 
+
+that most compilers don't support this model,  is the greater complexity of 
+
+code generation.  I will mention more on this later.
+
+                       Small Code / Large Data Model
+
+     A useful hybrid of the small and large memory models is the one  where 
+
+only 64k of program space is provided, but long pointers for data are used.  
+
+This  model  offers speed advantages for programs which require  more  data 
+
+storage, but are moderately small.
+
+                       Large Code / Small Data Model
+
+     One other possibility would be a large code / small data model,  which 
+
+would  be  used  for programs with small data requirements but  large  code 
+
+requirements.  
+
+                            Large Stack Feature
+
+     One type of model which has not been considered is one which  supports 
+
+a  large  stack.   A  large  stack would support more than  64k  of  items.  
+
+Implementing this feature would slow program execution significantly, since 
+
+stack references would be complicated.   
+
+                          Which model is better? 
+
+     As long as a C program can fit within the small memory model, there is 
+
+a  distinct speed advantage in using this model.   The large  memory  model 
+
+produces  longer  (and  somewhat slower) programs because  of  the  greater 
+
+generality  of each instruction produced (ability to refer to 1024k instead 
+
+of 64k of memory requires longer pointers and more checks).  Since the 8086 
+
+doesn't  provide many instructions to manipulate the  long  pointers,  many 
+
+additional  instructions  must be generated for pointer related  operations 
+
+(which also include all memory references.)  Specific examples of the  lack 
+
+of  8086 instructions involves incrementing and decrementing long pointers.  
+
+Note that a long pointer is not just a 32-bit word.  The upper 16-bits is a 
+
+segment  address  which  must  be treated  accordingly  when  crossing  64k 
+
+boundaries.  Examples  of  implementing  these  features  in  software  are 
+
+included in Listing V. (llint.asm: examples: linc and ldec functions).
+
+     Thus,  both models have drawbacks.   Speed is gained at the expense of 
+
+(essentially) unlimited program/data space.  Use the large memory model for 
+
+big programs which use big chunks of data.   Otherwise stick with the small 
+
+model.
+
+                    Drawbacks of the Small Memory Model 
+
+     Assuming that you use the small memory model (by choice or because  of 
+
+your  compiler),  everthing will run smoothly until it becomes necessary to 
+
+deal  with memory outside of the C data address  space.   For  example,  it 
+
+might  be nice to use large buffers for copying files,  or for keeping help 
+
+information.  Another possibility would involve accessing special locations 
+
+in the memory map.
+
+     The  ability  to  use long pointers in a small  memory  model  can  be 
+
+implemented  with  relative ease.   A set of such routines is presented  in 
+
+Listings I.-V.   A description of the Long Pointer Package and applications 
+
+for the package form the remainder of this column. 
+
+                         The Long Pointer Package
+                                       
+     The  Long  Pointer  Package supplements a C  environment  by  allowing 
+
+references to memory locations anywhere in the 20-bit address map.  This is 
+
+done by defining a new data type LPTR (via a typedef):
+
+.cp 7
+                        typedef union  __lptr
+                        {
+	                        long	_llong;	    /* long format */
+	                        char	_lstr[4];   /* character format */
+                        	LWORD	_lword;	    /* long-word format */
+                        } LPTR;
+
+where LWORD is defined as the following structure:
+
+                        typedef struct __lword
+                        {
+	                        unsigned _addr;     /* address */
+	                        unsigned _segm;     /* segment */
+                        } LWORD;
+
+This  format for LPTR makes the addresses defined directly compatible  with 
+
+normal long pointers used at the assembly level.   These long pointers  are 
+
+stored  in the 8080 style:  least significant byte of address  first,  most 
+
+significant byte of segment last.
+
+     The lowest level routines which support long memory references are, of 
+
+necessity,  coded in assembly language.   The routines which implement many 
+
+of  the lowest level functions in a non-compiler specific way are  included 
+
+in Listing IV.  (llsup.asm).   Routines which implement functions for Aztec 
+
+C86  (a typical 8086 C compiler) version 1.05i are included in  Listing  V. 
+
+(llint.asm).  These routines may have to be modified for other C compilers, 
+
+if register usage or stack arrangements differ.
+
+     In order to actually use the routines with C programs, the header file 
+
+"lsup.h" must be included at the beginning of modules which use or refer to 
+
+LPTR  data types.   The "lsup.h" file refers to "_lsup.h" also.   These two 
+
+headers are presented in listings  II. and III. respectively.
+
+                            Supported Functions
+
+     The  package supports a number of functions involving  long  pointers.  
+
+There  are  routines to add offsets to long pointers,  copy memory  between 
+
+long  pointers and routines to return data addressed by long  pointers.   A 
+
+complete  list of these functions is included in Table I.   In this  table, 
+
+the file in which the function is located is mentioned also.
+
+     -------------------------- Table I. ----------------------------
+
+     file: lsup.c   (some C support routines)
+
+          lassign(dest,source)     assign long pointers
+          llstrcpy(dest,source)    long string copy
+          lprint(lptr)             debugging routine for printling LPTR's
+
+
+     file: llint.asm (Aztec C dependent support routines)
+
+          flptr(lptr,sptr)         form a long pointer from a normal short
+                                   C (ds relative) pointer.
+          lchr(lptr)               return character addressed by long pointer.
+          lint(lptr)               returns int/unsigned addressed by long ptr. 
+          l_stchr(lptr,chr)        stores char at location lptr.
+          l_stint(lptr,intgr)      stores int  at location lptr.
+          lload(dest,lptr,len)     general purpose copy to short pointer
+                                   area (ds relative) from long pointer area
+          lstor(lptr,src,len)      reverse if lload()
+          linc(lptr)               increment long pointer
+          ldec(lptr)               decrement long pointer
+          ladd(lptr,offset)        add unsigned offset to lptr
+          lsub(lptr,offset)        subtract unsigned offset from lptr
+          lsum(lptr,offset)        add signed offset to lptr
+          lcopy(dest,src,len)      general purpose long to long copy
+                                   (can copy up to 1024k of memory)
+
+          file: llsup.asm (compiler independent functions)
+    
+          linc                     increment a long pointer
+          ldec                     decrement a long pointer 
+          ladd                     add an unsigned offset to a long pointer
+          lsub                     sub an unsigned offset from a long ptr.
+          lsum                     add a signed offset to a long pointer
+          lcopy                    general copy routine.
+
+     ---------------------- End of  Table I. ------------------------
+
+.cp 3
+                                An Example
+
+     One  useful  application of long pointers under  MS-DOS  2.0  involves 
+
+accessing a program's environment block.   The environment block is a Unix-
+
+like  set  of environment variables and values.   This is normally used  to 
+
+affect some particular aspects of program execution.   Specifics about  the 
+
+enviroment address are included in Inset I.  Interested readers should also 
+
+refer to the DOS 2.0 users manual for more details.
+
+     -------------------------- Inset I. ----------------------------
+
+                         Environment Block Address
+
+	C  compilers  under MS-DOS normally produce .EXE files.   For  .EXE 
+files,  a  program segment prefix is created by DOS 2.0  and  higher.   The 
+segment  address of this prefix is es:0 when the user program  begins.   At 
+offset  002cH  from  this  address is stored the  segment  address  of  the 
+environment table.   Only a segment is stored:  the offset from the segment 
+is  again  zero.   Thus,  the  contents of es:2ch is  the  address  of  the 
+environment block.
+
+	Normally,  C  compilers  have a maintenance routine which is  given 
+control at the start of program execution.  For Aztec C86,  this routine is 
+called  $begin  and is located in the calldos.asm module included with  the 
+compiler.  The user must define an external variable in calldos.asm for the 
+benefit  of env.c,  in order for the segment address to be accessible as  a 
+long pointer.  The procedure for this operation is detailed in the comments 
+included in Listing VI. (env.c)
+
+                           Allocation of Memory
+
+	If  a C program intends to use DOS memory allocation in  cojunction 
+with  the  long  pointers,  it  must also be sure  to  shrink  it's  memory 
+allocation  using the MS-DOS SETBLOCK function.   This is normally done  in 
+the initial maintenance routine of the C runtime system.   For Aztec C this 
+must be done in $begin.
+
+     ---------------------- End of  Inset I. ------------------------
+
+
+     The example program env.c reads the environment block and displays the 
+
+contents  of the whole block on the console.   In effect,  it provides  the 
+
+same listing feature as the MS-DOS SET command.
+
+                                Conclusion
+
+     In this column,  I have discussed various aspects of memory models for 
+
+8086  C  compilers.   I  have  included a set of C  and  assembly  language 
+
+functions   which  support  long  pointers  under  a  small  memory   model 
+
+environment.   With this package,  users can enjoy the best of both worlds: 
+
+access  to  arbitrary  amounts/locations of  memory,  while  retaining  the 
+
+efficiency of short pointers for regular code and pointer operations.   For 
+
+compilers which only support the small model, this package allows access to 
+
+features which were previously off-limits to 8086  C programmers.
+
+ 
+

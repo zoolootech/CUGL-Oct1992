@@ -1,0 +1,192 @@
+/*
+ *   Main windows routines for the Animated Cursor Demo Program
+ *
+ * Written by Alex Leavens, for ShadowCat Technologies
+ *
+ * Created: 10/May/91
+ * Revised: 14/May/91
+ *
+ */
+
+
+#include <WINDOWS.H>
+#include "CURSOR.H"
+ 
+/*----------------------- Function prototypes -----------------*/
+
+long FAR PASCAL HandleCursorSet(HWND, unsigned, WORD, LONG);
+
+/*----------------------- Global Variables --------------------*/
+
+HANDLE  hInst   = 0;  /* Handle to the instance of our program */
+HWND    MainhWnd= 0;  /* Handle to the main window of our program */
+
+/***************************
+ *
+ * WinMain()
+ *    Entry point for any windows program.
+ *
+ */
+  
+    int PASCAL
+WinMain(HANDLE  hInstance,      /* Current instance of program */
+        HANDLE  hPrevInstance,  /* Any previous instance of the program */
+        LPSTR   lpCmdLine,      /* Pointer to any command line args */
+        int     nCmdShow)       /* Show window type (open or iconic) */
+{
+    MSG msg;                    /* Messages from the system */
+
+    /*------------------------------------------*/
+ 
+    hInst = hInstance;          /* Save current instance */
+    
+    if (!hPrevInstance)         /* Is there an other instance of the task   */
+    {
+        if (!CurRegisterClass(hInstance))
+            return FALSE;       /* Punt if Class registration failed */
+    }
+ 
+    MainhWnd = CurCreateWindow(hInstance);
+    if (!MainhWnd)              /* If we couldn't create the window, punt */
+        return FALSE;
+ 
+    ShowWindow(MainhWnd, nCmdShow);  /* Show the window */
+    UpdateWindow(MainhWnd);          /* Send WM_PAINT message to window */
+
+    SendMessage(MainhWnd,
+                WM_COMMAND,
+                IDM_Speed1,
+                (LONG)0);       /* Send speed1 a message to check itself */
+
+    while (GetMessage(&msg,     /* place to put message info */
+        0,                      /* get messages to all windows */
+        0,                      /* examine all messages, from lowest to */
+        0))                     /* highest */
+    {
+        TranslateMessage(&msg); /* Translates character keys                */
+        DispatchMessage(&msg);  /* Dispatches message to window             */
+    }
+
+    return(msg.wParam);         /* Returns the value from PostQuitMessage   */
+}
+/**************************
+ *
+ * MainWndProc()
+ *    Handles the main event messaging loop that we use
+ * to process windows messages.
+ *
+ */
+
+    long FAR PASCAL
+MainWndProc(HWND        hWnd,
+            unsigned    message,
+            WORD        wParam,
+            LONG        lParam)
+{
+
+    switch (message)
+    {
+        case WM_SETCURSOR:                      /* Special cursor set message */
+            return HandleCursorSet(hWnd, 
+                                   message, 
+                                   wParam, 
+                                   lParam);
+            break;
+
+        case WM_DESTROY:            /* Shutdown time... */
+            PostQuitMessage(0);
+            return DefWindowProc(hWnd, message, wParam, lParam);
+            break;
+ 
+        case WM_COMMAND:            /* Command from main window (handles menus) */
+            switch(wParam)
+            {
+                case IDM_Animate:
+                    Animate(hWnd,message,wParam,lParam);
+                    break;
+                case IDM_Speed1:
+                case IDM_Speed2:
+                case IDM_Speed3:
+                case IDM_Speed4:
+                    SetSpeed(hWnd,message,wParam,lParam);
+                    break;
+                case IDM_Quit:
+                    QuitFunc(hWnd,message,wParam,lParam);
+                    break;
+                default:
+                    break;
+            }
+            break;
+
+        default:                        /* Just let windows handle it... */
+            return DefWindowProc(hWnd, message, wParam, lParam);
+            break;
+            
+    }
+    return FALSE;               /* Returns FALSE if processed               */
+}
+/***************************
+ *
+ * CurRegisterClass()
+ *    Registers the class for our main window.  Done only if
+ * there isn't another instance of the application already running.
+ */
+
+    BOOL
+CurRegisterClass(HANDLE hInstance)
+{
+    WNDCLASS    WndClass;       /* Window class structure to fill in */
+
+    /*-----------------------------*/
+  
+    WndClass.style         = 0;
+    WndClass.lpfnWndProc   = MainWndProc;
+    WndClass.cbClsExtra    = 0;
+    WndClass.cbWndExtra    = 0;
+    WndClass.hInstance     = hInstance;
+    WndClass.hIcon         = LoadIcon(NULL,IDI_APPLICATION);
+    WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+    WndClass.hbrBackground = CreateSolidBrush(GetSysColor(COLOR_WINDOW));
+    WndClass.lpszMenuName  = "CURSOR";
+    WndClass.lpszClassName = "CURSOR";
+ 
+    return RegisterClass(&WndClass);
+}
+/********************************
+ *
+ * CurCreateWindow()
+ *   Creates the window for our application
+ */
+
+    HWND
+CurCreateWindow(HANDLE  hInstance)
+{
+    HWND        hWnd;           /* Handle to the created window */
+    int         coordinate[4];  /* Coordinates of the window (use system defaults) */
+
+    /*-----------------------------------*/
+
+    coordinate[0]=CW_USEDEFAULT;
+    coordinate[1]=0;
+    coordinate[2]=CW_USEDEFAULT;
+    coordinate[3]=0;
+    
+    hWnd = CreateWindow("CURSOR",
+           "Animated Cursor Demo Program",
+
+           WS_OVERLAPPED | WS_THICKFRAME |
+           WS_SYSMENU | WS_MINIMIZEBOX |
+           WS_MAXIMIZEBOX,
+
+           coordinate[0],        /* x position */
+           coordinate[1],        /* y position */
+           coordinate[2],        /* width      */
+           coordinate[3],        /* height     */
+           0,                    /* No parent to this window */
+           0,                    /* No children either... */
+           hInstance,            /* application instance... */
+           (LPSTR)NULL);         /* no additional data */
+    
+    return hWnd;
+}
+

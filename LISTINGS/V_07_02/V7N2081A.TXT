@@ -1,0 +1,71 @@
+Changes to function stmt_compile:
+
+
+			else if ( i = isfunction( buf ) )
+			{
+				*actptr++ = T_FUNCTION;
+#if MPU68000 || MC68000
+                                if ( (long) actptr & 0x1 ) actptr++;
+#endif
+				*((int *)actptr) = i;   /* original form */
+				actptr += sizeof( int * );
+			}
+    .
+    .
+    .
+				*actptr++ = T_VARIABLE;
+				if (!(cp = (char *)findvar(buf)))
+					cp = (char *)addvar(buf);
+#if MPU68000 || MC68000
+                                if ( (long) actptr & 0x1 ) actptr++;
+#endif
+				*((char **)actptr) = cp;
+    .
+    .
+    .
+			/*
+			 * It's a character constant
+			 */
+			*actptr++ = T_CONSTANT;
+			str_compile( buf, '\'' );
+#if MPU68000 || MC68000
+			if ( (long) actptr & 0x1 ) actptr++;
+#endif
+			*((int *)actptr) = *buf;
+    .
+    .
+    .
+			/*
+			 * It's a numeric constant
+			 */
+			*actptr++ = T_CONSTANT;
+			cp = buf;
+			do
+				*cp++ = c;
+			while ((c=getcharacter()) != -1 && isdigit(c));
+			ungetcharacter( c );
+			*cp = 0;
+#if MPU68000 || MC68000
+			if ( (long) actptr & 0x1 ) actptr++;
+#endif
+			*((int *)actptr) = atoi(buf);
+
+
+changes to function getoken:
+
+	case T_VARIABLE:
+#if MPU68000 || MC68000
+		if ( (long) Actptr & 0x1 ) Actptr++;
+#endif
+		Value.dptr = *((char **)Actptr);
+		Actptr += sizeof( char ** );
+		break;
+	case T_FUNCTION:
+	case T_CONSTANT:
+#if MPU68000 || MC68000
+		if ( (long) Actptr & 0x1 ) Actptr++;
+#endif
+		Value.ival = *((int *)Actptr);
+
+
+     Listing 3 - Changes to bawkact.c for 68000 processors

@@ -1,0 +1,51 @@
+;BDOS.CSM
+
+;A.v.Obert, Buergweg 13, D-8500 Nuernberg W.Germany
+;10-18-84
+
+;New version of BDOS funktion for BDS C compiler
+;version 1.5, from DEFF2A.CSM
+
+;Problem: The BDOS function relies on a CP/M 1.4
+;compatibility clause of V. 2.2: On return from BDOS
+;calls registers A=L and B=H. But 8-bit values are
+;delivered in A and 16-bit values in HL. The CP/M
+;clone ZDOS does the latter only.
+
+;Solution: Set H=0 and L=A for all funktions but those
+;that deliver 16-bit values. Insert the lines marked 
+;with asterics and form new DEFF2.CRL file as shown
+;in the manual on page 44, point 4.
+
+	MACLIB	BDS
+
+	FUNCTION	bdos
+	call	arghak	
+	push	b
+	lda	arg1	;get C value
+	mov	c,a
+	lhld	arg2	;get DE value
+	xchg		;put in DE
+	call	bdos	;make the bdos call 
+
+	mov	c,a	;*
+	lda	arg1	;*
+	cpi	12	;*
+	jz	nomod	;*
+	cpi	24	;*
+	jz	nomod	;*
+	cpi	27	;*
+	jz	nomod	;*
+	cpi	29	;*
+	jz	nomod	;*
+	cpi	31	;*
+	jz	nomod	;*
+
+	mvi	h,0	;*
+	mov	l,c	;*
+
+nomod:			;*
+	pop	b
+	ret		;and return to caller
+	ENDFUNC
+

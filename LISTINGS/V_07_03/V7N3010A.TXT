@@ -1,0 +1,528 @@
+  
+Listing 1:
+
+int well_formed(), well_formed_2(), woof();	/* Declarations */
+
+typedef struct element {
+   char *field;
+   int (*validate)();
+   } FORM_RULES;
+
+FORM_RULES form[] ={
+   { "field1", well_formed},
+   { "field2", well_formed_2}
+   };
+
+int well_formed()
+   {
+   return 0;
+   }
+
+int well_formed_2()
+   {
+   return 0;
+   }
+
+int woof()
+   {
+   return 0;
+   }
+
+
+
+
+
+Listing 2:
+
+main()
+/* Changes well_formed reference to woof */
+   {
+   int i;    
+   printf("\n Function addresses are %lx %lx %lx",
+       well_formed, well_formed_2, woof);
+
+   printf("\n Member addresses are %lx %lx",
+       form[0].validate, form[1].validate);
+   
+   form[0].validate = woof;
+
+   printf("\n Member addresses are %lx %lx",
+       form[0].validate, form[1].validate);
+
+   }
+
+Output:
+
+ Function addresses are 3e220000 3e220009 3e220012
+ Member addresses are 3e220000 3e220009
+ Member addresses are 3e220012 3e220009
+
+
+
+Listing 3:
+
+struct element
+   {
+   char *field;
+   int validate_function_id;
+   };
+
+#define F_WELL_FORMED 0
+#define F_WELL_FORMED_2 1
+#define F_WOOF 2
+
+struct element form[] = {
+   { "field1", F_WELL_FORMED},
+   { "field2", F_WELL_FORMED_2},
+   };
+
+int well_formed(), well_formed_2(), woof();	/* Declarations */
+
+static int (*validate_function[])() =  
+								{ well_formed, well_formed_2, woof};
+#define MAX_VALIDATE_FUNC  (sizeof(validate_function)/sizeof(int (*)()) )
+
+main()
+   {
+   form[0].validate_function_id = F_WOOF;   
+   
+   /* Indirect call */
+   call_function(form[0].validate_function_id);
+
+   /* Direct call -- if no checking was desired */	
+   (*validate_function[form[0].validate_function_id])();   
+   }
+
+call_function(id)
+int id;
+	{
+   /* Check the function id and call it */
+   if (id >= 0 && id < MAX_VALIDATE_FUNC) 
+      (*validate_function[id])();
+   else
+       printf("\n Out of range validate function id", id);
+	}
+
+
+
+Listing 4:
+
+typedef int (* VALIDATER)();	/* Pointer to C function returning int */	
+#define VNOP ((VALIDATER) 0 )   /* Null function -- validate not required */
+
+typedef struct field_element {
+   char **fptr;        /* Address of a field pointer */
+   VALIDATER fi;       /* Pointer to field function,
+                          if fi == NOP then no field is not touched */
+   } FORM_RULES;
+
+/* Pointers to allocated fields */
+
+char *Field_A, *Field_B;
+
+/* Form definition */
+
+FORM_RULES twx[] = {
+   { &Field_A, VNOP},
+   { &Field_B, VNOP},
+   };
+
+main()
+   {
+   Field_A = "ABC";    /* Same as malloc, but with content */
+   Field_B = "DEF";    
+
+   printf("\n Field A via pointer is %s double pointer %s",
+       Field_A, *(twx[0].fptr));
+   printf("\n Field B via pointer is %s double pointer %s",
+       Field_B, *(twx[1].fptr));
+   }
+
+
+
+
+Listing 5:
+
+#include <stdio.h>
+
+typedef int VALIDATE;
+typedef VALIDATE (* VALIDATER)();	/* Pointer to C function returning int */	
+
+#define VNOP ((VALIDATER) 0 )   /* Null function -- validate not required */
+
+typedef struct field_element {
+   char **fptr;        /* Address of a field pointer */
+   VALIDATER *fi;       /* Pointer to field function,
+                          if fi == NOP then no field is not touched */
+   } FORM_RULES;
+
+/* Pointers to functions */
+
+VALIDATER Function_A;
+VALIDATER Function_B;
+
+/* Form definition */
+
+FORM_RULES twx[] = {
+   { NULL, &Function_A},
+   { NULL, &Function_B},
+   };
+
+VALIDATE function_one(), function_two();
+
+main()
+   {
+   Function_A = function_one;
+   Function_B = function_two;
+   
+   /* Call the functions */
+   (**twx[0].fi)();
+   (**twx[1].fi)();   
+   }
+
+VALIDATE function_one()
+	{
+	printf("\n Function one called");
+	return 0;
+	}
+
+VALIDATE function_two()
+	{
+	printf("\n Function two called");
+	return 0;
+	}
+
+
+Listing 6:
+
+typedef int VALIDATE;
+#define VNOP ((VALIDATE *) 0 )   /* Null function -- validate not required */
+
+struct field_element {
+   char **fptr;        /* Address of a field pointer */
+   VALIDATE **fi;      /* Pointer to pointer to field function */
+   }; 
+
+/* Pointers to functions */
+
+VALIDATE *Function_A;
+VALIDATE *Function_B;
+
+struct field_element twx[] = {
+   { NULL, &Function_A},
+   { NULL, &Function_B},
+   };
+   
+
+
+
+    func_a()
+       {
+       printf("\n Func_a was called--need the real one for this \n");
+       return ;
+       }
+
+
+
+
+
+SCREEN.C Listing 
+
+/*
+*       SCREEN.C
+*  Modification of IVCLOCK using intervention code
+*
+*  SCREEN goes to the scheduler via timer every 37 clock tics
+*  The timer clock ticks every 55 msec. x 37 == once per 2 seconds
+*  OR every keyboard entry.
+*
+*  The command line format is as follows:
+*
+*       screen
+*
+*       screen -r
+*                  removes the system from resident status
+*
+*  A Change had to be made in the Interrupt Handler for INT 9
+*    to allow the system to respond on every key stroke
+*
+*  CTL-F1  puts the system to sleep (without removing it)
+*  CTL-F2  wakes it up again.
+*
+*                                       David Tal -8/XI/88
+*/
+
+
+#include <dos.h>
+#include <stdio.h>
+#include <binterv.h>
+#include <bintrupt.h>
+#include <bkeys.h>
+#include <bscreens.h>
+
+                /* scr is the function which will be called        */
+                /* approximately once per 2 sec. or at a keystroke */
+extern void scr (IV_EVENT *);
+
+#define STKSIZE  2000
+#define OK       0
+#define FALL_OUT 101
+
+#define NOT_FOUND         1
+#define ERROR_DISABLING   2
+#define ERROR_REMOVING    3
+#define ALREADY_INSTALLED 4
+
+             /* Definitive signature for this version of sched.*/
+#define ol_sign "screen 08/11/88"
+
+                /* Allocation of stack space for the intervention   */
+                /* scheduler and user function.                     */
+char schedstk [STKSIZE];
+
+                /* This is the data structure to pass to the        */
+                /* scheduler so that it will give control every     */
+                /* 37 clock ticks.                                     */
+IV_TIME timetab = {37, IV_TM_INTERVAL};
+
+IV_KEY keytab[3] = {
+                      KB_C_C_F3,KB_S_C_F3,IV_KY_SERVICE,
+                      KB_C_C_F1,KB_S_C_F1,IV_KY_SLEEP,
+                      KB_C_C_F2,KB_S_C_F2,IV_KY_WAKE
+                   };
+                /* Internal functions -- install & remove ISR.      */
+int install_iv (void);
+int remove_iv  (void);
+
+
+ /* here is the main program   */
+
+int main (argc, argv)
+int   argc;
+char *argv [];
+{
+    if (argc == 1)
+        exit (install_iv ());
+
+    if ((argc == 2)                                      &&
+        (((argv [1][0] == '-') || (argv [1][0] == '/')) &&
+         ((argv [1][1] == 'r') || (argv [1][1] == 'R'))))
+        exit (remove_iv ());
+    printf ("usage: screen [-r]\n");
+    exit (0);
+}
+
+/**
+*
+* Name          INSTALL_IV -- Install interrupt vectors for IVREADAD and
+*                             go TSR(terminate and stay resident).
+*
+* Synopsis      ret = install_iv ();
+*
+*               int ret         Return code from IVINSTAL if there was
+*                               a problem with installation of the
+*                               intervention code routine.
+*
+* Description   This function installs screen if another copy
+*               is not already installed.
+*
+* Returns       ret     ALREADY_INSTALLED (4)
+*                           A copy of screen is already installed.
+*                       FALL_OUT (101)
+*                           ISRESEXT() failed.
+*                       IV_INSTALLED (5)
+*                           A copy of screen is already installed.
+*
+**/
+
+#include <butil.h>
+
+int install_iv ()
+
+{
+    int          ercode;
+    IV_VECTORS   vecs;
+
+                /* Check to see if IVREADAD already installed.      */
+    ivvecs (IV_RETVEC, &vecs);
+    if (ivsense (&vecs, ol_sign) != FARNIL)
+    {
+        puts ("SCREEN already installed.");
+        return (ALREADY_INSTALLED);
+    }
+                /* Install the interrupt service routine--i.e. tell */
+                /* the scheduler about our sched routine.          */
+
+
+/* note: this routine ivinstam is an altered version of ivinstal, in which
+         all keyboard interrupts are accepted   */
+
+
+    if (0 !=( ercode =
+         ivinstam (scr, ol_sign, schedstk, STKSIZE,
+                   &keytab, 3 ,&timetab,
+                   sizeof(timetab) / sizeof(IV_TIME),
+                /* screen uses DOS support.     */
+                   IV_DOS_NEED)))
+        {       /* Error!                                           */
+            printf ("Install error %d.\n", ercode);
+            return (ercode);
+        }
+                /* Terminate and stay resident.                     */
+
+   puts("      ******************************");
+   puts("      *                            *");
+   puts("      * EGA Screen Saver Installed *");
+   puts("      *                            *");
+   puts("      *  autoerase every 3 minutes *");
+   puts("      ******************************");
+
+   isresext (OK);
+
+                /* Should never get here.                           */
+    return (FALL_OUT);
+}
+
+/**
+*
+* Name          REMOVE_IV -- Remove a previously-installed copy of screen
+*
+* Synopsis      ret = remove_iv ();
+*
+*               int ret         Return code.
+*                                 NO_ERROR  (0)-
+*                                     No error encountered.
+*                                 NOT_FOUND (1)-
+*                                     pgm not found.
+*                                 ERROR_DISABLING (2)-
+*                                     pgm  could not be disabled.
+*                                     This error should *never* be
+*                                     seen.
+*                                 ERROR_REMOVING (3)--
+*                                     pgm could not be removed
+*                                     (most likely overwritten MALLOC
+*                                     pointers).
+*
+* Description   This function removes a currently-active copy of screen
+*               from memory, cleaning up interrupt vectors and freeing
+*               memory in the process.
+*
+* Returns       ret (nonzero if error--see above).
+*
+**/
+
+int remove_iv ()
+{
+    IV_VECTORS   vecs;
+    IV_CTRL far *pivctrl;
+
+    ivvecs (IV_RETVEC, &vecs);
+    if ((pivctrl = ivsense (&vecs, ol_sign)) == FARNIL)
+    {
+        puts ("SCREEN not found.");
+        return (NOT_FOUND);
+    }
+
+    if (ivdisabl (pivctrl))
+    {
+        puts ("Error disabling SCREEN");
+        return (ERROR_DISABLING);
+    }
+
+    if (isremove (pivctrl->psp))
+    {
+        puts ("Error removing SCREEN");
+        return (ERROR_REMOVING);
+    }
+    puts ("SCREEN successfully removed");
+    return (0);
+}
+
+
+/*                     Pointer to intervention event
+*                                       structure.  The structure
+*                                       contains the current time of
+*                                       day (in timer ticks since
+*                                       midnight) as well as other
+*                                       data.
+*
+* Description   This function accepts control from the scheduler
+*               every  2 sec
+*
+*
+* Returns       None.
+*
+**/
+#include <binterv.h>
+#include <time.h>
+#include <bscreens.h>
+#define TRUE 1
+#define FALSE 0
+
+void scr (pevent)
+                   /* scr is the part of the program that does something */
+IV_EVENT *pevent;
+
+{
+
+     static long oldtime = {0};
+     long sec; /* the current time (in seconds since xx/yy/zz) */
+     static char scoff = {FALSE}; /*  flag indicating that the scr. is OFF*/
+     static int pmode,pc,actpag;
+     static int setpage;
+     int seconds_to_wait;
+
+     seconds_to_wait = 180;   /* set the number of seconds before the
+                                 screen resets here */
+     if (pevent->key.action  == IV_KY_SLEEP)
+            printf("IV_KY_SLEEP\n");
+
+     if (pevent->key.action  == IV_KY_WAKE)
+            printf("IV_KY_WAKE\n");
+
+     if (pevent->key.action  == IV_KY_NONE)
+
+        /* no key pressed  */
+        {
+        if(oldtime == 0) oldtime = time(&sec); /* initialization of oldtime */
+        if(( time(&sec) - oldtime > seconds_to_wait) && (scoff == FALSE))
+                 {
+/*  TIMED OUT! reset the screen */
+
+                  scmode(&pmode,&pc,&actpag); /* get mode and active page */
+                  if (pmode ==3)setpage = 3-actpag;
+                       else setpage = 1-actpag;  /* Basically handles only
+                          text and graphics mode for EGA.  Assume one page
+                          is blank.  This works for me 99+ % of the time */
+
+                  scapage(setpage);  /* shut off the screen  */
+                  scpgcur(1,0,0,CUR_ADJUST); /* shut off cursor */
+/* NOTE: for some reason, the cursor does NOT go off when  in Text mode.
+      I do not completely understand why not.   */
+
+                  scoff = TRUE; /* set software flag indicating condition */
+                 }
+
+         }
+        /* was a key pressed? */
+
+/*  NOTE: the Interrupt handler IVCNTRL was changed in the IVKEYBD section
+          so that all key strokes except CTL-F1 and CTL-F2 would bear
+          the IV_KY_SERVICE flag. New version is called IVCNTRLX.       */
+
+if (pevent->key.action  == IV_KY_SERVICE)
+        {
+          oldtime = time(&sec);   /* 1st, adjust the clock */
+           if( scoff == TRUE) /* is the screen turned off?  */
+           /* turn the screen back on */
+                {
+                scoff = FALSE;
+                scapage(actpag); /* restore page */
+                scpgcur(0,12,13,CUR_ADJUST); /* turn the cursor back on */
+                }
+        }
+}
+
+
+
+

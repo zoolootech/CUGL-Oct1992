@@ -1,0 +1,38 @@
+        PAGE ,132
+
+;  Figure 6
+;
+;  Determine if a printer is ready for use
+
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros, e.g.
+                                        ;MASM /Dmemodel=LARGE /Dlang=C
+
+        .CODE
+
+;
+;  Call with printer number (1-3)
+;  Returns 0 if not ready, 1 if ready, -1 if error
+;
+
+PrRdy   PROC    USES DX, lptno:WORD     ;lptno = 1, 2, or 3
+        mov     DX,lptno                ;Get printer number
+        dec     DX                      ;BIOS uses 0, 1, or 2
+        cmp     DX,2                    ;In range?
+        ja      err                     ;No, return error code
+        mov     AH,2                    ;Yes, call BIOS to get status
+        int     17h
+        and     AH,80h                  ;Printer ready?
+        mov     AX,0
+        jz      exit                    ;No, done
+        inc     AX                      ;Yes, return 1
+exit:
+        ret
+err:
+        mov     AX,-1
+        ret
+
+PrRdy   ENDP
+
+        end

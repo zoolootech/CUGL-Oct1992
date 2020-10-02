@@ -1,0 +1,1103 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                                   RMAXTask
+
+                   A Multitasking Environment for C and C++
+
+                                  Version 1.0
+
+                                      ---
+
+                              Copyright (c) 1991
+                            RMAX Development Group
+                         1033 East Coral Gables Drive
+                            Phoenix, Arizona 85022
+
+                                                               Page 1
+
+          TABLE OF CONTENTS
+          -----------------
+
+          LEGAL INFORMATION . . . . . . . . . . . . . . . . . . .  2
+
+          INTRODUCTION  . . . . . . . . . . . . . . . . . . . . .  3
+
+             What is RMAXTask?  . . . . . . . . . . . . . . . . .  3
+             What is Multitasking?  . . . . . . . . . . . . . . .  3
+             Why Do I Need Multitasking?  . . . . . . . . . . . .  4
+
+          RMAXTask TECHNICAL INFORMATION  . . . . . . . . . . . .  8
+
+             How Does RMAXTask Work?  . . . . . . . . . . . . . .  8
+             RMAXTask Function Overviews  . . . . . . . . . . . .  9
+
+          RMAXTask FUNCTION REFERENCE . . . . . . . . . . . . . . 12
+
+             check_mail() . . . . . . . . . . . . . . . . . . . . 12
+             check_sem()  . . . . . . . . . . . . . . . . . . . . 12
+             create_mailbox() . . . . . . . . . . . . . . . . . . 12
+             create_sem() . . . . . . . . . . . . . . . . . . . . 12
+             create_task(). . . . . . . . . . . . . . . . . . . . 13
+
+             fake_key() . . . . . . . . . . . . . . . . . . . . . 14
+             get_mail() . . . . . . . . . . . . . . . . . . . . . 14
+             get_status() . . . . . . . . . . . . . . . . . . . . 15
+             key_hit()  . . . . . . . . . . . . . . . . . . . . . 15
+             kill_task()  . . . . . . . . . . . . . . . . . . . . 15
+
+             RMAX_time()  . . . . . . . . . . . . . . . . . . . . 16
+             send_mail()  . . . . . . . . . . . . . . . . . . . . 16
+             signal_sem() . . . . . . . . . . . . . . . . . . . . 16
+             start_RMAXTask() . . . . . . . . . . . . . . . . . . 17
+             stop_RMAXTask()  . . . . . . . . . . . . . . . . . . 17
+
+             suspend()  . . . . . . . . . . . . . . . . . . . . . 17
+             wait_key() . . . . . . . . . . . . . . . . . . . . . 18
+             wait_sem() . . . . . . . . . . . . . . . . . . . . . 18
+             yield()  . . . . . . . . . . . . . . . . . . . . . . 19
+
+          RMAXTask QUESTIONS AND ANSWERS  . . . . . . . . . . . . 20
+
+          APPENDIX A - IBM PC EXTENDED KEYBOARD CODES . . . . . . 22
+
+          APPENDIX B - RMAXTask REVISION HISTORY  . . . . . . . . 24
+
+
+                                                               Page 2
+
+          LEGAL INFORMATION
+          -----------------
+
+          This is the RMAXTask multitasking library for C.  This
+          library is copyrighted, but you may use and distribute the
+          shareware version of the library under the following
+          conditions:
+
+          1.  By using the library, you agree that you do so at your
+              own risk, and to hold both RMAX Development Group and the
+              authors of these programs harmless from any liability for
+              loss or damage of any kind suffered by you arising from
+              your use of these programs.
+
+          2.  You may freely copy and distribute the shareware files,
+              provided that you distribute them all together in their
+              original form, without any changes, additions or
+              deletions.  No fee may be charged for distributing the
+              files, except that you may charge not more than a $10.00
+              disk copying fee for each physical copy you distribute.
+
+          3.  You may not create programs intended for sale using the
+              RMAXTask library unless you have registered your copy,
+              nor may you continue to use the shareware files for more
+              than 30 days after receiving them without registering.
+              Upon registration, you will receive the full source code
+              to the library, pre-compiled libraries for all the memory
+              models for both C and C++, and a license allowing
+              unrestricted use of the library routines in your own
+              programs.
+
+          To register your copy of RMAXTask, simply fill out the form
+          found in the file REGISTER.TXT and return it along with your
+          registration fee.
+
+
+                                                               Page 3
+
+          WHAT IS RMAXTask?
+          -----------------
+
+          RMAXTask is a library of C functions that lets you run one or
+          more C functions together in a priority-based, cooperative
+          (non-preemptive) multitasking environment.  RMAXTask
+          provides full support for intertask synchronization and
+          communication, timed delays, and access to the PC's keyboard.
+
+          RMAXTask provides a more capable scheduler and better
+          intertask communication than do simple round-robin task
+          switchers such as Wayne Conrad's MTASK or the system
+          described in the October, 1988 issue of "Computer Language"
+          magazine, while avoiding the complexity of a full-blown
+          interrupt-driven, preepmtive system like Thomas Wagner's
+          CTask.
+
+
+          WHAT IS MULTITASKING?
+          ---------------------
+
+          Multitasking is a way to divide a single program into several
+          distinct threads of execution called "tasks" which execute
+          concurrently under the control of a supervisory program
+          called a "scheduler".  The tasks are usually somewhat
+          independent of one another (although they can communicate
+          among themselves) and appear to execute all at once.  On a
+          single-CPU system, of course, only one task can be running at
+          any given instant, but the scheduler passes control to the
+          various tasks in a way that gives the illusion that they are
+          all running at the same time.
+
+          Multitasking as implemented by RMAXTask is not to be confused
+          with multiprogramming (as provided by Windows or an operating
+          system like QNX), in which multiple -programs- appear to run
+          at the same time, or with multiprocessing, which requires a
+          computer with more than one CPU.  When you use RMAXTask, you
+          compile and link all your tasks together into a single
+          program which appears (and is) to the operating system just
+          like any other program.
+
+
+          PREEMPTIVE VS. COOPERATIVE MULTITASKING
+          ---------------------------------------
+
+          In a "preemptive" multitasking system, the scheduler doles
+          out CPU time to the tasks in chunks called "time slices".
+          Each task is allowed to execute for a specific time period,
+          after which control is wrested from it by the timer interrupt
+          and given to some other task by the scheduler.  The advantage
+          of such a scheme is that tasks can be written with little or
+          no awareness of the multitasking system.  The downside,
+          however, is that it can be difficult to make sure that tasks
+                                                               Page 4
+
+          are not interrupted at inappropriate times.  As an example,
+          consider a task which has just made a DOS call to write to a
+          file.  If it is interrupted while it is within DOS and
+          control is then passed to a different task which also calls
+          DOS, havoc will reign shortly because DOS is not re-entrant.
+
+          In a "cooperative" multitasking environment, a task once
+          running continues to run until it explicitly relinquishes
+          control by making a call to the multitasking system.  As a
+          result, such tasks must be written so that they do in fact
+          give up the CPU appropriately.  Concern about being preempted
+          at a bad time is eliminated, however, because the tasks
+          surrender control voluntarily at times of their own choosing
+          rather than having the rug jerked from under them by an
+          interrupt.
+
+          RMAXTask implements cooperative multitasking.
+
+
+          WHY DO I NEED MULTITASKING?
+          ---------------------------
+
+          To see how multitasking can be useful, imagine that you are
+          designing an equipment monitoring program that is supposed to
+          do the following:
+
+          1.  Receive and act on user input from the keyboard.
+
+          2.  Periodically issue queries to several remote data-
+              gathering computers via the serial port.  Then wait for
+              the replies and process them.
+
+          3.  Whenever one of the remote computers reports a "bad
+              status" condition, record it at the end of an error log
+              file on the hard disk.
+
+          You decide to set up each of the program's three functions as
+          a separate subroutine and then call them in a round-robin
+          fashion from a main program that looks like this:
+
+          void main() {
+            initialize everything
+            for (;;) {                  /* Repeat forever */
+              service_keyboard();       /* Check on the human */
+              poll_remotes();           /* Check on remote computers */
+              log_status();             /* Keep status log current */
+              }                         /* End 'repeat forever' */
+            }                           /* End main() */
+
+          You then figure out the innards of the three subroutines and
+          begin to code the program, testing each piece as it's built.
+          You use a stub for poll_remotes() because the remote
+          computers are not yet ready for testing, and everything seems
+                                                               Page 5
+
+          to work pretty well.  You have service_keyboard() completely
+          debugged, and log_status() is successful at recording the
+          simulated "bad status" condition that is generated by your
+          poll_remotes() stub.  You even find time to debug the real
+          version of poll_remotes(), using a second PC to simulate the
+          action of one of the remote computers.
+
+          When the real remote computers are finally available, you
+          expect testing to go fairly smoothly as a result of all the
+          preliminary work you have done.  Soon into it, however, you
+          discover that the response to the keyboard is noticeably
+          sluggish.  The problem is that the real version of
+          poll_remotes() takes a lot longer to run than the stub did,
+          and service_keyboard() isn't being called frequently enough.
+          You try to fix the problem by adding a second call to
+          service_keybaord() in the main loop, like this:
+
+            for (;;) {                  /* Repeat forever */
+              service_keyboard();       /* Check on the human */
+              poll_remotes();           /* Check on remote computers */
+              service_keyboard();       /* Check on the human again */
+              log_status();             /* Keep status log current */
+              }                         /* End 'repeat forever' */
+
+          But that doesn't improve things enough and you find you have
+          to call service_keyboard() a couple of times from -within-
+          poll_remotes() to make the keyboard acceptably responsive.
+          This strikes you as a bit of a kludge, but at least it works.
+
+          The system is finally put into service and appears to run
+          well until one day after a storm the remote computers report
+          an unusually large number of "bad status" conditions.
+          log_status() is now running for an unusually long time.
+          Respone at the keyboard is again sluggish and you find you
+          have to add a call to service_keyboard() inside of
+          log_status() to straighten things out again.
+
+          Everything works fine after that, but you have a nagging
+          feeling that it could have been done better.  It somehow
+          bothers you to have calls to service_keyboard() stuffed away
+          in every corner of the program.  You also realize that
+          logging the errors to the disk doesn't have to happen
+          immediately when they're discovered and you wonder how you
+          might set it up so log_status() only operates when there's
+          nothing more important going on.
+
+
+          THERE IS A BETTER WAY
+          ---------------------
+
+          The solution to these problems is to write each of the three
+          subroutines as independent tasks and then let them operate
+          concurrently in a multitasking environment such as that
+                                                               Page 6
+
+          provided by RMAXTask.  Let's look at how each task would be
+          organized, starting with the task that handles the user
+          interface:
+
+          The Keyboard Task
+          -----------------
+
+          void keyboard_task() {
+            for (;;) {                  /* Repeat forever */
+              wait_key();               /* Wait for next keystroke */
+              /* Process keystroke here */
+              }                         /* End 'repeat forever' */
+            }                           /* End keyboard_task() */
+
+          This task would be created as a high priority task, meaning
+          that it would be run first if other tasks of lower priority
+          were also waiting to use the CPU.  As shown, the task is
+          written as a never-ending loop that repeatedly waits for
+          input from the keyboard and then processes it one keystroke
+          at a time.  Note here that wait_key() is a function provided
+          by the multitasking system that suspends the calling task
+          until the next time a key is pressed.  Thus, when wait_key()
+          is called, keyboard_task() is suspended and other tasks are
+          allowed to execute until the next key is pressed.  At that
+          time, keyboard_task() competes again with the other tasks for
+          the CPU and it will always win since it has higher priority
+          than the other tasks.  The net effect is that keyboard_task()
+          is suspended most of the time within wait_key(), but that it
+          processes the individual keystrokes very quickly as they are
+          received.
+
+          The Polling Task
+          ----------------
+
+          The task that polls the remote computers would be given a
+          lower priority than keyboard_task(), but a higher priority
+          than the task that does the status logging.  It might look
+          something like this:
+
+          void polling_task() {
+            for (;;) {                    /* Repeat forever */
+              for each remote {           /* Do each remote computer */
+                suspend(POLL_INTERVAL);   /* Wait until time to poll */
+                send_query();             /* Send query to remote */
+                while (no_response_yet()) /* Wait for response to */
+                  yield();                /*  come back */
+                process_response();       /* Process the response */
+                if (bad_status())         /* Signal errors to the */
+                  notify_logging_task();  /* logging task */
+                }                         /* End 'for each remote' */
+              }                           /* End 'repeat forever' */
+            }                             /* End polling_task() */
+
+                                                               Page 7
+
+          Here, suspend() and yield() are functions provided by the
+          multitasking system.  suspend() suspends the calling task for
+          a specified time period during which other tasks are allowed
+          to run.  yield() relinquishes control momentarily to give
+          tasks with higher priority a chance to run, but returns
+          immediately if there are no such tasks.
+
+          As shown, polling_task() polls each remote computer in turn,
+          at regular time intervals established by the suspend() call.
+          Between polls, suspend() allows other tasks, regardless of
+          the priority to run.  When it is time to poll, polling_task()
+          sends a query to the remote device and then yields to
+          higher-priority tasks while it is waiting for the response.
+          When the response is received, polling_task() processes it
+          and sends a message to the status logging task if the status
+          was bad.  Messages are sent from one task to another using a
+          mechanism called a "mailbox" which is provided as part of the
+          multitasking system.
+
+          The Status Logging Task
+          -----------------------
+          
+          Since there's no particular hurry about updating the bad
+          status log, the status logging task is given a low priority
+          so that it does not inhibit the operation of either of the
+          other tasks.
+
+          void log_status() {
+            for (;;) {                  /* Repeat forever
+              await message from poller /* Wait for bad news */
+              append record to file     /* Write it on the log file */
+              }                         /* End 'repeat forever' */
+            }                           /* End log status */
+
+          Here, "await message from poller" is implemented by a call to
+          the get_mail() function of the multitasking system, which
+          waits for a message to appear at the mailbox to which the
+          polling task is sending bad status information.  Higher
+          priority tasks are allowed to run if they want to each time
+          this function is called, so even when there is work for
+          log_status() to do, it only gets to run if no higher priority
+          tasks are ready to run.
+
+          By now you should have a feel for the kinds of problems that
+          RMAXTask can solve, and a rough idea for how tasks are
+          written and how they fit together.  The next sections tell
+          just a little about the internal workings of RMAXTask and
+          then give detailed explanations of each of the RMAXTask
+          function calls.
+                                                               Page 8
+
+          HOW DOES RMAXTask WORK?
+          -----------------------
+
+          As shown in the example above, RMAXTask tasks are written as
+          independent C functions which are linked together with
+          functions from the RMAXTask library (and possibly other
+          libraries) to form the complete application.  The tasks are
+          rarely (if ever) called explicitly by user-written code.
+          Instead, each task is identified to the RMAXTask scheduler,
+          usually when the application is first started, by a call to
+          create_task().  From then on, the scheduler takes care of
+          placing the tasks into execution, based on events within the
+          application and upon the tasks' relative priorities.
+
+          A key concept in understanding how the scheduler works is
+          that of a task's "state".  At any instant, each task is in
+          exactly one of the following states:
+
+          RUNNING       The RUNNING task is the one currently
+                        executing.  There can obviously be only one
+                        RUNNING task, since there is only one CPU.
+                        
+          READY         READY tasks are those which are not currently
+                        blocked from execution waiting for some
+                        external event.  At each scheduling period, the
+                        READY task with the highest priority is made
+                        the RUNNING task and is placed into execution.
+                        If several READY tasks all have the same
+                        priority, they will run in a round-robin
+                        fashion.
+
+          SLEEPING      SLEEPING tasks are those blocked from execution
+                        until some specified future time.  SLEEPING
+                        tasks are made READY when the specified time
+                        arrives.
+
+          WAITING       WAITING tasks are those waiting for some
+                        event to occur, such as a message from another
+                        task, availability of a character from the
+                        keyboard, or some interrupt or other.  WAITING
+                        tasks may also have a timeout associated with
+                        them, in which case they will wait only for a
+                        specified time before being made READY again.
+
+          When a task is first created, it is placed in the READY
+          state, and it will begin to execute as soon as all other
+          higher-priority tasks become blocked (either SLEEPING or
+          WAITING).  It will continue to run until it actively
+          relinquishes control, either explicitly by a call to yield()
+          or suspend(), or implicitly by a call to one of the other
+          RMAXTask functions.
+                                                               Page 9
+
+          RMAXTask FUNCTION OVERVIEWS
+          ---------------------------
+
+          This section gives a brief functional description of each RMAXTask
+          call, and is organized with related functions grouped
+          together.  The next section gives very detailed information
+          about each call, and is arranged alphabetically by function
+          name.
+
+          Overhead Functions
+          ------------------
+          
+                start_RMAXTask() - Initializes the RMAXTask software.
+                                   This function must be called before
+                                   any other RMAXTask functions are
+                                   used.
+
+                stop_RMAXTask()  - Cleans up after the RMAXTask
+                                   software.  Should be called before
+                                   the application returns to DOS.
+
+          Task Manipulation
+          -----------------
+          
+                create_task()    - Establishes a specified C function
+                                   as an RMAXTask task and makes it
+                                   READY.
+
+                kill_task()      - Kills a specified task.
+
+                yield()          - Makes the calling task READY and
+                                   then invokes the scheduler.  Use of
+                                   this call is the key to the
+                                   "cooperative" nature of RMAXTask
+                                   scheduling.  If a task plans to run
+                                   for a long time without either
+                                   waiting for an event or going to
+                                   sleep, it should call yield
+                                   periodically to give tasks with
+                                   higher priority a chance to use the
+                                   CPU.
+
+                suspend()        - Suspends execution of the calling
+                                   task for a specified time.
+                                                               Page 10
+
+          Mailbox Functions
+          -----------------
+
+          Tasks can send messages of unspecified format to each other
+          using mailboxes.  Mailboxes provide a FIFO queue of messages
+          which is initially empty.  Messages sent to a mailbox are
+          simply added to the queue, while tasks reading from the
+          mailbox wait until a message is present and get the oldest
+          such message.
+
+                create_mailbox() - Creates a mailbox.
+
+                send_mail()      - Sends a message to a mailbox.
+
+                get_mail()       - Waits until a message is present at
+                                   a mailbox, and returns it to the
+                                   caller.  A timeout may be specified.
+                
+                check_mail()     - Checks if a mailbox contains
+                                   anything or not.
+
+
+          Semaphore Functions
+          -------------------
+
+          Tasks can synchronize with each other for resource sharing
+          and so on using semaphores.  Once created, each semaphore
+          maintains a count.  Tasks signalling the semaphore increase
+          the count by one, and whenever a task waiting at the
+          semaphore is made READY, the count is decreased by one.  The
+          count can be initialized to any desired value when the
+          semaphore is created.
+
+                create_sem()     - Creates a semaphore.
+
+                signal_sem()     - Signals a semaphore.
+
+                wait_sem()       - Waits for a semaphore.  A timeout
+                                   may be specified.
+
+                check_sem()      - Returns the value of a semaphore's
+                                   count.
+
+
+          Keyboard Interface Functions
+          ----------------------------
+
+                wait_key()       - Waits for a key from the keyboard.
+                                   Returns its value, or TIMEOUT if we
+                                   wait too long.
+
+                key_hit()        - Tells if a keystroke is available
+                                   from wait_key() or not.
+                                                               Page 11
+          
+                fake_key()       - Causes a task suspended in
+                                   wait_key() to receive a specified
+                                   character, just as though it had
+                                   been typed at the keyboard.
+
+          Miscellaneous Functions
+          -----------------------
+
+                get_status()     - Returns the termination status
+                                   (either TIMEOUT or OKAY) of the most
+                                   recent call to suspend(),
+                                   get_mail(), wait_key(), or
+                                   wait_sem().
+
+                 RMAX_time()     - Returns the value of a counter that
+                                   is initialized to zero when the
+                                   program first starts and is
+                                   incremented 18.2 times per second
+                                   forever thereafter.
+                                                               Page 12
+          
+          RMAXTask FUNCTION REFERENCE
+          ---------------------------
+
+          -------------------------------------------------------------
+          check_mail()
+          -------------------------------------------------------------
+          Syntax:       int check_mail(TDESC *mb_ptr);
+
+          Description:  Tells whether or not there is mail waiting to
+                        be received at the mailbox pointed to by
+                        'mb_ptr'.
+
+          Returns:      1 if there is mail waiting at 'mailbox', or 0
+                        otherwise.
+
+          See also:     create_mailbox, send_mail, get_mail
+
+
+          -------------------------------------------------------------
+          check_sem()
+          -------------------------------------------------------------
+          Syntax:       int check_sem(TDESC *sem_ptr);
+
+          Description:  Returns the count associated with the semaphore
+                        pointed to by 'sem_ptr'.
+
+          See also:     create_sem, signal_sem, wait_sem
+
+
+          -------------------------------------------------------------
+          create_mailbox()
+          -------------------------------------------------------------
+          Syntax:       TDESC *create_mailbox(void);
+
+          Description:  Creates a mailbox.
+
+          Returns:      A pointer to the new mailbox if successful, or
+                        NULL otherwise.
+
+          See also:     send_mail, get_mail, check_mail
+
+
+          -------------------------------------------------------------
+          create_sem()
+          -------------------------------------------------------------
+          Syntax:       TDESC *create_sem(int initial_count);
+
+          Description:  Creates a semaphore and sets its count to
+                        'initial count'.
+
+          Returns:      A pointer to the new semaphore if successful,
+                        or NULL otherwise.
+
+          See also:     signal_sem, wait_sem, check_sem
+                                                               Page 13
+
+          -------------------------------------------------------------
+          create_task()
+          -------------------------------------------------------------
+          Syntax:       TDESC *create_task(char *name, void (*fn)(),
+                                           unsigned priority, unsigned
+                                           stack_size);
+
+          Description:  Sets up 'fn' as an RMAXTask task and places it
+                        in the READY state.  The task is given a
+                        priority of 'priority' and 'stack_size' bytes
+                        are reserved for its stack.  'name' is a text
+                        string that is stored as part of the task's
+                        descriptor for debugging purposes only.
+
+                        'priority' can be any number from 0 (the lowest
+                        priority) to 0xFFFF (the highest priority).
+                        However, it probably never makes sense to give
+                        a task within the application a priority higher
+                        than 0xF000, which is the fixed priority of
+                        RMAXTask's internal timer task.  The symbol
+                        STANDARD_PRIORITY is defined in RMAXTASK.H at
+                        100.
+
+                        The stack size appropriate for a given task
+                        depends on how many automatic variables are
+                        declared by it and its callees, as well as the
+                        depth to which function calls are made.  The
+                        symbol STANDARD_STACK is set in RMAXTASK.H at
+                        2000, and that is a more-than-generous size for
+                        most tasks.  
+
+                        You should try increasing the stack size for
+                        tasks which exhibit errant behavior for no
+                        apparent reason.  On the other hand, if you're
+                        short on memory you may want to decrease the
+                        stack size until the task is observed to
+                        misbehave to see just how much it's really
+                        using.  You can also inspect the tasks' stacks
+                        using a debugger to see how much of the
+                        allocated space has been used, and then set the
+                        requested stack sizes accordingly.
+
+                        Note that Borland's floating point emulator
+                        uses about 500 bytes at the bottom of the stack
+                        to store the state of the simulated 80x87, and
+                        so if your program uses EMU.LIB, the task
+                        stacks need to be that much larger than they
+                        otherwise would be.
+                        
+          Returns:      A pointer to the tasks's internal descriptor if
+                        the task was created successfully, and NULL
+                        otherwise.
+                                                               Page 14
+
+          -------------------------------------------------------------
+          fake_key()
+          -------------------------------------------------------------
+          Syntax:       void fake_key(int key);
+
+          Description:  Causes a task suspended in wait_key() to
+                        receive the character 'key', just as though it
+                        had been typed at the keyboard.
+
+          See also:     wait_key, key_hit
+
+
+          -------------------------------------------------------------
+          get_mail()
+          -------------------------------------------------------------
+          Syntax:       void get_mail(void *msg, unsigned *msg_size,
+                                      TDESC *mailbox, long timeout,
+                                      int reverse);
+
+          Description:  Causes the calling task to wait to receive a
+                        message at 'mailbox'.  When a message becomes
+                        available, it is copied into the memory at
+                        'msg', and its size is placed in '*msg_size'.
+                        If 'timeout' is specified as 0, get_mail() will
+                        wait forever for a message.  If a non-zero
+                        'timeout' value is given, get_mail() will
+                        return after that many 18.2 Hz BIOS clock ticks
+                        even if no message is received.  After
+                        get_mail() returns, the calling task can call
+                        get_status() to determine whether a message was
+                        received or the timeout period expired.
+
+                        Tasks waiting for mail at a mailbox are placed
+                        in a FIFO queue, and the 'reverse' parameter
+                        specifies whether the caller of get_mail() will
+                        be placed at the head or the tail of the queue.
+                        If reverse is '0' (as it should be normally),
+                        the task will be placed at the tail of the
+                        queue and will have to wait there until all
+                        other waiting tasks have received their
+                        messages.  If reverse is '1', the calling task
+                        will be placed at the head of the queue and
+                        will receive the next message sent to
+                        'mailbox'.
+
+          See also:     create_mailbox, send_mail, check_mail,
+                        get_status
+                                                               Page 15
+          
+          -------------------------------------------------------------
+          get_status()
+          -------------------------------------------------------------
+          Syntax:       int get_status(void);
+
+          Description:  Returns the termination status of the most
+                        recent call to suspend(), get_mail(),
+                        wait_key(), or wait_sem().
+
+          Returns:      OKAY if the function terminated normally, or
+                        TIMEOUT if it timed out before the awaited
+                        event occurred.  (get_status() always returns
+                        TIMEOUT following a call to suspend().)
+
+          See also:     suspend, get_mail, wait_key, wait_sem
+
+
+          -------------------------------------------------------------
+          key_hit()
+          -------------------------------------------------------------
+          Syntax:       int key_hit(void);
+
+          Description:  Tells if a keystroke is available from
+                        wait_key() or not.  Use the function in place
+                        of the equivalent function from your compiler's
+                        library if you are using wait_key() to get
+                        keybord characters.
+
+          Returns:      1 if a keystroke is available from wait_key(),
+                        and 0 otherwise.
+
+          See also:     wait_key, fake_key
+
+
+          -------------------------------------------------------------
+          kill_task()
+          -------------------------------------------------------------
+          Syntax:       void kill_task(TDESC *victim);
+
+          Description:  Renders 'victim' effectively dead by removing
+                        it from the RMAXTask's task lists and freeing
+                        its internal descriptor and stack space.
+                        'victim' is the pointer returned by create_task
+                        when the task was created.
+
+                        WARNING: kill_task() must be used with extreme
+                        care to avoid killing tasks that have open
+                        files, dynamic memory allocated that has not
+                        yet been free()'d, or any other loose ends that
+                        need tying off.
+
+          See also:     create_task
+                                                               Page 16
+
+          -------------------------------------------------------------
+          RMAX_time()
+          -------------------------------------------------------------
+          Syntax:       long RMAX_time(void);
+
+          Description:  Returns the value of a 32-bit counter that is
+                        initialized to zero when the program first
+                        starts and is incremented 18.2 times per second
+                        forever thereafter.  This counter is sometimes
+                        more useful than the counter maintained by the
+                        BIOS because it doesn't wrap around at
+                        midnight.
+
+
+          -------------------------------------------------------------
+          send_mail()
+          -------------------------------------------------------------
+          Syntax:       int send_mail(void *msg, unsigned size,
+                                      TDESC *mailbox);
+
+          Description:  Sends the 'size' bytes starting at 'msg' as a
+                        message to '*mailbox'.
+
+          Returns:      1 if the function is successful, or 0 if there
+                        is an error.  
+
+          See also:     create_mailbox, get_mail, check_mail
+
+
+          -------------------------------------------------------------
+          signal_sem()
+          -------------------------------------------------------------
+          Syntax:       void signal_sem(TDESC *semaphore);
+        
+          Description:  Sends a signal to '*semaphore'.
+
+          See also:     create_sem, wait_sem, check_sem
+                                                               Page 17
+          
+          -------------------------------------------------------------
+          start_RMAXTask()
+          -------------------------------------------------------------
+          Syntax:       int start_RMAXTask(void);
+
+          Description:  Initializes the RMAXTask multitasking system.
+                        This function must be called before any other
+                        RMAXTask functions are used.  WARNING: after
+                        start_RMAXTask() is called, the program must
+                        call stop_RMAXTask() before it returns to DOS
+                        in order to unhook interrupts and free memory
+                        used by RMAXTask().
+
+          Returns:      1 if the function is successful, and 0
+                        otherwise.
+
+          See also:     stop_RMAXTask
+
+
+          -------------------------------------------------------------
+          stop_RMAXTask()
+          -------------------------------------------------------------
+          Syntax:       void stop_RMAXTask(void);
+
+          Description:  Unhooks interrupts and frees memory used by the
+                        RMAXTask software.  Must be called before
+                        returning to DOS from a program that has called
+                        start_RMAXTask().
+
+          See also:     start_RMAXTask()
+
+
+          -------------------------------------------------------------
+          suspend()
+          -------------------------------------------------------------
+          Syntax:       void suspend(long ticks);
+
+          Description:  Suspends execution of the calling task for
+                        'ticks' counts of the 18.2 Hz BIOS clock and
+                        allows other tasks to run during that time.
+
+          See also:     yield
+                                                               Page 18
+
+          -------------------------------------------------------------
+          wait_key()
+          -------------------------------------------------------------
+          Syntax:       int wait_key(long timeout);
+
+          Description:  Causes the calling task to wait for the next
+                        keystroke from the keyboard.  If 'timeout' is
+                        specified as 0, wait_key() will wait forever
+                        for a keystroke.  If a non-zero 'timeout' value
+                        is given, wait_key() will return after that
+                        many 18.2 Hz BIOS clock ticks even if no key
+                        has been pressed.  After wait_key() returns,
+                        the calling task can call get_status() to
+                        determine whether a keystroke was received or
+                        the timeout period expired.
+
+          Returns:      The extended keyboard code for the key pressed.
+                        The extended keyboard codes are listed in
+                        Appendix A of this document.  For keystrokes
+                        which correspond to a standard ASCII character,
+                        the ASCII code appears in the least-significant
+                        byte of the extended keyboard code returned by
+                        wait_key().
+
+          See also:     key_hit, fake_key, Appendix A
+
+
+          -------------------------------------------------------------
+          wait_sem()
+          -------------------------------------------------------------
+          Syntax:       void wait_sem(TDESC *semaphore, long timeout);
+
+          Description:  Causes the calling task to wait for a signal at
+                        '*semaphore'.  If 'timeout' is specified as 0,
+                        wait_sem() will wait forever.  If a non-zero
+                        'timeout' value is given, wait_sem() will
+                        return after that many 18.2 Hz BIOS clock ticks
+                        even if the semaphore is not signalled.  After
+                        wait_sem() returns, the calling task can call
+                        get_status() to determine whether a semaphore
+                        signal was received or the timeout period
+                        expired.
+
+          See also:     create_sem, check_sem, signal_sem, get_status
+                                                               Page 19
+          
+          -------------------------------------------------------------
+          yield()
+          -------------------------------------------------------------
+          Syntax:       void yield(void);
+
+          Description:  Makes the calling task READY and then invokes
+                        the scheduler.  Use of this call is the key to
+                        the "cooperative" nature of RMAXTask
+                        scheduling.  If a task plans to run for a long
+                        time without either waiting for an event or
+                        suspending itself, it should call yield()
+                        periodically to give other tasks with higher
+                        priority a chance to use the CPU.
+
+          See also:     suspend
+                                                               Page 20
+          
+          RMAXTask QUESTIONS AND ANSWERS
+          ------------------------------
+
+      Q.  How can I contact the author of RMAXTask?
+
+      A.  You can write to 
+
+              RMAX Development Group
+              1033 East Coral Gables Drive
+              Phoenix, Arizona 85022-3750.
+
+          You can also leave electronic mail for Russ Cooper on the
+          Chandler C Connection BBS at (602) 759-7789.
+
+
+      Q.  Will RMAXTask work with programs that use the CXL windowing
+          library?
+          
+      A.  Yes.  If you modify the CXL function getxch() to access the
+          keyboard through the RMAXTask routines wait_key() and
+          key_hit() instead of through the BIOS routines, RMAXTask and
+          CXL work perfectly together.  
+
+
+      Q.  Can I write C++ programs that use RMAXTask?
+
+      A.  Yes.  However, since the library on the shareware
+          distribution disk was compiled with a C compiler, it does not
+          contain C++ mangled names, and you will have to use the
+          extern "C" declaration to inform your C++ compiler not to
+          mangle the names of the RMAXTask functions.  This is most
+          easily done as follows at the point your program #includes
+          RMAXTASK.H:
+
+              extern "C" {
+              #include  "rmaxtask.h"
+              };
+
+          When you register RMAXTask, you will receive libraries
+          compiled both with and without mangled names.  Then this
+          problem disappears and you will also gain the benefit of the
+          additional type checking that C++ provides.
+
+
+      Q.  My parents don't understand me.  What should I do?
+
+      A.  Show them this documentation.  They won't understand it,
+          either, and then at least you won't be alone.
+
+
+      Q.  Why doesn't RMAXTask support the mouse in the same way it
+          supports the keyboard?
+
+      A.  Mouse support is planned for a future version of RMAXTask.
+                                                               Page 21
+
+      Q.  What good is RMAX_time()?  Why not just use the BIOS timer
+          functions?
+
+      A.  RMAX_time() is simpler to use than the BIOS timer because the
+          internal counter referenced by RMAX_time() doesn't get reset
+          to zero every night at midnight.
+
+
+      Q.  Does RMAXTask "hook" any interrupts?
+
+      A.  Yes.  RMAXTask uses the timer tick interrupt 1CH to establish
+          all its internal timing.  Your program should only use
+          interrupt 1CH with the greatest of care to make sure that the
+          RMAXTask timer tick handler still gets called and that the
+          interrupt vector itself contains an appropriate value when
+          your program terminates.  (Probably the easiest way to do
+          this would be to add your code to the Int 1CH handler already
+          supplied as part of RMAXTask.)
+
+
+      Q.  I can't get RMAXTask to work using the Small memory model.
+          What am I doing wrong?
+
+      A.  Nothing.  Because of the way RMAXTask allocates stack space
+          for the tasks, it can only be used with the Compact, Large,
+          and Huge memory models.
+                                                               Page 22
+
+          APPENDIX A - IBM PC EXTENDED KEYBOARD CODES
+          -------------------------------------------
+          
+           Key         Normal        Shift          Control        Alt
+          -------------------------------------------------------------
+           '           2827          2822           N/A            N/A
+           ,           332C          333C           N/A            N/A
+           -           0C2D          0C5F           0C1F           8200
+           .           342E          343E           N/A            N/A
+           /           352F          353F           N/A            N/A
+           0           0B30          0B29           N/A            8100
+           1           0231          0221           N/A            7800
+           2           0332          0340           0300           7900
+           3           0433          0423           N/A            7A00
+           4           0534          0524           N/A            7B00
+           5           0635          0625           N/A            7C00
+           5           N/A           4C35           N/A            N/A
+           6           0736          075E           071E           7D00
+           7           0837          0826           N/A            7E00
+           8           0938          092A           N/A            7F00
+           9           0A39          0A28           N/A            8000
+           ;           273B          273A           N/A            N/A
+           =           0D3D          0D2B           N/A            8300
+           A           1E61          1E41           1E01           1E00
+           B           3062          3042           3002           3000
+           C           2E63          2E43           2E03           2E00
+           D           2064          2044           2004           2000
+           E           1265          1245           1205           1200
+           F           2166          2146           2106           2100
+           G           2267          2247           2207           2200
+           H           2368          2348           2308           2300
+           I           1769          1749           1709           1700
+           J           246A          244A           240A           2400
+           K           256B          254B           250B           2500
+           L           266C          264C           260C           2600
+           M           326D          324D           320D           3200
+           N           316E          314E           310E           3100
+           O           186F          184F           180F           1800
+           P           1970          1950           1910           1900
+           Q           1071          1051           1011           1000
+           R           1372          1352           1312           1300
+           S           1F73          1F53           1F13           1F00
+           T           1474          1454           1414           1400
+           U           1675          1655           1615           1600
+           V           2F76          2F56           2F16           2F00
+           W           1177          1157           1117           1100
+           X           2D78          2D58           2D18           2D00
+           Y           1579          1559           1519           1500
+           Z           2C7A          2C5A           2C1A           2C00
+           [           1A5B          1A7B           1A1B           N/A
+           \           2B5C          2B7C           2B1C           N/A
+           ]           1B5D          1B7D           1B1D           N/A
+           `           2960          297E           N/A            N/A
+                                                               Page 23
+
+           Key         Normal        Shift          Control        Alt
+          -------------------------------------------------------------
+           BkSpc       0E08          0E08           0E7F           N/A
+           Del         5300          532E           N/A            N/A
+           DownArrow   5000          5032           N/A            N/A
+           End         4F00          4F31           7500           N/A
+           Enter       1C0D          1C0D           1C0A           N/A
+           Esc         011B          011B           011B           N/A
+           Grey +      4E2B          4E2B           N/A            N/A
+           Grey -      4A2D          4A2D           N/A            N/A
+           Home        4700          4737           7700           N/A
+           Ins         5200          5230           N/A            N/A
+           LeftArrow   4B00          4B34           7300           N/A
+           PgDn        5100          5133           7600           N/A
+           PgUp        4900          4939           8400           N/A
+           PrtSc       372A          N/A            7200           N/A
+           RightArrow  4D00          4D36           7400           N/A
+           Spacebar    3920          3920           3920           3920
+           Tab         0F09          0F00           N/A            N/A
+           UpArrow     4800          4838           N/A            N/A
+           F1          3B00          5400           5E00           6800
+           F10         4400          5D00           6700           7100
+           F2          3C00          5500           5F00           6900
+           F3          3D00          5600           6000           6A00
+           F4          3E00          5700           6100           6B00
+           F5          3F00          5800           6200           6C00
+           F6          4000          5900           6300           6D00
+           F7          4100          5A00           6400           6E00
+           F8          4200          5B00           6500           6F00
+           F9          4300          5C00           6600           7000
+                                                               Page 24
+
+          APPENDIX B - RMAXTask REVISION HISTORY
+          --------------------------------------
+
+          Version 1.0 - 12 DEC 91 - Original shareware release

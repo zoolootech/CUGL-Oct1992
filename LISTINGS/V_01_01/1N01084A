@@ -1,0 +1,139 @@
+/*
+    Module:     PtrDebug
+    Version:    1.00
+
+    Language:   ANSI C
+    Environ:    Any
+
+    Purpose:    Provides debug replacements for the standard
+                dynamic memory allocation functions.
+
+    Written by: Scott Robert Ladd
+*/
+
+#define NO_PTRDEBUG_DEF
+
+#include "limits.h"
+#include "ptrdebug.h"
+#include "stdlib.h"
+#include "stdio.h"
+#include "string.h"
+
+typedef enum {PE_NoAlloc,     PE_ReallocNull, PE_ArrayTooBig,
+              PE_FreeTooMany, PE_FreeNull}    PTR_ERROR;
+
+static unsigned long alloc_count = 0;
+
+static void dbg_ptr_err(PTR_ERROR err, char * file, int line);
+
+void * dbg_malloc(size_t len, char * file, int line)
+    {
+    void * result = malloc(len);
+
+    if (result == NULL)
+        dbg_ptr_err(PE_NoAlloc,file,line);
+    else
+        ++alloc_count;
+
+    return result;
+    }
+
+void * dbg_calloc(size_t num, size_t len, char * file, int line)
+    {
+    unsigned long total_len = num * len;
+
+    if (total_len > UINT_MAX)
+        {
+        dbg_ptr_err(PE_ArrayTooBig,file,line);
+        return NULL;
+        }
+
+    return dbg_malloc((size_t)total_len, file, line);
+    }
+
+void * dbg_realloc(void * ptr, size_t len, char * file, int line)
+    {
+    void * result;
+
+    if (ptr == NULL)
+        {
+        dbg_ptr_err(PE_ReallocNull,file,line);
+        return NULL;
+        }
+
+    result = dbg_malloc(len, file, line);
+
+    if (result != NULL)
+        {
+        memcpy(result,ptr,len);
+        ++alloc_count;
+        dbg_free(ptr);
+        }
+
+    return result;
+    }
+
+void dbg_free(void ** ptr, char * file, int line)
+    {
+    if (*ptr == NULL)
+        {
+        dbg_ptr_err(PE_FreeNull,file,line);
+        return;
+        }
+
+    if (alloc_count == 0)
+        {
+        dbg_ptr_err(PE_FreeTooMany,file,line);
+        return;
+        }
+
+    --alloc_count;
+
+    free(*ptr);
+
+    *ptr = NULL;
+    }
+
+char * dbg_strdup(char * str, char * file, int line)
+    {
+    char * result;
+
+    if (str == NULL)
+        {
+        dbg_ptr_err(PE_FreeNull,file,line);
+        return NULL;
+        }
+
+    result = dbg_malloc(strlen(str) + 1, file, line);
+
+    if (result != NULL)
+        strcpy(result,str);
+
+    return result;
+    }
+
+static void dbg_ptr_err(PTR_ERROR err, char * file, int line)
+    {
+    printf("\aPointer Error in %s @ %d: ",file,line);
+
+    switch (err)
+        {
+        case PE_NoAlloc:
+            puts("memory not allocated");
+            break;
+        case PE_ReallocNull:
+            puts("attempt to reallocate NULL pointer");
+            break;
+        case PE_ArrayTooBig:
+            puts("calloc array too big");
+            break;
+        case PE_FreeTooMany:
+            puts("attempted to free more pointers than allocated");
+            break;
+        case PE_FreeNull:
+            puts("attempted to free NULL pointer");
+            break;
+        default:
+            puts("unknown");
+        }
+    }

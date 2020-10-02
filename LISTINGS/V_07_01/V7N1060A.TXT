@@ -1,0 +1,269 @@
+/*
+ * dirret.c	MS-DOS and Unix portable directory builder.
+ *
+ *		Routines:
+ *
+ *		struct dir_retrieve_t *
+ *		dir_retrieve( path, dir_entries );
+ *
+ *		void
+ *		dir_free( dir_ptr );
+ *
+ *		usage:	dir_retrieve( "/usr/include", &count );
+ *
+ *		Possible errno:	ENOENT, ENOTDIR and ENOMEM
+ *
+ * (c) Copyright 1988 Aspen Scientific
+ * All Rights Reserved.
+ */
+#include <stdio.h>
+#include <malloc.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include "dirret.h"	/* the dir header file */
+
+#ifdef A_MSDOS
+# include <dos.h>	/* MSC 5.0 include for reading directories */
+static struct find_t find_buf;
+#endif
+
+#ifdef A_UNIX
+/* sys/dir.h: incl by dirret.h: Unix Sys 5 include for reading directories */
+static struct direct find_buf;
+#endif
+
+/* helper routines and data
+ */
+#ifdef A_ANSI
+
+static int	dir_prep( char * );
+static int	dir_next( char *, struct dir_retrieve_t *, int * );
+
+#else
+
+static int	dir_prep();
+static int	dir_next();
+
+#endif
+
+static int	dir_fdesc;		/* for Unix, hold file descriptor */
+static char *	dir_stat;		/* used to stat() the entry name */
+extern int	strcmp();		/* for qsort() */
+extern int	errno;			/* for reporting errors */
+
+/* dir_retrieve builds a sorted directory listing of the directory
+ *		referenced by path.  a pointer to an array of structs
+ *		of file name strings is returned.  the list end is marked
+ *		by a NULL byte in the first element of the name.
+ */
+
+struct dir_retrieve_t *
+dir_retrieve( path, dir_entries )
+char *path;
+int *dir_entries;
+{
+	register int slots=ALLOC_UNIT, cnt=0, nm=0;
+	struct dir_retrieve_t *dir = (struct dir_retrieve_t *)0, *tmp;
+	int dir_hold=1;			/* for MS-DOS, hold find first */
+
+	/* prepare the directory for reading.
+	 * if return zero, the prep failed.
+	 */
+	if (!dir_prep( path ))
+		return ( dir );
+
+	/* start with minimum allocation
+	 */
+	if (!(dir = (struct dir_retrieve_t *)malloc(
+		(slots * sizeof ( struct dir_retrieve_t ))))) {
+
+		errno = ENOMEM;
+		return ( 0 );
+	}
+
+	while ( 1 ) {
+
+		/* check for list overflow
+		 */
+		if (cnt == ALLOC_UNIT) {
+			slots += ALLOC_UNIT;
+
+			/* the first time malloc(), then realloc().
+			 */
+			tmp = dir;
+			dir = (struct dir_retrieve_t *)realloc( dir,
+				(slots * sizeof ( struct dir_retrieve_t )));
+
+			/* out of memory
+			 */
+			if (dir == (struct dir_retrieve_t *)0) {
+				free ( tmp );
+				errno = ENOMEM;
+				return ( dir );
+			}
+
+			cnt = 0;	/* reset counter */
+		}
+
+		/* get the next file name, if existing
+		 */
+		if (!dir_next( path, &dir[ nm ], &dir_hold )) {
+			*dir[ nm ].name = '\0';
+			break;
+		}
+
+		++nm;
+		++cnt;
+	}
+
+	qsort( dir, nm, sizeof (struct dir_retrieve_t), strcmp );
+
+	/* only set if the caller passed a valid pointer
+	 */
+	if ( dir_entries != (int *)0 )
+		*dir_entries = nm;
+
+	return ( dir );
+}
+
+/* dir_prep	readies the directory interface for retrieving names
+ *		from the directory.  if this fails, it means that the
+ *		directory referenced is un-readable.
+ */
+
+static int
+dir_prep( path )
+char *path;
+{
+#ifdef A_MSDOS
+	char *ppath;
+	static char *ext = "/*.*";
+
+	if ((ppath = malloc( strlen( path )+strlen( ext ) )) == (char *)0) {
+		errno = ENOMEM;
+		return ( 0 );
+	}
+
+	/* protect against building string like: "//*.*"
+	 */
+	strcpy( ppath, path );
+	strcat( ppath, (strcmp( ppath, "/" ) ? ext:ext+1) );
+
+	/* _A_SUBDIR means read all files, both regular and
+	 * sub-directories. findfirst return of 0 is good.
+	 */
+	if (_dos_findfirst( ppath, _A_SUBDIR, &find_buf ) != 0) {
+		free( ppath );
+		errno = ENOENT;
+		return ( 0 );
+	}
+
+	free( ppath );
+#else
+	struct stat stat_buf;
+
+	/* open the directory
+	 */
+	if ((dir_fdesc = open( path, 0 )) == (-1)) {
+		errno = ENOENT;
+		return ( 0 );
+	}
+
+	/* see if it is a regular file or a directory
+	 */
+	fstat( dir_fdesc, &stat_buf );
+	if ( (stat_buf.st_mode & S_IFDIR) == 0 ) {
+		close( dir_fdesc );
+		errno = ENOTDIR;
+		return ( 0 );
+	}
+#endif
+
+	/* allocate a buffer to contain:
+	 *
+	 * path/entry_name for stat()'ing
+	 */
+	if ((dir_stat = malloc( strlen( path )+_FN_SZ+1 )) == (char *)0) {
+#ifdef A_UNIX
+		close( dir_fdesc );
+#endif
+		errno = ENOMEM;
+		return ( 0 );
+	}
+
+	return ( 1 );
+}
+
+/* dir_next	return the next entry in the directory.  a NULL pointer
+ *		says no more entries.
+ */
+static int
+dir_next( path, transfer, dir_hold )
+char *path;
+struct dir_retrieve_t *transfer;
+int *dir_hold;
+{
+	struct stat stat_buf;
+
+#ifdef A_MSDOS
+	/* are we holding from the find first?
+	 * if so, skip the find next this time.
+	 */
+	if (! *dir_hold) {
+		/* findnext return of 0 is good.
+		 */
+		if (_dos_findnext( &find_buf ) != 0) {
+			free( dir_stat );
+			return ( 0 );
+		}
+	}
+	else
+		*dir_hold = 0;	/* next call will do _dos_findnext() */
+
+	strcpy( transfer->name, find_buf.name );
+#else
+	register int i;
+
+	while ( 1 ) {
+		i = read(dir_fdesc, &find_buf, sizeof (struct direct));
+
+		if (i != sizeof (struct direct)) {
+			close( dir_fdesc );
+			free( dir_stat );
+			return ( 0 );
+		}
+		else if (find_buf.d_ino != 0)	/* empty? */
+			break;
+	}
+
+	/* since d_name is only NULL terminated if the file name is
+	 * less than DIRSIZ, we cannot use strcpy() here.
+	 */
+	for (i=0; i < DIRSIZ && find_buf.d_name[i]; ++i)
+		transfer->name[i] = find_buf.d_name[i];
+	transfer->name[i] = '\0';
+#endif
+
+	strcpy( dir_stat, path );
+	if (strcmp( path, "/" ) != 0)
+		strcat( dir_stat, "/" );
+	strcat( dir_stat, transfer->name );
+
+	/* is it a sub-directory?
+	 */
+	stat( dir_stat, &stat_buf );
+	transfer->subdir = ( (stat_buf.st_mode & S_IFDIR) ? 1:0 );
+
+	return ( 1 );
+}
+
+/* dir_free	calls free for the given directory pointer
+ */
+
+void
+dir_free( dir )
+struct dir_retrieve_t *dir;
+{
+	free( (char *)dir );
+}

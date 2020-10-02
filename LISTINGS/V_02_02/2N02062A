@@ -1,0 +1,104 @@
+
+/* ---------------------------------------------------
+   TESTTIME.C  -  Microsoft C ver 5.1
+
+   A program to determine execution times.
+   Displays the number of milliseconds needed to
+   determine if enough file handles are available for
+   an application to proceed using the functions in
+   Listings 1 and 2 as well as by opening the NUL
+   device.
+
+   The number of handles which must be available for
+   "success" is determined by the #define below
+
+   Commands to produce an executable from the code as
+   shown in the listings:
+       masm sfht;             (listing 1)
+       masm pfht;             (listing 3)
+       masm timer;            (CODE DISK TS 2.2)
+       cl -c ctimer.c         (CODE DISK TS 2.2)
+       cl -c testtime.c       (listing 7)
+       link testtime sfht pfht timer ctimer;
+   -------------------------------------------------- */
+   
+#include <stdio.h>
+#include <dos.h>
+#include "tctimer.h"        /* not included here */
+#include <io.h>
+#include <fcntl.h>
+#include <types.h>
+#include <stat.h>
+
+/*
+ * how many file handles must be available for the
+ * "application" to continue
+*/
+#define HANDLES_I_NEED 10
+
+/* ----------------------------------------------------
+ *  MAIN()
+   ----------------------------------------------------  */
+main()
+{
+long t1,t2;
+double time;
+int sys_handles, sys_handles_used,
+    sys_available, process_free,
+    ok_to_proceed, h_table[HANDLES_I_NEED], i;
+
+  initializetimer();    /* init the timer routines */
+
+/* Listings 1 & 2 method */
+  printf("\nusing routines from listings 1 & 2\n");
+
+  t1 = readtimer();     /* get start time */
+
+  ok_to_proceed = 1;    /* default = there are enough */
+
+  sys_handles = max_sys_file_handles();
+  sys_handles_used = sys_handles_in_use();
+  sys_available = sys_handles - sys_handles_used;
+  process_free = process_handles_free();
+/*
+ * if there are not enough system-level handles or not
+ * enough process-level handles available, indicate that the
+ * application can't proceed
+*/
+  if( process_free < HANDLES_I_NEED ||
+      sys_available < HANDLES_I_NEED )
+     ok_to_proceed = 0;
+
+  t2 = readtimer();     /* get end time */
+                        /* calculate elapsed time */
+  elapsedtime(t1, t2, &time);
+  printf("elapsed time = %f\n%s\n\n",
+         time, (ok_to_proceed==1) ? "OK" : "NOT OK");
+
+
+/* "open the nul device" method */
+  printf("using open()\n");
+
+  t1 = readtimer();     /* get start time */
+
+  ok_to_proceed = 1;    /* default = there are enough */
+
+  for(i = 0; i < HANDLES_I_NEED; i++)
+     {                 /* if the open failed */
+     if( (h_table[i] = open("nul", O_TEXT | O_RDWR)) == -1 )
+        {              /* indicate failure & leave loop */
+        ok_to_proceed = 0;
+        break;
+        }
+     }
+  while( i >= 0 )      /* close what was opened */
+     close(h_table[i--]);
+
+  t2 = readtimer();     /* get end time */
+                        /* calculate elapsed time */
+  elapsedtime(t1, t2, &time);
+  printf("elapsed time = %f\n%s\n\n",
+         time, (ok_to_proceed==1) ? "OK" : "NOT OK");
+                        /* clean up the timer routines */
+  restoretimer();
+}

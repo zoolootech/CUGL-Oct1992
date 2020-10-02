@@ -1,0 +1,98 @@
+/* Patch.c  Contains Patch functions for Inter.exe */
+
+#define _WINDOWS
+#define _WINDLL
+#ifndef WIN31
+  #define  ChangeSelector PrestoChangoSelector
+#endif
+
+#include <windows.h>
+#include <memory.h>
+#include <string.h>
+#include <dos.h>
+
+VOID FAR PASCAL Patch(HWND hWndList);
+VOID FAR PASCAL UnPatch(VOID);
+WORD FAR PASCAL MyWinExec  (LPSTR lpPath,int show);
+WORD FAR PASCAL WinWinExec (LPSTR lpPath,int show);
+int FAR PASCAL	LibMain(HANDLE hInst,WORD wDataSeg,WORD cbHeapSize,
+			LPSTR lpszCmdLine);
+int FAR PASCAL	WEP (int bSystemExit);
+
+#define CPYBYTES 5  /*Number of Bytes to Copy*/
+
+BYTE	 btWinexec[6];
+HWND	 hWndList;
+LPSTR	 lpPatch,lpWinexec;
+WORD	 selPatchRW,selWinExecRW,selWinExec;
+
+/*  Installs a Patch in the Winexec Function.   */
+
+VOID FAR PASCAL Patch(HWND hwndlist)
+{
+  WORD offst;
+  hWndList=hwndlist;			    /*Save Handle to ListBox*/
+  selPatchRW=AllocSelector(HIWORD(Patch));  /*Get Selector of Patch*/
+  ChangeSelector(HIWORD(Patch),selPatchRW); /*Change Selector to Read Write*/
+  _asm	 mov ax,offset patchcode	    ;Setup Pointer to Patch Code
+  _asm	 mov offst,ax
+  lpPatch=(LPSTR)MAKELONG(offst,selPatchRW);
+  selWinExec=HIWORD(WinWinExec);	 /*Get Selector of WinExec Function*/
+  GlobalPageLock(selWinExec);		    /*Lock Segment*/
+  selWinExecRW=AllocSelector(selWinExec);   /*Get New selector*/
+  ChangeSelector(selWinExec,selWinExecRW);  /*Change Code Selector to R/W*/
+  /*Setup Pointer to WinExec Function*/
+  lpWinexec=(LPSTR)MAKELONG(LOWORD(WinWinExec),selWinExecRW);
+  _fmemcpy (btWinexec,lpWinexec,CPYBYTES);  /*Save first 5 bytes of Winexec*/
+  _fmemcpy (lpWinexec,lpPatch,CPYBYTES);    /* Patch the WinExec Function*/
+  return;
+patchcode:
+ _asm jmp MyWinExec	;Code Copied to Winexec Function
+}
+
+/*****************************************************
+	MyWinExec Intercept Function
+  1) The Windows WinExec Function is Called.
+  2) Patch code is Executed in the WinExec function. (Jmp to MyWinExec()).
+  3  Debug Output is done to the Listbox.
+  3) WinExec is Unpatched.
+  4) WinExec is then called.
+  5) WinExec is then repatched for next call.
+******************************************************/
+
+WORD FAR PASCAL MyWinExec (LPSTR lpPath,int show)
+{
+ char szbuff[200];
+ int result;
+ wsprintf (szbuff,"Path %s",(LPSTR)lpPath);
+ SendMessage (hWndList,LB_ADDSTRING,0,(LONG)(LPSTR)szbuff);
+ _fmemcpy (lpWinexec,btWinexec,CPYBYTES); /*Unpatch and Call*/
+ result=WinExec(lpPath,show);
+ _fmemcpy (lpWinexec,lpPatch,CPYBYTES);   /*Repatch For Next Call*/
+ return result;
+}
+
+VOID FAR PASCAL UnPatch(VOID)
+{
+ _fmemcpy (lpWinexec,btWinexec,CPYBYTES);    /* Unpatch for shutdown*/
+ GlobalPageUnlock(selWinExec);
+ FreeSelector(selPatchRW);
+ FreeSelector(selWinExecRW);
+}
+
+
+
+int FAR PASCAL LibMain(hInst, wDataSeg, cbHeapSize, lpszCmdLine)
+HANDLE	hInst;
+WORD    wDataSeg;
+WORD    cbHeapSize;
+LPSTR   lpszCmdLine;
+{
+ return 1;
+}
+
+int FAR PASCAL WEP (bSystemExit)
+int  bSystemExit;
+{
+ return(1);
+}

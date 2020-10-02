@@ -1,0 +1,581 @@
+.pl 63
+.po 0
+..
+.. this article was prepared for the C/Unix Programmer's Notebook
+.. Copyright 1984 (c) Anthony Skjellum.  
+..
+.. by A. Skjellum
+..
+.he "C/Unix Programmer's Notebook"   for October, 1984 DDJ. 
+
+
+                               Introduction
+
+	The  thrust of this entire column is to illustrate scientific  uses 
+
+of  the C programming language by examples.  The aim is to present routines 
+
+useful  in  conjunction  with scientific programming,  some  of  which  are 
+
+general and others which implement specific numerical algorithms. There are 
+
+specific audiences for which this column is intended.   The first  audience 
+
+is  the  group of  die-hard programmers who refuse to change languages  and 
+
+continue  to produce useful programs in outdated languages.   Not  only  is 
+
+this  of greater expense to themselves,  but also cheats others by  locking 
+
+them  into FORTRAN or other old-fashioned languages.   For them,  I want to 
+
+illustrate the elegance and versatility of C.   The second audience  (which 
+
+may  also  include  the first as a subset) are those  users  interested  in 
+
+scientific applications but who may not have used C for this purpose.  This 
+
+article  is intended to illustrate that C is completely acceptable for such 
+
+purposes and the code shows how generally concepts can be presented.  (This 
+
+article makes no attempt to survey scientific applications where C could be 
+
+used but merely includes some non-trivial examples).   Finally,  for  those 
+
+readers  who  don't  fit into the above  categories,  the  general  purpose 
+
+routines will still prove interesting. 
+
+	Three  programming  systems are presented.   The first is a set  of 
+
+general  purpose subroutines which are designed to simplify the process  of 
+
+user-program  interaction,  and  to provide a  straight-forward  means  for 
+
+handling  erroneous  input.  The  input  mechanisms  are  not  particularly 
+
+sophisticated, but emphasize structure in the user's program.  The routines 
+
+make  range  checking  so automatic that the programmer has no  excuse  for 
+
+omitting  such  checks,  regardless  of how 'quickly' a program  is  to  be 
+
+completed.   Providing these routines to novice programmers in a  classroom 
+
+environment  has  eliminated  a lot of frustration over using  the  scanf() 
+
+function.
+
+	The  second  and third programming systems  illustrate  Runge-Kutta 
+
+integration.   The Runge-Kutta formalism is a standard numerical  technique 
+
+for  handling the numerical integration of one or more first order ordinary 
+
+differential  equations.   Interested readers may wish to consult the  book 
+
+Numerical Analysis, by Richard L.  Burden et.  al. (Prindle, Weber, Schmidt 
+
+publishers,  Second edition,  1981).  This is the source for the algorithms 
+
+presented  in  the  code  and is also a  fine  reference  for  introductory 
+
+numerical  methods.   The  choice of Runge-Kutta routines as  examples  was 
+
+based on their widespread use in scientific work.
+
+                             Acknowledgements
+
+	The  general purpose library has received extensive use by  Caltech 
+
+students during the past school year.   Thanks are due to Scott Lewicki who 
+
+discovered a couple of minor details which caused major errors.
+
+	The  Runge-Kutta  code  was developed by  Michael  J.  Roberts  and 
+
+myself.   Mr.  Roberts  developed the major portion of the RKSYS  (multiple 
+
+equations)  routines  as  a  project  for  Caltech's  Physics  20   course: 
+
+Introduction to Computational Physics (Prof.  Geoffrey C. Fox, instructor).  
+
+Approximately  sixty  man  hours  were spent  in  developing,  testing  and 
+
+debugging this code.   Mr.  Roberts also wrote the original version of  the 
+
+documentation for RKSYS included in modified form as Table III.
+
+
+                       GPR: General Purpose Routines
+
+	The general purpose library consists of five subroutines.   Four of 
+
+these  subroutines  deal with input.   The fifth is a simple  facility  for 
+
+printing files to the console.  This latter routine is called display() and 
+
+will be considered separately from the input functions.
+
+	The  other routines are iinp(),  finp(),  sinp() and  cinq().   The 
+
+first three provide integer, floating point, and string input respectively.  
+
+The latter is a yes-no question processor.  The exact calling sequences for 
+
+each of the routines is provided in Table I.
+
+.pa
+                      ---------- Table I. ----------
+
+1.	int iinp(prompt,cflag,low,high);
+
+	char *prompt: optional prompt string to be printed before input
+	char cflag:   checking flag: if non-zero, range checking is performed
+	int low
+	int high:     low, high are (inclusive) range checking values
+
+	iinp() repeats input until a valid number is entered; the valid 
+	number is the function's return value.
+
+2.	double finp(prompt,cflag,low,high);
+
+	char *prompt: optional prompt string to be printed before input
+	char cflag:   checking flag: if non-zero, range checking is performed
+	double low
+	double high:  low, high are (inclusive) range checking values
+
+	finp() repeats input until a valid number is entered; the valid
+	number is the function's return value
+
+3.	len = sinp(prompt,string,length);
+
+	int len:      length of entered string
+	char *prompt: optional prompt string to be printed before input
+	int length:   maximum length of input string
+
+	sinp() ignores leading spaces.
+
+4.	retn = cinq(prompt);
+
+	int retn:     1 --> 'Y' was typed, 0 --> 'N' was typed
+	char *prompt: optional prompt string to be printed before input
+
+5.	retn = display(fname);
+
+	int retn:     0 --> success, -1 --> failure 	  
+	char *fname:  null-terminated name of file
+
+	display() prints the specified file on the standard output device.
+
+
+                    ---------- End Table I. ----------
+
+.pa
+
+	Traditionally,  user  input consists of a sequence of lines such as 
+
+the following sequence for inputting an integer: 
+
+		#define MIN 10
+		#define MAX 100
+		...
+
+		int input;
+		...
+
+		while (1)	/* input loop */
+		{
+			printf("Enter input variable --> ");
+
+			if (scanf("%u",&input) != 1)	/* get variable */
+			{
+				drain();	/* drain spurious characters */
+				continue;	/* skip range checks */
+			}
+
+			/* do range checking */
+
+			if ((input >= MIN) && (input <= MAX))
+				break;		/* we are done */
+
+			printf("\nNumber out of range\n");
+
+		} /* keep looping until scanf() can read a variable */
+
+Entering   this   sequence  repeatedly  can  be  rather  tedious   from   a 
+
+programmatical  point of view,  so error checking is often  omitted.   This 
+
+practice leads to programs which do not handle user mistakes intelligently.  
+
+The  GPR routines allow the above sequence to be replaced by a single  line 
+
+of code:
+
+		input = iinp("Enter input variable -->",1,MIN,MAX);
+
+Since  using  the GPR input functions is easier than  using  scanf(),  this 
+
+variety  of  function should be well-received and can be used  in  lieu  of 
+
+scanf() for most purposes.   A further advantage of these functions is that 
+
+they unclutter the user's program.   More sophisticated checking will still 
+
+need to be included explicitly: the input functions only do range checking.
+
+	The  display() function was included to encourage users to  provide 
+
+on-line help/documentation along with their programs.  This function allows 
+
+users  to  print  out additional  text  whenever  appropriate.   With  this 
+
+function, a trivial on-line help facility can be created; a help feature is 
+
+almost always appropriate but usually is omitted.
+
+	The  GPR routines may be found in Listing I.   The current list  is 
+
+not  exhaustive  but  intended  only  to suggest  a  trend  for  additional 
+
+routines.
+
+                        RK4: Runge-Kutta Algorithm
+
+	We  have investigated the general purpose library which  simplifies 
+
+the  task  of  correct  input.   Now  we  want  to  consider  a  scientific 
+
+application  of  C:   single  equation  Runge-Kutta  integration.    Before 
+
+introducing the code, some background is required.
+
+	We start with a differential equation in the canonical form
+
+		y' = f(y,t)
+
+where  y'  is the first derivative of y with respect to t and f(y,t)  is  a 
+
+piece-wise  continuous  function  of its arguments.   In  addition  to  the 
+
+differential equation, we are given an initial condition.  Namely,
+
+		y(t=0) = y0
+
+where y0 is some real constant (e.g.  35.1).  These two equations  uniquely 
+
+specify the solution y(t) which is as yet unknown.   The need for numerical 
+
+techniques   arise   when  the  differential  equation  cannot  be   solved 
+
+analytically. 
+
+	There  are  many possible numerical approaches to the  solution  of 
+
+this  equation,  but  considering them is beyond the scope of  the  current 
+
+discussion.   For  now,  it is sufficient to state that a technique  exists 
+
+called  RK4  (Runge-Kutta  fourth  order) which  will  solve  the  equation 
+
+numerically  with  known  error characteristics.   Solution  of  a  typical 
+
+equation is presented in Listing II. for the equation
+
+		y'(t)  = 1 + y
+
+with the initial condition
+
+		y(t=0) = 5.0
+
+Since this equation can also be solved analytically,  a comparison is  made 
+
+with  the  exact solution in order to demonstrate error characteristics  of 
+
+the method.  The analytical solution turns out to be
+
+		y(t) = t + 5.0*exp(t)
+
+This latter result can be deduced by inspection.
+
+	The  Runge-Kutta  algorithm and code is presented in  Listing  III.  
+
+Readers interested in more information should consult the book by Burden et 
+
+al.  Calling sequences are described in Table II.
+
+.pa
+                      ---------- Table II. ----------
+
+                        RK4: Runge-Kutta Integrator
+                             ----------------
+
+                               Description:
+
+
+File:		RK4.C,		Subroutine Library: Listing III.
+
+	The C language call is as follows:
+
+		rk4(function,a,b,n,alpha,t,w);
+
+where:
+	function	returns the right-hand side f(y,t) of the system.
+
+        a		is the start of the interval of integration
+
+	b		is the end   of the interval of integration
+
+	n		is the number of integration steps
+
+	alpha		is the initial value y(0) = alpha
+
+	t		is the array where the times will be stored
+
+	w		is where the approximations to y will be stored
+
+
+
+
+	The formal C definitions for the function and its parameters are:
+
+1.	rk4(): n step integrator
+
+	rk4(function,a,b,n,alpha,t,w)
+	double (*function)();	/* function giving f(t,y) */
+	double a;		/* beginning of interval */
+	double b;		/* end of interval */
+	int n;			/* number of steps in interval */
+	double alpha;		/* initial condition for y */
+	double t[];		/* array for returning T[i] values */
+	double w[];		/* array for returning W[i] values */
+
+
+.cp 8
+2.	rk4_1(): 1 step integrator
+
+	rk4_1(function,h,time,yapprox)
+	double (*function)();		/* Pointer to function to integrate */
+	double h;			/* Step size */
+	double time;			/* Current time step */
+	double *yapprox;		/* Current approximation of function */
+	
+
+
+                    ---------- End Table II. ----------
+.pa
+ 
+                 RKSYS: Systems of differential equations
+
+	Imagine  now that we have a set (system) of N first-order  ordinary 
+
+differential equations:
+
+		y '(t) = f (t,y ,y ... y )          (i = 1,2,...N) 
+ 	         i        i    1  2     N	
+
+This problem is useful for solving other systems too,  since sets of linear 
+
+differential   equations   involving  higher-order   derivatives   can   be 
+
+transformed to larger systems of the above variety (see Burden).   Thus,  a 
+
+program which can solve the above system has reasonably wide applicability.  
+
+     Unfortunately,  the  problem is more complicated for N equations  than 
+
+for  one equation as is evident from Table III.  in which the more  general 
+
+Runge-Kutta software is described.  (Listing IV. contains the actual code.)  
+
+Listings V.  and VI.  are example programs which use rk4n() to solve  small 
+
+systems  of  equations.   The  Listing V.  implements the same  problem  as 
+
+Listing II., but using rk4n() instead of rk4() to perform the integration.
+
+.pa
+                     ---------- Table III. ----------
+
+                             RK System Solver
+                                  (RKSYS)
+                             ----------------
+
+
+Files:		RKS.C,                  Subroutine library: Listing IV.
+                RKST1.C,                Test program #1:    Listing V.
+                RKST2.C                 Test program #2:    Listing VI.
+
+
+
+	The format of the C language call is as follows:
+
+		rk4n(function,wsource,wstore,m,a,b,n,alpha,t,kuttas);
+
+where:
+
+	function	is  a pointer to the function which will return the 
+                        first derivatives of each function in your  system.  
+                        It will be called as:
+	
+				function(j,i,tval,rk_comp)
+
+			where:
+				j	is the current time step
+				i	is the current function
+					number (0, 1, ..., n-1).
+				tval	is the current time value
+				rk_comp	is a pointer to a function
+					which your derivative function
+					must call as:
+
+						rk_comp(n,j,i)
+					where:
+						n is the function
+						    number in the
+						    system (0,...n-1)
+						    of the function
+						    you wish to
+						    evaluate.
+						j is the time step.
+						i is the current
+						    function number.
+
+.cp 8
+	wsource		is a pointer to your function which will return a W 
+                        value  (which  will have been stored by the  user's 
+                        WSTORE routine -- one need only worry about storing 
+                        and   returning  these  values,   not  the   values 
+                        themselves). It will be called as:
+
+				wsource(j,i)
+
+			where:
+				j	is the current time step.
+				i	is the current function
+					number.
+
+	wstore		is  a  pointer to the user's  function  which  will 			
+                        store values of W (see wsource above). It is called 
+                        as:
+
+				wstore(j,i,value)
+
+			where:
+				j	is the current time step.
+				i	is the current function
+					number.
+				value	is the value to be stored
+					for that location.
+
+				Note:   wsource(j,i)  should  be  equal  to 
+                        "value" after wstore(j,i,value).
+
+	m		is the number of equations in your system.
+
+	a		is the starting time value for the interval.
+
+	b		is the ending time value for the interval.
+
+	n		is  the number of points into which the interval is 
+                        to be broken.
+
+	alpha		is  a one dimensional array of the initial  values.  
+                        The  value alpha[0] is the first function at time = 
+                        a, alpha[1] is the second, etc.
+
+	t		is a one dimensional array where rk4n() will  store 
+                        the time values as it calculates them.   It must be 
+                        at least as large as n.
+
+	kuttas		is  a  two dimensional array,  the  size  of  whose 
+                        second element is 4 (i.e., Kuttas[][4]). It will be 
+                        the  storage  area  for  "k"  values  as  they  are 
+                        calculated.
+
+
+	The formal C definitions for the function and its parameters are:
+
+	double rk4n(function,wsource,wstore,m,a,b,n,alpha,t,kuttas)
+	double (*function)();
+	double (*wsource)();
+	double (*wstore)();
+	int m;
+	double a;
+	double b;
+	int n;
+	double alpha[];
+	double t[];
+	double kuttas[][4];
+
+Comments on array sizes, (*wsource)(), (*wstore)():
+
+	The  (*wstore)() function should trap out-of-bound storage requests 
+which  result as a natural part of the rk4n() algorithm.   A  more  elegant 
+solution is to make the array size used by (*wstore)() one greater than the 
+number of steps.	 
+
+                   ---------- End Table III. ----------
+.pa
+
+                         How to use the integrator
+
+	The   rk4n()   subroutine  will  solve  a  system  of   first-order 
+
+differential  equations  as specified by the  calling  program,  using  the 
+
+Runge-Kutta order four integrator described in Burden et. al, pages 239-240 
+
+(refer also to page 205).
+
+	The  calling  program  must  provide  information  for  the  rk4n() 
+
+subroutine  in order for it to solve the system of differential  equations.  
+
+This information must consist of:
+
+	* The first derivatives of each of the functions in the system.
+	* Subroutines to store and retrieve values as the functions are
+	  integrated
+	* Initial conditions for each of the functions
+	* The range over which the function will be integrated
+	* Storage areas for the time and intermediate "K" value arrays.
+
+The  information must be provided in a specific order and format,  which is 
+
+described in Table III.
+
+	By  studying the Runge-Kutta routines,  the reader will notice  the 
+
+central  importance  of pointers to functions in the  organization  of  the 
+
+code.   Using this concept effectively allows the software to be completely 
+
+divorced of the specifics of the user's program.  
+
+                                Conclusions
+
+	In  this  article,  three sets of example routines were  presented.
+
+This  code  was  included to demonstrate how  scientific  applications  and 
+
+related  software  is actually implemented in  C.   Studying  the  examples 
+
+should  help  the  reader  to gain insight into the use of  C  for  similar 
+
+undertakings.
+
+                             Copyright Notice 
+
+	All  the code presented with this article is copyright  1983,  1984 
+
+(c)  by  the California Institute of  Technology  (Caltech),  Pasadena,  CA 
+
+91125.  All rights reserved.  This code may be freely distributed, used for 
+
+all non-commercial purposes, but may not be sold.  
+
+
+

@@ -1,0 +1,142 @@
+/*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	FILE: e10
+
+	FUNCTIONS: fopen,fcreat,fflush,fclose,putc,getc,funlink,
+			frename,dskcheck,err1,err2,err3,err4
+
+	PURPOSE: file buffer operations extracted and stripped from stdlib1,
+		with protection from bdos error crashes added
+
+*/
+
+#include "e.h"
+
+int fopen(filename,iobuf)
+struct iobuffer *iobuf;
+char *filename;
+{
+	if (dskcheck(setjmp(dskerr)) || (iobuf -> _fd = open(filename,0))<0) return FAIL;
+	iobuf -> _nleft = 0;
+	return iobuf -> _fd;
+}
+
+int fcreat(name,iobuf)
+char *name;
+struct iobuffer *iobuf;
+{
+	if (dskcheck(setjmp(dskerr)) || (iobuf -> _fd = creat(name)) < 0 ) return FAIL;
+	iobuf -> _nextp = iobuf -> _buff;
+	iobuf -> _nleft = (NSECTS * SECSIZ);
+	return iobuf -> _fd;
+}
+
+int fflush(iobuf)	/*does NOT allow more writing*/
+struct iobuffer *iobuf;
+{
+	int i;
+
+	if (iobuf -> _nleft == (NSECTS * SECSIZ)) return YES;
+
+	i = NSECTS - iobuf->_nleft / SECSIZ;
+	if (dskcheck(setjmp(dskerr)) || write(iobuf -> _fd, iobuf -> _buff, i) != i) return FAIL;
+	return YES;
+}
+
+int fclose(iobuf)
+struct iobuffer *iobuf;
+{
+	if (dskcheck(setjmp(dskerr))) return FAIL;
+	return close(iobuf -> _fd);
+}
+
+putc(c,iobuf)	/*stripped down version of standard putc*/
+char c;
+struct iobuffer *iobuf;
+{
+	if (iobuf -> _nleft--) return *iobuf -> _nextp++ = c;
+	if (dskcheck(setjmp(dskerr)) || (write(iobuf -> _fd, iobuf -> _buff, NSECTS)) != NSECTS) return FAIL;
+	iobuf -> _nleft = (NSECTS * SECSIZ -1);
+	iobuf -> _nextp = iobuf -> _buff;
+	return *iobuf -> _nextp++ = c;
+}
+
+int getc(iobuf)	/*the standard getc, trimmed for speed*/
+struct iobuffer  *iobuf;
+{
+	int nsecs;
+
+	if (iobuf -> _nleft--) return *iobuf -> _nextp++;
+	if (dskcheck(setjmp(dskerr)) || (nsecs = read(iobuf -> _fd, iobuf -> _buff, NSECTS)) <= 0)
+		return iobuf -> _nleft++;
+	iobuf -> _nleft = nsecs * SECSIZ - 1;
+	iobuf -> _nextp = iobuf -> _buff;
+	return *iobuf->_nextp++;
+}
+
+funlink(name)
+char *name;
+{
+	if (dskcheck(setjmp(dskerr))) return FAIL;
+	return unlink(name);
+}
+
+frename(oldname,newname)
+char *oldname,*newname;
+{
+	if (dskcheck(setjmp(dskerr))) return FAIL;
+	return rename(oldname,newname);
+}
+
+dskcheck(errtype)
+int errtype;
+{
+	switch(errtype) {
+	case 0: 
+		return 0;
+	case 1: 
+		error("Bad sector"); 
+		break;
+	case 2: 
+		error("Bad disk select"); 
+		break;
+	case 3: 
+		error("Disk is read only"); 
+		break;
+	case 4: 
+		error("File is read only"); 
+		break;
+		}
+	bdos(RESETDSK);
+	bdos(SELDSK,curdsk);
+	return FAIL;
+}
+
+err1()
+{
+	longjmp(dskerr,1);
+}
+
+err2()
+{
+	longjmp(dskerr,2);
+}
+
+
+err3()
+{
+	longjmp(dskerr,3);
+}
+
+err4()
+{
+	longjmp(dskerr,4);
+}
+me)) < 0 ) return FAIL;
+	iobuf -> _nextp = iobuf -> _buff;
+	iobuf -> _nleft = (NSECT

@@ -1,0 +1,199 @@
+/********************************************************************
+	ry.doc, doc on this stuff:
+
+	1: random file functions, flavor ry.
+	2: binary file index functions, built upon random functs.
+	3: xswapin() and xswapout(), enhanced 'swapin()' function.
+
+*/
+
+/*
+
+	some notes on these functions-
+
+
+	this code has its roots in the 'rx' random file stuff.
+this version differs primarily in that the file is now addressed
+via long integers instead of the clumsy sector and byte within sector
+scheme of rx.  this is done with the long.c code from cug vol functions I.
+the binary file search code is also contained in this file now. to
+use this code u will need the following:
+
+		1. ry.doc (this file)
+		2. ry.c
+		3. long.c
+		4. longcode.crl (asm code in longcode.mac)
+			(note, u presently need z-80 to use long int code)
+
+	random file routines:
+
+	since the buffer is completely written to disk even though only
+one byte may have been added, a program that uses the entire 8 megabyte
+range could fill a disk with 240 byes (assuming a declared buffer size
+of 1 k and even distribution of those bytes over the entire range). one
+solution would be to keep the buffer size down to 1 sector. the best is
+to be reasonable with the address range of your program. logically a file
+of 8 megabytes could be spread over x disks if necessary.
+
+	these functions need:	1.cp/m 2.x
+				2.alloc() installed in the stdlib
+				3:_allocp = NULL; in main
+				4.the undocumented (but existing)
+					functions rsrec()
+						  rcfsiz()
+						  rtell()
+						  rseek()
+						  rread()
+						  rwrite()
+				  the code for these is in deff2a.asm
+				  and is the only existing doc for them
+
+	the buffer size is declared on opening the file and is maintained
+in a space provided by alloc(). it can be any length from 1 sector to
+memory size available (keep in mind the above note on buffer size as affected
+by random writes). if your needs change you can close and reopen with a diff-
+erent size buffer. closes AUTOMATICALLY flush the buffer, no explicit call
+of _rflush() needed.
+
+	see pages 164-169 of 'the c programming language' for insight
+into the madness of the package
+
+	important:
+
+	DO NOT  'rclose()' a file that is not open, rclose() will
+attempt to 'free()' memory that hasn't been set aside by alloc(),
+causing havoc to the running program!
+
+*/
+
+
+/*
+	routines to parallel the buffered input and output routines,
+allowing completely random buffered read and writes to a file
+
+	these are closely modeled on the routines by Leor for
+buffered sequential files.
+
+functions - 
+
+	rcreat(filename, mode, secs)
+		creat an as yet non-existant file, returns file pointer
+	ropen(filename, mode, secs)
+		open an already existing file, returns file pointer
+	rclose(fp)
+		close a random file (takes care of all 'flushing')
+	_rflush(fp)
+		'flush' a random file buffer to disk
+	fseek(fp, offset, origin)
+		set the 'byte-pointer' to a specific byte within the
+			8 megabyte range of 2.2
+	ftell(fp)
+		report the current position of the 'byte-pointer' in
+			an open file
+	bseek(fp, block, origin)
+		does a fseek() using logical block size defined
+			by _blksiz in struct _file
+	btell(fp)
+		returns the last block sought by bseek()
+	rgetc(fp)
+		returns the byte pointed at by the 'byte-pointer'
+			and bumps the pointer by 1
+	rputc(c, fp)
+		puts the byte 'c' in the file at the position defined
+			by the 'byte-pointer', bumps the pointer by 1
+
+	the next four are basically their sequential file cousins
+with rgetc() replacing getc() and rputc() replacing putc() in the
+code.
+
+	rgetw(fp)
+	rputw(w, fp)
+	rprintf(fp, format, arg1, arg2,...)
+	rscanf(fp, format, arg1, arg2,...)
+
+	rgets() and rputs() handle null terminated strings from and
+to files without any 'crlf' conversions. rgetl() and rputl() are the
+extensions of fgets() and fputs() in the distribution package. again,
+their code is mostly from their cousins, with changes made as
+necessary. the change to 'l' is to denote the fact that they work
+in the 'line' enviroment of cp/m.
+
+	rgets(str, fp)
+	rputs(str, fp)
+	rgetl(line, fp)
+	rputl(line, fp)
+
+	the next four are essentially two pairs of twins. they get or
+put x amount of bytes from/to files.
+
+	rget(fp, destination, nbyt)
+	rput(fp, source, nbyt)
+	rgetstruct(fp, destination, structsiz)
+	rputstruct(fp, source, structsiz)
+*/
+
+
+/*
+	binary search functions:
+
+
+	the basic structure is that of 2 files, the first is a block
+	of int pointers that is written into allocated core and manip-
+	ulated as an array, while the second is a collection of arbitrary
+	data that is opened in a random fashion, via the ordered pointers
+	of the first array.  the pointer array must fit entirely in core
+	limiting the # of entries to about 8000, depending on your memory
+	capacity.  this # is declared to bsmake, and handled for you from
+	there.
+
+functions:
+
+	bsmake(data_file, ptr_file, data_size, max_data)
+		make data file and pointer file, init, etc.
+	bsopen(data_file, ptr_file, key_comp, secs)
+		open data_file, allocate and load ptr_file, return bsp.
+	bsclose(bsp)
+		close the data and pointer files.
+	bsread(bsp, key, address)
+		read a block into address from file pointed at by bsp.
+		if the key is found, the block is read, if not, it returns
+		'BELONGS', no block is read.
+	bswrite(bsp, key, address)
+		write a block from address into file pointed at by bsp.
+		if the key is found the block is overwritten. if not found
+		a block is allocated in the file, it is written, and ptr is
+		added to the pointer file.
+	bssearch(bsp, key)
+		seeks a block headed by string 'key'. if found the random file
+		ptr for the datafile is made to point at the block and 'FOUND'
+		is returned.  if not found it returns 'BELONGS', with no action
+		taken on the random file ptr. the point within the pointer 
+		array that would contain its pointer is placed into the 
+		pointer array's first element ([0]). (get the point?)
+	bskey_add(bsp)
+		add key to pointer list, call bsblk_add to add block.
+	bsblk_add(bsp)
+		get block from freelist (or EOF if empty).
+	bskey_rmv(bsp, key)
+		remove key from pointer list, call bsblk_rmv to remove block.
+	bsblk_rmv(bsp)
+		add block to free list in datafile.
+
+*/
+
+/*
+
+any ideas, requests, bug reports etc. to:
+
+	Steve Passe
+	New Ideas
+	P.O. Box 629
+	Englewood, CO	80151
+
+	computers:	(303) 781-4937
+
+	people:		(303) 761-4378
+
+*/
+
+		if the key is fo

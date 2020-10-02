@@ -1,0 +1,103 @@
+/* 
+ * Modulename:  clock.c
+ *
+ * Description: This module contains the main 
+ *      procedure and interrupt handler for the 
+ *      demo clock program for the BSO/Tasking 
+ *      C-51 compiler.
+ *      Compiler option : -C51
+ */
+
+#include "clock.sys"
+#include "clock.h"
+
+/* put time array in internal data for fast access */
+static data unsigned char       time[4]; 
+
+/* put welcome string in rom */
+rom char message[] = "Clock demo program for C-51\r\n";
+
+/* define new style function prototypes */
+#ifdef _CC51
+extern void out_char( char );  /* redefined to 
+                           putchar if not C-51 */
+#endif
+extern void reset_serial();
+extern void init_timer();
+static void out_bcd( char );
+static void welcome( rom char * );
+void main( void );
+
+interrupt( 1 ) using( 1 ) 
+tint( void )
+{
+    TL0 = ( TIME_FACTOR % 256 );  /* load lower 
+                                byte countvalue */
+    TH0 = ( TIME_FACTOR / 256 );  /* load upper 
+                                byte countvalue */
+    /* crystal: 11.0592 Mhz; 
+       timer0 counting up starting at 0xdc00,
+       interrupt at overflow,
+       countrate 1/12  osc. frequency,
+       every 10 ms. an interrupt
+     */
+    time[ HUN ] = _da( time[ HUN ] + 1 );
+    if ( !time[ HUN ] ) /* bcd 99 == 0x255  */ 
+    {
+         time[ SEC ] = _da( time[ SEC ] + 1 );
+         if ( time[ SEC ] == 0x60 ) /* 0x60 because of _da() */
+         {
+              time[ SEC ] = 0;
+              time[ MIN ] = _da( time[ MIN ] + 1 );
+              if ( time[ MIN ] == 0x60 )
+              {
+                   time[ MIN ] = 0;
+                   time[ HRS ] = _da( time[ HRS ] + 1 );
+                   if ( time[ HRS ] == 0x25 )
+                   {
+                        time[ HRS ] = 1;
+                   }
+              }
+         }
+    }
+}
+
+void
+main( void )
+{
+    register char   i;
+
+    reset_serial();
+    init_timer();
+    welcome( message );
+    while( SBUF != 0x03 )  /* stop when ^C input */
+    {
+         simulate_timer_int();
+         for( i=0; i<=3; i++ )
+         {
+              out_bcd( time[ i ] );
+              if ( i != 3 )
+              {
+                   out_char( ':' );
+              }
+         }
+         out_char( '\r' );
+         RI = 0;  /* clear rcv/xmit interrupt flag */
+    }
+}
+
+static void
+out_bcd( char c )
+{
+    out_char( ( ( c >> 4 ) & 0x0F ) + '0' );
+    out_char( ( c & 0x0F ) + '0' );
+}
+
+static void 
+welcome( rom char *p )
+{
+    while ( *p )
+    {
+         out_char( *p++ );
+    }
+}

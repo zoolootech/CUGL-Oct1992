@@ -1,0 +1,184 @@
+/*  memdebug.c  source file for debugging versions of malloc, 
+    calloc, realloc and free.  Copywrite 1990 by Wahhab 
+    Baldwin.  Permission to copy freely granted if this 
+    notice is included.
+*/
+
+#include <malloc.h>
+#include <string.h>
+
+#if defined(DEBUG)
+    #undef DEBUG
+#endif
+#include "memdebug.h"
+
+#define MAXMODS 100
+#define SENTINAL_INT  0xEEEE
+
+void d__add_to_ll(PMEMCHAIN mptr, size_t bytes, 
+                    char *module, int line);
+void d__fatal(char *msg, int value, char *module, int line);
+
+char modlist[MAXMODS][11];
+PMEMCHAIN memchainhead;
+
+void *d__malloc(size_t bytes, char *module, int line)
+{
+    PMEMCHAIN mptr;
+
+    if (bytes < 1)
+        d__fatal("Called malloc() with < 1 bytes:", 
+                    bytes, module, line);
+    mptr = malloc(bytes + sizeof(MEMCHAIN) + 2);
+    if (!mptr)
+        d__fatal("malloc() failed", bytes, module, line);
+    d__add_to_ll(mptr, bytes, module, line);
+    return (mptr + 1);
+}
+
+void *d__calloc(size_t n, size_t bytes, char *module, 
+                int line)
+{
+    PMEMCHAIN mptr;
+
+    if (bytes < 1)
+        d__fatal("Called calloc() with < 1 bytes:", 
+                    bytes, module, line);
+    if (n < 1)
+        d__fatal("Called calloc() with count < 1:", 
+                    n, module, line);
+    mptr = calloc(1, n * bytes + sizeof(MEMCHAIN) + 2);
+    if (!mptr)
+        d__fatal("calloc() failed", bytes, module, line);
+    d__add_to_ll(mptr, n * bytes, module, line);
+    return (mptr + 1);
+}
+
+void *d__realloc(void *rptr, size_t bytes, char *module, 
+                 int line)
+{
+    PMEMCHAIN mptr;
+
+    if (!rptr)
+        d__fatal("Called realloc() with null pointer", 0, 
+                    module, line);
+    if (bytes < 1)
+        d__fatal("Called realloc() with < 1 bytes:", 
+                    bytes, module, line);
+    for (mptr = memchainhead; mptr; mptr = mptr->next)
+        if (mptr + 1 == (PMEMCHAIN) rptr)
+            break;
+    if (!mptr)
+        d__fatal("Reallocating unallocated memory at", 
+                    (int)rptr, module, line);
+    if (mptr->sentinal != SENTINAL_INT)
+        d__fatal("realloc(): Beginning sentinal damaged--contains",
+            mptr->sentinal, module, line);
+    if (*(int*)((char *)(mptr + 1) + mptr->bytes) != 
+                    SENTINAL_INT)
+        d__fatal("Realloc(): Ending sentinal damaged--contains",
+            *(int *)((char *)(mptr + 1) + mptr->bytes), 
+            module, line);
+    mptr = realloc(mptr, bytes + sizeof(MEMCHAIN) + 2);
+    if (!mptr)
+        d__fatal("realloc() failed", bytes, module, line);
+    if (mptr->prev)
+        /* Update addresses in linked list */
+        mptr->prev->next = mptr;       
+    if (mptr->next)
+        mptr->next->prev = mptr;
+    mptr->bytes = bytes;
+    *(int *)((char *)(mptr + 1) + bytes) = SENTINAL_INT;
+    return(mptr + 1);              
+    /* User address starts after structure */
+}
+void d__free(void *fptr, char *module, int line)
+{
+    PMEMCHAIN mptr;
+
+    if (!fptr)
+        d__fatal("Freeing null pointer", 0, module, line);
+    for (mptr = memchainhead; mptr; mptr = mptr->next)
+        if (mptr + 1 == (PMEMCHAIN) fptr)
+            break;
+    if (!mptr)
+        d__fatal("Freeing unallocated memory at", 
+                 (int)fptr, module, line);
+    if (mptr->sentinal != SENTINAL_INT)
+        d__fatal("free(): Beginning sentinal damaged--contains",
+            mptr->sentinal, module, line);
+    if (*(int*)((char *)fptr + mptr->bytes) != SENTINAL_INT)
+        d__fatal("free(): Ending sentinal damaged--contains",
+            *(int *)((char *)fptr + mptr->bytes), 
+            module, line);
+    if (mptr->prev)
+        /* Drop this entry from list */
+        mptr->prev->next = mptr->next;      
+    else
+        memchainhead = mptr->next;
+    if (mptr->next)
+        mptr->next->prev = mptr->prev;
+    free(mptr);
+}
+
+void d__add_to_ll(PMEMCHAIN mptr, size_t bytes, char *module, 
+                int line)
+{
+    void *vptr;
+    unsigned short ix;
+    char *sptr;
+
+    /* First byte past MEMCHAIN structure */
+    vptr = mptr + 1;  
+    mptr->line = line;
+    if (sptr = strrchr(module, '\\'))
+        /* Skip path information */
+        module = sptr + 1;       
+    for (ix = 0; ix < MAXMODS && *modlist[ix] && 
+                strcmp(modlist[ix], module); ix++)
+        ;
+    if (ix == MAXMODS + 1)
+        d__fatal("Module table overflow, MAXMODS =", 
+                MAXMODS, module, line);
+    if (!*modlist[ix])
+        strcpy(modlist[ix], module);
+    mptr->module_ix = ix;
+    /* Number of user-requested bytes   */
+    mptr->bytes = bytes;            
+    mptr->next = memchainhead;     /* Zero if first entry */
+    if (memchainhead)               
+        /* Place new entry at front of list */
+        memchainhead->prev = mptr;
+    mptr->prev = 0;
+    memchainhead = mptr;
+    *(int *)((char *)vptr + bytes) = SENTINAL_INT;
+    mptr->sentinal = SENTINAL_INT;
+}
+
+void d__fatal(char *msg, int value, char *module, int line)
+{
+    printf("FATAL MEMORY ERROR IN %s LINE %d.\n%s %d\n",
+            module, line, msg, value);
+    exit(1);
+}
+void d__showmem()
+{
+    PMEMCHAIN mptr;
+
+    printf("\n****MEMORY DEBUG DISPLAY****\n");
+    if (!memchainhead)
+        printf("****NO MEMORY ALLOCATED***\n");
+    else {
+        printf("FILE       LINE SIZE ADDRESS\n");
+        for (mptr = memchainhead; mptr; mptr = mptr->next) {
+            printf("%-10.10s %.4d %.4d %d\n", 
+                    modlist[mptr->module_ix],
+                    mptr->line, mptr->bytes, mptr+1);
+            if (*(int *)((char *)(mptr + 1) + mptr->bytes) != 
+                    SENTINAL_INT)
+                printf("\t***ENDING SENTINAL DAMAGED\n");
+            if (mptr->sentinal != SENTINAL_INT)
+                printf("\t***BEGINNING SENTINAL DAMAGED\n");
+        }
+    }
+}

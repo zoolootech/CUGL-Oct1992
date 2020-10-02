@@ -1,0 +1,332 @@
+
+;
+;----- call5.mac   Small-C  arithmetic and logical library
+;
+;
+;	part 5		main routine - multiply, divide, switch and
+;				shift  routines in seperate modules
+;
+CCDCAL::
+	PCHL
+CCDDGC::
+        DAD D
+        JMP CCGCHAR
+        ;
+CCDSGC::
+        INX H
+        INX H
+        DAD SP
+        ;
+        ;FETCH A SINGLE BYTE FROM THE ADDRESS IN HL AND
+        ;SIGN EXTEND INTO HL
+        ;
+CCGCHAR::       
+        MOV A,M
+        ;
+        ;PUT THE ACCUM INTO HL AND SIGN EXTEND THROUGH H.
+        ;
+CCARGC::
+CCSXT:: 
+        MOV L,A
+        RLC
+        SBB A
+        MOV H,A
+        RET
+        ;
+CCDDGI::
+        DAD D
+        JMP CCGINT
+        ;
+CCDSGI::
+        INX H
+        INX H
+        DAD SP
+        ;
+        ;FETCH A FULL 16-BIT INTEGER FROM THE ADDRESS IN HL
+        ;INTO HL
+        ;
+CCGINT::
+        MOV A,M
+        INX H
+        MOV H,M
+        MOV L,A
+        RET
+        ;
+CCDECC::
+        INX H
+        INX H
+        DAD SP
+        MOV D,H
+        MOV E,L
+        CALL CCGCHAR
+        DCX H
+        MOV A,L
+        STAX D
+        RET
+        ;
+CCINCC::
+        INX H
+        INX H
+        DAD SP
+        MOV D,H
+        MOV E,L
+        CALL CCGCHAR
+        INX H
+        MOV A,L
+        STAX D
+        RET
+        ;
+        ;
+;
+CCDDPC::
+CDPDPC::
+        ;
+        DAD D
+CCPDPC::
+        POP B           ;;RET ADDR
+        POP D
+        PUSH B
+        ;
+        ;STORE A SINGLE BYTE FROM HL AT THE ADDRESS IN DE
+        ;
+CCPCHAR::       
+PCHAR::  MOV A,L
+        STAX D
+        RET
+        ;
+CCDECI::
+        INX H
+        INX H
+        DAD SP
+        MOV D,H
+        MOV E,L
+        CALL CCGINT
+        DCX H
+        JMP CCPINT
+        ;
+CCINCI::
+        INX H
+        INX H
+        DAD SP
+        MOV D,H
+        MOV E,L
+        CALL CCGINT
+        INX H
+        JMP CCPINT
+        ;
+        ;
+;
+CCDDPI::
+CDPDPI::
+        ;
+        DAD D
+CCPDPI::
+        POP B           ;;RET ADDR
+        POP D
+        PUSH B
+        ;
+        ;STORE A 16-BIT INTEGER IN HL AT THE ADDRESS IN DE
+        ;
+CCPINT::
+PINT::   MOV A,L
+        STAX D
+        INX D
+        MOV A,H
+        STAX D
+        RET
+        ;
+        ;INCLUSIVE "OR" HL AND DE INTO HL
+        ;
+CCOR::  
+        MOV A,L
+        ORA E
+        MOV L,A
+        MOV A,H
+        ORA D
+        MOV H,A
+        RET
+        ;
+        ;EXCLUSIVE "OR" HL AND DE INTO HL
+        ;
+CCXOR:: 
+        MOV A,L
+        XRA E
+        MOV L,A
+        MOV A,H
+        XRA D
+        MOV H,A
+        RET
+        ;
+        ;"AND" HL AND DE INTO HL
+        ;
+CCAND:: 
+        MOV A,L
+        ANA E
+        MOV L,A
+        MOV A,H
+        ANA D
+        MOV H,A
+        RET
+        ;
+        ;IN ALL THE FOLLOWING COMPARE ROUTINES, HL IS SET TO 1 IF THE
+        ;CONDITION IS TRUE, OTHERWISE IT IS SET TO 0 (ZERO).
+        ;
+        ;TEST IF HL = DE
+        ;
+CCEQ::  
+        CALL CCCMP
+        RZ
+        DCX H
+        RET
+        ;
+        ;TEST IF DE <> HL
+        ;
+CCNE::  
+        CALL CCCMP
+        RNZ
+        DCX H
+        RET
+        ;
+        ;TEST IF DE > HL (SIGNED)
+        ;
+CCGT::  
+        XCHG
+        CALL CCCMP
+        RC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE <= HL (SIGNED)
+        ;
+CCLE::  
+        CALL CCCMP
+        RZ
+        RC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE >= HL (SIGNED)
+        ;
+CCGE::  
+        CALL CCCMP
+        RNC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE < HL (SIGNED)
+        ;
+CCLT::  
+        CALL CCCMP
+        RC
+        DCX H
+        RET
+        ;
+        ;COMMON ROUTINE TO PERFORM A SIGNED COMPARE
+        ; OF DE AND HL
+        ;THIS ROUTINE PERFORMS DE - HL AND SETS THE CONDITIONS: 
+        ; CARRY REFLECTS SIGN OF DIFFERENCE (SET MEANS DE < HL)
+        ; ZERO/NON-ZERO SET ACCORDING TO EQUALITY.
+        ;
+CCCMP:: 
+        MOV A,H         ;;INVERT SIGN OF HL
+        XRI 80H
+        MOV H,A
+        MOV A,D         ;;INVERT SIGN OF DE
+        XRI 80H
+        CMP H           ;;COMPARE MSBS
+        JNZ CCCMP1              ;;DONE IF NEQ
+        MOV A,E         ;;COMPARE LSBS
+        CMP L
+CCCMP1: LXI H,1         ;;PRESET TRUE COND
+        RET
+        ;
+        ;TEST IF DE >= HL (UNSIGNED)
+        ;
+CCUGE:: 
+        CALL CCUCMP
+        RNC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE < HL (UNSIGNED)
+        ;
+CCULT:: 
+        CALL CCUCMP
+        RC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE > HL (UNSIGNED)
+        ;
+CCUGT:: 
+        XCHG
+        CALL CCUCMP
+        RC
+        DCX H
+        RET
+        ;
+        ;TEST IF DE <= HL (UNSIGNED)
+        ;
+CCULE:: 
+        CALL CCUCMP
+        RZ
+        RC
+        DCX H
+        RET
+        ;
+        ;COMMON ROUTINE TO PERFORM UNSIGNED COMPARE
+        ;CARRY SET IF DE < HL
+        ;ZERO/NONZERO SET ACCORDINGLY
+        ;
+CCUCMP::
+        MOV A,D
+        CMP H
+        JNZ CCUCP1
+        MOV A,E
+        CMP L
+CCUCP1: LXI H,1
+        RET
+        ;
+        ;SUBTRACT HL FROM DE AND RETURN IN HL
+        ;
+CCSUB:: 
+        MOV A,E
+        SUB L
+        MOV L,A
+        MOV A,D
+        SBB H
+        MOV H,A
+        RET
+        ;
+        ;FORM THE TWO'S COMPLEMENT OF HL
+        ;
+CCNEG:: 
+        CALL CCCOM
+        INX H
+        RET
+        ;
+        ;FORM THE ONE'S COMPLEMENT OF HL
+        ;
+CCCOM:: 
+        MOV A,H
+        CMA
+        MOV H,A
+        MOV A,L
+        CMA
+        MOV L,A
+        RET
+
+
+CCLNEG::
+        MOV A,H
+        ORA L
+        JNZ $+6
+        MVI L,1
+        RET
+        LXI H,0
+        RET
+;
+;
+ 	END	
+
+

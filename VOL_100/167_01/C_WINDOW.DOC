@@ -1,0 +1,1124 @@
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+				C_WINDOW
+				--------
+
+	      Windowing for the IBM PC with the C Language
+			      Version 1.00
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+    INTRODUCTION
+
+	C_WINDOW is a collection of functions that give windowing capa-
+	bility to the C programmer using an IBM PC or true compatible.	
+	C_WINDOW is written entirely in MicroSoft (Lattice) C, Version
+	2.03. It was compiled using the small model for both code and
+	data and is distributed in .OBJ format, ready to be linked to
+	your C programs. The source code of C_WINDOW is available for
+	$15. See page 11 of this documentation for details.
+
+	The core C_WINDOW files are:
+	
+	     C_WINDOW.OBJ	- The compiled windowing code
+	     C_WINDOW.DOC	- The documentation
+	     C_WDEF.INC 	- Include file for your C code
+	     C_W-DEMO.EXE	- Windowing demonstration program
+
+	To use the C_WINDOW functions in your Lattice C program:
+	
+	 (1) Include the file C_WDEF.INC in your C source file. 
+	     C_WDEF.INC defines the C_WINDOW functions and associated
+	     constants and variables. If the C_WDEF.INC file is missing,
+	     you can extract it from the sample program C_W-DEMO.C listed
+	     at the end of this documentation.	
+
+	 (2) Compile your C source file using the small code and data
+	     model.
+
+	 (3) Link C_WINDOW.OBJ to your code:
+
+		LINK CS + yourprog + C_WINDOW, yourprog.EXE,, MCS.LIB
+
+	To allow other C compilers to compile the C_WINDOW source code, 
+	standard C syntax is used where-ever possible. There are only
+	three non-standard C functions used: INT86(), PEEK() and POKE().
+	If your compiler doesn't include these functions, you will have 
+	to write your own. Lattice C compatible versions of the three
+	above functions, written in assembler, plus a full explanation, 
+	are on the source code disk. Also, if you don't have an IBM PC or
+	compatible, and you are familiar with reading and writing to the
+	video RAM of your computer, you can adapt C_WINDOW for use on
+	your PC.
+
+	Near the end of this documentation is the C source of a sample
+	windowing program. It has been compiled as C_W-DEMO.EXE and is
+	part of the C_WINDOW package. If C_W-DEMO.EXE is missing, you can
+	extract the source of C_W-DEMO.C from this documentation and
+	compile it to see a demonstration of C_WINDOW.	
+
+	An array of bytes, called the window buffer, is used to store
+	each defined window, plus the section of the screen that each
+	window overlays.  The window buffer size has been defined in the
+	C_WINDOW code to be 10000 bytes.  This is a compromise value.
+	Larger allows more active window definitions, smaller means a
+
+
+									1
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+	smaller program.  When a window is defined, storage is allocated
+	in the window buffer.  The standard IBM PC screen, in 80 column 
+	alphanumeric mode, uses 4000 bytes (80 x 25 x 2) of video RAM.
+	Each character on the screen has a trailing attribute byte that 
+	indicates if the character is bright or dark, blinking, etc.
+	10000 bytes is enough to create a window the size of the screen 
+	(4000 bytes to save old screen, 4000 for window), plus another
+	little window. Or several medium sized windows. 
+
+	C_WINDOW allows deallocation of window storage so you can have as
+	many windows as you like by deallocating and redefining them as 
+	needed. The only restriction is that only as many windows as can
+	be defined in the window buffer can be visible at any one time. 
+
+	The main reason why the window buffer's size is explicitly
+	defined in the code, rather than using dynamic memory allocation
+	is that if the program can load on a particular computer with x 
+	amount of memory, then it will run on that computer. The program
+	is self-contained.
+
+
+    OVERVIEW OF FUNCTIONS
+
+	YOU MUST ALWAYS CALL W_INIT() BEFORE USING ANY OF C_WINDOW's
+	FUNCTIONS. Do NOT neglect to do this, as several important data 
+	pointers are initialized.
+
+	There are two kinds of functions available: those that are
+	specific to the C_WINDOW environment, and those that are comple-
+	mentary. The functions specific to C_WINDOW are preceded by "W_".  
+
+	The four major windowing functions are:
+
+		(1) Defining a window with W_DEF().
+		(2) Opening a window with W_OPEN().
+		(3) Closing the most recently opened window with W_CLOSE().
+		(4) Deallocating window(s) and releasing window buffer
+		    space with W_KILL().
+
+	The flag "err_exit" controls the action taken when a windowing 
+	error occurs. "err_exit" is declared as EXTERNal CHAR in 
+	C_WDEF.INC. If you set "err_exit" to TRUE (default), the program 
+	will return to the operating system after an error message window
+	is displayed.  The name of the windowing function and what is
+	wrong with what you are asking the function to do will be
+	indicated in the error message window.	
+
+	If you set "err_exit" FALSE, for all C_WINDOW functions that 
+	return a status code (1 == OK, 0 == error), be sure to check that
+	no error has occurred. If a windowing function returns an error 
+	code, do not ignore it.  Terminate the program and check your
+	code for the cause of the error. Often the problem is as simple 
+	as mixing the X and Y coordinates up, or not specifying enough
+	arguments when a function is called.
+
+
+									2
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+
+	A window's width and height is specified when it is defined.  When
+	it is opened, it can be located at any location on the screen, as
+	long as it doesn't stray outside of the screen's boundaries. If 
+	you have specified a border for a window, the writeable area of 
+	the window is reduced to fit inside the border. THE UPPER LEFT
+	CORNER OF THE WRITEABLE AREA OF A WINDOW IS AT HORIZONTAL (X)
+	COORDINATE 0 AND VERTICAL (Y) COORDINATE 0. IF NO WINDOWS ARE
+	OPEN, WINDOWING COMMANDS ARE RELATIVE TO THE STANDARD 80 x 25
+	SCREEN. 
+
+	No more than one version of a defined window can be open at any 
+	one time, irregardless of screen placement. This is because each
+	window's storage contains information about the section of screen
+	it overlaid and opening a second version of the same window would
+	overwrite that information.
+
+	W_WRITE() is the C_WINDOW screen writing function. It does not
+	attempt to interpret and act on any characters, including carriage
+	returns and line feeds. The only action taken is to wrap-around on
+	the active window if the cursor is at the right side of the window
+	and to scroll up if the bottom of the window is reached. Any extra
+	text handling will have to be added by you. The advantage is that
+	you can write any character to a window with W_WRITE(). 
+
+	W_GETSTR() is the C_WINDOW screen string input function. You can
+	specify the maximum length of an input string so that no borders
+	are over-written. Character editing capabilities are included.	
+	The standard C function SSCANF() can be used to perform formatted
+	input conversion on the string read by W_GETSTR().
+
+	Any standard C input/output functions that involve outputting
+	carriage returns or line feeds to the screen MUST be avoided when
+	a window is open. The standard C input/output functions know
+	nothing about the windowing environment and can easily write
+	across a window's border. Functions like PRINTF() can be used
+	with care, providing the user (1) first positions the cursor in a
+	window with W_GOTOXY() (2) never sends a carriage return or line
+	feed to the screen and (3) avoids writing across a window's
+	border. 
+
+	All function calls must include all parameters, even if they are
+	only dummy place-holders. For example, if a window has been
+	defined without a border, the window opening function W_OPEN()
+	must include all 5 parameters, even though the border type
+	specification is ignored.
+
+	C_WINDOW automatically selects 80 column alphanumeric mode
+	whether you have a monochrome or graphics screen. The windowing 
+	functions W_WRITE(), W_GETSTR(), and W_DSP1() expect character
+	attributes. Attribute definitions, controlling character color, 
+	intensity, etc, are contained in W_DEF.INC. You combine them by 
+	ORing definitions together. For example, FG_BLUE | BG_RED yields
+	blue characters on a red background. To select standard white-on-
+
+
+									3
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+	black for either a monochrome or color screen, specify 7 as the 
+	character attribute.
+
+
+    FUNCTIONS CONTAINED IN C_WINDOW
+
+      W_INIT - Initialize windowing
+
+	Useage: 
+
+	  w_init();
+
+	W_INIT() sets up pointers to the window buffer, detects the type
+	of monitor (color or monochrome), selects 80 column alphanumeric
+	mode, sets the display page to zero, and sets up initial window 
+	dimensions to 80 x 25. If your computer is not an IBM PC or
+	compatible, W_INIT will detect this and abort the program.
+
+	YOU MUST CALL W_INIT() BEFORE CALLING ANY OTHER C_WINDOW
+	FUNCTIONS. Failure to do this can cause random sections of memory
+	to be overwritten.
+
+
+      W_DEF - Define a window
+
+	Useage: 
+
+	  wnum = w_def (wid, hgt, border);
+	    int  wnum;	/* 0 if error, window access number otherwise */
+	    int  wid;  /* Width of window, including optional border  */
+	    int  hgt;  /* Height of window, including optional border */
+	    char border;  /* TRUE (1) if border, FALSE (0) if no border */
+
+	Example:
+
+	    if ((w1 = w_def(x1, y1, TRUE)) == 0)
+		    /* w_def error handler here */
+	    /* otherwise continue */
+
+	Define a window and reserve storage for it in the window buffer.
+	A window must be defined before it is opened.
+
+	The width and height parameters include the window border, if a 
+	border is specified. If the window has a border, then the
+	writeable area of the window is reduced to fit inside the border.
+	For example, a bordered window that has a width of 30 and a height
+	of 10 has writeable coordinates of 0..27 in the horizontal (X)
+	direction and 0..7 in the vertical (Y) direction.  If the window
+	didn't have a border, the X and Y ranges would be 0..29 and 0..9
+	respectively.
+
+	You cannot define a window larger than the standard screen. Also,
+	the window must not be smaller than three columns by three rows 
+	if a border is specified and one row by one column if no border 
+
+
+									4
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+	is specified. In other words, at least one writeable character
+	position must be on the window. 
+
+	Be sure to check the return code for 0, the error condition.
+	Errors occur if the window is too small, too big, or if there is
+	not enough room for the window in the window buffer.
+
+
+      W_OPEN - Open a pre-defined window
+
+	Useage:
+
+	  status = w_open (wnum, x, y, bdr_type, clear);
+	    int  status;  /* 1 if sucess, 0 if error */
+	    int  wnum;	/* Value returned by a previous W_DEF() */
+	    int  x;  /* Horizontal coordinate of upper left corner */
+	    int  y;  /* Vertical coordinate of upper left corner */
+	    char bdr_type;  /* Border type (if specified by W_DEF()) */
+	    char clear;  /* TRUE means pre-clear window, FALSE means
+			    retain previous contents */
+
+	Open a window that has been previously defined by a call to
+	W_DEF(). If a window is being opened for the first time, then the
+	contents of the window are initialized to spaces. If the window 
+	is being opened after having been previously open, the previous 
+	contents of the window will be re-displayed, unless "clear" is 
+	set to TRUE. The include file W_DEF.INC defines the six border
+	types.
+
+	"x" and "y" are absolute locations on the standard 80 x 25 screen 
+	and specify the location of the upper left corner of the window 
+	to be opened.
+
+	Be sure to check the return code for 0, the error condition.
+	Errors occur if wnum is to small or big, if the window is already
+	open, or if the window won't fit on the screen at the absolute
+	X,Y location specified. 
+
+
+      W_CLOSE - Close a window
+
+	Useage: 
+
+	  w_close();
+
+	Close the most recently opened window and restore the previously
+	overwritten section of screen.	
+
+	If you attempt to close the standard screen, W_CLOSE() will
+	simply return, so extra W_CLOSE() calls are ignored.
+
+	There is no error return code.	
+
+
+
+
+									5
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+      W_KILL - Deallocate window(s)
+
+	Useage:
+
+	  status = w_kill (wnum);
+	    int  status;  /* 1 if sucess, 0 if error */
+	    int  wnum;	/* Number of window to kill */
+
+	Deallocate window, and all subsequently defined windows. For
+	example:
+
+		if ((w1 = w_def(x1, y1, FALSE)) == 0)
+			/* Error handler here */
+		if ((w2 = w_def(x2, y2, TRUE)) == 0)
+			/* Error handler here */
+		if ((w3 = w_def(x3, y3, TRUE)) == 0)
+			/* Error handler here */
+		/* De-allocate w2. Also de-allocate w3, because */
+		/* it was defined after w2, but not w1, because */
+		/* it was defined before w2 */
+		if ((status = w_kill(w2)) == 0)
+			/* w_kill error handler here */
+
+	When W_KILL() is called, all of the open windows on the screen
+	are automatically closed. This is done because the deallocated
+	window(s) may be partially or fully under a window that is not
+	being deallocated.
+
+	Be sure to check the return code for 0, the error condition.
+	Errors occur if wnum is too small or too big or if no window is 
+	associated with wnum.
+
+
+      W_SCROLL - Scroll contents of window
+
+	Useage:
+
+	  w_scroll (dir, num);
+	    int  dir;  /* Direction of scroll; 0 == up, 1 == down */
+	    int  num;  /* Number of lines to scroll */
+
+	The current window is scrolled in "dir" direction for "num" 
+	lines.
+
+
+      W_WRITE - Write a string to a window
+
+	Useage:
+
+	  w_write (s, attrib);
+	    char  *s;  /* Pointer to string */
+	    char  attrib;  /* String display attribute */
+
+	Display NULL terminated string in current window at location set
+
+
+									6
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+	by W_GOTOXY(). If the right hand side of the window is reached, 
+	the cursor will wrap-around to the next line. If the cursor
+	reaches the bottom of the current window, the contents of the
+	window will scroll up 1 line.
+
+	No control characters are recognized, so any character can be
+	displayed.
+
+	See C_WDEF.INC for the pre-defined display attribute values.
+
+
+      W_GETSTR - Read string
+
+	Useage:
+
+	  w_getstr (s, maxc, attrib);
+	    char *s;  /* Pointer to input buffer */
+	    int  maxc;	/* Max char count */
+	    char attrib;  /* attribute of characters entered */
+
+	Read a string from the keyboard. Always position the cursor with
+	W_GOTOXY() before calling W_GETSTR(). "maxc" is the maximum 
+	number of characters allowed. The cursor will not move beyond the
+	limit specified by "maxc". For example, if "maxc" == 10, then 
+	only 10 characters can be entered. This is useful for avoiding
+	over-writing a window's borders.
+
+	You can edit the input string:
+		(1) Pressing <RETURN> as the first keystroke leaves the
+		    input buffer unaltered.
+		(2) If the first keystroke is a printable character, the
+		    rest of the input buffer will be cleared.
+		(3) The back-space key deletes one character to the left
+		    of the cursor.
+		(4) The DEL key deletes the character above the cursor.
+		(5) The left and right arrow keys move the cursor along 
+		    the input buffer string.
+		(6) Pressing <RETURN> ends the editing.
+
+	The input buffer must be at least 1 byte longer than "maxc", to 
+	make room for the trailing '\0', which is always appended.
+
+	See C_WDEF.INC for the pre-defined display attribute values.
+
+
+
+
+
+
+
+
+
+
+
+
+
+									7
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+      W_DSP1 - Display 1 character
+
+	Useage:
+
+	  status = w_dsp1 (x, y, ch, attrib)
+	    int  status;  /* 1 if OK, 0 if error */
+	    int  x;  /* X position */
+	    int  y;  /* Y position */
+	    char ch;  /* character */
+	    char attrib;  /* attribute */
+
+	Display a single character at an X, Y location relative to the
+	currently open window.	
+
+	If no windows are open, the X and Y coordinates correspond to
+	absolute locations on the standard 80 x 25 screen. The upper left
+	coordinate is (0, 0).
+
+	See C_WDEF.INC for the pre-defined display attribute values.
+
+	Be sure to check the return code for 0, the error condition. An 
+	error occurs if the X,Y position is outside of the currently
+	active window.	
+
+
+      W_GETCY - Get vertical (Y) position of cursor
+
+	Useage:
+
+	  i = w_getcy();
+	    int  i;  /* Y position */
+
+
+	This function returns the current Y position of the cursor,
+	relative to the upper left corner (0, 0) of the writeable part of
+	the current window. If no windows are open, the Y position is
+	relative to the upper left corner of the standard screen.
+
+
+      W_GETCX - Get horizontal (X) position of cursor
+
+	Useage:
+
+	  i = w_getcx();
+	    int  i;  /* X position */
+
+	This function returns the current X position of the cursor,
+	relative to the upper left corner (0, 0) of the writeable part of
+	the current window. If no windows are open, the X position is
+	relative to the upper left corner of the standard screen.
+
+
+
+
+
+
+									8
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+      W_GOTOXY - Move cursor
+
+	Useage:
+
+	  status = w_gotoxy (x, y);
+	    int  status;  /* 1 if OK, 0 if error */
+	    int  x;  /* Horizontal position */
+	    int  y;  /* Vertical position */
+
+	Go to specified X, Y location on the writeable part of the
+	current window. If you specified a border when you defined and
+	opened the window, the writeable part of the window is reduced to
+	fit inside the border. For example, if you specified a window
+	that was 10 x 10, and it had a border, then the horizontal (X)
+	and vertical (Y) coordinates for W_GOTOXY() can vary between
+	0..7.
+
+	If there are no windows open, the coordinates refer to the
+	standard 80 x 25 screen.
+
+	Be sure to check the return code for 0, the error condition. An 
+	error occurs if the X,Y position is outside of the currently
+	active window.
+
+
+    COMPLEMENTARY FUNCTIONS
+
+      The following functions are not part of the C_WINDOW environment. 
+      They are included because they provide useful windowing support.	
+
+
+      BORDER - Draw border on screen
+
+	Useage:
+
+	  status = border (x, y, wid, hgt, type);
+	    int  status;  /* 1 if sucess, 0 if error */
+	    int  x;  /* Upper left horizontal position */
+	    int  y;  /* Upper left vertical position */
+	    int  wid;  /* Width of border */
+	    int  hgt;  /* Height of border */
+	    char type;	/* Type of border */
+
+	Draw a border around an area of the screen. X and Y are absolute
+	coordinates, relative to the standard 80 x 25 screen. The upper 
+	leftmost coordinate of the standard screen is (0, 0) and the lower
+	right coordinate of the standard screen is (79, 24).
+
+	There are six types of borders:
+		(a) type = 0;  /* Border outline is spaces */
+		(b) type = 1;  /* Single line border,
+				  Horizontal and vertical */
+		(c) type = 2;  /* Double line border,
+				  Horizontal and vertical */
+
+
+									9
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+		(d) type = 3;  /* Double horizontal lines,
+				  Single vertical lines */
+		(e) type = 4;  /* Single horizontal lines,
+				  Double vertical lines */
+		(f) type = 5;  /* Solid block horizontal and vertical */
+
+	The include file C_WDEF.INC defines the border types listed above.
+
+	Be sure to check the return code for 0, the error condition. An 
+	error occurs if the border type is not one of the types specified
+	or if the border will not fit on the standard 80 x 25 screen.
+
+
+      KEYIN - Read a keyboard character
+
+	Useage:
+
+	  c = keyin();
+	    char  c;  /* Character returned */
+
+	Read the next character entered at the keyboard. The character is
+	not echoed to the screen. C_WDEF.INC declares a variable "extend" 
+	as EXTERNal CHAR. If the character location "extend" is set to 
+	TRUE (1) when KEYIN() returns, then the value returned by KEYIN()
+	is the extended character code. Otherwise, the character is a
+	regular ASCII character. For example:
+
+		c = keyin();
+		if (extend)
+			/* process function keys, etc */
+		else
+			/* standard character */
+
+
+      BEEP - Sound speaker
+
+	Useage:
+
+	beep(count)
+	  int  count;  /* Duration */
+
+	Beep the speaker. A value of 500 for "count" gives a short chirp. 
+	"count" is an integer value, so it must not exceed 32,767.
+
+
+
+
+
+
+
+
+
+
+
+
+
+								       10
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+    GETTING THE C SOURCE
+
+	There are two places to get the C_WINDOW source code:
+
+	     In the USA for $15:	  In Europe for 12 English pounds:
+
+	     Christopher McVicar	     John Poole
+	     c/o IMAGE			     c/o IMAGE
+	     124 Wellington Heights	     27 Cobham Road
+	     Avon, Connecticut	06001	     Ferndown Industrial Est.
+					     Wimborne, Dorset, England
+
+	The source code will be sent the same day we receive payment. It
+	will be on a DOS 1.1 formatted single sided floppy diskette for 
+	compatibility with all versions of PC-DOS and MS-DOS.
+
+	Also on the diskette are:
+		(1) A text file explaining what the Lattice C functions 
+		    PEEK(), POKE(), and INT86() do.
+		(2) Lattice C compatible 8086 assembler sources for
+		    PEEK(), POKE(), and INT86().
+
+
+    DISCLAIMER
+
+	Users of C_WINDOW do so at their own risk. No representations as
+	to the program's suitability for any purpose are made. Users of 
+	C_WINDOW are entirely responsible for loss or damage of any kind
+	caused by C_WINDOW.
+
+
+    RESTRICTIONS
+
+	Non-commercial users of C_WINDOW may use C_WINDOW without any
+	restrictions.
+
+	Commercial users of C_WINDOW, i.e. individuals or companies using
+	or planning to use C_WINDOW as part of a saleable product, must 
+	contact one of us and get written permission to include part or 
+	all of C_WINDOW in their product.  This is only a formality to
+	keep a company or individual from selling an essentially
+	unmodified version of C_WINDOW as their own product.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+								       11
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+    DEMONSTRATION PROGRAM
+
+	/* C_W-DEMO.C
+
+		C_WINDOW Version 1.0 demonstration program contained
+		in C_WINDOW.DOC and compiled as C_W-DEMO.EXE
+
+	*/
+
+	/***********************************************/
+	/* Use your text editor to place the following */
+	/* defines and declarations in an include file */
+	/* called C_WDEF.INC if C_WDEF.INC is missing. */
+	/* MAKE SURE ALL #DEFINES ARE IN COLUMN 1!!    */
+	/***********************************************/
+	/* C_WDEF.INC - Include file for C_WINDOW Vers 1.0 */
+
+
+	#define FALSE	0
+	#define TRUE	1
+
+	/* Window border types sent to w_open() */
+	#define SPACES	0	/* blanks */
+	#define SNGL_LN 1	/* single lines */
+	#define DBL_LN	2	/* double lines */
+	#define MXD_1	3	/* double horiz, single vert */
+	#define MXD_2	4	/* double vert, single horiz */
+	#define BLK_LN	5	/* block characters */
+
+	/* Monochrome defines */
+	#define NORM	0x07	/* std. white on black */
+	#define REVERS	0x70	/* reverse video */
+	/* Character display attributes, to be */
+	/* added or ORed to the above base modes */
+	#define BRIGHT	0x08
+	#define BLINK	0x80
+
+	/* Color screen foreground defines */
+	#define FG_BLACK	0x00
+	#define FG_BLUE 	0x01
+	#define FG_GREEN	0x02
+	#define FG_CYAN 	0x03
+	#define FG_RED		0x04
+	#define FG_MAGENTA	0x05
+	#define FG_BROWN	0x06
+	#define FG_WHITE	0x07
+	#define FG_GRAY 	0x08
+	#define FG_LTBLUE	0x09	/* light blue */
+	#define FG_LTGREEN	0x0A	/* light green */
+	#define FG_LTCYAN	0x0B	/* light cyan */
+	#define FG_LTRED	0x0C	/* light red */
+	#define FG_LTMAGENTA	0x0D	/* light magenta */
+	#define FG_YELLOW	0x0E
+	#define FG_BRTWHITE	0x0F	/* bright white */
+
+
+								       12
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+
+	/* Color screen background defines to be ORed to */
+	/* the above foreground colors */
+	#define BG_BLACK	0x00
+	#define BG_BLUE 	0x10
+	#define BG_GREEN	0x20
+	#define BG_CYAN 	0x30
+	#define BG_RED		0x40
+	#define BG_MAGENTA	0x50
+	#define BG_BROWN	0x60
+	#define BG_WHITE	0x70
+	/* Color screen blink attribute to be ORed to the */
+	/* above foreground colors */
+	#define COLRBLINK	0x80
+
+	/* Direction of window scroll */
+	#define UP	0
+	#define DOWN	1
+
+	/* Border parameter sent to w_def () */
+	#define NOBORDER 0
+	#define BORDER	1
+
+	/* Parameter sent to w_open () */
+	#define NOCLR	0	/* No window pre-clear */
+	#define CLR	1	/* Pre-clear window */
+
+	/* Allow access to C_WINDOW functions */
+	extern	w_init ();
+	extern	w_def ();
+	extern	w_open ();
+	extern	w_close ();
+	extern	w_kill ();
+	extern	w_write ();
+	extern	w_dsp1 ();
+	extern	w_getstr ();
+	extern	w_scroll ();
+	extern	w_getcx ();
+	extern	w_getcy ();
+	extern	w_gotoxy ();
+
+	/* Non-windowing specific */
+	extern	border ();
+	extern	keyin ();
+	extern	beep ();
+
+	/* Flag altered by keyin () */
+	extern	char extend;
+
+	/* Flag used in error handling */
+	extern	char err_exit;
+
+	/***********************************************/
+
+
+
+								       13
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+
+	main()
+
+	{
+		int	w1, w2, w3, w4;
+		int	i, c;
+		char	str[10];
+		char	*strptr;
+
+		/* always call this function first */
+		w_init ();
+
+		strptr = str;
+
+		w_gotoxy (30, 7);
+		w_write ("Windows for C", NORM|BRIGHT);
+		border (10, 5, 55, 7, BLK_LN);
+		w_gotoxy (21, 8);
+		w_write ("*C_WINDOW Demonstration Program*", NORM);
+		w_gotoxy (25, 9);
+		w_write ("(Source in C_WINDOW.DOC)", NORM);
+		w_gotoxy (17, 15);
+		w_write ("Send $15 for the source of C_WINDOW to:", NORM);
+		w_gotoxy (26, 18);
+		w_write ("Christopher McVicar", NORM|BRIGHT);
+		w_gotoxy (31, 19);
+		w_write ("c/o IMAGE", NORM|BRIGHT);
+		w_gotoxy (25, 20);
+		w_write ("124 Wellington Heights", NORM|BRIGHT);
+		w_gotoxy (28, 21);
+		w_write ("Avon, CT  06001", NORM|BRIGHT);
+		w_gotoxy (50, 23);
+		w_write ("Press any key to continue", NORM|BRIGHT);
+		keyin ();
+
+		/* define 4 windows */
+		w1 = w_def (75, 5, BORDER);
+		w2 = w_def (60, 20, BORDER);
+		w3 = w_def (33, 14, BORDER);
+		w4 = w_def (44, 9, BORDER);
+
+		w_open (w1, 0, 3, DBL_LN, CLR);
+		w_write ("Text can be ", NORM);
+		w_write ("blinking, ", NORM|BLINK);
+		w_write ("blinking bright, ", NORM|BRIGHT|BLINK);
+		w_write ("or just ", NORM|BRIGHT);
+		w_write ("bright. ", NORM|BRIGHT);
+		w_write ("All graphics card colors are also available. ",NORM);
+		w_write ("Press any key to continue", NORM);
+		keyin ();
+
+		w_open (w2, 20, 2, DBL_LN, CLR);
+		w_write ("The window can scroll up or down...", NORM);
+		w_gotoxy (0, 1);
+
+
+								       14
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+		w_write ("Press any key to continue", NORM);
+		keyin ();
+		for (i = 0; i < 100; i++) {
+			w_write ("Scrolling ", NORM);
+			w_write ("up ",NORM|BLINK);
+			w_write ("in the window ", NORM|BRIGHT);
+		}
+		w_scroll (UP, 5);
+		w_gotoxy (0, 17);
+		w_write ("Press any key to continue", NORM);
+		keyin ();
+
+		w_open (w3, 10, 5, MXD_1, CLR);
+		w_write ("Press any key to continue", NORM);
+		keyin ();
+
+		w_open (w4, 4, 10, BLK_LN, CLR);
+		*(strptr+1) = 0; /* NULL terminated string */
+		w_gotoxy (0, 1);
+		w_write ("When a window is open, lines automatically", NORM);
+		w_gotoxy (0, 2);
+		w_write ("wrap around when the right edge is reached", NORM);
+		w_gotoxy (0, 3);
+		w_write ("Type in a line of characters or press", NORM);
+		w_gotoxy (0, 4);
+		w_write ("<Carriage Return>..", NORM);
+		w_gotoxy (0, 5);
+		w_write ("Press ", NORM);
+		w_write ("FUNCTION KEY 1 ", NORM|BRIGHT);
+		w_write ("to quit.", NORM);
+		w_gotoxy (0, 6);
+		while (1) {
+			/* 59 is extended code for function key 1 */
+			if (((*strptr = keyin ()) == 59) && extend)
+				break;
+			/* carriage return */
+			if (*strptr == 0x0D) {
+				w_scroll (UP, 1);
+				i = w_getcy ();
+				w_gotoxy (0, i);
+			}
+			else
+				w_write (strptr, NORM);
+		}
+		w_close ();
+
+		strptr = "12345";
+		w_gotoxy (0, 0);
+		w_write ("Strings can be edited using the", NORM);
+		w_gotoxy (0, 1);
+		w_write ("usual editing keys. Try editing", NORM);
+		w_gotoxy (0, 2);
+		w_write ("the following five character", NORM);
+		w_gotoxy (0, 3);
+
+
+								       15
+
+
+
+
+
+								 C_WINDOW
+   ----------------------------------------------------------------------
+
+
+		w_write ("string:", NORM);
+		w_gotoxy (0, 4);
+		w_write ("<Carriage Return> to continue..", NORM);
+		w_gotoxy (8, 3);
+		w_getstr (strptr, 5, NORM|BRIGHT);
+		w_close ();
+
+		keyin ();
+		w_close ();
+
+		/* reopen prev window */
+		w_open (w2, 0, 3, BLK_LN, NOCLR);
+		w_gotoxy (0, 16);
+		w_write ("Windows can be re-opened at a different location..",
+			NORM);
+		w_gotoxy (0, 17);
+		w_write ("Press any key to continue", NORM);
+
+		keyin ();
+		w_close ();
+
+		keyin ();
+		w_close ();
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+								       16
+
+
+
+
+                                                                                        

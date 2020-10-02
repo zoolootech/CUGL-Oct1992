@@ -1,0 +1,43 @@
+/*
+ *  COM.H Copyright (C) 1990 by Mark R. Nelson
+ *
+ * This header file contains the structures, constants, and function
+ * prototypes necessary to use the RS-232 routines in COM.C
+ */
+
+/*
+ * This structure defines an RS-232 port.
+ */
+typedef struct {
+    unsigned int   address;        /* Address of the 8250                */
+    char           buffer[256];    /* The receive buffer.                */
+    unsigned char  head;           /* Offset for insertion into the buff.*/
+    unsigned char  tail;           /* Offset for removal from the buffer.*/
+    unsigned char  match;          /* The status register match value    */
+} PORT ;
+
+typedef struct {
+    unsigned int   status_address;     /* Address of the boards status reg.  */
+    unsigned char  irq_mask;           /* The 8259 bits to set for this port */
+    unsigned char  int_number;         /* The interrupt number for this port.*/
+    void (interrupt far *old_vector)();/* The saved old interrupt vector.    */
+    PORT           *ports[4];          /* Ports for this board               */
+    int            port_count;         /* Number of ports currently open     */
+} BOARD;
+
+BOARD  *board_open( unsigned int address, unsigned char int_number );
+PORT   *port_open( BOARD *board, unsigned int address, unsigned char match );
+void    port_set(PORT *port, long speed, char parity, int data, int stopbits);
+void    port_close( PORT *port );
+void    board_close( BOARD *board );
+void    port_putc( PORT *port, unsigned char c);
+int     port_getc( PORT *port );
+
+#ifdef M_I86
+#define inportb inp
+#define outportb outp
+#define getvect _dos_getvect
+#define setvect _dos_setvect
+#endif
+
+

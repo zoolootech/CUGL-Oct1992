@@ -1,0 +1,55 @@
+;---------------------------------------------------------------------
+;	ASM88 FILE:     SENDDATA.A     Send data to IOCTL Device
+;	----------
+;	WRITTEN:        25/10/87
+;	-------
+;	PURPOSE:        This is one of a series of files which take
+;	-------         advantage of INT 21H functions under MS-DOS.
+;	                In each case the error situation is marked by
+;	                the carry flag being set.   We use the De Smet
+;	                external variable '_carryf' to see whether the
+;	                carry is set on return from the function.
+;	                If so, the error code can be used to obtain
+;	                information about the specific error.
+;
+;	USAGE:          unsigned SENDDATA(handle, buf, num, &_carryf)
+;	-----           int handle;
+;	                char *buf;
+;	                unsigned num;  (number of bytes to send)
+;	                char *_carryf;
+;
+;	DEPENDENCIES:           De Smet C V 2.44+
+;	------------
+;	Copyright 1987 - Cogar Computer Services Pty. Ltd
+;---------------------------------------------------------------------
+
+CSEG
+PUBLIC SENDDATA_
+
+SENDDATA_:
+	push	bp	; normal De Smet C start
+	mov	bp,sp	; point to the stack
+	mov	ax,ds	; and make ES common with DS
+	mov	es,ax
+;----------------------------------------------------------------------
+;  The unique programme follows.
+;----------------------------------------------------------------------
+	mov	bx,[bp+4]	; the handle
+	mov	dx,[bp+6]	; address of the buffer
+	mov	cx,[bp+8]	; .No. of bytes to send
+	mov	al,2
+	mov	ah,44h	; the Function No.
+	int	21h
+	jc	SENDDATA_ERROR
+	jmp	SENDDATA_QUIT
+SENDDATA_ERROR:
+	mov	si,[bp+10]	; get address of '_carryf' variable
+	mov	byte [si],1	; return with _carryf = 1
+;----------------------------------------------------------------------
+;  Normal programme termination.
+;----------------------------------------------------------------------
+SENDDATA_QUIT:
+	pop	bp	; restore starting conditions
+	ret
+;----------------------------------------------------------------------
+

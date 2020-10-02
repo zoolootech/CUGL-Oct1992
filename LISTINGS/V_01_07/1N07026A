@@ -1,0 +1,163 @@
+
+/*
+ *  To link the VESADEMO program, issue the following command:
+ *  LINK VESADEMO VESA VESACALL;
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dos.h>
+#include <conio.h>
+
+#include "vesa.h"
+#include "vesa.fd"
+
+extern  int main(int argc,char * *argv);
+extern  short SVGAInitializeVideo(short svga_mode,short *old_mode);
+extern  void DrawGraphics(void );
+extern  void PlotPointColor256(short column,short row,short color);
+
+#define USE_MODE 0x100     /* 640x400x256 mode */
+
+/* Application-specific error codes */
+#define ERROR_VESA_NO_HARDWARE (-3)
+#define ERROR_INSUFF_MEMORY    (-4)
+#define ERROR_VESA_NO_BIOS     (-5)
+#define ERROR_VESA_BAD_MODE    (-6)
+
+static VgaInfoBlock demo_vesa_info;
+static ModeInfoBlock demo_mode_info;
+static char huge *vga_ram;
+static long window_granularity;
+
+extern  void (far *windowfunc) ();    /* shortcut call to Subfunction 05h*/
+
+main(argc, argv)
+int argc;
+char **argv;
+{
+   short err;
+   short svga_mode;
+   short old_mode;
+
+   if (argc != 2)
+      {
+      printf("Usage:  VESADEMO [vesamode]\n\n");
+      printf("    where vesamode is 256-color VESA mode below:\n");
+      printf("    legal values are 100, 101, 103, 105, and 107\n");
+      printf("    For  640 x 400 graphics, use 100\n");
+      printf("    For  640 x 480 graphics, use 101\n");
+      printf("    For  800 x 600 graphics, use 103\n");
+      printf("    For 1024 x 768 graphics, use 105\n");
+      printf("    For 1280 x 1024 graphics, use 107\n\n");
+      printf("    During the demo, you may press any key to exit\n");
+      exit(0);
+      }
+
+   sscanf(argv[1],"%x",&svga_mode);
+   if ((err=SVGAInitializeVideo(svga_mode,&old_mode)) != VESA_OK)
+      exit(err);
+
+   DrawGraphics();
+   getch();
+   SetSVGAMode(old_mode, CLEAR_MEMORY_FLAG);
+   return 0;
+}
+
+
+short SVGAInitializeVideo(svga_mode,old_mode)
+short svga_mode;
+short *old_mode;
+{
+   short VgaStat;
+
+   if ((VgaStat=GetSVGAInfo(&demo_vesa_info)) != VESA_OK)
+      {
+      printf("Error: VESA support has not been installed!\n");
+      return VgaStat;
+      }
+
+   if ((VgaStat=GetSVGAModeInfo(svga_mode, &demo_mode_info)) != VESA_OK)
+      {
+      printf("Error: mode %Xh not supported by this VESA driver\n",
+             svga_mode);
+      return VgaStat;
+      }
+
+   if ((demo_mode_info.ModeAttributes & SVGA_MODE_HARDWARE) == 0)
+      {
+      printf("Error: mode %Xh is not supported by your hardware\n",
+             svga_mode);
+      printf("Please check to make sure you are using the correct monitor.\n");
+      return ERROR_VESA_NO_HARDWARE;
+      }
+
+   if ((demo_mode_info.NumberOfPlanes != 1) ||
+        (demo_mode_info.BitsPerPixel != 8) )
+      {
+      printf("Error: this demonstration program is only designed to\n");
+      printf("operate in the 256-color modes provided by your VESA\n");
+      printf("driver.\n");
+      return ERROR_VESA_BAD_MODE;
+      }
+
+   if ((demo_mode_info.ModeAttributes & SVGA_MODE_EXTENDED) == 0)
+      {
+      printf("Error: this program requires extended mode information\n");
+      printf("not supplied in your VESA driver.  Contact vendor for\n");
+      printf("further assistance.\n");
+      return ERROR_VESA_NO_HARDWARE;
+      }
+
+   GetSVGAModeNo(old_mode);
+   SetSVGAMode(svga_mode, CLEAR_MEMORY_FLAG);
+   return VESA_OK;
+}
+
+void DrawGraphics()
+{
+   short x, y, color, width, height;
+
+   vga_ram = (char huge *) ((long)demo_mode_info.WinASegment << 16);
+   window_granularity = (long)demo_mode_info.WinGranularity * 1024L;
+   windowfunc = demo_mode_info.WinFuncPtr;
+
+   width = demo_mode_info.XResolution;
+   height = demo_mode_info.YResolution;
+
+   for (y=0; y<height; y++)
+      for (x=0; x<width; x++)
+         {
+         color = (short) ((long)x * (long)y);
+         PlotPointColor256(x,y,color);
+         if (kbhit())
+            return;
+         }
+}
+
+
+void PlotPointColor256(column, row, color)
+short column;
+short row;
+short color;
+{
+   long byte_offset;
+   long window_offset;
+   long window_pos;
+   static long last_window = -1;
+
+   byte_offset = (long)row * demo_mode_info.BytesPerScanLine + column;
+   window_pos = byte_offset / window_granularity;
+   if (last_window != window_pos)
+      {
+#ifdef DIRECT_WINDOW_CALL
+      fastvesa(0, (short)window_pos);
+#else
+      SelectSVGAMemoryWindow(0, (short)window_pos);
+#endif
+      last_window = window_pos;
+      }
+   window_offset = byte_offset % window_granularity;
+   vga_ram[window_offset] = (char)color;
+}

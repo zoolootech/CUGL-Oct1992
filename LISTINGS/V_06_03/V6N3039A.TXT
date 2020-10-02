@@ -1,0 +1,174 @@
+;
+; David D. Clark
+;
+; 9 May 1987
+; 11 December 1987 -- changes for DLC 3.12 (save DI and SI registers)
+;
+
+        Include macros.asm
+
+begcode
+
+
+;
+; memmove -- move a block of data len bytes long from src to dest.
+; The function determines whether the move should be done from
+; the left or right end of the blocks.  After deciding, a jump is
+; made into either moveleft() or moveright(), as appropriate, to
+; actually perform word optimized moves.  A pointer to dest is
+; returned.
+;
+; The Datalight C declaration would look like:
+;
+;	void *memmove(dest, src, len)
+;	void *dest, *src;
+;	unsigned int len;
+;
+
+		Public	memmove
+
+func		memmove
+
+		PUSH	BP		; save old frame pointer
+		MOV	BP,SP		; set new frame pointer
+		PUSH	DI		; NEW with DLC 3.12
+		PUSH	SI		; "               "
+		MOV	CX,P+SIZEPTR+SIZEPTR[BP]	; len
+    If SPTR
+		MOV	DI,P+[BP]	; ES:DI = dest
+		MOV	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,DI		; original dest is returned
+    ELSE
+		LES	DI,P+[BP]	; ES:DI = dest
+		PUSH	DS		; save data segment
+		LDS	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,ES
+		MOV	BX,DI		; AX:BX = original value of dest
+    ENDIF
+
+		CMP	SI,DI		; is src above dest?
+		JAE	ml1		; move from left
+		JMP	Short mr1	; move from right
+
+memmove		EndP
+
+
+;
+; moveleft -- move a block of data len bytes long from src to dest
+; starting at the left end.  The move is optimized to word moves
+; and a (possible) single byte move.  A pointer to dest is returned.
+;
+; The Datalight C declaration would look like:
+;
+;	void *moveleft(dest, src, len)
+;	void *dest, *src;
+;	unsigned int len;
+;
+
+		Public	moveleft
+
+func		moveleft
+
+		PUSH	BP		; save old frame pointer
+		MOV	BP,SP		; set new frame pointer
+		PUSH	DI		; NEW with DLC 3.12
+		PUSH	SI		; "               "
+		MOV	CX,P+SIZEPTR+SIZEPTR[BP]	; len
+    If SPTR
+		MOV	DI,P+[BP]	; ES:DI = dest
+		MOV	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,DI		; original dest is returned
+    ELSE
+		LES	DI,P+[BP]	; ES:DI = dest
+		PUSH	DS		; save data segment
+		LDS	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,ES
+		MOV	BX,DI		; AX:BX = original value of dest
+    ENDIF
+
+ml1:					; alternate entry point
+
+		CLD			; set direction forward (needed?)
+		SHR	CX,1		; convert bytes to words
+		JZ	mlb		; jump if no full words to move
+	REP	MOVSW			; move the words
+mlb:		JNC	mldone		; no bytes to move
+		MOVSB			; move the left over byte
+mldone:
+    If LPTR
+		POP	DS		; recover DS
+    ENDIF
+		POP	SI		; NEW with DLC 3.12
+		POP	DI		; "               "
+		POP	BP		; restore old frame pointer
+		RET
+
+moveleft	EndP
+
+
+;
+; moveright -- move a block of data len bytes long from src to dest
+; starting at the right end.  The move is optimized to word moves
+; and a (possible) single byte move.  A pointer to dest is returned.
+;
+; The Datalight C declaration would look like:
+;
+;	void *moveright(dest, src, len)
+;	void *dest. *src;
+;	unsigned int len;
+;
+
+		Public	moveright
+
+func		moveright
+
+		PUSH	BP		; save old frame pointer
+		MOV	BP,SP		; set new frame pointer
+		PUSH	DI		; NEW with DLC 3.12
+		PUSH	SI		; "               "
+		MOV	CX,P+SIZEPTR+SIZEPTR[BP]	; len
+    If SPTR
+		MOV	DI,P+[BP]	; ES:DI = dest
+		MOV	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,DI		; original dest is returned
+    ELSE
+		LES	DI,P+[BP]	; ES:DI = dest
+		PUSH	DS		; save data segment
+		LDS	SI,P+SIZEPTR[BP]; DS:SI = src
+		MOV	AX,ES
+		MOV	BX,DI		; AX:BX = original value of dest
+    ENDIF
+
+mr1:					; alternate entry point
+
+		ADD	SI,CX		; start at high (right) end
+		DEC	SI		; last source byte
+		DEC	SI		; last source word
+		ADD	DI,CX		; start at high (right) end
+		DEC	DI		; last target byte
+		DEC	DI		; last target word
+		STD			; set direction backward
+		SHR	CX,1		; convert bytes to words
+		JZ	mrb		; jump if no full words to move
+	REP	MOVSW			; move the words
+mrb:		JNC	mrdone		; no bytes to move
+		INC	SI		; point to source byte
+		INC	DI		; point to target byte
+		MOVSB			; move the left over byte
+
+mrdone:		CLD			; reset direction flag before exit
+    If LPTR
+		POP	DS		; recover DS
+    ENDIF
+		POP	SI		; NEW with DLC 3.12
+		POP	DI		; "               "
+		POP	BP		; restore old frame pointer
+		RET
+
+moveright	EndP
+
+		endcode
+
+		End
+
+

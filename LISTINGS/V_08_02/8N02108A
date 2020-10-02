@@ -1,0 +1,258 @@
+*****Listing 1*****
+
+<<title Edit-Menu C , Vermont Views , Btrieve : vedtmnbt.tem >>
+<<uicode>>
+
+* load libraries used by this template
+
+load_lib("stdfuns")                 ** load basic stuff
+load_lib("optfuns")                 ** option-related stuff
+load_lib("varfunsc")                ** c variable library
+load_lib("pclib")                   ** unorg c library
+load_lib("vv")                      ** Vermont Views c library
+load_lib("vvdispc")                 ** Vermont Views c library
+load_lib("BtrieveC")                ** Btrieve C library
+
+declare_formbox()
+declare_menubox()
+*******************************
+*** end of template startup ***
+*******************************
+<<enduicode>>
+/**
+***
+*** {file}  
+*** {date} : {striptag(wwfile)} , {striptag(stripdir(template))}
+***
+*** (Calls functions defined in Vermont Views Interface Library)
+***
+**/
+<<author()>>
+
+#include <string.h>
+#include <vv_menu.h>                   /* Vermont Views Header File. */
+#include <vv_str.h>                    /* Vermont Views Header File. */
+#include <vv_bool.h>                   /* Vermont Views Header File. */
+#include <vv_sys.h>                    /* Vermont Views Header File. */
+#include <vv_date.h>                   /* Vermont Views Header File. */
+#include <vv_time.h>                   /* Vermont Views Header File. */
+#include <vv_long.h>                   /* Vermont Views Header File. */
+#include <vv_form.h>                   /* Vermont Views Header File. */  
+#include <vv_help.h>                   /* Vermont Views Header File. */  
+
+<<menuname = stripdir(striptag(file))	  ** global name for this main menu>>
+
+/* declare external variables. */
+<<include_extern_memvars()>>
+
+
+#ifdef LINT_ARGS
+ extern int act_return(MFORMPTR);
+ extern int act_bell( MFORMPTR );
+ extern int act_SAMELEVEL( void );
+ int {menuname} (void);
+ int add{menuname} (void);
+ extern int del{menuname} (void);
+ int edit{menuname} (void);
+ extern int find{menuname} (void);
+ extern int next{menuname} (void);
+ extern int prev{menuname} (void);
+ int quit{menuname} (void);
+ extern int gotop{menuname} (void);
+ extern int insert{menuname} (void);
+ extern int update{menuname} (void);
+ int blank{menuname} (void);
+ extern int open{menuname} (void);
+ extern int close{menuname} (void);
+ extern int read{menuname} (void);
+ extern int unlock{menuname} (void);
+#else
+ extern int act_return();
+ extern int act_bell();
+ extern int act_SAMELEVEL();
+ int {menuname} ();
+ int add{menuname} ();
+ extern int del{menuname} ();
+ int edit{menuname} ();
+ extern int find{menuname} ();
+ extern int next{menuname} ();
+ extern int prev{menuname} ();
+ int quit{menuname} ();
+ extern int gotop{menuname} ();
+ extern int insert{menuname} ();
+ extern int update{menuname} ();
+ int blank{menuname} ();
+ extern int open{menuname} ();
+ extern int close{menuname} ();
+ extern int read{menuname} ();
+ extern int unlock{menuname} ();
+#endif
+
+
+/* declare form pointer variables */
+DFORMPTR {menuname}_dfmp ;           /* pointer to the form        */
+
+/* declare a pointers to each field */
+<<declare_ptr_to_all_fields()>>
+
+
+
+/* declare menu pointer variables */
+MFORMPTR {menuname}_mfmp ;           /* pointer to the menu        */
+
+
+
+/* declare a pointers to each menu option */
+<<declare_ptr_to_all_options()>>
+
+/************************ BEGIN: {menuname}() ***********************
+ * {menuname}: 
+ */
+{menuname}()
+%{
+  <<q_indent=2>>
+
+  blank{menuname}();                   /* blank all data field vars */
+  if(  open{menuname}() != 0 )         /* open btrieve file (s). */
+  %{
+    return;
+  %}
+
+  gotop{menuname}();                   /* get first key in file */
+
+  /*********************** define the form ***************************/
+  <<menuform = 'form'       ** set UI var to 'form' for vvdispc.tlb >>
+
+  /* define a form */
+  {menuname}_dfmp = fm_def( {formbox.row}, {formbox.col},
+                    {formbox.height}, {formbox.width}, LNORMAL, BDR_NULLP );
+
+
+  /* define boxes around form items ****/
+  <<define_all_form_boxes()>>
+
+  /*********** define background text  */
+  <<display_text()>>
+
+  sfm_help( "*DATA HELP" , {menuname}_dfmp );  /* define form help keyword */
+
+  <<define_form_options()>>
+
+  /******* define form data fields *********/
+  <<define_all_form_fields()>>
+
+  /******* set all the field options  ***/
+  <<define_all_field_options()>>
+
+  /*** set all the field ranges ***/
+  <<define_all_field_range()>>
+
+  <<define_all_field_help_keywords()>>
+
+  <<define_all_field_functions()>>
+
+
+  /*********************** define the menu ***************************/
+  <<menuform = 'menu'       ** set UI var to 'form' for vvdispc.tlb >>
+  /* define a menu */
+
+  {menuname}_mfmp = mn_def( MNSTANDARD ,  AUTOPLACE,AUTOPLACE,AUTOSIZE,AUTOSIZE,
+                     LMNINACT, BDR_NULLP );
+
+  <<define_menu_options()>>
+
+
+  /******* define menu fields *********/
+  <<define_all_menu_fields()>>
+
+
+  /*********** define background text  */
+  <<display_text()>>
+
+
+  /**************** display variables **/
+  <<display_all_vars()>>
+
+
+  /* define boxes around menu items ****/
+  <<define_all_menu_boxes()>>
+
+
+  /**** define trigger keys **********/
+  <<define_all_option_triggers()>>
+
+  mn_up( {menuname}_mfmp );            /* display menu */
+  fm_up( {menuname}_dfmp );            /* display form */
+
+  mn_rd( 0, {menuname}_mfmp );         /* begin processing the menu */
+
+  fm_dn( {menuname}_dfmp );            /* remove form */
+  fm_free( {menuname}_dfmp );          /* Free memory allocate for form */
+
+  mn_dn( {menuname}_mfmp );            /* remove menu */
+  mn_free( {menuname}_mfmp );          /* free memory allocated for menu */
+
+  close{menuname}();                   /* close btrieve file (s) */
+  return 0;
+%}
+/****************************** END: {menuname}() *******************/
+add{menuname}()
+%{
+  blank{menuname}();
+  fm_dn( {menuname}_dfmp );            /* remove form */
+  mn_dn( {menuname}_mfmp );            /* remove menu */
+  fm_up( {menuname}_dfmp );            /* display form */
+  if ( fm_rd( 0, {menuname}_dfmp ) != AC_QUIT ) /* process the form */
+  %{
+    insert{menuname}();
+  %}
+  fm_dn( {menuname}_dfmp );            /* remove form */
+  mn_up( {menuname}_mfmp );            /* display menu */
+  mn_upd( {menuname}_mfmp );           /* update the menu background */
+  fm_up( {menuname}_dfmp );            /* display form */
+%}
+/****************************** END: add{menuname}() **************/
+edit{menuname}()
+%{
+   fm_dn( {menuname}_dfmp );            /* remove the form */
+   mn_dn( {menuname}_mfmp );            /* remove the menu */
+   fm_up( {menuname}_dfmp );            /* display the form */
+
+   switch ( read{menuname}() )          /* read & lock record */
+   %{
+     case 0:                            /* no btrv error      */
+       if ( fm_rd( 0, {menuname}_dfmp ) != AC_QUIT )  /* process the form */
+       %{
+         if ( update{menuname}() != 0 )
+         %{
+            blank{menuname}();
+         %}
+       %}
+       unlock{menuname}();
+       break;
+
+     case 4:                           /* key not found */
+       add{menuname}();
+       break;
+   %}
+   fm_dn( {menuname}_dfmp );            /* remove the form */
+   mn_up( {menuname}_mfmp );            /* display the menu */
+   mn_upd( {menuname}_mfmp );           /* update the menu background */
+   fm_up( {menuname}_dfmp );            /* display the form */
+%}
+/****************************** END: edit{menuname}() **************/
+blank{menuname}()
+%{
+  /* reset all input & display variables to their initial value. */
+  <<init_all_vars()>>
+%}
+/****************************** END: blank{menuname}() **************/
+quit{menuname}()
+%{
+  act_return( {menuname}_mfmp );
+%}
+/****************************** END: quit{menuname}() **************/
+
+
+
+/****************************** EOF: {file} *************************/

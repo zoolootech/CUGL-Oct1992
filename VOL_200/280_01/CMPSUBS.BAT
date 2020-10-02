@@ -1,0 +1,30 @@
+command /c lc -d -n -w -ccu -k%1 -v -S  locate
+command /c lc -d -n -w -ccu -k%1 -v -S  getpat
+command /c lc -d -n -w -ccu -k%1 -v -S  swap
+command /c lc -d -n -w -ccu -k%1 -v -S  strfcmp
+command /c lc -d -n -w -ccu -k%1 -v -S  strdcmp
+command /c lc -d -n -w -ccu -k%1 -v -S  strdfcmp
+command /c lc -d -n -w -ccu -k%1 -v -S  strsave
+command /c lc -d -n -w -ccu -k%1 -v -S  itod
+command /c lc -d -n -w -ccu -k%1 -v -S  atoi
+command /c lc -d -n -w -ccu -k%1 -v -S  quick
+command /c lc -d -n -w -ccu -k%1 -v -S  _itoa
+command /c lc -d -n -w -ccu -k%1 -v -S  itoa
+command /c lc -d -n -w -ccu -k%1 -v -S  error
+command /c lc -d -n -w -ccu -k%1 -v -S  fgetlin
+command /c lc -d -n -w -ccu -k%1 -v -S  type
+command /c lc -d -n -w -ccu -k%1 -v -S  getword
+command /c lc -d -n -w -ccu -k%1 -v -S  getwrd
+command /c lc -d -n -w -ccu -k%1 -v -S  getlin
+command /c lc -d -n -w -ccu -k%1 -v -S  xindex
+command /c lc -d -n -w -ccu -k%1 -v -S  addset
+command /c lc -d -n -w -ccu -k%1 -v -S  dodash
+command /c lc -d -n -w -ccu -k%1 -v -S  esc
+command /c lc -d -n -w -ccu -k%1 -v -S  filset
+command /c lc -d -n -w -ccu -k%1 -v -S  stclos
+command /c lc -d -n -w -ccu -k%1 -v -S  cindex
+command /c lc -d -n -w -ccu -k%1 -v -S  getccl
+command /c lc -d -n -w -ccu -k%1 -v -S  _copy
+command /c lc -d -n -w -ccu -k%1 -v -S  makpat
+
+

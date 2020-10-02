@@ -1,0 +1,84 @@
+;=============================================================================
+;
+;    FLATCALL.ASM -- Routine to call 32-bit subroutine from 16-bit WinApp
+;
+;    C calling sequence:
+;       dwResult = FlatCall(lpState, nBytes, args ...)
+;
+;    Where:
+;       DWORD dwResult          32-bit return value from target program
+;       LPSTATE32 lpState       Initial state for 32-bit program
+;       int nBytes              Number of bytes worth of arguments
+;       [any] args              Arguments for target program
+;
+;    Notes:
+;       1. This program is declared _cdecl to facilitate passing a variable
+;          number of arguments. If the target program uses the Pascal
+;          calling convention, the caller must place its arguments in
+;          reverse of the normal order.
+;       2. This program uses no static data and is both reentrant and
+;          suitable for packaging in a DLL.
+;
+;    Written by Walter Oney
+;
+;=============================================================================
+
+        name    flatcall
+        dosseg
+        .model  large,c
+        .386p                   ; AFTER model to get use16 defaults
+
+state32 struc
+s32_tgt df      ?               ; cs:eip of target program
+s32_stk df      ?               ; ss:esp of target program
+state32 ends
+
+        .code
+FlatCall proc   uses si di, lpState:dword, nBytes:word, args:word
+        push    ds                      ; save caller's DS
+
+;    Extract the arguments from the 16-bit stack before we lose easy
+;    addressability by switching stacks.
+
+        lfs     bx, lpState             ; FS:BX -> 32-bit state descriptor
+        movzx   ecx, nBytes             ; get # bytes of arguments
+        lea     si, args                ; DS:ESI -> target pgm args
+        movzx   esi, si                 ;   ..
+        mov     ax, ss                  ;   ..
+        mov     ds, ax                  ;   ..
+        mov     dx, sp                  ; save current SP in DX temporarily
+
+;    Switch to the 32-bit stack used by the target program. Save the
+;    SS:SP belonging to the 16-bit program and copy the arguments for the
+;    target program.
+
+        lss     esp, fs:[bx.s32_stk]    ; switch to target pgm stack
+
+        push    ds                      ; save 16-bit SS:SP on tgt stack
+        push    dx                      ;   ..
+
+        sub     esp, ecx                ; backup by size of arguments
+        mov     ax, ss                  ; ES:EDI = copy of SS:ESP
+        mov     es, ax                  ;   ..
+        mov     edi, esp                ;   ..
+        cld                             ; be sure of forward direction
+        db      0F3h, 67h               ; repeat + address size overrides
+        movsb                           ; copy argument onto target stack
+
+;    Call the target program.
+
+        mov     ax, ss                  ; force DS == ES == SS
+        mov     ds, ax                  ;   ..
+        call    fs:[bx.s32_tgt]         ; call the target program
+
+;    Switch back to the 16-bit stack, whose address is on the 32-bit
+;    stack at offset EDI (left over from the MOVSB loop above and preserved
+;    by the target program)
+
+        lss     sp, ss:[edi]            ; switch back to 16-bit stack
+        mov     edx, eax                ; put 32-bit result into DX:AX
+        shr     edx, 16                 ;   ..
+        pop     ds                      ; restore caller's DS
+        ret                             ; return to caller
+FlatCall endp
+        end

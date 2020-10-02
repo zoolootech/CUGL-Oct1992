@@ -1,0 +1,98 @@
+
+/* Vpeek.c ---> Direct Video RAM Access w/ Snow Control.
+ *
+ * Author: J.Ekwall					13 September 91
+ *
+ * Copyrighted to the Public Domain.  Unlimited Distribution Authorized.
+ *
+ * User Assumes All Risks/Liabilities.
+ *
+ * Last Update: 13 September 91/EK
+ */
+
+#pragma inline				/* TCC -B -c -ms vpeek.ca */
+#include <dos.h>
+#include <stdek.h>
+#include <gadgets.h>
+
+#define VSEG		0xB800
+
+static int SnowStop;
+
+void CgaSnowFence(void) { SnowStop++; }
+
+void Vpoke(unsigned adr, unsigned chr)
+{
+    if (!SnowStop) poke(VSEG, adr, chr);
+    else    {
+       _DI = adr;              /* offset of video character */
+       _ES = VSEG;             /* video segment */
+       asm cld;
+       _BX = chr;              /* the attribute and character */
+       _DX = 986;              /* video status port */
+       
+       /* ------ wait for video retrace to start ----- */
+       do
+          asm in  al,dx;
+       while (_AL & 1);
+       
+       /* ------ wait for video retrace to stop ----- */
+       do
+          asm in  al,dx;
+       while (!(_AL & 1));
+       _AL = _BL;
+       asm stosb;              /* store character */
+       
+       /* ------ wait for video retrace to start ----- */
+       do
+          asm in  al,dx;
+       while (_AL & 1);
+       
+       /* ------ wait for video retrace to stop ----- */
+       do
+          asm in  al,dx;
+       while (!(_AL & 1));
+       _AL = _BH;
+       asm stosb;              /* store attribute */
+    }
+}
+
+int Vpeek(unsigned adr)
+/* read a character and attribute from video RAM */
+{
+    if (!SnowStop) return peek(VSEG, adr);
+    asm push ds;
+    _DX = 986;                      /* video status port */
+    _DS = VSEG;                     /* video segment address */
+    _SI = adr;                      /* video character offset */
+    asm cld;
+    
+    /* wait for video retrace to start ----- */
+    do
+       asm in  al,dx;
+    while (_AL & 1);
+    
+    /* wait for video retrace to stop */
+    do
+       asm in  al,dx;
+    while (!(_AL & 1));
+    asm lodsb;                      /* get the character */
+    _BL = _AL;
+    
+    /* wait for video retrace to start */
+    do
+       asm in  al,dx;
+    while (_AL & 1);
+    
+    /* ait for video retrace to stop */
+    do
+       asm in  al,dx;
+    while (!(_AL & 1));
+    asm lodsb;                      /* get the attribute */
+    _BH = _AL;
+    _AX = _BX;
+    asm pop ds;
+    return _AX;
+}
+
+

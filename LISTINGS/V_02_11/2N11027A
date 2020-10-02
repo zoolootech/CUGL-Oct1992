@@ -1,0 +1,170 @@
+/* ----------------------------------------------------
+ *  LISTING 6
+ *
+ *  Filename:           emm.c
+ *  Summary:            Expanded memory interface
+ *                      functions for BCACHE manager
+ *  Author:             T.W. Nelson
+ *  Compile options:    
+ *  Version:            1.00
+ *  Date:               09-Sep-1991
+ *  Notes:
+ *
+ *  Source code Copyright (c) 1991 T.W. Nelson. May be
+ *  used only for non-commercial purposes with
+ *  appropriate acknowledgement of copyright.
+ * ------------------------------------------------- */
+
+#include "bcache.h"
+
+#pragma inline
+
+static char EMM_dev[] = "EMMXXXX0";
+static int EMM_flag = 1;    //run-time emm usage switch
+                            //... default is ENABLED
+
+#define handle  user1       //rename user data areas
+#define npages  user2       //in BCACHE object
+
+void emm_setflag( int flag )
+{
+   /* Turn expmem usage on/off.  */
+
+    EMM_flag = flag;
+}
+
+void emm_map_pages( BCACHE *cp )
+{
+   /* Save current EMM page-mapping context, then
+    * map our cache pages into the physical page frame.
+    */
+
+    size_t emm_handle, pages;
+    asm cmp EMM_flag,0      //expmem in use?
+    asm je map_x            //no, bypass
+    emm_handle = cp->handle;
+    pages = cp->npages;
+    asm mov ah,47h          //EMS save page map
+    asm mov dx,emm_handle
+    asm int 67h
+    asm mov cx,pages        //set loop counter
+    asm xor bx,bx           //start at logpage 0
+map_in:
+    asm mov ah,44h          //EMS map expmemory page
+    asm mov al,bl           //set physpage
+    asm int 67h
+    asm inc bx              //to next logpage
+    asm loop map_in
+map_x:
+    return;
+}
+
+void emm_unmap_pages( BCACHE *cp )
+{
+   /* Restore page mapping context ... */
+    size_t emm_handle;
+
+    asm cmp EMM_flag,0      //expmem in use?
+    asm je unmap_x          //no, bypass
+    emm_handle = cp->handle;
+    asm mov ah,48h          //EMS restore page map
+    asm mov dx,emm_handle
+    asm int 67h
+unmap_x:
+    return;
+}
+
+int emm_allocate( BCACHE *cp, int flag )
+{
+   /* Allocate expanded memory for the block cache.
+    * Called by bc_open() if using expmemory.
+    */
+
+    chdr_t *page_frame;
+    size_t pages_needed, bytes_mem, emm_handle;
+
+    asm cmp flag,ALLOCATE   //allocate?
+    asm jne emmalloc_4      //no, deallocate
+    bytes_mem = (cp->bsiz+BHDR_SIZE) * cp->bmax;
+    asm mov ax,bytes_mem    //set dividend loword
+    asm mov dx,0            //clear dividend hiword
+    asm mov bx,16384        //16k page size divisor
+    asm div bx              //ax == number pages
+    asm or ax,ax            //0 quotient?
+    asm jz emmalloc_1       //yes, adjust
+    asm or dx,dx            //any remainder?
+    asm jz emmalloc_2       //no, bypass
+emmalloc_1:
+    asm inc ax              //adjust for remainder
+emmalloc_2:
+    asm cmp ax,4            //check page request
+    asm ja emmalloc_3       //too many pages
+    asm mov pages_needed,ax
+    asm mov ah,41h          //EMS get page frame seg
+    asm int 67h
+    asm mov word ptr page_frame[2],bx
+    asm mov word ptr page_frame[0],0
+    asm mov bx,pages_needed
+    asm mov ah,43h          //EMS allocate pages
+    asm int 67h
+    asm or ah,ah            //allocated?
+    asm jnz emmalloc_3      //no, quit
+    asm mov bytes_mem,dx    //save emm handle
+    cp->handle = bytes_mem;
+    cp->npages = pages_needed;
+    cp->head = page_frame;
+
+    goto emmalloc_5;
+
+emmalloc_4:                 //deallocate memory
+    emm_handle = cp->handle;
+    asm mov ah,45h          //EMS release handle
+    asm mov dx,emm_handle
+    asm int 67h
+
+emmalloc_5:
+    return BC_NOERROR;
+
+emmalloc_3:
+    return BC_NOMEMORY;
+}
+
+int emm_check( void )
+{
+   /* Test for presence of functioning EMM.
+    * If EMM not available, 'EMM_flag' is reset to
+    * OFF (== 0). Function returns 0 if EMM is
+    * available and functioning, -1 if not or
+    * 'EMM_flag' is OFF.
+    */
+
+    asm cmp EMM_flag,0      //use expmem?
+    asm je emm_error        //no, return error
+    asm push ds
+    asm mov dx,offset EMM_dev
+    asm mov ax,seg EMM_dev
+    asm mov ds,ax
+    asm mov ax,3d00h        //DOS open file, read only
+    asm int 21h
+    asm pop ds
+    asm jc emm_error        //EM driver not present
+    asm mov bx,ax           //bx <- open device handle
+    asm mov ax,4407h        //DOS IOCTL device status
+    asm int 21h
+    asm jc emm_error        //IOCTL failure
+    asm or al,al            //device ready?
+    asm jz emm_error        //al == 0 if not
+    asm mov ah,3eh          //DOS close handle
+    asm int 21h
+    asm mov ah,40h          //check EMM status
+    asm int 67h
+    asm or ah,ah            //op status OK?
+    asm jnz emm_error       //no, exit
+    return 0;               //return EMM OK
+
+emm_error:
+    emm_setflag(0);         //disable EMM usage
+    return -1;
+}
+
+/* ---- End of File -------------------------------- */

@@ -1,0 +1,176 @@
+/*                 LISTING 1 (inc_sfht.c)
+    Make additional entries available in the System File
+    Handle Table.  Use this in lieu of forcing the user to
+    add a FILES= statement in the config.sys and re-boot.
+    To build an executable:
+        cl -AL inc_sfht.c    (MSC 5.x  NOTE: Large model.)
+*/
+
+#include <stdio.h>
+#include <malloc.h>
+#include <dos.h>
+
+// NOTE: must pack structures on byte alignment
+#pragma pack(1)
+
+// --- see the article for description of these elements
+typedef struct list_of_lists
+    {
+    void far *dcb_head, far *handle_sft, far *clock;
+    void far *console;
+    unsigned max_sector;
+    void far *cache, far *cur_dir, far *fcb_sft;
+    unsigned unknown;
+    unsigned char drive_cnt, lastdrive;
+    } LOL, far *LOL_PTR;
+
+// --- see the article for description of these elements
+typedef struct system_file_table_header
+    {
+    void far *next;
+    unsigned count;
+    } SFTH, far *SFTH_PTR;
+
+#define SFTH_SIZE sizeof(SFTH)
+
+// prototypes
+short open_files(void), add_system_handles(short);
+short find_size(void *);
+void remove_added_handles(void), close_files(void);
+
+// place to hold the original end-of-list header
+static SFTH_PTR old_end_of_list = (SFTH_PTR)0;
+
+// for the testing file structures
+FILE *fid_array[20];
+
+main()
+{
+  printf("opened %d before expansion\n", open_files());
+  close_files();
+  add_system_handles(5);
+  printf("opened %d after expansion\n", open_files());
+  close_files();
+  remove_added_handles();
+  printf("opened %d after reset\n", open_files());
+  close_files();
+}
+
+short open_files()
+{
+short i;
+
+  for(i = 0; i < 20; i++)
+     if( (fid_array[i] = fopen("nul", "wt")) == NULL )
+        break;
+  return(i);
+}
+
+void close_files()
+{
+short i = 0;
+
+  while( fid_array[i] != (FILE *)NULL )
+     fclose(fid_array[i++]);
+}
+
+short add_system_handles( short new_entries )
+{
+union REGS inregs, outregs;
+struct SREGS sregs;
+LOL_PTR lol;
+SFTH_PTR sfth, new_block;
+char *sft;
+short infoblk_size;
+
+  if( old_end_of_list != (char *)NULL )
+     return(-1);
+
+// get the list of list address
+  inregs.h.ah = 0x52;
+  int86x(0x21, &inregs, &outregs, &sregs);
+  FP_SEG(lol) = sregs.es;
+  FP_OFF(lol) = outregs.x.bx;
+
+// get the 1st table header address
+  sfth = lol->handle_sft;
+
+// get the actual table address
+  sft = (char *)sfth + SFTH_SIZE;
+
+// find the size of a single file information block
+  infoblk_size = find_size(sft);
+  if( infoblk_size == 0 )
+     return(-2);
+
+// find the last node in the SFHT
+  while( FP_OFF(sfth->next) != 0xffff )
+     sfth = sfth->next;
+
+// save the old end address & chain on some more entries
+  new_block = (SFTH_PTR)calloc(new_entries,
+                               infoblk_size + SFTH_SIZE);
+  if( new_block == (SFTH_PTR)0 )
+     return(0);
+  old_end_of_list = sfth;
+
+// init the new entry header
+  FP_OFF(new_block->next) = 0xffff;
+  new_block->count = new_entries;
+
+// chain it in and return success
+  sfth->next = new_block;
+  return(1);
+}
+
+void remove_added_handles()
+{
+// if haven't allocated, don't free
+  if( old_end_of_list == (SFTH_PTR)0 )
+     return;
+
+// free the allocated memory, make the header indicate the
+// end of the list, & clear the static pointer
+  free(old_end_of_list->next);
+  FP_OFF(old_end_of_list->next) = 0xffff;
+  old_end_of_list = (SFTH_PTR)0;
+}
+
+short find_size( char *ft_ptr )
+{
+char *ch_ptr, *aux_ptr;
+short i;
+
+// search for the string "AUX" (1st info blk entry)
+  ch_ptr = ft_ptr;
+  for(i = 0; i < 100; i++ )
+     {
+     if( strncmp(ch_ptr, "AUX", 3) == 0 )
+        {
+        aux_ptr = ch_ptr;
+        break;
+        }
+     else
+        ch_ptr++;
+     }
+
+// if not found return error
+  if( i == 100 )
+     return(0);
+
+// now search for "CON" (2nd info blk entry)
+  for(i = 0; i < 100; i++ )
+     {
+     if( strncmp(ch_ptr, "CON", 3) == 0 )
+        break;
+     else
+        ch_ptr++;
+     }
+
+// if not found return error
+  if( i == 100 )
+     return(0);
+
+// return the difference (i.e. size of an info blk)
+  return(ch_ptr - aux_ptr);
+}

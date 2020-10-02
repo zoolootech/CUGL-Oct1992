@@ -1,0 +1,220 @@
+/*
+	e screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	FILE: e7
+
+	FUNCTIONS: getkey,testkey,getlow,testlow,tranchar, tranlow,
+			getscankey,inchar,inkey,putret,dispch,putch,
+			checkkey,inword,uspr,makedim,makebright,putclr,
+			dohelp
+
+	PURPOSE: low level terminal i/o functions
+
+*/
+
+#include "e.h"
+
+char getkey()	/*wait for a key to be pressed & return it, translating
+			to internal codes */
+{
+	char tranchar(), inchar();
+
+	return tranchar(inchar());
+}
+
+char testkey()	/*if a key has been pressed, return it, else 0, translating*/
+{
+	char tranchar(), inkey();
+
+	return tranchar(inkey());
+}
+
+char getlow()	/*get a key, converting control and upper case characters
+		to lower case */
+{
+	char tranlow(), inchar();
+
+	return tranlow(inchar());
+}
+
+char testlow()	/*if a key has been pressed, return it, converting control
+			and upper case characters to lower case, else 0 */
+{
+
+	char tranlow(), inkey();
+
+	return tranlow(inkey());
+}
+
+char tranchar(c)	/*translate c to internal codes */
+char c;
+{
+	char *tranp;
+	int i;
+
+	if (c == 0) return 0;
+	if (c == *(tranp=tran)) {
+		while (!(c=inkey()));
+		c|=PARBIT;
+		}
+	for (i=1,tranp++; i < NKEYS; i++, tranp++)
+		if (c == *tranp) return i;
+	return c;
+}
+
+char tranlow(c)		/*convert upper and control chars in c to lower case*/
+{
+	if (c == 0) return 0;
+	if (tran[ESCKEY] == c) return ESCKEY;
+	if (c <= CTRL) c=c+96;
+	return tolower(c);
+}
+
+getscankey()	/*get a key, translation of ESCKEY, CR, LEFTKEY, DELLEFT,
+			RETRIEVE only */
+{
+	char c, inchar();
+
+	c=inchar();
+	if (tran[ESCKEY] == c) return ESCKEY;
+	if (tran[CR] == c) return CR;
+	if (tran[LEFTKEY] == c) return LEFTKEY;
+	if (tran[DELLEFT] == c) return DELLEFT;
+	if (tran[RETRIEVE] == c) return RETRIEVE;
+
+	return c;
+}
+
+char inchar()		/*wait for and return a character */
+{
+	char c;
+
+	if ((c=unbuf())) return c;
+	return bios(3) & NOPARITY;
+}
+
+char inkey()		/*return last key press,or 0 if none; don't wait for
+				a character*/
+{
+	char c;
+
+	if ((c=unbuf())) return c;
+	if (bios(2)) return bios(3) & NOPARITY;
+	return 0;
+}
+
+char unbuf()		/*return char from type-ahead buffer, or 0 if none*/
+{
+	char c;
+	sint i;
+
+	if (inbufp == 0) return 0;
+
+	c=inbuf[0] & NOPARITY;
+	inbufp--;
+	for (i=0; i < inbufp; i++) inbuf[i]=inbuf[i+1];
+	return c;
+}
+
+putret()	/*type a CR/LF*/
+{
+	putch('\r');
+	putch('\n');
+}
+
+dispch(c)	/*type a character (in different intensity if non-printable*/
+char c;
+{
+	if (c <= CTRL) {
+		makeother();
+		putch(c+64);
+		makeother();
+		}
+	else putch(c);
+}
+
+putch(c)	/*type a character; test for keyboard input*/
+char c;
+{
+#if DEBUGSCR
+	if (c <=CTRL) uspr(c+64);
+	else
+#endif
+	bios(4,c & NOPARITY);
+	checkkey();
+}
+
+checkkey()	/*check keyboard for input.  If found, store away in input
+		  buffer*/
+{
+	if (bios(2) && inbufp < INBUFLEN) inbuf[inbufp++]= bios(3);
+}
+
+inword(c)	/*return true if c is letter or digit*/
+char c;
+{
+	return  isalpha(c) || isdigit(c);
+}
+
+uspr(n)		/*print 'n' as a number; return number of chars typed*/
+unsigned n;
+{
+	int temp;
+
+	if (n < 10) {
+		putch(n+'0');
+		return 1;
+		}
+	temp=uspr(n/10);
+	uspr(n%10);
+	return temp+1;
+}
+
+makedim()
+{
+	if (!isdim) {
+		begdim();
+		isdim=YES;
+		}
+}
+
+makebright()
+{
+	if (isdim) {
+		enddim();
+		isdim=NO;
+		}
+}
+
+makeother()
+{
+	if (isdim) makebright();
+	else makedim();
+}
+
+putclr()	/*clear the screen */
+{
+	delpage(0);
+}
+
+dohelp()	/*display help menu */
+{
+	int y;
+
+	pfirst=loc(pfirst,(HELPLINES-1));
+	topline=HELPLINES;
+	for (y=1; y < HELPLINES; y++) deleteline(y);
+	if (cline < pfirst || pfirst == lastl) {
+		puttext(); 
+		putpage(); 
+		}
+	gotoxy(0,1);
+	displayhelp();
+}
+
+	if (tran[DELLEFT] == c) return DELLEFT;
+	if (tran[RETRIEVE] =

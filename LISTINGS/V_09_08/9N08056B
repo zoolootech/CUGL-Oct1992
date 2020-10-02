@@ -1,0 +1,67 @@
+/***************** Listing 4 *************************
+
+            Normalized Distance Interpolation
+
+   double interp(image, x, y)
+     float *image, x, y;
+
+   image: pointer to the four values of grid i.e.
+          a 2 x 2 array ( image[2][2] )
+   x    : sample coordinate
+   y    : line coordinate
+
+          wts[0]             wts[1]  
+          image(0,0)         image(0,1)
+            *-------------------*
+            |                   |
+            |                   |
+            |                   |
+            |             o     |
+            |           (y,x)   |
+            |                   |
+            *-------------------*
+         image(1,0)          image(1,1)
+         wts[2]              wts[3]
+
+    If point "o" falls on upper left corner, then 
+    return image(0,0). The point should never fall on 
+    any of the other corners because the calling 
+    program will ensure against this according to the
+    filling sequence of the array image[2][2].
+    The array wts[] is the normalized distance from 
+    point (y,x) to the four corners of a grid.
+
+******************************************************
+#include <stdio.h>
+
+#define MAX_PTS               4
+#define PYTHAGOREAN_SQ(a,b)   ( (a)*(a) + (b)*(b) )
+
+double interp(image, x, y)
+ float *image, x, y;
+{
+   register i;
+   float p, q;
+   double wts[MAX_PTS];
+   double sum_inv_wts = 0.0;
+   double sum_I = 0.0;
+
+   p = x - (int) x;
+   q = y - (int) y;
+
+   if( (p == 0.0) && (q == 0.0) )
+     return( (double) *image );   /* upper left */
+
+   wts[0] = PYTHAGOREAN_SQ( p, q );
+   wts[1] = PYTHAGOREAN_SQ( 1-p, q );
+   wts[2] = PYTHAGOREAN_SQ( p, 1-q );
+   wts[3] = PYTHAGOREAN_SQ( 1-p, 1-q );
+
+   for(i=0; i < MAX_PTS; i++)
+    {
+       sum_inv_wts += 1 / wts[i] ;
+       sum_I += *image++ / wts[i] ;
+    }
+
+   return( sum_I / sum_inv_wts );
+}

@@ -1,0 +1,193 @@
+#include <stdio.h>
+#include <string.h>
+#include <malloc.h>
+
+char *vmalloc();
+void vfree();
+void vverify();
+char *vrealloc();
+char *vcalloc();
+void vdump();
+
+/* maximum number of separate buffers which have been
+   allocated but not freed */
+#define MAXMALLOCS 200
+#define KP 0xaa     /* definition of known pattern */
+#define KPW 2       /* definition of known pattern width */
+
+typedef unsigned size_t;
+
+static void trace();
+
+static int nummallocs = 0;
+struct mtype {
+	unsigned char *addr;
+	int size;
+};
+static struct mtype m[MAXMALLOCS];
+
+static void dumpbuf(x)
+int x;
+{
+	unsigned char *c;
+	char s[80];
+	c = (unsigned char *)m[x].addr - 2;
+	/* dump malloc buffer to the vmalloc file */
+	while (c <= m[x].addr + m[x].size + KPW + KPW - 1) {
+		sprintf(s, "%04.4lx : %02x ", (long)c, *c);
+		if (c == m[x].addr)
+			strcat(s, "<= leading known pattern");
+		if (c == m[x].addr + KPW)
+			strcat(s, "<= address of malloc buffer");
+		if (c == m[x].addr + m[x].size + KPW)
+			strcat(s, "<= trailing known pattern");
+		strcat(s, "\n");
+		trace(s);
+		++c;
+	}
+}
+
+void vverify(id)
+char *id;
+{
+	char s[80];
+	int x, c;
+	/* verify the entire malloc heap */
+	for (x = 0; x < nummallocs; ++x)
+		if (m[x].addr != NULL)
+			for (c = 0; c < KPW; ++c) {
+				if (*(m[x].addr + c) != KP ||
+				  *(m[x].addr + m[x].size + KPW + c) != KP) {
+					sprintf(s,
+					  "ERROR: Malloc Area Corrupted (%s)\n",
+					  id);
+					trace(s);
+					fputs(s, stderr);
+					dumpbuf(x);
+					exit(1);
+				}
+			}
+}
+
+char *vmalloc(size)
+size_t size;
+{
+	char *buffer, s[80];
+	int c, x;
+	vverify("vmalloc");
+	if ((buffer = calloc(size + KPW + KPW, 1)) == NULL) {
+		fprintf(stderr, "ERROR: calloc returned NULL\n");
+		trace("ERROR: calloc returned NULL\n");
+		exit(1);
+	}
+	sprintf(s, "%04.4lx:vmalloc  size = %ld\n", (long)buffer,
+	  (long)size);
+	trace(s);
+	/* find a place for an entry in m */
+	for (x = 0; x < MAXMALLOCS && m[x].addr != NULL; ++x);
+	if (x == MAXMALLOCS) {
+		sprintf(s, "ERROR: too many mallocs\n");
+		fprintf(stderr, s);
+		trace(s);
+		exit(1);
+	}
+	m[x].addr = buffer;
+	m[x].size = size;
+	if (x == nummallocs)
+		++nummallocs;
+	for (c = 0; c < KPW; ++c) {
+		*(m[x].addr + c) = KP;
+		*(m[x].addr + m[x].size + KPW + c) = KP;
+	}
+	return(buffer + KPW);
+}
+
+char *vcalloc(n, size)
+size_t n, size;
+{
+	return(vmalloc(n * size));
+}
+
+void vfree(buffer)
+char *buffer;
+{
+	char *b;
+	char s[80];
+	int x;
+	b = buffer - KPW;
+	vverify("vfree");
+	for (x = 0; x < nummallocs && m[x].addr != b; ++x);
+	if (x == nummallocs) {
+		strcpy(s, "ERROR: location to free is not in list\n");
+		fprintf(stderr, s);
+		trace(s);
+		exit(1);
+	}
+	sprintf(s, "%04.4lx:vfree\n", (long)b);
+	trace(s);
+	free(b);
+	m[x].addr = NULL;
+	if (x == nummallocs - 1)
+		--nummallocs;
+}
+
+char *vrealloc(buffer, size)
+char *buffer;
+size_t size;
+{
+	char *b, *b2, s[80];
+	int c, x;
+	b = buffer - KPW;
+	vverify("vrealloc");
+	for (x = 0; x < nummallocs && m[x].addr != b; ++x);
+	if (x == nummallocs) {
+		sprintf(s, "ERROR: location to realloc not in list\n");
+		fprintf(stderr, s);
+		trace("s");
+		exit(1);
+	}
+	sprintf(s, "%04.4lx:vrealloc  size = %ld\n", (long)b,
+	  (long)size);
+	trace(s);
+	for (c = 0; c < KPW; ++c)
+		*(m[x].addr + m[x].size + KPW + c) = 0;
+	b2 = realloc(b, size + KPW + KPW);
+	m[x].addr = b2;
+	m[x].size = size;
+	for (c = 0; c < KPW; ++c)
+		*(m[x].addr + m[x].size + KPW + c) = KP;
+	return(b2 + KPW);
+}
+
+void vdump(id)
+char *id;
+{
+	char s[80];
+	int x;
+	/* dump the entire malloc heap to the vmalloc file */
+	sprintf(s,
+	  "========== Dump of malloc heap (%s) ==========\n", id);
+	trace(s);
+	for (x = 0; x < nummallocs; ++x)
+		if (m[x].addr != NULL) {
+			sprintf(s, "===== Malloc buffer addr : %04.4lx\n",
+			  (long)m[x].addr);
+			trace(s);
+			sprintf(s, "===== Malloc buffer size : %04x\n",
+			  m[x].size + KPW + KPW);
+			trace(s);
+			dumpbuf(x);
+		}
+}
+
+static void trace(s)
+char *s;
+{
+	static FILE *out = NULL;
+	if (out == NULL) {
+		unlink("vmalloc");
+		out = fopen("vmalloc", "w");
+		setbuf(out, NULL);
+	}
+	fputs(s, out);
+}

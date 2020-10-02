@@ -1,0 +1,121 @@
+
+/***********************************************************
+*                                                          *
+*       Listing #1                                         *
+*                                                          *
+*       Simulation of multi-dimensional arrays in          *
+*       Small C V2.0 using only 1-D arrays.                *
+*       This Small-C version is from CUG disk #163,        *
+*       and PC Club of Toronto #152.                       *
+*                                                          *
+*                                      -  Don Lang  1/91   *
+***********************************************************/
+
+/*
+  Declaration required for c.lib
+				*/
+extern int printf();
+
+/* simulate: char garray[2][2] = { 1, 2, 3, 4 }; */
+
+char garray[4] = { 1, 2, 3, 4 };
+int d_sizes[2] = { 2, 2 };
+int a_indices[2];
+
+main()
+{
+	ga_print(2,2, garray);
+}
+/*
+     This global print function will print the contents
+     of a simulated 2-D integer array.
+						       */
+ga_print (a,b, array) int a,b; 
+char array[];
+{
+       int i,k;
+       printf("\n");
+       i=0;
+       while (i < a) {
+	     for(k=0; k<b; k++) {
+		  a_indices[0]=i;
+		  a_indices[1]=k; /* array[i][k] */
+		  printf(" %d ",
+		  array[get_offset(2, d_sizes, a_indices)]);
+	     }
+	     printf("\n");
+	     i++;
+       }
+}
+/*
+
+   Function: get_offset
+
+   This Small-C function can be used to simulate
+   multi-dimensional arrays by using an implicitly supplied
+   1 dimensional array.  The function simply returns the
+   offset into a declared 1 dimensional array that is used
+   as an index for the accessed element.  This function
+   will be moved into the modified compiler.
+
+   Input parameters:
+
+   num_dims:  The number of dimensions of the simulated
+	      multi-dimensional array. (To be stored in
+	      the compiler's local/global symbol tables.)
+
+   d_sizes:   A pointer to a 1-D array that contains the
+	      dimension sizes of the simulated array.  These
+	      would normally appear within the non-simulated
+	      array's declaration.  (To be stored in the
+	      compiler's local/global symbol tables.)
+
+   a_indices: A pointer to a 1-D array that is used to store
+	      the indices into the n-dimensional simulated
+	      array that would normally appear within the
+	      non-simulated n-dimensional array reference.
+	      (To be extracted by the compiler's expression
+	      analyzer.)
+
+    e.g.      To simulate the declaration:
+
+	      char target[3][4];
+
+	      We would in Small-C declare:
+
+	      char target[12];
+	      int d_sizes[2] = { 3,4 };
+	      int a_indices[2];
+
+	      And wanting "target[1][2];" assign
+
+	      a_indices[0] = 1;
+	      a_indices[1] = 2;
+
+	      Then use:
+
+	      "target[get_offset(2, d_sizes, a_indices)]"
+
+	      in it's place.
+						*/
+get_offset (num_dims, d_sizes, a_indices)
+int num_dims, d_sizes[], a_indices[]; 
+{
+
+	int adr_offset, dim_eval, dim_cnt, par_prod;
+	adr_offset = 0;
+	d_sizes[0] = 1;
+/*
+	Implement the arithmetic series
+					      */
+	for (dim_eval=0; dim_eval < num_dims; dim_eval++) {
+	      par_prod = 1;
+	      for (dim_cnt=num_dims-dim_eval-1; dim_cnt>=0;
+						  dim_cnt--)
+		      par_prod *= d_sizes[dim_cnt];
+	      adr_offset += a_indices[dim_eval] * par_prod;
+	}
+	return adr_offset;
+}
+
+

@@ -1,0 +1,278 @@
+        page    60, 132
+        name    startup
+        title   ROM System Startup Code for Turbo C 2.0
+
+;
+;       ROM System Startup Code for Turbo C 2.0
+;       Copyright (C) 1987, 1988, 1989 by Paradigm Systems.
+;       All rights reserved.
+;
+;       Assemble with MASM as follows:
+;
+;               masm tc /mx /d__MODEL__ ;
+;
+;       where
+;               __MODEL__ is one of the following:
+;
+;               __SMALL__       Small memory model
+;               __COMPACT__     Compact memory model
+;               __MEDIUM__      Medium memory model
+;               __LARGE__       Large memory model
+;
+;       If no memory model is specified, the small memory
+;       model is assumed and a warning is issued.
+;
+
+;
+;       Segment and group declarations.  The order of these
+;       declarations is used to control the order of
+;       segments in the .EXE file since the Microsoft and
+;       Borland linkers copy segments in the same order
+;       they are encountered in the object files.
+;
+;       The default Borland model is to have the stack
+;       after the heap in the small and medium memory
+;       models.  This startup assumes that the stack
+;       will follow immediately after the BSS area.
+;
+;       Make sure that this startup module is specified
+;       first when linking the application.  Requires
+;       MASM 5.10 to assemble.
+;
+
+
+_text   segment byte    public  'CODE'
+_text   ends
+_etext  segment para    public  'CODEEND'
+_etext  ends
+_data   segment para    public  'DATA'
+_data   ends
+_bss    segment para    public  'BSS'
+_bss    ends
+_bssend segment byte    public  'BSSEND'
+_bssend ends
+_stack  segment para    stack   'STACK'
+_stack  ends
+romdata segment para    public  'ROMDATA'
+romdata ends
+
+IFDEF           __SMALL__
+dgroup  group   _data, _bss, _bssend, _stack
+assume  cs:_text, ds:dgroup, es:nothing, ss:dgroup
+ELSEIFDEF       __COMPACT__
+dgroup  group   _data, _bss, _bssend
+assume  cs:_text, ds:dgroup, es:nothing, ss:_stack
+ELSEIFDEF       __MEDIUM__
+dgroup  group   _data, _bss, _bssend, _stack
+assume  cs:_text, ds:dgroup, es:nothing, ss:dgroup
+ELSEIFDEF       __LARGE__
+dgroup  group   _data, _bss, _bssend
+assume  cs:_text, ds:dgroup, es:nothing, ss:_stack
+ELSE
+dgroup  group   _data, _bss, _bssend, _stack
+assume  cs:_text, ds:dgroup, es:nothing, ss:dgroup
+ENDIF
+
+;
+;       Make up the correct external references that
+;       depend on the memory model
+;
+
+        .xlist
+IF1                             ; Only expand these
+IFDEF           __SMALL__       ; on pass 1
+        extrn   _main : near
+        %out    Assembling for small memory model
+ELSEIFDEF       __COMPACT__
+        extrn   _main : near
+        %out    Assembling for compact memory model
+ELSEIFDEF       __MEDIUM__
+        extrn   _main : far
+        %out    Assembling for medium memory model
+ELSEIFDEF       __LARGE__
+        extrn   _main : far
+        %out    Assembling for large memory model
+ELSE
+        %out    Warning: No model - small model assumed
+        extrn   _main : near
+ENDIF
+ENDIF
+        .list
+
+        subttl  Startup code for Turbo C V2.0
+        page
+_text   segment
+
+public  start
+
+start   proc    far
+
+        cli                             ; Disable interrupts
+        cld
+
+;
+;       Set up the stack according to the memory model.
+;
+IFDEF           __SMALL__
+        mov     ax, dgroup
+        mov     ss, ax
+        mov     sp, offset DGROUP:tos
+ELSEIFDEF       __MEDIUM__
+        mov     ax, dgroup
+        mov     ss, ax
+        mov     sp, offset DGROUP:tos
+ELSEIFDEF       __COMPACT__
+        mov     ax, _stack
+        mov     ss, ax
+        mov     sp, offset tos
+ELSEIFDEF       __LARGE__
+        mov     ax, _stack
+        mov     ss, ax
+        mov     sp, offset tos
+ELSE
+        mov     ax, dgroup
+        mov     ss, ax
+        mov     sp, offset DGROUP:tos
+ENDIF
+
+;
+;       Prepare the segment registers for initialization.
+;
+        mov     ax, dgroup      ; Get the target segment
+        mov     es, ax          ; for DGROUP
+
+        mov     ax, romdata     ; Get the segment for the
+        mov     ds, ax          ; copy of DGROUP
+
+;
+;       Copy DGROUP from its position in ROM (just after
+;       the code class) to the target address in RAM
+;
+        mov     si, offset DGROUP:idata
+        mov     di, si
+        mov     cx, offset DGROUP:bdata
+        sub     cx, di
+        rep     movsb
+
+        push    es
+        pop     ds
+
+;
+;       Zero out the BSS area
+;
+        xor     al, al
+        mov     di, offset DGROUP:bdata
+        mov     cx, offset DGROUP:edata
+        sub     cx, di
+        rep     stosb
+
+;
+;       Call the C language entry point
+;
+        sti
+        call    _main           ; Call the Turbo C main()
+
+;
+;       Restart the process should main() return
+;
+        jmp     start
+
+start   endp
+
+;
+;       These routines are defined to satisfy any error
+;       handling routines that might need to give up on
+;       an error.  An example of this would be the
+;       stack checking routine calling abort if a stack
+;       overflow has been detected.
+;
+
+public  _exit, __exit, _abort
+
+_abort  proc                            ; User customized
+        jmp     start
+_abort  endp
+
+_exit   proc                            ; User customized
+        jmp     start
+_exit   endp
+
+__exit  proc                            ; User customized
+        jmp     start
+__exit  endp
+
+;
+;       This is code given control when Turbo C detects
+;       a stack overflow.  It simply sets up a new stack
+;       (it assumes that BP contains the original value
+;       of the stack) and exits.
+;
+
+public  OVERFLOW@
+
+OVERFLOW@       proc
+        jmp     start
+OVERFLOW@       endp
+
+_text   ends
+
+        subttl  Segment Declarations
+        page
+_etext  segment
+public  tend
+tend    label   byte            ; Mark the segment end
+        db      ?
+_etext  ends
+
+romdata segment
+public  rdata
+rdata   label   byte
+romdata ends
+
+_data   segment
+public  idata,  _errno
+idata   label   byte
+_errno          dw      0
+
+IFDEF           __SMALL__
+public  ___brklvl
+___brklvl       dw offset DGROUP:edata
+ELSEIFDEF       __MEDIUM__
+public  ___brklvl
+___brklvl       dw offset DGROUP:edata
+ELSEIFDEF       __COMPACT__
+public  __stklen
+__stklen        dw offset tos
+ELSEIFDEF       __LARGE__
+public  __stklen
+__stklen        dw offset tos
+ELSE
+public  __brklvl
+__brklvl        dw offset DGROUP:edata
+ENDIF
+
+_data   ends
+
+_bss    segment
+public  bdata
+bdata   label   byte            ; Mark the start of
+                                ; the _BSS (and the
+_bss    ends                    ; end of _DATA
+
+_bssend segment
+public  edata
+edata   label   byte            ; Mark the end of
+IFDEF           __COMPACT__     ; the BSS
+        db      ?
+ELSEIFDEF       __LARGE__
+        db      ?
+ENDIF
+_bssend ends
+
+_stack  segment
+public  tos                  ; Make the TOS visible
+        dw      256 dup (?)  ; Declare the stack size
+tos     label   word         ; Define the top of stack
+_stack  ends
+
+        end     start

@@ -1,0 +1,284 @@
+.bp 1
+.in 0
+.he 'AR1 (1)'03/10/83'AR1 (1)'
+.fo ''-#-'
+.fi
+.in 7
+.ti -7
+NAME
+.br
+ar1 - archive file maintainer
+.sp 1
+.ti -7
+SYNOPSIS
+.br
+ar1 [-](d|p|t|u|x)[v] archive [files]
+.sp 1
+.ti -7
+DESCRIPTION
+.br
+AR1 collects sets of arbitrary files into one big file and
+maintains that file as an 'archive'.
+Files can be extracted from the archive, new ones can be added,
+old ones can be deleted or replaced by updated versions, and
+data about the contents can be listed.
+
+If a minus sign ('-') is given as a file name, further file names
+are read from the standard input, one file name per line.
+
+Files that are to be added to an archive must exist as
+files with the name given.  Files that are extracted from
+an archive will be put onto files with the name given.
+Files that are added to archives can, of course, be archive files
+themselves.  There is no (theoretical) limit to the number
+of files that can be nested this way.
+Thus AR1 provides the utility necessary to maintain tree-structured
+file directories.
+
+AR1 is invoked by the command line
+
+.ti +10
+AR1 command archname [optional filenames]
+
+where 'command' is any one of 'dptux', optionally concatenated
+with 'v', specifying what operation to perform on the
+archive file named 'archname'.
+The possible commands are:
+.br
+
+.in +10
+u - Update named archive by replacing existing files or adding new
+ones at end.
+If the 'v' option is used, file names will be printed on the
+standard output as files are written to the new archived file.
+
+x - Extract named files from archive.  Put onto file of the
+same name.
+If the 'v' option is added, file names will be printed on the
+standard output as files are extracted.
+
+d - Delete named files from archive.
+If the 'v' option is used, file names will be printed on
+the standard output as they are deleted from the archive.
+
+p - Print named files on standard output.
+Using the 'v' option will cause the file name to precede the file.
+
+t - Print table of archive contents.
+Normally, the table will contain only the file name.
+If the 'v' option is used, the table will also contain
+the file's length, type, and date and time of last change.
+
+v - Verbose.  This command may be concatenated to any of the above
+commands,
+and will cause the archiver to print additional information,
+generally file names, on the standard output.
+Its specific action for each command has already been described.
+.br
+.in -10
+
+The optional filenames in the command line specify individual
+files that may participate in the action.
+If no files are named, the action is done on ALL files in the archive,
+but if any files are explicitly named, they are the ONLY ones that
+take part in the action.
+(The 'd' command is an exception--files may be deleted only by
+specifying their names.)
+.sp 1
+.ti -7
+FILES
+.br
+Files of the form 'temp.$n$' are created and subsequently deleted for each run.
+.sp 1
+.ti -7
+SEE ALSO
+.br
+The Unix commands 'ar' and 'ls' in the Unix manual
+.br
+The RATFOR AR2 tool.
+.sp 1
+.ti -7
+DIAGNOSTICS
+.br
+archive not in proper format
+.br
+.in +10
+The basic problem is that archive didn't find a header
+line where one was expected.
+Typical reasons include misspelling the file name,
+using an existing file (not in archive format)
+on a creation run, and
+referencing an archive file that has been modified
+directly (say with the editor).
+.br
+.in -10
+
+archive integrity in doubt - missing trailer
+.br
+.in +10
+Each file in an archive is terminated by a special line called a
+"trailer," which must be present.
+The message is caused by the lack of a trailer line when one was
+expected.
+.br
+.in -10
+
+delete by name only
+.br
+.in +10
+For user protection, files are allowed to be deleted from an archive
+only by specifying each file name.
+.br
+.in -10
+
+duplicate file name
+.br
+.in +10
+A file was listed more than once when calling the archiver
+.br
+.in -10
+
+fatal errors-archive not altered
+.br
+.in +10
+This message is generated whenever one or more of the other
+errors have been detected.  An archive is never altered unless
+EVERYTHING has run properly.
+.br
+.in -10
+
+too many file names
+.br
+.in +10
+At the present the user may call the archiver with no more than
+25 files at a time.
+.br
+.in -10
+
+usage:  ar [-](dptux)[v] archive [files]
+.br
+.in +10
+The command line passed to the archiver is in error.
+Possibly the command is wrong or the archive file name
+has not been given.
+.br
+.in -10
+
+can't add 'filename'
+.br
+.in +10
+The file specified by 'filename' doesn't exist or can't be
+opened (e. g. is locked).
+.br
+
+.in -10
+can't create 'filename'
+.br
+.in +10
+The archiver could not generate a local file by the name
+of 'filename'.  Probably the archiver's internal file
+buffer space has been exceeded.
+.br
+
+.in -10
+'filename' not in archive
+.br
+.in +10
+The archiver could not locate the file specified by 'filename' in
+the archived file.
+.br
+
+.in -10
+.sp 1
+.ti -7
+AUTHORS
+.br
+Original code from Kernighan and Plauger's 'Software Tools',
+with rewrites by Allen Akin (Georgia Institute of Technology)
+and minor changes suggested by David Hanson (University
+of Arizona).
+Transliterated from RATFOR to BDS C by Oscar Goldman.
+Conversion to BDS C library by Edward K. Ream
+.sp 1
+.ti -7
+BUGS/DEFICIENCIES
+.br
+AR1 is quite slow with floppies, but tolerable with hard disks
+and especially with memory disks.
+One reason for its slow speed is that it ALWAYS reads the entire archive
+so that it can check for a proper end to the archive.
+Omitting this check would increase its speed.
+
+A different approach (taken by AR2) is to have the index either as
+a separate file, or as part of the archive file occupying the first
+several records.
+The index would consists of the name, some
+statistical information and pointers into the archive file indicating
+the starting and ending records as well as byte addresses within these
+records.
+This would certainly speed up access and would surely increase
+the usefulness of the routine.
+
+Another problem with AR1 arises because all reads and writes are
+by line.  For example, a constituent of an archive must end with a
+NEWLINE, otherwise the trailer is messed up and the 'archive integrity'
+is in doubt.
+
+Line access also prevents archiving binary files.
+A different approach to archiving CP/M files is clearly called for.
+However, it is still not clear how to tell ascii files from other files.
+
+When the update and print commands are used, the files are
+updated or printed
+in the order they appear on the
+archived file, NOT the order listed on
+the command line.
+
+The Unix archiver allows files to be positioned in the
+archive, rather than simply added at the end as AR does.
+This is done by adding the following commands:
+.br
+.in +10
+
+m - Move specified files to end of archive
+
+ma posname - Move specified files to position after file 'posname'
+
+mb posname - Move specified files to position before file 'posname'
+
+r - Replace specified files and place at end of archive
+
+ra posname - Replace files and place after file 'posname'
+
+rb posname - Replace files and place before file 'posname'
+.br
+.in -10
+
+There are some discrepancies between the Unix version of AR and
+this version.  Unix uses 'r'--replace instead of 'u'--update.
+Unix also requires the user to specify an additional command 'n'
+when creating a new archive.
+.sp 1
+.ti -7
+NOTES
+.br
+1.  The standard wildcard matching supplied in the wildexp package can NOT
+be used, since wildexp expands file names by looking at files on the
+DISK.
+In general, the names of files on the DISK have nothing to do with
+the names of the files in the ARCHIVE.
+If you feel the need for wildcard matching, make the change in the
+file_arg() routine.
+
+2.  AR1 can be used to unpack the files from the Software Tools project.
+
+3.  Link AR1 as follows:
+
+	clink ar1 -f dio ar1/util
+
+4.  At present, the getnow() routine in ar1/util.bds just prompts the
+console for a time stamp.
+The files tod.bds and date/ssi.bds show how to replace getnow()
+with more clever code if you have clock or calendar hardware.
+he files tod.bds and date/ssi.bds show how to replace getnow()
+with more clever code if you have clock or 

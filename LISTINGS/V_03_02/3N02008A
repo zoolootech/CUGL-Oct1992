@@ -1,0 +1,98 @@
+#ifndef CHALLOC_H
+#define CHALLOC_H
+
+
+#include <assert.h>
+#include <stdlib.h>
+
+// challoc.h - header file for "chunk" memory allocator
+
+class   ChunkRoot
+    {
+public:
+    ChunkRoot(size_t ElementSize_);
+    ~ChunkRoot();
+    enum    {
+        NUMBER_OF_BINS = 10, CHUNK_SIZE = 4096,
+        MAX_OBJECT = CHUNK_SIZE/4
+        };
+
+
+private: friend class ChunkAllocated;
+    struct  ChunkRootLink
+        {
+        ChunkRootLink   *Next;
+        union
+            {
+            long double LDAlign;
+            double      DAlign;
+            long        LAlign;
+            void        *VAlign;
+            };
+        void    *Chunk() { return (void *)&LDAlign; }
+        };
+    void            AddChunk();
+    ChunkRootLink   *Root;
+    ChunkAllocated  *FreeList;
+    size_t          ElementSize;
+    size_t          ElementsPerChunk;
+    };
+
+class   ChunkAllocated
+    {
+friend class ChunkRoot;
+public:
+    void    *operator new(size_t SizeInBytes);
+    void    operator delete(void *);
+protected:
+    union
+        {
+        ChunkAllocated  *Next;
+        ChunkRoot       *Root;
+        };
+static  ChunkRoot   Roots[ChunkRoot::NUMBER_OF_BINS];
+    };
+
+inline void ChunkAllocated::operator delete(void *Instance_)
+    {
+    ChunkAllocated  *Instance   = (ChunkAllocated *)Instance_;
+    ChunkRoot       *Root       = Instance->Root;
+    Instance->Next              = Root->FreeList;
+    Root->FreeList              = Instance;
+    }
+
+inline void * ChunkAllocated::operator new(size_t SizeInBytes)
+    {
+    ChunkRoot       *Root;
+    ChunkAllocated  *NewInstance;
+
+    assert(SizeInBytes < ChunkRoot::MAX_OBJECT);
+    if(SizeInBytes <= 2)
+        Root    = &Roots[0];
+    else if(SizeInBytes <= 4)
+        Root    = &Roots[1];
+    else if(SizeInBytes <= 8)
+        Root    = &Roots[2];
+    else if(SizeInBytes <= 16)
+        Root    = &Roots[3];
+    else if(SizeInBytes <= 32)
+        Root    = &Roots[4];
+    else if(SizeInBytes <= 64)
+        Root    = &Roots[5];
+    else if(SizeInBytes <= 128)
+        Root    = &Roots[6];
+    else if(SizeInBytes <= 256)
+        Root    = &Roots[7];
+    else if(SizeInBytes <= 512)
+        Root    = &Roots[8];
+    else
+        Root    = &Roots[9];
+    if(!Root->FreeList)
+        Root->AddChunk();
+    NewInstance         = Root->FreeList;
+// Point back to root, so operator delete can find it
+    Root->FreeList      = NewInstance->Next;
+    NewInstance->Root   = Root;
+    return (void *)NewInstance;
+    }
+#endif

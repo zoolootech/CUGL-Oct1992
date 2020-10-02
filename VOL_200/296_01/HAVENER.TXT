@@ -1,0 +1,270 @@
+Rapid Prototyping as a Design Method - Building a C to C++ Migrator
+
+by Charles D. Havener
+
+Author: Senior Principal Engineer
+
+GenRad Inc. MS 1A
+
+300 Baker Avenue
+
+Concord Mass. 01742
+
+Masters degrees in electrical engineering from Cornell University and in
+Computer Science from Boston University. Instructor in C in the
+Northeastern University State of the Art program. My work at GenRad is
+designing and implementing control software in C for automatic component
+and printed circuit board test equipment. 
+
+INTRODUCTION 
+
+This article advocates the conscious use of rapid prototyping as a
+powerful technique to be used in the software design process. A working
+prototype of a C to C++ migrator tool is a concrete example of how to
+build prototypes for text or computer language processing problems. The
+migrator tool is intended to automate some of the tasks in porting old
+style C code to the new ANSI style or C++ style that requires function
+prototypes. The goal is to automatically extract prototypes for use in
+header files and to edit the old style C into a new file that uses
+prototypes. Any extern function declarations should be edited out by
+the tool since they will presumably be in header files. 
+
+RAPID PROTOTYPING - GOALS AND PHILOSOPHY
+
+In his paper "No Silver Bullets" Fred Brooks ( author of the software
+classic, The Mythical Man-Month ) states that "one of the most promising
+of the current technological efforts, and one that attacks the essence,
+not the accidents, of the software problem, is the development of
+approaches and tools for rapid prototyping of systems, as prototyping is
+part of the iterative specification of requirements."[1] The traditional
+waterfall diagram of design includes the following steps; Requirements -
+Specification - Design. Most real world programs are complex enough
+that some iterative steps around the requirements and specifications are
+needed to do the design. Thus the following is a better model;
+
+ Requirements ->- Specification --> Design  ---> Develop --->
+
+      ^                               v
+      |                               |
+      -------- Prototype <-------------
+
+Prototyping helps us understand a complex problem in greater depth, it
+permits exploring different design approaches, it can provide early
+warning of unexpected difficulties, it can overcome the paralysis that
+sometimes sets in when you don't know enough about a problem to do a
+good design, and it raises morale by providing a working system early. 
+A conscious recognition that our designs will follow the prototyping
+model leads us to collect software tools and code that can be used in
+this process which reinforces its effectiveness over time. Prototyping
+is exploratory in nature. It is important not to get sidetracked into
+perfecting some particular aspect of the design. The idea is to drive
+as deeply as possible, to unearth problem areas. Reuse old code,"don't
+let the work of others evade your eyes, plagiarize", lash things
+together with Unix shell scripts or DOS batch files. Don't bother with
+elaborate error handling. Use tools. 
+
+There are several commercial tools for prototyping user interfaces such
+as Dan Bricklin's Demo Program. The migrator program deals with text,
+i.e. computer language program source code. Lex and YACC work-alikes
+are widely available tools that are invaluable for prototypes that
+involve language processing. These tools were created to help build
+compilers and translators by automatically creating scanners and parsers
+but they have many other uses. This article assumes the reader is
+familiar with these tools or will be motivated to master them by what
+follows. The migrator was originally developed on a Sun workstation and
+then ported to PC-DOS using the MKS YACC (reviewed in the April 1989
+issue of the C Users Journal) and the new public domain flex, a public
+domain re-implementation of lex with improvements. If you obtain the
+flex sources ( e.g. from the Austin Code Works ) and port them to the
+PC, there is one tricky part in addition to the extra long variable
+names. Be sure that the declarations for the extern variable yytext
+agree in both the YACC and lex that you use. If one uses char yytext[],
+and the other uses extern char* yytext, then it will not work. 
+
+THE C TO C++ MIGRATOR
+
+Listing 1 shows sample input and output files from the migrator tool and
+Figure 1 is an overview of how the migrator is put together and
+controlled. The source code accompanying this article is a snapshot of
+the present state of the migrator prototype. The remainder of this
+article covers the rapid prototyping process phase by phase as the
+migrator tool was 'grown' over a period of several days. 
+
+A search was conducted to see if a migrator tool or function prototype
+extractor was available. There was some activity on the Usenet in the
+C++ news group about such tools but the only one posted required access
+to the lint program sources on Unix. A modified lint could be created
+that would produce prototypes. Nothing was found that would do the
+complete job, though it was rumored that some were under development. 
+
+FINDING A C GRAMMAR
+
+There is a 480 line C grammar that was posted several times to the
+Usenet. The migrator uses this grammar which was developed by Jeff Lee
+at Georgia Tech based on April 1985 ANSI C committee drafts provided by
+Arnold Robbins. Many of the commercial YACC tools come with several
+example grammars, e.g PCYACC comes with a 518 line C grammar, as well as
+C++ and Pascal grammars. These can be worth the price of the software
+alone for use in prototyping things like C++ class browsers etc. The
+public C grammar generates parsers that accept various illegal C
+statements such as "Hello World"++, --1.23, and *'a' according to Jeff
+Lee but for our application it doesn't matter. Presumably we will be
+providing C code to the migrator that has been validated by a true
+compiler. The first step in the migrator prototyping was to use the C
+grammar and lex specification to create a parser that would accept a C
+program. The idea was to add the semantic action routines to the
+grammar in the places required to produce the migrator. The grammar
+requires that the C source code has been preprocessed by the standard
+cpp to remove #include etc lines and to expand all macros. For the
+prototype migrator a shell script was used that first fed the C source
+code through the cpp and then to the migrator. Listings 2 & 3 are the
+lex input file and the relevant parts of the grammar. ( Source code
+available for this article from the C Users Journal includes the full
+grammar ). 
+
+SOLVING THE TYPEDEF PROBLEM
+
+The C grammar provided will not accept C programs that use typedef. 
+This was the first hurdle to overcome and it was mentioned as a problem
+several times on the Usenet. The difficulty arises because the lexical
+analysis phase or scanner cannot distinguish a typedef identifier from
+any other variable identifier without a symbol table. Thus the next
+step was to add a symbol table and the appropriate code to use it. A
+simple hashing symbol table module is in the the listing symtab.c. I
+have used this code with minor modifications many times. A symbol table
+module is something every devotee of rapid prototyping should have
+handy. It does the standard things, it has an initsymtab(), storesym()
+and findsym() interfaces. Actions were added ,within braces, to the
+grammar to store typedef symbols into the table. In the production
+"declaration : TYPEDEF ;" a global flag in_tdef was set on the
+assumption that the next IDENTIFIER encountered would be a typedef name. 
+The "identifier: IDENTIFIER" production at the end of the grammar makes
+use of the global flag to store the typedef names into the symbol table. 
+Later on, the lexer looks up every identifier it finds and if it is in
+the table it returns TYPE_NAME to the parser rather than IDENTIFER. 
+(Later the global symbols su and enumflag were added to handle the
+identifier names associated with structs or unions and enumerated data.)
+At this point the migrator would accept without complaint most valid C
+program. It didn't do anything of course, and its only complaint was
+syntax error if something went wrong. The only concession to syntax
+error assistance was in the count() function in the ctocxx.l listing. 
+This updates a global count variable so the yyerror() function called by
+yacc can report which column of the input line it gave up on. If the
+ECHO macro line is not commented out, the count() function also copies
+the input to the standard output to provide more complete information. 
+
+EXTRACTING FUNCTION PROTOTYPES
+
+Extracting and building function prototypes for output to a proto.out
+file was the next goal. Since the lexer passed all input text through
+the count() function, a call to a new function called stuff() was added
+there. The idea was to use the appropriate grammar rules to set a
+global variable that the stuff() function could use to build up a
+function prototype from the immediate stream of text that it had saved. 
+The listing subs.c contains the stuff() function. It uses a ring buffer
+of about 2000 characters to remember the text stream. The stuff()
+function in the listing subs.c grew in an ad hoc way from a very small
+thing into a monster as functionality was added. The stuff() function
+was at the heart of the experimenting and learning process. It may be
+possible to have the grammar do more of the work in extracting the
+elements needed to build up the function prototypes. However, a
+decision was made early in the rapid prototyping to minimize the grammar
+actions and to see how much could be done by applying heuristic rules to
+the text saved in the ring buffer. 
+
+The function prototype was built up in the func_proto[] buffer character
+by character as the stuff() function outer while loop stepped through
+the current token's text in yytext[]. Each little if section handles
+some situation that rapid prototyping uncovered. For example, the
+register keyword may appear in old style function argument declarations
+but not in function prototypes so it had to be discarded. If the
+argument declaration style 'int a,b,c' was used, the root e.g. int had
+to be saved and prepended to each argument to make a valid function
+prototype e.g. 'int func(int a,int b,int c);'. There are some
+functions that don't need a function prototype, e.g. main() and any
+function declared to be static. Finally, note that old style
+declarations often defaulted to int but this must be added for function
+prototypes. The symbol table is useful here. Just before the newly
+built prototype is written out, the first word is looked up in the
+table. If it isn't there, 'int' is prepended. 
+
+BUILDING THE SED SCRIPT
+
+The next step was to provide a means to automatically edit the original
+file into the desired form. One possible design would be to make the
+migrator edit the input on the fly and write it out. This was
+considered and rejected as too much work for a prototype. After all,
+the text had already gone by before we could figure out how to alter it. 
+This would mean a delay buffer between input and output. At first it
+seemed we could write out some edit commands for the unix 'ed' line
+editor but that editor renumbered all the lines of text everytime a
+delete was done. The sed stream editor worked perfectly. Sed accepts
+simple delete and insert commands based on line numbers and fortunately
+the cpp preprocessor inserts '# line' code into the program so we can
+always tell what line we are on. The pound() function in the ctocxx.l
+file listing takes care of this when the lexer matches a '#line' in the
+input text. The sed edit script commands are written out to the ed.out
+file for later use by the shell script or batch file that drives the
+migrator. Sed has one minor problem, it holds the entire script in
+memory at once and for very large complex C files it was possible to
+exceed sed's command buffer. Much of the complexity in the ed_delete(),
+ed_flush() and elsewhere in the subs.c listing is to minimize the size
+of the sed script produced. The grammar tended to produce line delete
+commands such as 5d 6d 7d 8d. By delaying the command output it was
+possible to put out 5,8d commands which saved space in the sed command
+buffer. 
+
+The write_proto() function in the subs.c listing is called from the
+declarator2 production rule of the grammar. At this point the parser
+has encountered what may be the beginning of a function declaration. It
+may be an extern function which must be ignored, or a function with no
+arguments, or one with several arguments. The global proto_flag is set
+true so the stuff() function will add the arg declarations to the
+func_proto buffer as it finds them. But first, the write_proto()
+function must back up over the input text to the beginning of the
+function declaration. It uses a character stack embodied by the push()
+and pop() functions to save chars as it backs up through the ring
+buffer. One coding style puts the function return type declaration on
+the preceding line, e.g. the crazy() function in the example listing. 
+The migrator handles this but it tends to delete extra blank lines used
+for spacing. 
+
+STATE OF THE MIGRATOR - WHAT WAS LEARNED
+
+A few hundred thousand lines of C has been successfully passed through
+the migrator in it's current state and while it is quite useful it is
+not a panacea for porting old style code. Typically the converted code
+has harmless type mismatches that will no longer compile. In some cases
+the old style compiler would accept syntax that is illegal and the
+migrator would not accept it. The port to DOS required the addition of
+the non-standard keywords near,far, and decl to the ctocxx.l file. 
+Presently they are ignored, the migrator must be enhanced to deal with
+them for code that uses them. Furthermore, while comma separated
+function argument lists are accepted, comma separated typedef lists are
+not. A potentially major problem when moving C code to C++ is that
+declarations like 'struct foo foo' are illegal. In C++ the variable and
+structure tag name space are the same so the names must be different. 
+This seems like something that should be fixed manually and not by an
+automatic tool like the migrator. 
+
+The migrator prototype has revealed some features that are desirable to
+support in a finished product. For example, the function argument names
+are currently retained in the prototypes. This tends to make for very
+long lines and since they are ignored by the compiler there should be an
+option to produce function prototypes without argument names. Code that
+contains #ifdef sections with functions inside may be elided by the cpp. 
+The migrator will not produce function prototypes or editing scripts for
+those sections of code. It may take several passes through the migrator
+with different conditions set to make all the changes. Another minor
+issue is that some code is written in a style that uses #defines rather
+than typedefs to make pseudo types. For example #define COUNT int. The
+C preprocessor removes all instances of COUNT so the migrator will not
+see it and pass it through. The prototype migrator works reasonably
+well and it could be cleaned up to be a production quality tool. The
+sed editing is simple enough that it could easily be folded back into
+the migrator. The simple script or .bat controller functions could be
+pulled into the main() function by using various command line options. 
+
+[1] "No Silver Bullets" by Frederick P. Brooks Jr. Unix Review, Nov
+1987 pp 39-48, or IEEE Computer Magazine April 1987. 
+

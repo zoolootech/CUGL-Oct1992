@@ -1,0 +1,334 @@
+Listing 5
+
+/*****************************************************/
+/*  scroll.c                                         */
+/* -- Sample program captures the screen into an     */
+/*    offscreen bitmap that the user can view        */
+/*    "through" a scrollable window.                 */
+/*****************************************************/
+
+#define NOCOMM
+#include <windows.h>
+
+/*****************************************************/
+/* Prototypes.                                       */
+/*****************************************************/
+VOID                CaptureScreen(VOID);
+VOID                FreeBitmap(VOID);
+VOID                ScrollBitmap(HWND, int, int);
+int     FAR PASCAL  WinMain(HANDLE, HANDLE, LPSTR,
+                            int);
+LONG    FAR PASCAL  WndProc(HWND, WORD, WORD, DWORD);
+
+/*****************************************************/
+/* Constants.                                       */
+/*****************************************************/
+#define szScroll    "Scroller"  /* Class name. */
+
+/*****************************************************/
+/* Globals.                                          */
+/*****************************************************/
+int     dxScreen, dyScreen; /* Size of display. */
+int     dxWindow, dyWindow; /* Size of main window. */
+POINT   ptBitmap;           /* Bitmap position. */
+HDC     hdcMem;             /* Memory DC. */
+HBITMAP hbmp;               /* Off-screen bitmap. */
+HBITMAP hbmpSav;            /* Original 1x1 bitmap. */
+
+/*****************************************************/
+/* Routines.                                         */
+/*****************************************************/
+
+int FAR PASCAL
+WinMain(HANDLE hins, HANDLE hinsPrev, LPSTR lsz,
+  int wShow)
+/*****************************************************/
+/* -- hins        : This program's instance.         */
+/* -- hinsPrev    : Previous program's instance.     */
+/* -- lsz         : Command line I was invoked with. */
+/* -- wShow       : ShowWindow command.              */
+/*****************************************************/
+    {
+    MSG msg;
+
+    if (hinsPrev == NULL)
+        {
+        WNDCLASS    wcs;
+
+        /* First instance is responsible for */
+        /* registering a class. */
+        wcs.style = CS_HREDRAW | CS_VREDRAW;
+        wcs.lpfnWndProc = WndProc;
+        wcs.cbClsExtra = 0;
+        wcs.cbWndExtra = 0;
+        wcs.hInstance = hins;
+        wcs.hIcon = NULL;
+        wcs.hCursor = LoadCursor(NULL, IDC_ARROW);
+        wcs.hbrBackground =
+            GetStockObject(WHITE_BRUSH);
+        wcs.lpszMenuName = NULL;
+        wcs.lpszClassName = szScroll;
+
+        if (!RegisterClass(&wcs))
+            return FALSE;
+        }
+
+    /* Create the main window 1/16 the size of the */
+    /* screen. */
+    dxScreen = GetSystemMetrics(SM_CXSCREEN);
+    dyScreen = GetSystemMetrics(SM_CYSCREEN);
+    if (CreateWindow(
+        szScroll,
+        szScroll,
+        WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+        CW_USEDEFAULT,
+        CW_USEDEFAULT,
+        dxScreen >> 2,
+        dyScreen >> 2,
+        NULL,
+        NULL,
+        hins,
+        NULL) == NULL)
+        return FALSE;
+
+        while (GetMessage(&msg, NULL, 0, 0))
+            {
+            TranslateMessage(&msg);
+            DispatchMessage(&msg);
+            }
+
+        return 0;
+        }
+
+LONG FAR PASCAL
+WndProc(HWND hwnd, WORD wMessage, WORD wParam,
+  DWORD lwParam)
+/*****************************************************/
+/* -- WindowProc for our main window.                */
+/* -- hwnd    : Main window.                         */
+/* -- wMessage        : Message number.              */
+/* -- wParam, lwParam : Message parameters.          */
+/*****************************************************/
+    {
+    BOOL    fCallDef    = TRUE;
+
+    switch (wMessage)
+        {
+    default:
+        break;
+
+    case WM_DESTROY:
+        PostQuitMessage(0);
+        FreeBitmap();
+        break;
+
+    case WM_SIZE:
+        dxWindow = LOWORD(lwParam);
+        dyWindow = HIWORD(lwParam);
+
+        /* Just in case we would uncover past the */
+        /* right or bottom edges of the screen. */
+        ScrollBitmap(hwnd, 0, 0);
+        break;
+
+    case WM_PAINT:
+        {
+        PAINTSTRUCT wps;
+
+        /* Repaint the visible portion of the */
+        /* off-screen bitmap. */
+        BeginPaint(hwnd, &wps);
+        if (hdcMem != NULL)
+            BitBlt(wps.hdc,
+              wps.rcPaint.left,
+              wps.rcPaint.top,
+              wps.rcPaint.right - wps.rcPaint.left,
+              wps.rcPaint.bottom - wps.rcPaint.top,
+              hdcMem,
+              wps.rcPaint.left + ptBitmap.x,
+              wps.rcPaint.top + ptBitmap.y,
+              SRCCOPY);
+        EndPaint(hwnd, &wps);
+        fCallDef = FALSE;
+        }
+        break;  /* End case WM_PAINT. */
+
+    case WM_KEYDOWN:
+        {
+        int dx  = 0;    /* Horizontal scroll amount. */
+        int dy  = 0;    /* Vertical scroll amount. */
+
+        switch (wParam)
+            {
+        default:
+            break;
+
+        case VK_LEFT:
+            dx = -1;
+            break;
+
+        case VK_RIGHT:
+            dx = 1;
+            break;
+
+        case VK_UP:
+            dy = -1;
+            break;
+
+        case VK_DOWN:
+            dy = 1;
+            break;
+
+        case VK_HOME:
+            dx = -(dxWindow >> 1);
+            break;
+
+        case VK_END:
+            dx = (dxWindow >> 1);
+            break;
+
+        case VK_PRIOR:
+            dy = -(dyWindow >> 1);
+            break;
+
+        case VK_NEXT:
+            dy = (dyWindow >> 1);
+            break;
+
+        case VK_RETURN:
+            FreeBitmap();
+            CaptureScreen();
+
+            /* Force a repaint so we can see what's */
+            /* been captured. */
+            InvalidateRect(hwnd, NULL, TRUE);
+            UpdateWindow(hwnd);
+            break;
+            }   /* End switch wParam. */
+
+        if (dx != 0 || dy != 0)
+            ScrollBitmap(hwnd, dx, dy);
+        }
+        break;  /* End VK_DOWN case. */
+        }       /* End switch wMessage. */
+
+    return fCallDef ?
+      DefWindowProc(hwnd, wMessage, wParam, lwParam) : 0L;
+    }
+
+VOID
+CaptureScreen()
+/*****************************************************/
+/* -- Create the off-screen bitmap.                  */
+/* -- Return TRUE for success.                       */
+/*****************************************************/
+    {
+    HWND    hwndDesktop = GetDesktopWindow();
+    HDC     hdcDesktop  = GetDC(hwndDesktop);
+
+    if (hdcDesktop == NULL)
+        goto CaptureScreenExit;
+
+    if ((hdcMem = CreateCompatibleDC(hdcDesktop)) ==
+      NULL)
+        goto CaptureScreenExit;
+
+    /* Note.  When creating a compatible bitmap, */
+    /* don't base it on the memory dc unless you */
+    /* want a monochrome bitmap!  This is because */
+    /* the bitmap will be made compatible with the */
+    /* one already in the memory dc, which is a 1x1 */
+    /* monochrome by default.  So use the window */
+    /* based dc instead. */
+    if ((hbmp = CreateCompatibleBitmap(hdcDesktop,
+      dxScreen, dyScreen)) == NULL)
+        goto CaptureScreenExit;
+
+    /* Copy the screen. */
+    if ((hbmpSav = SelectObject(hdcMem, hbmp)) == NULL)
+        goto CaptureScreenExit;
+
+    BitBlt(hdcMem, 0, 0, dxScreen, dyScreen,
+      hdcDesktop, 0, 0, SRCCOPY);
+
+CaptureScreenExit:
+    if (hdcDesktop != NULL)
+        ReleaseDC(hwndDesktop, hdcDesktop);
+    }
+
+VOID
+FreeBitmap(VOID)
+/*****************************************************/
+/* -- Release bitmap and memory dc.                  */
+/*****************************************************/
+    {
+    if (hbmpSav != NULL)
+        {
+        SelectObject(hdcMem, hbmpSav);
+        hbmpSav = NULL;
+        }
+    if (hbmp != NULL)
+        {
+        DeleteObject(hbmp);
+        hbmp = NULL;
+        }
+    if (hdcMem != NULL)
+        {
+        DeleteDC(hdcMem);
+        hdcMem = NULL;
+        }
+    }
+
+VOID
+ScrollBitmap(HWND hwnd, int dx, int dy)
+/*****************************************************/
+/* -- Scroll the contents of the window.             */
+/* -- hwnd   : Window to scroll.                     */
+/* -- dx, dy : Horizontal and vertical amounts to    */
+/*             scroll by.                            */
+/*****************************************************/
+    {
+    POINT   ptNew;
+
+    if (hdcMem == NULL)
+        return;
+
+    /* Make sure scroll would not put us over the */
+    /* edge. */
+    ptNew.x = ptBitmap.x + dx;
+    ptNew.y = ptBitmap.y + dy;
+
+    if (ptNew.x < 0)
+        {
+        ptNew.x = 0;
+        dx = -ptBitmap.x;
+        }
+    else if (ptNew.x > dxScreen - dxWindow)
+        {
+        ptNew.x = dxScreen - dxWindow;
+        dx = ptNew.x - ptBitmap.x;
+        }
+
+    if (ptNew.y < 0)
+        {
+        ptNew.y = 0;
+        dy = -ptBitmap.y;
+        }
+    else if (ptNew.y > dyScreen - dyWindow)
+        {
+        ptNew.y = dyScreen - dyWindow;
+        dy = ptNew.y - ptBitmap.y;
+        }
+
+    if (dx == 0 && dy == 0)
+        return; /* No change. */
+
+    /* Scroll the window.  Note that ScrollWindow() */
+    /* will invalidate the uncovered area, so we only */
+    /* have to update the window to force it to paint */
+    /* the exposed area. */
+    ScrollWindow(hwnd, -dx, -dy, NULL, NULL);
+    ptBitmap = ptNew;
+    UpdateWindow(hwnd);
+    }
+

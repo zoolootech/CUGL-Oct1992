@@ -1,0 +1,136 @@
+*   ----------------------------------------------------------------------
+*   File        :   DIOFNC11.TXT
+*   Creator     :   Blake Miller
+*   Version     :   01.01.00    February 1991
+*   Purpose     :   Describe DIOFNC11.C Functions
+*   Revision    :   February 28, 1991
+*   -----------------------------------------------------------------------
+
+WARNING:
+--------
+
+	I do not have a multi-port board on which to test these functions.
+The single-port functions work correctly, and I wrote these multi-port
+functions as an extension to those single-port functions for those of you
+with multi-port boards.  These functions here 'seem' correct, but are
+not truly debugged.  You might say they are written on 'good faith'.
+(In other words, they compiled, so they must work, right?   Ha Ha Ha...
+I love that line!)
+
+OVERVIEW:
+---------
+
+	Many Digital I/O boards have more than one Intel 8255 on them.  The
+other functions in the library are used for working with one digital I/O
+port at a time.  If several digital ports are in use in your system, then
+it may be more convenient to use the Port Array (_pa_) functions.  These
+functions support a virtually unlimited number of digital I/O ports (limited
+by the system's amount of free memory or available 80X86 hardware addresses,
+whichever you run out of first...).
+	I generall only need to toggle individual bits at a time.  The functions
+supplied support the digital output port array in this manner.  If necessary,
+you can obtain the address of any individual element in the array and
+then implement the individual port manipulation functions (which generally
+require the address of the DIODAT data as one of the arguments).
+
+
+IMPLEMENTATION:
+---------------
+
+	Since I advocate using defines for bits and using bit associated
+digital I/O instead of obscure references such as:
+
+	data = inp( 0x300 );            /* read in data     */
+	outp ( 0x300, data | 0x0010 );  /* toggle bit 4 on  */
+
+	Huh????????
+
+	Instead, you can create legible (maintainable!) code:
+
+	#define     MOTOR_BIT   32
+	#define     MOTOR_ON     1
+	#define     MOTOR_OFF    0
+
+	dio_pa_bitput (MOTOR_BIT, MOTOR_ON);    /* turn motor on!   */
+
+	Seems a little easier to read, and not a whole lot less efficient.
+As I had said, many boards have more than one 8255 (Notice the motor was
+located at bit 32...).  In order to accomodate this system for multiple
+ports, there is memory for an array of DIODAT data allocated by the
+dio_pa_aloc(count) function.  You pass how many 8255s are in the system
+(or on multiple boards for that matter, the functions do not know the
+difference....), and the 8255 base addresses do not have to be located at
+consecutive 80X86 hardware port addresses.  This sets up the data array.
+
+	The next important step is to remember to call dio_pa_free() before
+exiting the program so that the memory is returned to the operating system.
+I have conveniently made dio_pa_aloc() a void function returning a void type
+so that it can be installed to be called at exit with the atexit() function.
+It does no harm to call dio_pa_aloc() before memory has been allocated with
+dio_pa_aloc(void) function.  Those two functions, then, reserve and free the
+memory for the DIODAT data buffers.
+
+	Next, the address of each 8255 must be set.  Use the function
+dio_pa_setadr (element, address) and call it once for each 8255 in
+the system.  The base address of each 8255 must be used.  On most boards,
+each 8255 on the board is 4 addresses away from the previous one.  So, for
+example, if your board has four 8255s (Computer Boards, Inc. CIO-DIO96
+is one such board) and the board's base address is set to 0x300, then the
+first 8255 address (Element 0) is set up with this call:
+
+	#define     DIO96_BASE  0x300
+
+	dio_pa_setadr (0, DIO86_BASE);
+
+	Since there are four 8255 on the board, you can even set up a loop:
+
+	for (i = 0; i < 4; i++ ){
+		dio_pa_setadr (i, DIO96_BASE + (i * 4) );
+		}
+
+	So far, we have memory and the base addresses set up.  Next step is to
+program the I/O direction of the ports on the individual 8255.  The default
+direction is input (According to Intel documentation - RESET.  A "high" on
+this input clears the control register and all ports (A, B, C) are set to
+the input mode.").  It is a good idea to set up all your ports and then
+do the approriate bit reads or writes to get the data set up correctly.
+That is, to get all the data and ports into a 'known' state.
+	To set up all the ports as output, you can use a loop like this:
+
+	for (i = 0; i < num_port; i++ ){
+		dio_pa_config (i, 0, 0, 0, 0);
+		}
+
+	With the 8255 addresses set, and the port I/O directiosn established,
+you can now proceed to use the bit functions to individually set or clear
+bits in the system.  Note that the total number of bits available (Base 1)
+is num_bits = 24 * num_port.   A loop to read all bits and print out the
+state of each one as SET or CLEAR, can be written like this:
+
+	short   num_bits  = 24 * num_port;
+	short   bit_state = 0;
+
+	for (bit = 0; bit < num_bits; bit++ ){
+		dio_pa_bitget (bit, &bit_state);
+		if ( bit_state )    printf ("SET  \n");
+		else                printf ("CLEAR\n");
+		}
+
+	A loop to sett all bits can be written like this:
+
+	for (bit = 0; bit < num_bits; bit++ ){
+		dio_pa_bitput (bit, 1);
+		}
+
+SUMMARY:
+--------
+
+	For a more detailed explanation of what each function does,
+look at the source code!  I have written an UNTESTED program called
+DIOTST02.C which gives a general idea of how I thought the functions
+coudl be used.  It does not do anything useful, but demonstrates the
+order in which things should be set up.
+
+*   ----------------------------------------------------------------------
+*   END DIOFNC11.TXT Text Description File
+*   ----------------------------------------------------------------------

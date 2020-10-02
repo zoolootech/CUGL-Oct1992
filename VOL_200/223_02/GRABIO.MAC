@@ -1,0 +1,42 @@
+;
+;	grabio()	by	F.A.Scacchitti		9/18/84
+;
+;	find an	input buffer, and return its address.
+;	if there isn't one, return a NULL.
+;
+
+;
+NBUFS	EQU	8
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+BUFFER	EQU	6	;offset	to disk	sector buffer in I/O structure
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NULL	EQU	0
+TBUFSZ  EQU	128	; Default buffer size
+;
+
+EXTRN	ZZBUF
+;
+GRABIO::							;6 May 80 rj
+	MVI	B,NBUFS
+	LXI	H,ZZBUF+TBUFSZ+FLAG
+	LXI	D,FCBSIZE+BUFFER+BUFSIZ
+	MVI	A,FREEFLG
+GRAB2:	CMP	M			;flag byte == freeflg?
+	JZ	GRAB3			;if so,	found a	free buffer
+	DAD	D			;on to next buffer
+	DCR	B
+	JNZ	GRAB2			;if there is one...
+	LXI	H,NULL			;there ain't
+	RET				;give up
+;
+GRAB3:	MVI	M,0			;mark buffer as	taken
+	LXI	D,-FLAG			;back up to buffer start
+	DAD	D	
+	RET				;and hand it back
+
+;
+	END
+
+

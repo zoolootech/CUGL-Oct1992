@@ -1,0 +1,75 @@
+
+Listing 7
+
+function hexstr(w : word) : string;
+function ptrstr(p : pointer) : string;
+
+function absaddr(p : pointer) : longint;
+        type
+                pc = ^char;
+        begin
+        absaddr := seg(pc(p)^) * longint(16) + ofs(pc(p)^);
+        end;
+
+const
+        FREELIST_MAX = 8191;
+
+type
+        FreeRec =
+                record
+                OrgPtr, EndPtr : pointer;
+                end;
+        FreeList = array [1 .. FREELIST_MAX] of FreeRec;
+        FreeListP = ^FreeList;
+
+procedure in_heap(p : pointer);
+        var
+                ec : byte;
+                freecount, i : word;
+                fp : FreeListP;
+                ea_p, ea_org, ea_end : longint;
+        begin
+        ec := 0;
+        ea_p := absaddr(p);
+        if (ea_p < absaddr(HeapOrg))
+        or (ea_p >= absaddr(FreePtr)) then
+                ec := 211
+        else
+                begin
+                fp := FreePtr;
+                freecount := (FREELIST_MAX + 1 - ofs(fp^) div 8)
+                        mod (FREELIST_MAX + 1);
+                i := 1;
+                while (i <= freecount) and (ec = 0) do
+                        begin
+                        ea_org := absaddr(fp^[i].OrgPtr);
+                        ea_end := absaddr(fp^[i].EndPtr);
+                        if (ea_org <= ea_p) and (ea_p < ea_end) then
+                                ec := 211;
+                        i := i + 1;
+                        end;
+                end;
+        if ec <> 0 then
+                runerror(ec);
+        end;
+
+var
+        p1, p2, p3 : ^longint;
+begin
+new(p1);
+{$ifdef DEBUG} in_heap(p1); {$endif}
+p1^ := 1;
+p2 := p1;
+{$ifdef DEBUG} in_heap(p2); {$endif}
+p2^ := 2;
+new(p3);
+{$ifdef DEBUG} in_heap(p3); {$endif}
+p3^ := 3;
+dispose(p2);
+{$ifdef DEBUG} in_heap(p1); {$endif}
+p1^ := 1;
+writeln('p1 = ', ptrstr(p1), ', p1^ = ', p1^);
+writeln('p2 = ', ptrstr(p2), ', p2^ = ', p2^);
+writeln('p3 = ', ptrstr(p3), ', p3^ = ', p3^);
+end.
+

@@ -1,0 +1,66 @@
+/* Written for Borland C */
+
+#include <stdio.h>
+#include <dos.h>
+
+struct                 /* Get Connection Info request struct */
+{
+  int  length;         /* length of request buffer */
+  char sfunction;      /* subfunction number */
+  char connection;     /* connection number */
+} gci_req;
+
+struct                 /* Get Connection Info reply struct */
+{
+  int  length;         /* length of reply buffer */
+  long objectid;       /* Bindery ID */             /* hi-lo! */
+  int  objecttype;     /* type of bindery object */ /* hi-lo! */
+                       /* 1=USER, 2=GROUP, 3=PRINT SERVER, etc. */
+  char objectname[48]; /* name of bindery object */
+  char log_year;       /* (80 = 1980, < 80 = 21st century) */
+  char log_month;      /* 1..12 */
+  char log_day;        /* 1..31 */
+  char log_hour;       /* 0..23 */
+  char log_min;        /* 0..59 */
+  char log_sec;        /* 0..59 */
+  char log_daynum;     /* 0..6 (0 = Sunday) */
+  char filler;
+} gci_rep;
+
+struct REGPACK r;      /* make 80x86 registers available */
+
+int main(void)
+{
+  /* Borland-specific; uses pseudoregister _DS */
+  r.r_ds = _DS;
+  r.r_es = _DS;
+
+  r.r_ax = 0xDC00;
+  intr(0x21,&r);       /* Get connection number */
+
+  gci_req.connection = (char) (r.r_ax & 0x00FF);
+  if (gci_req.connection > 0)
+  {
+    gci_req.sfunction = 0x16;
+    gci_req.length    = sizeof(gci_req);
+    gci_rep.length    = sizeof(gci_rep);
+    r.r_si = (int)&gci_req;
+    r.r_di = (int)&gci_rep;
+    r.r_ax = 0xE300;
+    intr(0x21,&r);     /* Get connection info */
+
+    if (gci_rep.objectname[0] != '\0')
+      printf("%s has NetWare connection #%d.\n",
+          gci_rep.objectname,gci_req.connection);
+    else
+      gci_req.connection = 0;
+  }
+
+  if (gci_req.connection == 0)
+  {
+    puts("You're not logged in to a NetWare LAN.");
+    return(1);
+  }
+
+  return(0);
+}

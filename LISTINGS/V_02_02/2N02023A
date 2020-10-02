@@ -1,0 +1,49 @@
+#ifdef  __HIGHC__
+#pragma Alias(UpdateClock,    "_UpdateClock");
+#pragma Alias(clock_x,        "_clock_x");
+#endif
+#ifdef __WATCOMC__
+#pragma aux (OUR_C) UpdateClock;
+#endif
+
+#include <dos.h>
+#include "defs.h"
+
+UINT GetExtender(void)
+{
+   union REGS regs;
+   struct SREGS segregs;
+   UINT  Extender = DOS_REALMODE;
+
+   regs.x.AX = 0x2B00;
+   regs.x.CX = 0x4149; /* "AI" */
+   regs.x.DX = 0x413F; /* "A?" */
+   int86(0x21, &regs, &regs);
+   if (regs.x.AX == 0x4149)
+      {
+      if (regs.x.CX == 0x0202)
+         Extender = ERGO_OS286;
+      else if (regs.x.CX == 0x0203)
+         {
+         segread(&segregs);
+         if (segregs.cs == 0x0F)
+            Extender = ERGO_OS386;
+         else
+            Extender = ERGO_OS286;
+         }
+      }
+#if defined(_I386) || defined(_I486) || defined(__386__)
+   else
+      {
+      regs.x.AX = 0x3000;
+      regs.x.BX = 0x50484152;       /* "PHAR" */
+      int86(0x21, &regs, &regs);
+      regs.x.AX &= 0xFFFF0000;
+      if (regs.x.AX == 0x44580000)   /* "DX00" */
+         Extender = PHARLAP_386;
+      }
+#endif
+   return(Extender);
+}
+
+

@@ -1,0 +1,101 @@
+
+; Listing 2 written for the Phar Lap 386|ASM assembler
+
+code         segment   dword public use32
+             assume    cs:code        ; set HGSC in 512x480x32 mode
+             align 4                  ; Copyright 1990 by Gary R. Olhoeft
+hstdata      equ     0C7000h          ; C000:7000    
+hstctrl      equ     0C7D00h          ; 34010 host addresses
+hstadrl      equ     0C7E00h     
+hstadrh      equ     0C7F00h     
+dpyctl       equ     0F040h           ; en.vid., noninterlac, dis extvid
+htotal       equ     78               ; horizontal sync timing
+hsblnk       equ     76               ; hsblnk-heblnk = 512/8
+heblnk       equ     12               ; increase to move screen right
+hesync       equ     9 
+vtotal       equ     524              ; vertical sync timing
+vsblnk       equ     513              ; vsblnk-veblnk = 480
+veblnk       equ     33               ; increase to move screen down
+vesync       equ     2
+dpytap       equ     0                ; horizontal pan
+dpystrt      equ     0FFFCh           ; 1 scan line per refresh
+bppsync      equ     0Dh              ; 32-bit/pixel, neg hor, neg ver sync
+cmdfreq      equ     9                ; 20 MHz, cmd & overlay
+daclut       equ     37h              ; 32-bit/pixel, kill overlay
+normfreq     equ     1                ; 20 MHz, normal color palette
+             public  _set512_
+             public  _set512          ; function name, no parameters
+_set512_     proc    near
+_set512:     push    ebp              ; save base page (frame pointer)
+             mov     ebp,esp          ; new frame pointer
+             push    es               ; save es
+             mov     ax,034h          ; setup Phar Lap LDT to first MByte
+             mov     es,ax            ; es points to first Mbyte real memory
+             mov     cx,0C000h        ; 34010 memory segment
+             mov     ax,dpyctl
+             and     ax,7FFFh         ; blank video
+             mov     bx,80h
+             call    write            ; write ax to cx:bx in 34010
+             mov     ax,htotal        ; send 34010 horizontal timing parameters
+             mov     bx,30h   
+             call    write  
+             mov     ax,hsblnk
+             mov     bx,20h   
+             call    write     
+             mov     ax,heblnk
+             mov     bx,10h   
+             call    write     
+             mov     ax,hesync
+             mov     bx,0     
+             call    write 
+             mov     ax,vtotal        ; send 34010 vertical timing parameters
+             mov     bx,70h   
+             call    write   
+             mov     ax,vsblnk
+             mov     bx,60h   
+             call    write   
+             mov     ax,veblnk
+             mov     bx,50h   
+             call    write    
+             mov     ax,vesync
+             mov     bx,40h   
+             call    write   
+             mov     ax,dpytap
+             mov     bx,1B0h  
+             call    write   
+             mov     ax,dpystrt
+             mov     bx,90h 
+             call    write   
+             mov     cx,600h      
+             mov     bx,0E0h          ; 0600:00E0 write config.2 reg.
+             mov     ax,bppsync       ; see HGSC documentation
+             call    write
+             mov     bx,0C0h          ; 0600:00C0 write config.1 reg.
+             mov     ax,cmdfreq
+             call    write
+             mov     bx,20h           ; 0600:0020 = cmd register in DAC
+             mov     ax,daclut
+             call    write
+             mov     bx,0C0h          ; 0600:00C0 = write config. 1
+             mov     ax,normfreq
+             call    write
+             mov     ax,0C000h        ; no autoincrement
+             mov     es:hstctrl,ax    ; setup 34010
+             mov     cx,0C000h
+             mov     ax,dpyctl
+             mov     bx,80h
+             call    write            ; enable video
+             pop     es               ; restore es
+             pop     ebp              ; restore base page
+_set512_     endp
+
+write        proc    near
+             mov     es:hstadrl,bx  
+             mov     es:hstadrh,cx  
+             mov     es:hstdata,ax    ; write ax to cx:bx in 34010 memory
+             ret
+write        endp
+
+code         ends
+             end 
+

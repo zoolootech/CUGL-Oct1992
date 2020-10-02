@@ -1,0 +1,551 @@
+/* Pattern and set routines for Software Tools
+ * source:  pattern.bds
+ * version: November 26, 1981
+ */
+
+/*
+note:  only addstr() and addset are translated and debugged
+*/
+
+#include tools.h
+
+
+
+/*  addstr - add s to str[j] if it fits, increment j */
+
+addstr (s, str, j, maxsiz)
+char *s, *str;
+int  *j,  maxsiz;
+{
+	int i;
+
+	for (i = 0; s[i] != EOS; i++) {
+		if (addset (s[i], str, j, maxsiz) == NO) {
+			return(NO);
+		}
+	}
+	return(YES);
+}
+
+
+/* comment out ----------
+
+/*  catsub - add replacement text to end of  new */
+
+catsub (lin, from, to, sub, new, k, maxnew)
+char *lin;
+int from [10], to [10];
+char *sub, *new;
+int k, maxnew;
+{
+	int i, j, ri;
+
+	for (i = 0; sub[i] != EOS; i++) {
+		if (sub[i] == DITTO) {
+			i++;
+			ri = sub[i] + 1;
+			for (j = from [ri]; j < to [ri]; j++) {
+			    addset (lin[j], new, k, maxnew);
+			}
+		}
+		else {
+			addset (sub[i], new, k, maxnew);
+		}
+	}
+}
+
+/*  getpat - convert str into pattern */
+
+getpat (str, pat)
+char *str, *pat;
+{
+	return (makpat (str, 1, EOS, pat));
+}
+
+/*  maksub - make substitution string in sub */
+
+maksub (arg, from, delim, sub)
+char *arg;
+int from;
+char delim;
+char *sub;
+{
+	int i, j;
+
+	j = 1;
+	for (i = from; arg[i] != delim && arg[i] != EOS; i++) {
+		if (arg[i] == AND) {
+			addset (DITTO, sub, j, MAXPAT);
+			addset (0, sub, j, MAXPAT);
+		}
+		else if ( arg[i] == ESCAPE &&
+		          type(arg[i + 1]) == DIGIT
+		        ) {
+			i++
+			addset (DITTO, sub, j, MAXPAT);
+			addset (arg[i] - DIG0, sub, j, MAXPAT);
+		}
+		else {
+			addset (esc (arg, i), sub, j, MAXPAT);
+		}
+	}
+
+	if (arg[i] != delim) {
+		/* missing delimiter */
+		return(ERR);
+	}
+	else if (addset (EOS, sub, j, MAXPAT) == NO) {
+		/* no room */
+		return(ERR);
+	}
+	else {
+		return(i);
+	}
+}
+
+/*  makpat --- make pattern from arg (from)
+ *             terminate at delim
+ */
+
+int makpat (arg, from, delim, pat)
+char *arg;
+int from;
+char delim;
+char *pat;
+{
+	int i, j, lastcl, lastj, lj;
+	int tagnst, tagnum, tagstk[9];
+
+	/* pat index */
+	j = 1;
+	lastj = 1;
+	lastcl = 0;
+	tagnum = 0;
+	tagnst = 0;
+	for (i = from; arg[i] != delim && arg[i] != EOS; i++) {
+		lj = j;
+		if (arg[i] == ANY) {
+			addset (ANY, pat, j, MAXPAT);
+		}
+		else if (arg[i] == BOL & i == from) {
+			addset (BOL, pat, j, MAXPAT);
+		}
+		else if (arg[i] == EOL & arg (i + 1) == delim){
+			addset (EOL, pat, j, MAXPAT);
+		}
+		else if (arg[i] == CCL) {
+			if (getccl (arg, i, pat, j) == ERR) {
+				return (ERR);
+			}
+		}
+		else if (arg[i] == CLOSURE & i > from) {
+			lj = lastj;
+			if ( pat (lj) == BOL || 
+			     pat (lj) == EOL || 
+			     pat (lj) == CLOSURE ||
+			     pat (lj) == START_TAG || 
+			     pat (lj) == STOP_TAG
+			   ) {
+				break;
+			}
+			lastcl = stclos(pat, j, lastj, lastcl);
+		}
+		else if (arg[i] == START_TAG) {
+			if (tagnum >= 9) {
+			/* too many tagged sub-patterns */
+				break;
+			}
+			tagnum++;
+			tagnst++;
+			tagstk [tagnst] = tagnum;
+			addset (START_TAG, pat, j, MAXPAT);
+			addset (tagnum, pat, j, MAXPAT);
+		}
+		else if (arg[i] == STOP_TAG & tagnst > 0) {
+			addset (STOP_TAG, pat, j, MAXPAT);
+			addset(tagstk[tagnst], pat, j, MAXPAT);
+			tagnst--;
+		}
+		else {
+			addset (CHAR, pat, j, MAXPAT);
+			addset (esc (arg, i), pat, j, MAXPAT);
+		}
+		lastj = lj;
+	}
+	if (arg[i] != delim) {
+		/*  terminated early */
+		return(ERR);
+	}
+	else if (addset (EOS, pat, j, MAXPAT) == NO) {
+		/*  no room */
+		return(ERR);
+	}
+	else if (tagnst != 0) {
+		return(ERR);
+	}
+	else {
+		return(i);
+	}
+}
+
+/*  stclos --- insert closure entry at pat [j] */
+
+stclos (pat, j, lastj, lastcl)
+char pat (MAXPAT)
+int j, lastj, lastcl
+{
+
+	int addset
+	int jp, jt, junk
+
+	for (jp = j - 1; jp >= lastj; jp = jp - 1) {
+		/*  make a hole */
+		jt = jp + CLOSIZE
+		junk = addset (pat (jp), pat, jt, MAXPAT)
+	}
+	j = j + CLOSIZE
+	stclos = lastj
+	/* put closure in it */
+	junk = addset (CLOSURE, pat, lastj, MAXPAT) 
+	/* COUNT */
+	junk = addset (0, pat, lastj, MAXPAT)
+	/* PREVCL */
+	junk = addset (lastcl, pat, lastj, MAXPAT)
+	/* START */
+	junk = addset (0, pat, lastj, MAXPAT)
+	return
+}
+
+/*  getccl --- expand char class at arg [i] into pat [j] */
+
+getccl (arg, i, pat, j)
+char arg (MAXARG), pat (MAXPAT)
+int i, j
+{
+
+	int jstart, junk
+	int addset
+
+	i = i + 1      /*  skip over [ */
+	if (arg [i] == NOT) {
+		junk = addset (NCCL, pat, j, MAXPAT)
+		i = i + 1
+		}
+	else
+		junk = addset (CCL, pat, j, MAXPAT)
+	jstart = j
+	/* leave room for count */
+	junk = addset (0, pat, j, MAXPAT)
+	filset (CCLEND, arg, i, pat, j, MAXPAT)
+	pat (jstart) = j - jstart - 1
+	if (arg [i] == CCLEND)
+		getccl = OK
+	else
+		getccl = ERR
+
+	return
+}
+
+/*  patsiz --- returns size of pattern entry at pat [n] */
+
+	int function patsiz (pat, n)
+	char pat (MAXPAT)
+	int n
+
+	if (pat [n] == CHAR | pat [n] == START_TAG | pat [n] == STOP_TAG)
+		patsiz = 2
+	else if (pat [n] == BOL | pat [n] == EOL | pat [n] == ANY)
+		patsiz = 1
+	else if (pat [n] == CCL | pat [n] == NCCL)
+		patsiz = pat (n + 1) + 2
+	else if (pat [n] == CLOSURE)      /*  optional */
+		patsiz = CLOSIZE
+	else
+		error ("in patsiz: can't happen.")
+
+	return
+}
+
+/*  filset --- expand set at  array [i]  into  set [j],
+ *             stop at  delim.
+ */
+
+filset (delim, array, i, set, j, maxset)
+char delim;
+char *array;
+int i;
+char *set;
+int *j;
+int maxset;
+{
+	string digits "0123456789"
+	string lowalf "abcdefghijklmnopqrstuvwxyz"
+	string upalf "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+	for ( ; array [i] != delim && array [i] != EOS; i++) {
+		if (array [i] == ESCAPE) {
+			addset (esc(array,i), set, *j, maxset);
+		}
+		else if (array [i] != DASH) {
+			addset (array [i], set, j, maxset);
+		}
+		else if (j <= 1 | array (i + 1) == EOS) {
+			/*  literal - */
+			addset (DASH, set, j, maxset);
+		}
+		else if (index (digits, set (j - 1)) > 0) {
+			dodash (digits,array,i,set,j,maxset);
+		}
+		else if (index (lowalf, set (j - 1)) > 0)
+			dodash (lowalf,array,i,set,j,maxset);
+		}
+		else if (index (upalf, set (j - 1)) > 0) {
+			dodash (upalf,array,i,set,j,maxset);
+		}
+		else {
+			addset (DASH, set, j, maxset);
+		}
+	}
+}
+
+/*  locate --- look for c in char class at pat (offset) */
+
+int locate (c, pat, offset)
+char c;
+char *pat;
+int offset;
+{
+	int i
+
+	/*  size of class is at pat (offset), chars follow */
+	for (i = offset + pat [offset]; i > offset; i--) {
+		if (c == pat [i]) {
+			return (YES);
+		}
+	}
+	return (NO)
+}
+
+/*  dodash - expand array (i-1)-array (i+1
+ *           into set [j]... from valid
+ */
+
+	subroutine dodash (valid, array, i, set, j, maxset)
+	int i, j, maxset
+	char valid (ARB), array (ARB), set (maxset)
+
+	char esc
+
+	int junk, k, limit
+	int addset, index
+
+	i = i + 1
+	j = j - 1
+	limit = index (valid, esc (array, i))
+	for (k = index (valid, set [j]); k <= limit; k = k + 1)
+		junk = addset (valid [k], set, j, maxset)
+
+	return
+}
+---------- end comment out */
+
+
+
+/*  addset - put c in string [j] if it fits, increment j
+ *
+ *           calling sequence:  addset (c, str, &j, maxsiz);
+ */
+
+BOOL addset (c, str, j, maxsiz)
+char c;
+char *str;
+int *j;
+int maxsiz;
+{
+	if (*j >= maxsiz) {
+		return(NO);
+	}
+	else {
+		str[(*j)++] = c;
+		return(YES);
+	}
+}
+
+
+/* comment out ----------
+
+/*  esc - map array [i] into escaped char if appropriate */
+
+char esc (array, i)
+char *array;
+int i;
+
+	if (array [i] != ESCAPE) {
+		return(array [i]);
+	}
+	else if (array (i+1) == EOS) {
+		/*  @ not special at end */
+		return(ESCAPE);
+	}
+	else {
+		i++;
+		if ( array [i] == 'n' || array [i] == 'N') {
+			return(NEWLINE);
+		}
+		else if (array [i] == 't' || array [i] == 'T'){
+			return(TAB);
+		}
+		else {
+			return(array [i]);
+		}
+	}
+}
+
+/*  match --- find match anywhere on line */
+
+match (lin, pat)
+char *lin, *pat;
+{
+
+	int i, junk[9]
+
+	for (i = 0; lin[i] != EOS; i++) {
+		if (amatch (lin, i, pat, junk, junk) > 0) {
+			return(YES);
+		}
+	}
+	return(NO);
+}
+
+/*  amatch --- (non-recursive) look for match 
+ *             starting at lin (from)
+ */
+
+amatch (lin, from, pat, tagbeg, tagend)
+char lin (MAXLINE), pat (MAXPAT)
+int from, tagbeg (10), tagend (10)
+{
+
+	int i, j, offset, stack;
+
+	for (i = 1; i <= 10; i = i + 1) {
+		tagbeg [i] = 0;
+		tagend [i] = 0;
+	}
+	tagbeg [1] = from;
+	stack = 0;
+	offset = from;      /*  next unexamined input char */
+
+	for (j = 1; pat [j] != EOS; j = j + patsiz (pat, j)) {
+
+		if (pat [j] == CLOSURE) {
+			/*  a closure entry */
+			stack = j
+			/* step over closure */
+			j += CLOSIZE 
+			for (i = offset; lin [i] != EOS; ) {
+				/* match as many as possible */
+				if (omatch(lin,i,pat,j) == NO){
+					break;
+				}
+			}
+			pat (stack + COUNT) = i - offset;
+			pat (stack + START) = offset;
+			/* char that made us fail */
+			offset = i;
+		}
+		else if (pat [j] == START_TAG) {
+			i = pat (j + 1);
+			tagbeg (i + 1) = offset;
+		}
+		else if (pat [j] == STOP_TAG) {
+			i = pat (j + 1)
+			tagend (i + 1) = offset
+		}
+		else if (omatch (lin, offset, pat, j) == NO) {  /*  non-closure */
+			for ( ; stack > 0; stack = pat (stack + PREVCL))
+				if (pat (stack + COUNT) > 0)
+					break
+			if (stack <= 0) {      /*  stack is empty */
+				amatch = 0      /*  return failure */
+				return
+			}
+			pat (stack + COUNT) = pat (stack + COUNT) - 1
+			j = stack + CLOSIZE
+			offset = pat (stack + START)  +  pat (stack + COUNT)
+		}
+	}
+	/*  else omatch succeeded */
+
+	amatch = offset;
+	tagend [1] = offset;
+	return;      /*  success */
+}
+
+/*  omatch --- try to match a single pattern at pat [j]
+ *             increment i.
+ */
+
+BOOL omatch (lin, i, pat, j)
+char *line;
+int *i;
+char *pat;
+int j;
+{
+	int bump;
+
+	if (lin [i] == EOS) {
+		return(NO);
+	}
+	bump = -1;
+	if (pat [j] == CHAR) {
+		if (lin [i] == pat [j + 1]) {
+			bump = 1;
+		}
+	}
+	else if (pat [j] == BOL) {
+		if (i == 1) {
+			bump = 0;
+		}
+	}
+	else if (pat [j] == ANY) {
+		if (lin [i] != NEWLINE) {
+			bump = 1;
+		}
+	}
+	else if (pat [j] == EOL) {
+		if (lin [i] == NEWLINE) {
+			bump = 0;
+		}
+	}
+	else if (pat [j] == CCL) {
+		if (locate (lin [i], pat, j + 1) == YES) {
+			bump = 1;
+		}
+	}
+	else if (pat [j] == NCCL) {
+		if ( lin [i] != NEWLINE &&
+		     locate (lin [i], pat, j + 1) == NO
+		   ) {
+			bump = 1;
+		}
+	}
+	else {
+		error ("in omatch: can't happen.");
+	}
+	if (bump >= 0) {
+		*i += bump;
+		return(YES);
+	}
+	else {
+		return(NO);
+	}
+}
+---------- end comment out */
+(lin [i] == NEWLINE) {
+			bump = 0;
+		}
+	}
+	else if (pat [j] == CCL) {
+		if (locate (lin [i], pat, j + 1) == YES) {
+			bu

@@ -1,0 +1,608 @@
+.he /page #
+.ce 2
+Add a Source Debugger to Your C compiler
+by Robert Ramey
+
+I really needed a better way of debugging my C programs.  I am
+happy with my compiler but it doesn't include a source level
+debugger.  Assembler language debuggers are difficult to use
+with compiled programs.   After a little thought and some more work
+I developed the source debugger you see in this article.  It:
+
+ - is written entirely in C (except for 7 assembler language
+statements).  Thus it should be transportable to other environments.
+
+ - does not requiere that programs to be analyzed be recompiled.
+They must be relinked however.
+
+ - can trace and display program operation including entry of
+functions with display of arguments and return values.
+
+ - can set break points at any function entry.
+
+ - can display function arguments and global variables using any
+convenient format.  Can also display data structures pointed to
+by arguments and global variables.
+
+ - can be used to analyze programs written in other languages
+that use similar argument passing and calling conventions.
+
+This debugger cannot display local variables or trace or set
+break points which are not function entry points.
+Also the debugger can trace only the first level of a
+recurrsively called function.
+To overcome these limitations would have made the project much
+bigger and in many cases would have requiered fiddling with the
+compiler.  At least for now,  I decided it wasn't worth it.
+
+1. How to Use the Debugger
+
+Use of the debugger will vary somewhat from system to system.  The
+description here applies to my computing environment.
+This consists of a SB-180 single board computer,
+386k floppy, and a Beehive terminal.  I use CP/M compatible ZRDOS,
+ZAS assembler, ZLINK linker and Q/C C compiler.
+
+Suppose I want debug the program HELLO which prints a simple
+message on the screen and terminates.
+
+	#include <stdio>
+	main()
+	{
+		printf("Hello World\n");
+	}
+
+Normally I link this program with the command:
+
+	ZLINK HELLO,CRUNLIB/
+
+and execute with the following:
+
+	HELLO
+
+When I want to analyze and control execution with my debugger I
+link with the command:
+
+	ZLINK DEBUG,HELLO,CRUNLIB/ $S
+
+and execute with:
+
+	DEBUG
+
+On encountering $S in the link command line, ZLINK generates a symbol
+table named DEBUG.SYM for the resulting linked program.  This
+symbol table is key to the debugging process.
+Before starting execution of the main() function,
+the symbol file is read, the debugger
+command interpreter takes control and prompts with *.  Now I
+can type in debugger commands.
+
+2. Debugger Commands
+
+Debugger commands are one letter optionally followed by one or
+more arguments.  The command letter can be upper or lower case.
+
+2.1 Display a symbol
+
+S [<symbol>] [<hex number>]
+
+The S command is to set or display symbols.  S without arguments
+displays the whole symbol table.  S with one argument displays
+the current value of that symbol.  The value of a symbol is usually
+the address of a data item or function entry point.
+If a hex number is specified, the symbol is assigned a new value.
+If the symbol did not previously exist,  it is created at this
+time. Examples:
+
+	*S main
+	02C2 main
+
+If the symbol has been designated as a break point,  the B character
+preceeds the value.  Normally this command is used to check which
+symbols exist and what their current state is.  Symbols are loaded
+from the DEBUG.SYM file at the beginning of program execution so
+it is rare that new symbols need be defined.
+
+2.2 Display contents of memory
+
+D [<symbol>] [<format string>]
+
+The D command is used to display contents of memory.
+If D is used with a symbol argument,  the contents of that memory
+location are displayed.  Optionally one may specify a format string to
+be used to display the memory contents. (see below).
+If D is used without arguments, the contents of memory for each
+symbol in the data segment are displayed.  Examples:
+
+	*D stdin
+	stdin=4548
+
+	*D stdin input file is %d
+	stdin=input file is 17736
+
+2.3 Specify Format String for a Symbol
+
+F <symbol> [<format string>]
+
+The F command is used to specify the format string to used to display
+the contents addressed by the symbol.  This format string is used
+by a printf() statement whenever the contents of this memory location
+are displayed.  One memory location will be displayed for
+each % character in the format string.  If no format string has been
+associated with a symbol, a default format string of %x is assumed.
+The S command can be used to display a symbols current format string.
+
+Format strings are the same ones used by the printf() statement except
+that the *, (, and ) characters have a special meaning.  They are used
+to permit the formated display of the objects of pointers.
+The * character preceeding a % character indicates that the object to
+be displayed is pointed to by the contents of memory.
+As an example, take the following program fragment:
+
+	int a[] = {1, 2, 3,},	/* array */
+		*b,		/* pointer to an integer */
+		*c;		/* pointer to array */
+	...
+	*b = 0;
+	c[0] = 4; c[1] = 5; c[2] = 6;
+
+appropriate debugger commands might be:
+
+	*D a a[0]=%d, a[1]=%d, a[2]=%d
+	a a[0]=1, a[1]=2, a[2]=3
+
+	*D b &b=%x
+	b &b=5F6A
+
+	*D b b=*%d
+	b 0
+
+	*D c *(c[0]=%d, c[1]=%d, c[2]=%d)
+	c c[0]=4, c[1]=5, c[2]=6
+
+The ( character pushes the next address on to a stack and loads
+the pointed to address.  The ) character recovers the saved address.
+Parenthesis can be used when the data structures to be displayed
+are more complex.  For example,  we might store a series of words
+as an array of linked lists.
+
+	struct word {
+		struct word *next, *prev;
+		char	*spelling;
+	}
+
+	struct word *chain[ARRAYSIZE];
+
+The command to display the first three pointers would be:
+
+	*D chain %x %x %x
+	chain 4556 4578 45A9
+
+To display the first structure in each of the first two chains:
+
+	*D chain *(nxt=%x, prv=%x, %s), *(nxt=%, prv=%x, %s)
+	chain (nxt=5543, prv=554B, martha), (nxt=558B, prv=83BF, anne)
+
+To display the first two structures in the first chain:
+
+	*D chain *(next=*(%x %x %s) prev=%x %s)
+	chain (next=(4384 340D george) prev=89E4 martha)
+
+When a symbol corresponds to a function entry point,  the format
+string is used to display the arguments when
+the function is entered and return value when the function exited.
+The first % or pair of parenthesis is used as the format for the
+return value while the rest of the format string is used for the
+arguments.  For example, if the program contains:
+
+	fp = fopen("LST:","r");
+
+and the following F debugger command is specified:
+
+	*F fopen file pointer=%x filename=%s mode=%s
+
+the following will be displayed as the program executes:
+
+	>fopen filename=LST: mode=r
+	...
+	<fopen=file pointer=457D
+
+One final tricky example on the format string:
+
+	a[] = "abc";
+	b = "abc";
+
+a and b cannot be displayed with same format string.  The correct
+format strings are:
+
+	*D a %c%c%c
+	a abc
+
+	*D b %s
+	b abc
+
+This fooled me when I first started using the debugger.
+Think about it.
+
+The F, D, and B commands can be used to assign a format string to a
+symbol.  In all cases the most recently specified format string
+becomes the default format string.  The F command can be used
+to reinitialize the format string for a symbol to null.
+
+2.4 Set/Reset Trace Mode
+
+T
+
+Program flow is traced when trace mode is on.  This means that
+as each function is entered and exited its name, arguments
+and return value are displayed.  In order for arguments to be
+displayed a format string must have been previously supplied
+for the function.
+
+2.5 Set/Reset break point
+
+B [<symbol>] [<format string>]
+
+The indicated symbol becomes a break point.
+This means that when the function corresponding to the symbol
+is entered,  normal execution will be suspended, the
+name of the function with its arguments will be displayed,
+and the debugger will accept commands from the console.
+The break point can be cleared by reissueing the B command.
+If the B command is issued without arguments, the B command
+is applied to every symbol in the code segment.
+Any number of symbols may be simultaneously designated as
+break points.
+
+2.6 Continue Execution
+
+G [<number of break points to ignore>]
+
+This command will continue execution from where it was last suspended.
+A simple G command will continue execution until a break
+point is encountered.  If G is followed by a number,
+that number of break points will be ignored before execution
+is again suspended.
+
+2.7 Walkback
+
+W
+
+This command displays the names and arguments of all the functions
+which have been entered but not yet exited.  This provides a clear
+picture of how we got to where we are in the program.  For example:
+
+	*W
+	>main
+	 >printf Hello World
+	  >putc H
+	*
+
+In order to have the function arguments displayed, format
+strings should be assigned to each symbol.  Format
+strings can be reassigned and the W command reissued as many times
+as desired.
+
+2.8 Load Symbol Table File
+
+L <filename>
+
+If the filename has no . character,  .SYM is appended.
+The file is opened and the symbols created.
+This command is used to load a symbol table file whose name might not
+be DEBUG.SYM .
+
+2.9 Process Debugger Commands from a Disk File
+
+C <filename>
+
+If the filename has no . character, .DBG is appended.  The file is
+opened and lines of text are processed as if they were read from the
+console.  This can be useful for automating repetitive commands.
+I use it for loading format strings for the functions in
+my C library.  Debug command files can be nested 3 deep.
+
+Figure 1 contains a summary of the debugger commands.  Figure 2
+shows a very simple sample debugger session.
+
+3. How the Debugger Works
+
+Figure 3 shows how the debugger operates:
+
+3.1 First the program is loaded to memory by the operating system.
+Memory can now classified into 7 segments:
+
+a) page 0 - used by CP/M for certain system wide information.
+
+b) Code Segment - contains machine language code.
+
+c) Data Segment - contains memory for static variables.
+
+d) Free Memory - to be reserved and unreserved by malloc() and free()
+functions.
+
+e) Stack Area - used for storing function arguments, return
+addresses on function calls, and local variables.  The Stack
+area itself is divided into two areas: the unused portion
+beginning at the end of the Free Memory and the used portion
+beginning at the address contained by the stack pointer register.
+
+f) ZRDOS or CP/M - Operating system code and data
+
+g) BIOS - More operating system code and data
+
+This arrangement is the most common but details may
+vary depending on the software you are using.
+The operating system segments are not shown in the figure as they
+are not relevant to the operation of the debugger.
+
+3.2 The function setup() is called before the program starts
+execution.  This function reads a symbol file from disk and
+loads it into memory.  The function loadsym()
+checks each symbol to determine whether it is in the code or data
+segment.  Each address in the code segment
+is assumed to be a function entry point.  The first five bytes
+of each entry point is stored in the symbol table and replaced
+in the program with a "call trap()" instruction.  Following
+the "call trap" instruction the address of the symbol table entry
+is stored.  The function comand() is called to permit the operator
+to issue debugger commands before the program starts to execute.
+
+3.3 When the operator executes the G command, comand() and setup()
+return and execution of the program begins.  When a function
+(say fprintf()) is called, arguments are pushed on the stack in
+reverse order,  the return address is pushed on the stack and
+execution jumps to the entry point for the fprintf() function.
+
+3.4 However, on arriving at the fprintf() entry point a "call trap()"
+instruction is encountered.  The address just beyond the
+"call trap()" instruction is pushed on the stack and execution
+jumps to trap().
+
+3.5 trap() receives control when any function is entered.
+First the return address on the top of the stack is adjusted to
+the original entry point of the interrupted function.  This will
+insure when trap() returns execution will continue on its original
+intended path.  The first five bytes of the entry point are reloaded
+with their original contents thereby replacing the "call trap"
+instruction.  This is done by the dactbp() function. The original
+return address is saved and replace with the address of the resume()
+function.  This will ensure that when fprintf() returns it will
+return to resume instead of the original caller.  Finally if
+the trace flag is on or the entry point is a break point the
+entry point symbol and arguments are displayed.
+If the function is a break point and no more breakpoints are to
+be ignored command mode is entered.
+
+3.6 When trap() returns, execution jumps to the orginal entry point
+which contains the original code.  We can now see why this debugger
+will not fully trace execution of recurrsive code.  The "call trap()"
+instruction at the entry point of fprintf() will not be restored
+until fprintf() returns.
+
+3.7 fprintf() does not return to the orginal return address but to
+function resume().  resume() restores the "call trap()" istruction
+in the function entry point, leaves the original return address
+on top of the stack and the value returned by fprintf() in the
+registers.  resume() returns to fprintf().  Neither the operation of
+fprintf() nor its caller has been altered in any way by the
+interruptions of the debugger.
+
+4. Installing the Debugger in Another Environment.
+
+When moving to debugger to another environment, the first thing
+to review is the function of the stack, function parameter
+passing, and storage of local arguments.  On my machine (HD64180)
+the stack grows from high addresses to low addresses.  This
+affects the expressions used for retrieving and altering data on
+the stack in the trap() and resume() routines.
+
+Q/C allocates storage for local variables on the stack
+such that the first local variable is stored in the lowest address
+and subsequent local variables are stored in higher addresses.
+This is very similer to storage of function parameters.
+farg() and ddata() are dependent on this arrangement.  If your
+compiler and/or linker do not function in this way,  these
+functions will have to be modified slightly.
+
+Q/C allocates 1 byte for character variables in memory,  but two
+bytes when a character variable is pushed on the stack as a
+function argument.  Q/C floats and longs are twice as long as
+integers.  Sizes of objects may vary among environments.
+farg() should be altered accordingly.
+
+Functions must be long enough so that "call trap()" followed
+by the symbol table entry address does not extend past the end
+of the function.  In my environment,  this means that
+functions must be at least 5 bytes long.
+
+There must be a way to determine if an address is a function
+entry point or a data area.  I my environment this is done by
+comparing the address with the start of the data segment.
+Since we always link in the DEBUG.REL module before any others,
+the first static data item is stored at the beginning of the
+data segment.  By taking the address of this item with the & operator
+we have the start of the data segment.
+
+The debugger calls some functions which might not be in
+your library yet.  These include the symbol table functions symmk(),
+symadd(), symlkup() and symdat() described in a previous article.
+The function strlwr() converts a string to lower case and returns
+a pointer to the string.  isatty() returns true if the file number
+arguments corresponds to a terminal, and strchr() returns a pointer
+to the first occurance of a given character in a string.
+(This used to be called index() in the standard library).
+To implement this debugger these functions must be included.
+
+Possibly the most bothersome aspect of installing DEBUG is working
+out a method for passing control to the setup routine before
+execution of the program itself starts.  One easy way would be
+to modify the main() function to explicitly call setup() before
+it does anything else.  I wanted to avoid having to recompile
+modules just to use the debugger so I took a different approach.
+Q/C includes a function called _shell() which is used to open
+standard files and initialize arguments for the main() function.
+_shell() is executed just after the program is loaded.  Since
+the Q/C package includes the code for the _shell() function
+I modified it to call an external function setup() before
+execution was passed to main().  Also I added a module to the
+C library named setup() which contains only a return instruction.
+When a program is linked without DEBUG, _shell() calls setup()
+which returns inmediatly.  When DEBUG is included on the link
+command line,  _shell() calls setup() which intializes the
+debugger and permits setting of break points even before main() is
+called.  This scheme adds four bytes to every program I link
+(For the extraneous "call setup()" and return instruction), but
+means I don't have to recompile anything to use the debugger.
+This approach will be useful when I add an execution time
+profiler to my C compiler.  You'll have to workout your own
+scheme for passing control to setup().
+
+Finally, the debugger calls some functions which might not be in
+your library yet.  These include the symbol table functions symmk(),
+symadd(), symlkup() and symdat() described in a previous article.
+The function strlwr() converts a string to lower case and returns
+a pointer to the string.  isatty() returns true if the file number
+arguments corresponds to a terminal, and strchr() returns a pointer
+to the first occurance of a given character in a string.
+(This used to be called index() in the standard library).
+To implement this debugger these functions must be included.
+
+If your C compiler needs a source level debugger,  I'd be flattered
+if you'd consider the one presented here.
+
+Bibliography
+
+O'Connell, Patrick,  Relocating Macro Assembler and Linker for
+Z80 and HD64180. Echelon Inc. 101 First Street, Los Altos CA 94022
+
+Colvin, Jim Q/C Users Manual. The Code Works.  Santa Barbara,
+California.
+.nf
+.bp
+Figure 1	Table of Debugger Commands
+
+1. S [<symbol>] [<hex number>]		Display a symbol
+
+2. D [<symbol>] [<format string>]	Display contents of memory
+
+3. F <symbol> [<format string>]		Specify Format String for a
+					Symbol
+
+4. T					Set/Reset Trace Mode
+
+5. B [<symbol>] [<format string>]	Set/Reset break point
+
+6. G [<count of ignored break points>]	Continue Execution
+
+7. W					Walkback (Display Stack)
+
+8. L <filename>				Load Symbol Table File
+
+9. C <filename>				Process Debugger Commands from
+.bp
+Figure 2	Sample Debugging Session
+
+	*F printf %x %s
+	*F putc %c char=%c fp=%x
+	*F bdos1 %x function#=%x arg=%x
+	*F exit %x
+	*F fclose %x fp=%x
+	*F close %x fd=%x
+	*T
+	trace on
+	*G
+	 >main
+	  >printf Hello World
+	
+	   >_fmt
+	    >putc char=H fp=5340
+	     >bdos1 function#=2 arg=48
+	     <bdos1 = 0
+	    <putc = H
+	    >putc char=e fp=5340
+	     >bdos1 function#=2 arg=65
+	     <bdos1 = 0
+	    <putc = e
+	    >putc char=l fp=5340
+	     >bdos1 function#=2 arg=6C
+	     <bdos1 = 0
+	    <putc = l
+	    >putc char=l fp=5340
+	     >bdos1 function#=2 arg=6C
+	     <bdos1 = 0
+	    <putc = l
+	    >putc char=o fp=5340
+	     >bdos1 function#=2 arg=6F
+	     <bdos1 = 0
+	    <putc = o
+	    >putc char=  fp=5340
+	     >bdos1 function#=2 arg=20
+	     <bdos1 = 0
+	    <putc =  
+	    >putc char=W fp=5340
+	     >bdos1 function#=2 arg=57
+	     <bdos1 = 0
+	    <putc = W
+	    >putc char=o fp=5340
+	     >bdos1 function#=2 arg=6F
+	     <bdos1 = 0
+	    <putc = o
+	    >putc char=r fp=5340
+	     >bdos1 function#=2 arg=72
+	     <bdos1 = 0
+	    <putc = r
+	    >putc char=l fp=5340
+	     >bdos1 function#=2 arg=6c
+	     <bdos1 = 0
+	    <putc = l
+	    >putc char=d fp=5340
+	     >bdos1 function#=2 arg=65
+	     <bdos1 = 0
+	    <putc = d
+	    >putc char=
+	 fp=5340
+	     >bdos1 function#=2 arg=D
+	     <bdos1 = 0
+	    <putc = 
+	
+	    >putc char=
+			 fp=5340
+	     >bdos1 function#=2 arg=A
+	     <bdos1 = 0
+	   <putc =
+	
+	  <_fmt
+	 <printf = 0
+	<main
+	>exit
+	
+	 >fclose fp=5318
+	 <fclose = 0
+	 >fclose fp=5322
+	 <fclose = 0
+	 >fclose fp=532C
+	 <fclose = 0
+	 >fclose fp=5336
+	 <fclose = 0
+	 >fclose fp=5340
+	  >close fd=6
+	   >_gfcb
+	   <_gfcb
+	  <close = 0
+	 <fclose = 0
+	 >fclose fp=534A
+	 <fclose = 0
+	 >fclose fp=5354
+	 <fclose = 0
+	 >fclose fp=535E
+	 <fclose = 0
+	 >fclose fp=5368
+	 <fclose = 0
+	 >fclose fp=5372
+	 <fclose = 0
+	>bdos1 function#=0 arg=0
+=6
+	   >_gfcb
+	   <_gfcb
+	

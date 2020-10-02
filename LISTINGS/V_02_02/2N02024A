@@ -1,0 +1,64 @@
+#include <dos.h>
+#include "defs.h"
+
+extern UCHAR _far *BiosData;      /* pointer to BIOS data area */
+extern UCHAR _far *BiosFontPtr;   /* pointer to BIOS char font */
+extern UCHAR _far *BottomOfMemory;/* pointer to DOS zero       */
+extern UINT  DOS_Extender;
+
+#define BIOS_FONT_OFFSET  ((UINT)(4 * 0x43))
+
+void SetVideoMode(int mode)
+{
+   UCHAR flag_mask;
+   union REGS regs;
+#if defined(_I386) || defined(_I486) || defined(__386__)
+   ULONG BiosFontVector;
+#else
+   ULONG _far *BiosFontVector;
+#endif
+
+   if (mode < 0)
+      return;
+   if (mode == 7 || mode == 15)
+      flag_mask = 0x30;
+   else if (mode < 2)
+      flag_mask = 0x10;
+   else
+      flag_mask = 0x20;
+   *(BiosData + 0x0010) &= 0xCF;     
+   *(BiosData + 0x0010) |= flag_mask;
+   regs.x.AX  =  mode;               
+   int86(0x10, &regs, &regs);   
+#if defined(_I386) || defined(_I486) || defined(__386__)
+   if (DOS_Extender == PHARLAP_386 || DOS_Extender == ERGO_OS386)
+      {
+      BiosFontVector = *(ULONG _far *)(BottomOfMemory + BIOS_FONT_OFFSET);
+      BiosFontPtr    = BottomOfMemory + (UINT)RFP_LINEAR(BiosFontVector);
+      }
+#else
+   if (DOS_Extender == ERGO_OS286)
+      {
+      BiosFontVector = (ULONG _far *)(BottomOfMemory + BIOS_FONT_OFFSET);
+      FP_MAK(BiosFontPtr, *((UINT _far *)BiosFontVector), FP_SEG(BiosFontPtr));
+      }
+   else /* DOS Real Mode */
+      {
+      FP_MAK(BiosFontVector, BIOS_FONT_OFFSET, 0x0);
+      BiosFontPtr = *(UCHAR _far * _far *)BiosFontVector;
+      }
+#endif
+   return;
+}
+
+
+int GetVideoMode(void)
+{
+    union REGS regs;
+
+    regs.x.AX = 0x0F00;
+    int86(0x10, &regs, &regs);
+    return(regs.x.AX & 0x7F);
+}
+
+

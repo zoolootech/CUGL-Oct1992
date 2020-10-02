@@ -1,0 +1,50 @@
+; (c) Copyright 1991, Martin Stitt
+; demo.asm - demonstrates dumping to a parallel port.
+; run in test machine, after loading xmit_par.com tsr.
+
+outport	equ	03bch
+include	dumpmacs.inc
+
+_TEXT	segment para public 'CODE'
+        assume  cs:_TEXT,ds:_TEXT,es:_TEXT,ss:_TEXT
+	org	0100H
+start:
+	jmp	begin
+
+msg	db	'hello, monitor machine',13,10,0
+
+word_loc dw	3456h
+
+;==== main routine
+
+begin:
+	mov	cx,8		; repeat demo 8 times
+outer_loop:
+	push	cx
+	dump_chari [		; dump immediate char
+	mov	al,20h
+	mov	cx,78
+l1:
+	dump_char al		; dump reg as a char
+	inc	al
+	loop	l1
+	dump_chari ]
+	mov	si,offset msg
+	dump_str		; dump strings 
+	dump_stri <a string to label some data: >
+	mov	dl,45h
+	dump_byte dl		; dump byte from reg
+	dump_word [word_loc]	; dump word from memory
+	dump_nl			; dump newline
+	dump_nl
+	pop	cx
+	dec	cx
+	jz	done
+	jmp	outer_loop
+done:
+	mov	ax,4c00h
+	int	21h
+_TEXT	ends
+	end	start
+
+

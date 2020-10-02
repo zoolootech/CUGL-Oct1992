@@ -1,0 +1,149 @@
+DOCUMENTATION FOR MSFTSDR.ASM
+
+AUTHOR:  James W. Haefner
+DATE:    18 May 1987
+VERSION: 1.0
+
+----------------------------------------------------------------
+This document describes the purpose and use of two files 
+"MSFTSDR.ASM" and "MSCALLS.ASM", both of which are hereby 
+released to the public domain.
+----------------------------------------------------------------
+
+PURPOSE
+
+The purpose of these 8086 assembly language subroutines and 
+macros is to call the transcendental functions contained in the 
+Microsoft (tm) (hereafter: MS) FORTRAN mathematics libraries 
+from a DataLight C (DLC) program.  The routines are specific to 
+the DLC compiler and will probably require alteration to
+interface with other compilers.  In theory, most C compilers 
+that produce an MS compatible link file (*.OBJ) can be 
+interfaced.  The primary reason for wanting to replace the DLC 
+math routines with those from MS is due to the fact that all of 
+the transcendentals in the DLC library are coded in C and are 
+extremely slow (see benchmarks below).  These calls are verified 
+to work for DLC version 3.01.
+
+METHOD
+
+During calls to floating point functions, DLC pushes doubles on 
+the stack from AX to DX, with AX having the MSB (most 
+significant byte) of the IEEE format and DX the LSB (least 
+significant byte).  DLC does not push the address of a double.  
+DLC expects doubles to be returned in the same manner.  
+Consistent with custom, DLC pushes the arguments in reverse 
+order.  MS FORTRAN calls subroutines with all arguments 
+referenced by name (address), not value.  These addresses are 
+pushed in the order in which they appear in the source code 
+call.  Values returned from FORTRAN functions are placed in 
+temporary arrays created by the calling program.  The MS 
+FORTRAN manual documents the method for interfacing with 
+assembly language routines.
+
+MSFTSDR.ASM works by defining assembly language subroutines with 
+the same name as the DLC library names (e.g., sin, acos, etc).  
+These routines do nothing but create temporary storage for 
+FORTRAN return values, push the addresses (segment and offset) 
+of the C arguments, push the address of the temporary storage, 
+and copy the returned value from temporary storage to the 
+appropriate registers for return to DLC.
+
+MSCALLS.ASM contains two macros to simplify the above process.  
+This file requires a DLC file of macros called MACROS.ASM.
+
+USE
+
+Compile MSFTSDR.ASM using MASM in the normal way: 
+
+A>MASM MSFTSDR;  
+
+If you wish to use the MS FORTRAN versions of the 
+transcendentals, then link them with the program according to 
+the DLC convention: 
+
+A>LINK c+savag+msftsdr,savag,savag,nl+8087+fortran/m
+
+where "8087" and "fortran" are the two required MS FORTRAN 
+libraries for the transcendentals.  "nl" and "c" are DLC 
+specific files.  You will receive a link warning message: 
+"Unresolved externals:  ENTGQQ in 8087.LIB(entx61)", or 
+something similar.  ENTGQQ is the first MS symbol name in the 
+OBJ file containing the FORTRAN main.  I can find it defined in 
+no MS library; apparently the symbol is defined in compiler or 
+runtime libraries (??).  In any case, the error has caused no 
+problems in my testing of the routines.
+
+The use of the routines in a C program are identical to the use 
+of the supplied DLC functions and give identical, or more 
+accurate, results.  For example, the following is the C form of 
+the arctangent of a ratio of two arguments.
+
+double z;
+z=atan2(1.0,0.5);
+
+The result is 1.107149.  Note, there is an error in the DLC 
+manual, which claims that atan2(d1,d2) returns the arctangent of 
+d2/d1.  Instead, it returns arctan(d1/d2), which is consistent 
+with the FORTRAN definition.
+
+In addition to all of the transcendental and power functions 
+available in DLC, I have added an integer power function since 
+it is available in the MS library.  This function is called
+"ipow", and must be declared to return a double.  I recommend 
+you add this definition to the DLC file "MATH.H".  Ipow raises a 
+double base to a long integer power.  For example, 
+"z=ipow(2.0,3L);" returns 8.0 as a double. 
+
+BENCHMARKS
+
+Below are sizes, timings, and accuracy for the Savage floating point 
+benchmark published in Dr. Dobbs' Journal August 1984 using the 
+DLC and MS libraries, respectively.  For comparison, I give the 
+results for a similar test written entirely in MS FORTRAN.  
+Timings are means of three stopwatch times; the hardware used 
+was an 80286/80287 S-100 system with the math coprocessor 
+running at approximately 5MHz.  The correct answer is 
+2501.0000000000000. 
+
+LIBRARY      EXE SIZE   TIME(SEC)   RESULT
+
+DLC          20288      29.80       2501.0000008425761
+MS           22456       5.22       2501.0000000015812
+MSFORTRAN    31K         4.97       2501.0000000015812
+
+The MS libraries are approximately 6 times faster and over 2 
+orders of magnitude more accurate.  The additional 2K bytes of
+EXE file seem a small price to pay.  The 5% speed overhead of the
+additional calls to the transcendentals is also tolerable, given 
+the niceties of coding in C versus FORTRAN.
+
+DLC claims it supports the generation of "inline 8087 or 80287 
+instructions" using the "-f" option to DLC1 (version 3.01 manual 
+page 17).  On my version and hardware, this generated a fatal 
+error in the compiler.  Not an error message complaining of C 
+syntax errors, an actual "DLC bug 8284" message from the DLC2 
+pass and return to DOS.  Thus, I was unable to perform the 
+benchmarks with this compiler option.  I have also not repeated 
+the exercise using the DLC Optimizer.
+
+BUGS, LIMITATIONS, AND CAVEATS
+
+1.	As written, the functions assume the DLC compiler, version 3.01.
+2.  Tested only with the MS 8087.LIB library, should work with the 
+	8087 emulating libraries as well.  That may require linking 
+	other MS FORTRAN files or libraries.
+3.  Verified for MS FORTRAN version 3.2 only.
+4.  As written, the functions assume the user is dealing with 
+	doubles, as DLC converts all floats to double.  The single 
+	precision versions of the MS FORTRAN functions are also in the 
+	libraries and in principle could be accessed from DLC.  This 
+	would be valuable if speed were more important than accuracy 
+	and if an 8087 was not available.  If an 8087 is available, 
+	there is insufficient speed increase in single precision to 
+	justify the reduction in accuracy.
+5.  There is an apparently inconsequential "unresolved external" warning 
+	from the linker.
+6.  Verified for DLC small model only; code in place to potentially
+	handle large models.
+

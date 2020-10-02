@@ -1,0 +1,274 @@
+;+
+;	Downline loader in assembly language for the Radio Shack
+;	Color Computer
+;-
+;+
+;	Ser6809 file must be appended for serial input function
+;-
+	.=0x7A00
+;+
+;	dload	gets a line from the serial input port via serinp.
+;	Loading begins with an 'S' and terminates with an 'X'.
+;	Load format:	(Intel hex)
+;		:<nn><00><aaaa><hh><hh>...<hh><ck>
+;		where	<aaaa> is a four hex digit address
+;			<00>   is two hex zeroes
+;			<nn>	is a two digit hex count of the <hh> bytes
+;			<hh>   is a two  hex digit byte
+;			':' is a starting colon
+;-
+dload:
+	.byte	0x34,0x36	;PSHS a,b,x,y
+	bsr	finds	;look for the starting 'S'
+loop0:
+	bsr	getline
+	bcs	exit
+	bsr 	echo	;echo the line to the color screen
+	bsr	parse	; decode the line and load memory
+	bcc	loop0
+exit:
+	.byte	0x35,0x36	;PULS a,b,x,y
+	rts
+;+
+;	getline gets an input line from the serial port 
+;	A line is defined as a non-zero character string 
+;	bounded by characters less than 0x20. The string is
+;	terminated by two nulls.
+;	Inputs: none
+;	Outputs: Characters to buffer buf.Carry clear if ok.
+;		 Carry set if ending 'X' detected.
+;	Calls: 	serinp
+;-
+getline:
+	.byte	0x8E
+	.word	buf	;LDX #buf
+getsyn:
+	jsr	serinp
+	cmp	a,$0x20	;test for control char
+	blo	getsyn	; if <20, keep looping
+getlup:
+	.byte	0xA7,0x80	;sta ,x+
+	cmp	a,$0x58		;test for 'X'
+	beq	getext
+	jsr	serinp
+	cmp	a,$0x20
+	bgt	getlup
+getext:
+	.byte	0x6F,0x80	;clr 0,x+ tag string
+	.byte	0x6F,0x80	;clr ,x+
+	cmp	a,$0x58		;Termination due to 'X'?
+	bne	getexy
+	.byte	0x1A,01	;ORCC #1, set carry
+	bra	getexx
+getexy:
+	.byte	0x1C,0xFE	;clear the carry
+getexx:
+	rts
+;+
+;	finds searches for the starting 'S'
+;-
+finds:
+	jsr	serinp
+	cmp	a,$0x53
+	bne	finds
+	rts
+;+
+;	parse	decodes the string and loads the memory locations
+;	from the defined starting address.
+;	Inputs: No parameters passed on input
+;		Input line assumed stored in buffer buf
+;	Output: Loads memory with bytes
+;	Returns: carry set if error, clear if ok
+;	Calls:	getadd,hexbin
+;-
+parse:
+	.byte	0x8E
+	.word	buf	;ldx #buf
+	.byte	0x30,01	;LEAX 1,x  increment past starting colon
+	.byte	0xEC,0x81	; LDD ,X++  get byte count
+	bsr	hexbin	; get the byte count
+	bcs	parsex
+	tst	a
+	.byte	0x1a,01	;set the carry bit to exit if need be
+	beq	parsex	; end of file
+	mov	a,bytcnt
+	bsr	getadd	; get starting address in Y
+	bcs	parsex	; if failure on address
+	.byte	0x30,02 ;LEax 2,x  increment past null byte
+parlup:
+	.byte	0xEC,0x81	;ldd ,x++ get two hex digits
+	bsr	hexbin		;convert to binary
+	bcs	parsex1		;if error in conversion,end of line
+	.byte	0xA7,0xA0	;sta ,y+
+	dec	bytcnt
+	bne	parlup
+parsex1:
+;+
+;	This is where the diligent software engineer would check the
+;	checksum.
+;-
+	clr	a		; clear carry bit for end of line exit
+parsex:
+	rts
+bytcnt:	.byte	0
+;+
+;	echo	outputs the received line to the color computer
+;	screen.
+;	Inputs:	none. Line assumed stored in buf
+;	Outputs none.
+;	All regs used except B,U
+;	Calls:	none.
+;-
+echo:
+	.byte	0x10,0x8E
+	.word	0x400	;ldy #0x400
+	.byte	0x8E
+	.word	buf	;Ldx #buf
+echlup:
+	.byte	0xA6,0x80	;lda ,x+, get a character
+	.byte	0xA7,0xA0	;sta ,y+, store the character
+	bne	echlup		; if not the null tag yet
+	rts
+;+
+;	getadd	decodes an address from the head of the line in buf.
+;	Inputs:X points to head of string to be decoded
+;	Returns: Carry set if bad address
+;		 carry cleared and address in Y if ok
+;		 X is advanced by four bytes
+;	Calls:	hexbin
+;	Regs: a,b,x,y
+;-
+getadd:
+	.byte	0xEC,0x81	;ldd ,x++ get two hex digits
+	bsr	hexbin
+	bcs	getadx		; if conversion error
+	.byte	0x34,02		; PSHS A save top byte
+	.byte	0xEC,0x81	;ldd ,x++ get two hex digits
+	bsr	hexbin
+	.byte	0x1E,0x89	;exg a,b, move converted low byte to b
+	.byte	0x35,02		; PULS a
+	.byte	0x1E,0x02	;exg D,Y, move address to Y
+getadx:
+	rts			; exit, carry possibly set
+;+
+;	hexbin	converts two hex digits in a and b to a
+;	single byte left in a
+;	Inputs:	two ascii encoded hex digits in a and b
+;	Returns: carry clear - byte in a
+;		 carry set  - conversion error
+;	Calls:	hex1bin
+;	Regs:	a,b,
+;-
+hexbin:
+	bsr	hex1bin
+	bcs	hexx	; if error
+	.byte	0x1E,0x89
+	; exg a and b
+	asl	b
+	asl	b
+	asl	b		; move up nybble to top of byte
+	asl	b
+	bsr	hex1bin	; convert second ascii in a to hex in a
+	bcs	hexx
+	.byte	0x34,4	; PSHS b
+	.byte	0xAA,0xE0	;ORAA ,S+ or in high byte
+hexx:
+	rts
+;+
+;hex1bin	is the actual ascii to binary (hex) converter.
+;	INPUT:	ascii coded hex digit in a
+;	Output:	carry clear, hex value in a
+;		carry set,   converstion error , not hex
+;	Calls:	none
+;	Regs:	a only used
+;-
+hex1bin:
+	.byte	0x80,0x30	;sub a , #'0
+	bcs	hex1x	; a< '0'
+	cmp	a,$0xa
+	bcs	hexok	; 0 < a < 9
+	.byte	0x80,7		;sub a ,#7
+	cmp	a,$0xA		; test for result < 0xa
+	bcs	hex1x		; a < 0xa if carry set
+	cmp	a,$0x10
+	bcc	hex1x	; a>= 0x10
+hexok:
+	.byte	0x1c,0xFE ;andcc 0xfe, clear carry bit
+	bra	hex2x
+hex1x:
+	.byte	0x1A,0x01 ; orcc #1, set carry bit
+hex2x:
+	rts
+;+
+;	line buffer storage
+;-
+buf:
+	.blkb	64
+	.blkb	64
+;+
+;	Serial Input routine for the 6809
+;	I/O port configured for Radio Shack color computer
+;-
+bitime	=	20	;Time constant for 4800 baud bit interval
+halfbit	=	5	; 1/2 bit time for center bit sync
+IPORT	=	0xFF22	; Color computer i/o port address
+IMASK	=	1	; Bit position of input bit in port
+;
+;+
+;	input call to receive a character
+;-
+serinp:
+	.byte	0x1A,0x50	;orcc 50, kill interrupts
+	bsr	inwait		;get character
+	rts			;exit, character in a
+;
+;+
+;	inwait	waits for an input character to start and
+;	receives it.
+;-
+inwait:
+	mov	IPORT,a
+	and	$IMASK,a		; Get the bit out
+	beq	inwait		; wait on line = 0 
+;
+serget:
+	.byte	0x34,0x34	;PSHS X,Y,B
+	.byte	0x10,0x8E,0,8	;LDY #8 = bitcounter
+	.byte	0x8E
+	.word	halfbit	;LDX bitime /2 
+	clr	a		; clear receive register
+;+
+;	sync up on the start bit transition
+;-
+sync:
+	mov	IPORT,b	;get port value
+	and	$IMASK,b		;Test bit value
+	bne	sync		;wait on start bit = 1
+start:
+	.byte	0x30,0x1F	;LEAX -1,X
+	beq	assemble	;one half bit time has expired
+	mov	IPORT,b
+	and	$IMASK,b
+	beq	start		;count down the start bit
+	mov	$-1,a		; Glitch on start,return error
+	.byte	0x35,0x34	;PULS X,Y,B
+	rts			;error exit
+assemble:
+	.byte	0x8E
+	.word	bitime		; set one bit time wait
+assemb1:
+	.byte	0x30,0x1F	; LEAX -1,x ,dec bit timer
+	bne	assemb1
+	mov	IPORT,b
+	and	$IMASK,b
+	beq	assemb2
+	or	$0x80,a		; or in the bit
+assemb2:
+	.byte	0x31,0x3F	;LEAY -1,Y decr. bit count
+	beq	seriox		; exit if done
+	lsr	a		; move the bit down for the next pass
+	bra	assemble
+seriox:
+	.byte	0x35,0x34	;PULS X,Y,B
+	rts			; character in A
+Eá/BLOá%BLSá#BLTá-BMIá+BNEá&BPLá*BRAá BRNá!BSRáçBVCá(BVSá)CLRAÅOCLRBÅ_CLRåCMPAãÅCMPBã¡CMPDçÉCMPSéåCMPUé

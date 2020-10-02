@@ -1,0 +1,48 @@
+		
+LISTING 7
+/* Routine to send a string character to the remote host and get a response
+back. 
+*/
+
+#define EVER ;;
+#define SEND_RETRY 12
+void send_data(void)
+{
+	int     retry;
+	int     len;
+	int     done = FALSE;            /* done == 0 */
+	char    inbuf[81];
+	char    choice[81];             /* Operator choice */
+
+	/* Try to deliver character message; if no reply, send again (Send_RETRY times)
+	*/
+	while (EVER) {
+		retry = SEND_RETRY;
+		puts("Enter Character/String to Transmit: _");
+		scanf("%s",choice);
+		while (retry--) {
+			if (net_write(nd, choice, strlen(choice)+1, 0) < 0) {
+				pneterror("net_write");
+				printf("Send: error on attempt to transmit.\n");
+				get_network_stats(retry);
+				break;
+			}
+			/* When we get data back, print it out. */
+			if ((len = net_read(nd, inbuf, sizeof(inbuf),
+					(struct addr *)0, 0)) >= 0) {
+				get_network_stats(retry);
+				break;
+			} else if (neterrno != NET_ERR_TIMEOUT) {
+				pneterror("net_read");
+				printf("Send: error on attempt to receive.\n");
+				get_network_stats(retry);
+				break;
+			}
+		}                /* no successful attempts */
+	} /* end of while (EVER) */
+	return;
+}
+
+
+
+

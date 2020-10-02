@@ -1,0 +1,160 @@
+#include "fsm.h"
+
+
+/* Preamble */
+
+   #include <stdio.h>
+   /* action functions used by this machine */
+   void echo(void), skip(void), secho(void);
+   void markg(void), ngmark(void), zero(void);
+   void smarkg(void), tally(void);
+
+   /* prototype for the scanner */
+   int next_token(void);
+   
+   static int lex_val;
+   static int count; /* how many spaces have I seen */
+
+typedef int FSMTYPE;
+
+
+/*Defines for Symbol names*/
+#define empty 0
+#define cap 1
+#define space 2
+#define fend 3
+#define nl 4
+#define other 5
+
+
+/* Defines for State Names */
+#define start 0
+#define setext 1
+#define sespc 2
+#define secode 3
+#define lnewg 4
+#define ngmark 5
+
+
+/*Transition Table*/
+struct trans s_table[][6] = {
+
+  { /*start*/ {forbid,fault}, {setext,echo}, {start,  skip}, {stop,skip}, {start,skip},  {setext, echo}},
+
+  { /*setext*/{forbid,fault}, {setext,echo}, {sespc,  skip}, {stop,skip}, {lnewg,echo},  {setext, echo}},
+
+  { /*sespc*/ {forbid,fault}, {setext,secho},{sespc,  skip}, {stop,skip}, {lnewg,echo},  {setext,secho}},
+
+  { /*secode*/{forbid,fault}, {secode,echo}, {secode, echo}, {stop,skip}, {lnewg,echo},  {secode, echo}},
+
+  { /*lnewg*/ {forbid,fault}, {setext,echo}, {ngmark,tally}, {stop,skip}, {ngmark,zero}, {setext, echo}},
+
+  { /*ngmark*/{forbid,fault}, {setext,markg},{ngmark,tally}, {stop,skip}, {ngmark,zero}, {secode,smarkg}}
+
+  };
+
+static int state, token;
+
+/* Code for main()*/
+FSMTYPE main()
+{
+state = start;
+token = EMPTY;
+
+while (state != stop){
+  TRACE;
+  token = next_token();
+  (*s_table[state][token].act)();
+  state = s_table[state][token].nextstate;
+  }
+return 0;
+}
+
+
+/* Code Section */
+
+/* a nasty kludge to get end of line markers */
+void putcr(c)
+int c;
+{
+switch (c){
+  case '\n': putchar(0x0d);
+             putchar(0x0a);
+             break;
+  case 0x0d: break;
+  default:   putchar(c);
+  }
+}
+
+int next_token()
+{
+do {
+   switch (lex_val=getchar()){
+     case '-':  return cap;
+     case ' ':  return space;
+     case 0x0a: lex_val = '\n';
+                return nl;
+     case 0x0d: break; 
+        /*avoids 0d 0d 0a output */
+     case EOF:  lex_val = 0x1a;
+                return fend;
+     default:   if (toupper(lex_val) == lex_val) return cap;
+                else return other;
+     }
+   } while (lex_val == 0x0d);
+return forbid;
+}
+
+
+void skip()
+{ return; }
+
+void echo()
+{
+#ifdef DEBUG
+if ((lex_val < ' ') || (lex_val > 'z')) putchar ('.');
+else putchar(lex_val);
+printf(" %2.2x",lex_val);
+#endif
+putcr(lex_val );
+count = 0;
+}
+
+void tally()
+{
+count += 1;
+}
+
+void markg()
+{
+putcr('\n' );
+putchar(lex_val );
+count = 0;
+}
+
+void smarkg()
+{
+putcr('\n' );
+while(count--) putchar(' ' );
+putchar(lex_val );
+count = 0;
+}
+
+void zero()
+{
+count = 0;
+}
+
+
+void secho()
+{
+putchar(' ' );
+putcr(lex_val );
+
+#ifdef DEBUG
+printf(" %x", lex_val);
+#endif
+
+count = 0;
+}
+

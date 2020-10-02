@@ -1,0 +1,180 @@
+/*
+ *  APPENV - APPend to ENVironment  --2.0--  Copyright (c) Mark Lord, 1989
+ *
+ *  Feel free to copy, use and/or modify this for any non-commercial
+ *  purpose(s).  Please keep this copyright header in place.
+ *
+ *  Compile this under TINY model of Turbo-C 2.0 and then use EXE2BIN to
+ *  convert the resulting .EXE to a .COM file.
+ *
+ *	Hacked, November 1989, by Fred C. Smith into a form that can be
+ *	compiled with MSC 5.1. Didn't do too much damage in the process,
+ *	but it turns into a .EXE that is a bit bigger than the .COM produced
+ *	by Turbo C.
+ */
+
+#include <dos.h>
+#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+
+char helptext [] =
+"\r\nAPPENV  --  APPend to ENVironment  --  Version 2.00 (c) 1989 by Mark Lord\r\n\n"\
+"This command allows appending data to the end of an existing  environment\r\n"\
+"variable, such as PATH.     Usage:     APPENV <var>=<data>\r\n"\
+"Where  <var> is the name of the environment variable,  and  <data> is the\r\n"\
+"value to be assigned to it.   If <var> does not already exist, it will be\r\n$";
+char helptext2 [] =
+"created with a value of <data>,  otherwise <data> will be appended to the\r\n"\
+"current value of <var>.  If no <data> is given, then <var> will be erased\r\n"\
+"from the environment.   If there is not enough environment space left for\r\n"\
+"<data>,  it will be truncated and a beep! will be sounded on the speaker.\r\n$";
+
+void help ()
+{
+        /* Output the help text and exit with ERRORLEVEL=2. */
+
+        union REGS regs;
+        regs.h.ah = 9;
+        regs.x.dx = (unsigned int)helptext;
+        intdos (&regs, &regs);
+        regs.x.dx = (unsigned int)helptext2;
+        intdos (&regs, &regs);
+        exit (2);
+}
+
+char far * MK_FP(short seg, short off)
+	{
+	char far * p;
+
+	FP_SEG(p) = seg;
+	FP_OFF(p) = off;
+	return p;
+	}
+
+void main ()
+{
+        int size;
+        unsigned psp, far *tmp;
+        char far *env, far *e, far *p, varbuf[1024], *v;
+
+        /* _psp is our PSP.  Follow the "parent" links back
+           until we find a PSP for COMMAND.COM, which has
+           a parent link that points at itself. */
+
+        psp = _psp;
+        while (psp != *(tmp = (unsigned int far *)MK_FP(psp,22)))
+                psp = *tmp;
+
+        /* Now get the address of COMMAND.COM's environment block
+           from its PSP. */
+
+        env = MK_FP(*(unsigned far *)MK_FP(psp,44),0);
+
+        /* Get the block size from the MCB which immediately
+           preceeds the environment block.  This is a paragraph count,
+           which must be multiplied by 16 to get a byte count. */
+
+        size = 16 * *(int far *) MK_FP(FP_SEG(env)-1,3);
+
+        /* Back to our own PSP again, where our command line
+           parameters are stored, terminated by a carriage return. */
+
+        p = MK_FP(_psp,129);
+
+        /* Ignore leading spaces (there is usually one or more),
+           and give the user some help if there is nothing else there. */
+
+        while (*p == ' ') ++p;
+        if ((*p == '\r') || (*p == '=')) help ();
+
+        /* Now some tricky parsing to extract the variable name and
+           equal sign into varbuf[], ignoring spaces between the name
+           and the equal sign.  If there is no equal sign, give the
+           user some help instead. */
+
+        v = (char *) varbuf;
+        while ((*p != '\r') && ((*v = toupper(*p)) != '='))
+				{
+                p++;
+                if (*v != ' ')
+					++v;
+				}
+		p++;
+        if (*v != '=') help ();
+        *++v = '\0';
+
+        /* The outer loop below searches for an existing environment
+           variable of the same name as we have in varbuf[]. */
+
+        while (*env) {
+
+                /* Compare current env variable with varbuf[]. */
+
+                e = env;
+                v = (char *) varbuf;
+                while (*e == *v)
+					v++, e++;
+
+                /* If they matched, copy old value into varbuf[], and
+                   then delete it from the environment.  Otherwise,
+                   move env to point at the next environment variable
+                   for the next iteration of our main loop. */
+
+                if (!*v) {
+                        while (*v++ = *e++);
+                        if (*e)
+                                while ((--size) && (*env++ = *e++) || (*e));
+                        *env = '\0';
+                } else
+                        while ((--size) && (*env++));
+        }
+
+        /* If no data was entered after the equal sign, then we are
+           supposed to delete the variable, which we've already done.
+           Otherwise, some work remains.  We have to re-add the variable
+           at the end of the environment with its old value, and then
+           append the new value after it. */
+
+        if (*p != '\r') {
+
+                /* Copy name, equal sign, and old value into env. */
+
+                v = (char *) varbuf;
+                while (*env = *v++) ++env, --size;
+
+                /* Now append new data to the end of the old value. */
+
+                while ((--size) && ((*env++ = *p++) != '\r'));
+
+                /* Ensure the environment is properly terminated with
+		   two consecutive zeros. */
+
+                *env = '\0';
+                *--env = '\0';
+
+                /* If we ran out of space somewhere above, sound a beep
+                   sequence to alert the user that something is fishy. */
+
+                if (size <= 0) {
+						union REGS regs;
+						static char bell [] = {0x07,'$',0};
+
+						regs.h.ah = 9;
+						regs.x.dx = (unsigned int)bell;
+						intdos (&regs, &regs);
+
+						/*	Sorry, sound() is a Turbo routine!
+                        for (size = 3; (--size);) {
+                                sound (650);
+                                delay (60);
+                                nosound ();
+                                delay (50);
+                        };
+						*/
+                        exit (1);
+                }
+        }
+}
+

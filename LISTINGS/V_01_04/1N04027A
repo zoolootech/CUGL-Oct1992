@@ -1,0 +1,123 @@
+/*			 LISTING 2				*/
+
+
+/* Error module */
+
+#include <stddef.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "err.h"
+
+#define MAX_STACK	   5
+
+/* Local variables */
+static int	   error_stack[MAX_STACK];
+static PSTR    str_stack[MAX_STACK];
+static int	   stack_index = 0;
+
+static PSTR local_errlist[] = {
+	"invalid error number",
+	"undefined error occured",
+	"unable to read file header",
+	"unable to open index file",
+	"unable to delete record",
+	"unable to complete requested command"
+};
+
+/* Local prototypes */
+static PSTR err_get_msg(int);
+
+/*-------------------------------------------------
+	err_push - add an error message to the stack
+-------------------------------------------------*/
+void  err_push(int ercode, PSTR p_str)
+{
+	if (stack_index < MAX_STACK) {
+		error_stack[stack_index] = ercode;
+		if (p_str != NULL) {
+			if ((str_stack[stack_index] =
+					malloc(strlen(p_str) + 1)) != NULL) {
+				strcpy(str_stack[stack_index], p_str);
+			}
+		}
+		stack_index++;
+	}
+}
+
+/*-------------------------------------------------
+	err_state - check for error(s) on stack
+-------------------------------------------------*/
+BOOLEAN  err_state()
+{
+	if (stack_index > 0) {
+		return(TRUE);
+	} else {
+		return(FALSE);
+	}
+}
+
+/*-------------------------------------------------
+	err_clear - clear the error stack
+-------------------------------------------------*/
+void  err_clear()
+{
+	int i;
+
+	for (i = 0; i < MAX_STACK; i++) {
+		if (str_stack[i] != NULL) {
+			free(str_stack[i]);
+			str_stack[i] = NULL;
+		}
+	}
+	stack_index = 0;
+}
+
+/*-------------------------------------------------
+	err_disp - display an error message
+-------------------------------------------------*/
+void  err_disp()
+{
+	int  i;
+	char reply[10];
+
+	while (stack_index > 0) {
+		stack_index--;
+		fprintf(stderr, "ERROR: %s",
+				err_get_msg(error_stack[stack_index]));
+		if (str_stack[stack_index] != NULL) {
+			fprintf(stderr, ": %s\n",
+					str_stack[stack_index]);
+		} else {
+			fprintf(stderr, "\n");
+		}
+		if (stack_index > 0) {
+			fprintf(stderr, "    Do you want more"
+					" information? (y/n) ");
+			gets(reply);
+			if (reply[0] != 'y' && reply[0] != 'Y') break;
+		}
+	}
+
+	/* Clear error stack */
+	err_clear();
+}
+
+/*-------------------------------------------------
+	err_get_msg - get message for error number
+-------------------------------------------------*/
+static PSTR err_get_msg(int msg)
+{
+	PSTR p_str = NULL;
+
+	if (msg < sys_nerr) {
+		p_str = sys_errlist[msg];
+	} else if (msg >= MIN_ERR_NUMBER && msg <=
+			MAX_ERR_NUMBER) {
+		p_str = local_errlist[msg - MIN_ERR_NUMBER];
+	} else {
+		p_str = local_errlist[ERR_INVALID_ERCODE -
+				MIN_ERR_NUMBER];
+	}
+	return(p_str);
+}

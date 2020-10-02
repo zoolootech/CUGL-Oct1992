@@ -1,0 +1,78 @@
+#include <dos.h>
+
+rest_scr(int trow, int tcol, int brow, int bcol, char *array)
+/* Restore an area of the current screen that was saved via save_scr.
+   To determine num of chars for array use the following formula:
+*/
+{
+extern int color, mono, cga, ega, scrseg, bios;
+union REGS inregs;
+int x, y, orow, ocol, ncols, scrofs;
+char pchar;
+char far *base;
+char far *work;
+
+    if(bios) {
+        get_cur(&orow,&ocol);
+        for(x=trow; x<=brow; x++) {
+            for(y=tcol; y<=bcol; y++) {
+                locate(x,y);
+                inregs.h.bh = 0x00;
+                inregs.h.ah = 0x09;
+                inregs.h.al = *array++;
+                inregs.h.bl = *array++;
+                inregs.x.cx = 0x01;
+                int86(0x10,&inregs,&inregs);
+            }
+		}
+        locate(orow,ocol);
+        return(0);
+	}
+
+    if(mono) base = (char far *) 0xb0000000;
+    else     base = (char far *) 0xb8000000;
+
+    ncols = bcol - tcol + 1;
+
+    for(x=trow; x<=brow; x++) {
+        scrofs = ((((x + 1) * 160) - 160) + ((tcol + 1) * 2)) - 2;
+        work = base + scrofs;
+        for(y=0; y<ncols; y++) {
+            pchar = *array;
+            asm les     bx,work
+            asm mov     cl,pchar
+
+            if(cga) {
+                asm mov     dx,03dah
+                asm in      al,dx
+                asm test    al,1
+                asm jnz     $-3
+                asm in      al,dx
+                asm test    al,1
+                asm jz      $-3
+            }
+
+            asm mov byte ptr es:[bx],cl
+            work++;  array++;
+
+
+            pchar = *array;
+            asm les     bx,work
+            asm mov     cl,pchar
+
+            if(cga) {
+                asm mov     dx,03dah
+                asm in      al,dx
+                asm test    al,1
+                asm jnz     $-3
+                asm in      al,dx
+                asm test    al,1
+                asm jz      $-3
+            }
+
+            asm mov byte ptr es:[bx],cl
+            work++;  array++;
+        }
+    }
+}
+

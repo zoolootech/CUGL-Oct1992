@@ -1,0 +1,249 @@
+;
+;
+;	fgetc(unit)	by F. A. Scacchitti	11 - 24 - 84
+;
+;	getc(unit)
+;
+;
+CBDOS	EQU	5	;/* bdos entry point */
+CPMARG	EQU	128	;/* CP/M command line */
+MAXARG	EQU	32	;/* Maximum number of input args */
+STDIN	EQU	0
+STDOUT	EQU	1
+STDERR	EQU	2
+STDLST	EQU	4
+CTRLZ	EQU	26	;control z
+NULL	EQU	0	;pointer to nothing
+FCBSIZE	EQU	36	;size, in bytes, of an FCB
+NEXTP	EQU	0	;offset	to next-char. pointer in I/O struct.
+UNUSED	EQU	2	;offset	to unused-pos.-count in I/O struct.
+BUFFER	EQU	6	;offset	to disk	sector buf. in I/O struct.
+UNGOT	EQU	5	;offset to char ungotten by ungetc()
+FLAG	EQU	33	;file-type flag	byte (in unused	part of	FCB)
+FREEFLG	EQU	128	;This I/O structure is available for the taking
+EOF	EQU	0FFH	;# END OF FILE BYTE FOR UNGOTTEN CHAR ID
+EOFFLG	EQU	2	;The end of this file has been hit
+WRTFLG	EQU	1	;This file open	for writing
+BUFSIZ	EQU	1024	;how long the sector buffer is
+NBUFS	EQU	8	;number	of I/O buffers
+TBUFF	EQU	128	;default cpm buffer
+LF	EQU	10
+EOL	EQU	13
+;
+; CP/M BDOS CALLS 
+;
+CLOSE	EQU	16	;close a file
+CPMSTR	EQU	9	;print '$' delimited string on console
+CREATE	EQU	22	;make a	file
+DMA	EQU	26	;set DMA (I/O address)
+DELETE	EQU	19	;delete	a file
+GETCH	EQU	1	;read character	from console
+GETSTR	EQU	10	;read string from console
+LSTOUT	EQU	5	;write character to list device
+OPEN	EQU	15	;open a	file
+PUTCH	EQU	2	;write character to console
+QUERY	EQU	25	;get logged-in drive id
+READ	EQU	20	;read a	sector
+SELECT	EQU	14	;log-in	a drive
+WRITE	EQU	21	;write a sector
+;
+;	File i/o storage varibles found in ulink()
+;
+EXTRN	ZZUNIT
+EXTRN	ZZIP
+EXTRN	ZZCHP
+EXTRN	ZZDP
+EXTRN	ZZFILE
+EXTRN	ZZMODE
+EXTRN	ZZCH
+EXTRN	ZZT
+EXTRN	ZZFN
+EXTRN	ZZNUBU
+EXTRN	ZZMXSC
+;
+;	Characteristics variable storage found in ulink()	
+;
+EXTRN	ZZSVCH
+EXTRN	ZZDFLT
+EXTRN	ZZSTAK
+EXTRN	ZZMEM
+;
+EXTRN	GETCHAR
+EXTRN	CPMIO
+;
+FGETC::
+GETC::
+	POP	B
+	POP	H			; get args
+	PUSH	H
+	PUSH	B
+					; c=cget(unit);
+	PUSH	H
+	CALL	CGET
+	POP	D
+	MOV	A,L			; if(c=='\r')	
+	ANI	7FH			; /* mask parity in compare */
+	CPI	EOL
+	JNZ	GETCRET
+	PUSH	H			;	cget(unit);
+	PUSH	D			;	/* to skip LF */
+	CALL	CGET
+	MOV	A,L
+	ANI	7FH
+	CPI	0AH			; and only skip linefeeds
+	JZ	GETCNLF
+	LHLD	ZZUNIT
+	LXI	D,FCBSIZE+UNGOT
+	DAD	D
+	MOV	M,A			; if not LF, next cgets it
+GETCNLF:
+	POP	H
+	POP	H
+GETCRET:
+	RET
+;
+;	cget(unit)
+;
+CGET::
+	POP	D
+	POP	H
+	PUSH	H
+	PUSH	D
+	MOV	A,H
+	ORA	A			; if(unit < 256) {
+	JNZ	CGET1			;	/* assume stdin	*/
+	CALL	GETCHAR			;	getchar();
+	POP	D			;/* return to caller of getc()
+	POP	D			;	to bypass CR check */
+	RET				;	return;	}
+CGET1:	SHLD	ZZUNIT
+	LXI	D,FLAG			; if(unit[FLAG]	& EOF_FL)
+	DAD	D
+	MOV	A,M
+	ANI	EOFFLG
+	JZ	GTCIF1
+	LXI	H,-1			;	return(-1);
+	RET
+GTCIF1:
+	LHLD	ZZUNIT			; ip = unit + FCBSIZE;
+	LXI	D,FCBSIZE
+	DAD	D
+	SHLD	ZZIP
+;
+	LXI	D,UNGOT			;# CHECK FOR UNGOTTEN CHAR.
+	DAD	D
+	MOV	A,M
+	CPI	EOF			;# IS IT EOF ?
+	JZ	GTCCON			;# YES-CONTINUE WITH FGETC
+	MOV	B,A			;# NO-LET'S GET THE UNGOTTEN
+	MVI	A,EOF
+	MOV	M,A			;# PUT IN EOF TO MARK IT CLEAR
+	MOV	L,B
+	MOV	H,0
+	RET				;# RETURN WITH CHAR IN HL
+;
+GTCCON:	LHLD	ZZIP
+	LXI	D,NEXTP			; cp = ip[NEXTP];
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	XCHG
+	SHLD	ZZCHP
+	LHLD	ZZIP			; if(ip[UNUSED]==0){
+	LXI	D,UNUSED
+	DAD	D
+	MOV	A,M
+	INX	H
+	ORA	M
+	JNZ	GTCIF2
+;
+; Mark beginning of each 128 byte segment of buffer with EOF to
+; eliminate possible bogus read
+;
+	LHLD	ZZUNIT
+	LXI	D,FCBSIZE + 4		;	UNIT + FCBSIZE
+	DAD	D
+	LXI	D,128
+	MVI	B,8
+	MVI	A,1AH
+SETEOF:
+	MOV	M,A
+	DAD	D
+	DCR	B
+	JNZ	SETEOF
+;
+	LXI	H,READ			;if(cpmio(READ,unit)~=0)
+	PUSH	H
+	LHLD	ZZUNIT
+	PUSH	H
+	CALL	CPMIO
+	POP	D
+	POP	D
+	MOV	A,H
+	ORA	L
+	JZ	GTCIF3
+	LDA	ZZMXSC			;# IS THIS THE FIRST READ
+	CPI	8			;#
+	JNZ	GTCIF3			;#NO,THERE'S CHARS IN THAT BUF.
+					;# YES, GETOUTAHERE
+	LXI	H,-1			;		return(-1);
+	RET
+GTCIF3:
+	LHLD	ZZIP			;else {	ip[UNUSED] = BUFSIZ;
+	LXI	D,UNUSED
+	DAD	D
+	LXI	D,BUFSIZ
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	ZZIP			;	cp = &ip[BUFFER];
+	LXI	D,BUFFER
+	DAD	D
+	SHLD	ZZCHP
+					;	}
+					;}
+GTCIF2:
+	LHLD	ZZIP			; ip[UNUSED]--;
+	LXI	D,UNUSED
+	DAD	D
+	MOV	E,M
+	INX	H
+	MOV	D,M
+	DCX	D
+	MOV	M,D
+	DCX	H
+	MOV	M,E
+	LHLD	ZZCHP			; ip[NEXTP] = cp+1;
+	INX	H
+	XCHG
+	LHLD	ZZIP
+	LXI	B,NEXTP
+	DAD	B
+	MOV	M,E
+	INX	H
+	MOV	M,D
+	LHLD	ZZCHP			; if(*cp==CTRL_Z){
+	MOV	A,M
+	ANI	7FH			; /* mask parity  */
+	CPI	CTRLZ
+	JNZ	GTCIF4
+	LHLD	ZZUNIT			;unit[FLAG] |= EOF_FL;
+	LXI	D,FLAG
+	DAD	D
+	MOV	A,M
+	ORI	EOFFLG
+	MOV	M,A
+	LXI	H,-1			;	return(-1);
+	RET
+					;	}
+GTCIF4:
+	MOV	A,M
+	MOV	L,A			; return(*cp & 0377);
+	MVI	H,0
+	RET
+
+	END
+
+
+

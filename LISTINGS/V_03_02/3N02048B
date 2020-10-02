@@ -1,0 +1,82 @@
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-Begin Listing 9-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+/*****************************************************/
+/* transbtn.c                                        */
+/* -- Module implements a transparent control that   */
+/*    notifies is parent when clicked on.            */
+/*****************************************************/
+
+#include <windows.h>
+#include "transbtn.h"
+
+DWORD    FAR PASCAL  TransButtonWndProc(HWND, WORD,
+                      WORD, DWORD);
+
+BOOL
+FCreateTransButtonClass(HANDLE hins, HCURSOR hcsr)
+/*****************************************************/
+/* -- Create a window class for the control.         */
+/* -- Call this routine when initializing the first  */
+/*    instance of the application.                   */
+/* -- Return false if the class could not be         */
+/*    registered.                                    */
+/* -- hins  : Application's instance handle.         */
+/* -- hcsr  : Class cursor.                          */
+/*****************************************************/
+    {
+    WNDCLASS    wcs;
+
+    wcs.style = 0;
+    wcs.lpfnWndProc = TransButtonWndProc;
+    wcs.cbClsExtra = 0;
+    wcs.cbWndExtra = 0;
+    wcs.hInstance = hins;
+    wcs.hIcon = NULL;
+    wcs.hCursor = hcsr;
+    wcs.hbrBackground = NULL;
+    wcs.lpszMenuName = NULL;
+    wcs.lpszClassName = szTransButtonClass;
+    return RegisterClass(&wcs);
+    }
+
+DWORD FAR PASCAL
+TransButtonWndProc(HWND hwnd, WORD wm, WORD wmp,
+  DWORD lwmp)
+/*****************************************************/
+/* -- Window procedure for transparent control.      */
+/* -- hwnd  : Window receiving message.              */
+/* -- wm    : Message number.                        */
+/* -- wmp   : Word sized message parameter.          */
+/* -- lwmp  : Long word sized message parameter.     */
+/*****************************************************/
+    {
+    switch (wm)
+        {
+    default:
+        return DefWindowProc(hwnd, wm, wmp, lwmp);
+
+    case WM_ERASEBKGND:
+        break;
+
+    case WM_PAINT:
+        {
+        PAINTSTRUCT wps;
+
+        /* Need to call BeginPaint()/EndPaint() so */
+        /* that the WM_PAINT messge gets removed */
+        /* from the queue. */
+        BeginPaint(hwnd, &wps);
+        EndPaint(hwnd, &wps);
+        }
+        break;
+
+    case WM_LBUTTONDOWN:
+        SendMessage(GetParent(hwnd), WM_COMMAND,
+          GetWindowWord(hwnd, GWW_ID),
+          MAKELONG(hwnd, BN_CLICKED));
+        break;
+        }
+
+    return TRUE;
+    }
+

@@ -1,0 +1,267 @@
+
+/************************************************************
+ *  Program: CMENU Menu Compiler
+ *  Module: ccmenu.h -- Compiler Module header file
+ *  Written by: Leor Zolman, 11/90
+ ************************************************************/
+
+/********************* Misc. constants **********************/
+
+#define TRUE    1
+#define FALSE   0
+#define OK      0
+
+#define UNDEF_FWD (-1)             /* undefined forward reference flag */
+
+
+/********************** extern control **********************/
+
+#ifndef MASTER
+#   define Extern extern                   /* external declarations    */
+#else
+#   define Extern                          /* one-time definitions     */
+#endif
+
+
+/********************* Type Definitions *********************/
+
+typedef struct {
+    char Name[MAX_NAME];
+    ITEM Item;
+} IINFO;
+
+typedef struct {
+    char Name[MAX_NAME];
+    BOOL Processed;
+    MENU Menu;
+    IINFO *Items[MAX_ITEMS];
+} MINFO;
+
+/*********************** Token codes: ************************/
+
+#if __STDC__
+
+enum {
+    T_NULL,                                            /* special code */
+    T_MENU, T_TITLE, T_PATH,
+    T_SPACING, T_COLUMNS, T_ENDMENU,
+    T_ITEM, T_TEXT,
+    T_ALIGN, T_LEFT, T_CENTER, T_RIGHT,
+    T_NEXTITEM, T_FIRST, T_LAST, T_NEXT,
+    T_EMENU, T_LMENU, T_ACTION,
+    T_HELP,
+    T_PROMPT, T_PAUSE,                                     /* synonyms */
+    T_NOPROMPT, T_NOPAUSE,                                 /* synonyms */
+    T_PRECLEAR, T_NOPRECLEAR, T_POSTCLEAR, T_NOPOSTCLEAR,
+    T_EXIT,
+    T_ESCAPE, T_NOESCAPE,
+    T_STRING, T_VALUE, T_COLON, T_EOF                /* special tokens */
+};
+
+#else   /* __STDC__ */
+
+#define T_NULL      0                                  /* special code */
+#define T_MENU      1
+#define T_TITLE     2
+#define T_PATH      3
+#define T_SPACING   4
+#define T_COLUMNS   5
+#define T_ENDMENU   6
+#define T_ITEM      7
+#define T_TEXT      8
+#define T_ALIGN     9
+#define T_LEFT      10
+#define T_CENTER    11
+#define T_RIGHT     12
+#define T_NEXTITEM  13
+#define T_FIRST     14
+#define T_LAST      15
+#define T_NEXT      16
+#define T_EMENU     17
+#define T_LMENU     18
+#define T_ACTION    19
+#define T_HELP      20
+#define T_PROMPT    21                                     /* synonyms */
+#define T_PAUSE     22
+#define T_NOPROMPT  23                                     /* synonyms */
+#define T_NOPAUSE   24
+#define T_PRECLEAR  25
+#define T_NOPRECLEAR    26
+#define T_POSTCLEAR     27
+#define T_NOPOSTCLEAR   28
+#define T_EXIT      29
+#define T_ESCAPE    30
+#define T_NOESCAPE  31
+#define T_STRING    32                               /* special tokens */
+#define T_VALUE     33
+#define T_COLON     34
+#define T_EOF       35
+
+#endif       /* __STDC__ */
+
+/********************* Prototypes: **************************/
+
+#if __STDC__ || XENIX                              /* ANSI Prototypes: */
+
+int write_file(void);
+int dofile(char *);
+
+void itemcheck(void);
+int gettok();
+
+int error(char *, ...);
+int fatalerr(char *, ...);
+
+MINFO create_menu(char *);
+IINFO *create_item(char *);
+MINFO *find_menu(char *);
+IINFO *find_item(char *);
+
+int do_menu(void);
+int do_title(void);
+int do_path(void);
+int do_spacing(void);
+int do_columns(void);
+int do_item(void);
+int do_endmenu(void);
+int do_align(void);
+int do_text(void);
+int do_text2(void);
+int do_nextitem(void);
+int do_action(void);
+int do_help(void);
+int do_prompt(void);
+int do_clear(void);
+int do_err(void);
+int do_escape();
+int do_opts(void);
+
+#else                                               /* K&R Prototypes: */
+
+int write_file();
+int dofile();
+
+Void itemcheck();
+int gettok();
+
+int error();
+int fatalerr();
+
+MINFO create_menu();
+IINFO *create_item();
+MINFO *find_menu();
+IINFO *find_item();
+
+int do_menu();
+int do_title();
+int do_path();
+int do_spacing();
+int do_columns();
+int do_item();
+int do_endmenu();
+int do_align();
+int do_text();
+int do_text2();
+int do_nextitem();
+int do_action();
+int do_help();
+int do_prompt();
+int do_clear();
+int do_err();
+int do_escape();
+int do_opts();
+
+#endif
+
+#ifdef NEEDSTR
+char *strstr();
+#endif
+
+
+/************ Keyword / function dispatch table *************/
+
+struct keywd {
+    char *keyword;
+    int (*t_func)();
+};
+
+extern struct keywd keywords[];
+
+#ifdef MASTER
+struct keywd keywords[] = {
+    "(null)", do_err,                                  /* for db only  */
+    "menu", do_menu,
+    "title", do_title,
+    "path", do_path,
+    "spacing", do_spacing,
+    "columns", do_columns,
+    "endmenu", do_endmenu,
+    "item", do_item,
+    "text", do_text,
+    "align", do_align,
+        "left", do_err,
+        "center", do_err,
+        "right", do_err,
+    "nextitem", do_nextitem,
+        "first",  do_err,
+        "last", do_err,
+        "next", do_err,
+    "emenu", do_action,
+    "lmenu", do_action,
+    "action", do_action,
+    "help", do_help,
+    "prompt", do_opts,
+    "pause", do_opts,
+    "noprompt", do_opts,
+    "nopause", do_opts,
+    "preclear", do_opts,
+    "nopreclear", do_opts,
+    "postclear", do_opts,
+    "nopostclear", do_opts,
+    "exit", do_action,
+    "escape", do_escape,
+    "noescape", do_escape,
+    "(!string)", do_err,                               /* for db only  */
+    "(!value)", do_err,                                /* for db only  */
+    "(!colon)", do_err,                                /* for db only  */
+    "(!EOF)", do_err                                   /* for db only  */
+};
+#endif
+
+#define N_KEYWORDS  (sizeof keywords / sizeof (struct keywd))
+
+
+/*************** Other Data structures *********************/
+
+Extern  MINFO MInfo[MAX_MENUS], *MIp;
+Extern  IINFO *IIp;
+
+Extern  MENU *Mp, *CMp;            /* General, Current Menu Pointers   */
+Extern  ITEM *Ip, *CIp;            /* General, Current Item Pointers   */
+
+Extern  struct {                   /* Item Forward Reference Table     */
+    char iname[MAX_NAME];          /* Item name                        */
+    int *refp;                     /* Pointer to reference location    */
+    int lineno;                    /* source line number of reference  */
+} fwd_refs[MAX_ITEMS];
+
+Extern  int n_refs;                    /* Number of forward references */
+
+/************** Miscellaneous data items ********************/
+
+Extern  FILE    *fp;
+Extern  int     token, token2;                 /* token codes          */
+Extern  char    tparam[MAX_CMD];               /* text parameter       */
+Extern  int     vparam;                        /* value parameter      */
+Extern  int     lineno;                        /* current line number  */
+Extern  int     n_menus,
+                n_items;
+Extern  BOOL    in_menu,
+                in_item;
+Extern  BOOL    err_flag,
+                fatal;
+Extern  int     item_num,
+                menu_num;
+    
+Extern  char    src_name[MAX_PATH];
+Extern  char    obj_name[MAX_PATH];

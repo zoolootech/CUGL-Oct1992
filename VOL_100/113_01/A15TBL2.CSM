@@ -1,0 +1,246 @@
+	TITLE	'Machine Language Functions for 1805A Cross-Assembler V 1.2'
+	PAGE	60
+;
+;	1805A Cross-Assembler Version 1.2
+;
+;	Copyright (c) 1980, 82, 83, 85 William C. Colley, III.
+;
+;	July 1982 -- Adapted from my 1802 cross-assembler.  WCC3.
+;
+;	Vers 1.0 -- March 1983 -- Added 1805A opcodes to the 1805 set.  WCC3.
+;
+;	Vers 1.1 -- March 1983 -- Added CPU pseudo-op to combine 1802 and 1805A
+;			cross-assemblers into a single program.  WCC3.
+;
+;	Vers 1.2 -- June 1985 -- Fixed IF block nesting mechanism bug and bug
+;			in 1805A SCAL opcode.  WCC3.
+;
+; File:	A15TBL2.CSM
+;
+; Machine Language Functions -- Module #2 of 2.
+;
+
+;
+; Arguments are passed via offsets from the stack pointer.
+; They are defined as follows:
+;
+ARG0	EQU	2		;First argument.
+ARG1	EQU	4		;Second argument.
+ARG2	EQU	6		;Third argument.
+ARG3	EQU	8		;Fourth argument.
+;
+	PAGE
+;
+; This function removes the parity bit from its argument and looks it up in
+; a table.  The table classifies the character into one of the following bins
+; returning the appropriate code.
+;
+ALPHA	EQU	0	;Alphabetic.
+NUMERC	EQU	1	;Numeric (0-9).
+ENDLIN	EQU	2	;End of line markers (CR ;).
+COMMA	EQU	3	;Field separators (,).
+OPERAT	EQU	4	;Operators (* + / - > < = ( )).
+QUOTE	EQU	5	;String delimiters (' ").
+BLANK	EQU	7	;White space character (SPC TAB).
+TRASH	EQU	8	;Other control characters.
+;
+; The function is called as follows:
+;
+;	getattr(byte);
+;
+;	byte	Character value to be looked up.
+;
+BYTE	EQU	ARG0
+;
+	FUNCTION GETATTR
+;
+	LXI	H, BYTE		;Get byte to look up.
+	DAD	SP
+	MOV	A,M
+	ANI	7FH		;Strip parity bit.
+;
+	LXI	H, ATTTBL	;Index into table.
+	ADD	L
+	MOV	L,A
+	MVI	A, 0
+	ADC	H
+	MOV	H,A
+;
+	MOV	L,M		;Return result.
+	MVI	H, 0
+	RET
+;
+; Attribute table itself:
+;
+ATTTBL:	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^@ thru ^C
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^D thru ^G
+	DB	 TRASH,  BLANK, ENDLIN,  TRASH	; ^H TAB LF ^K
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; FF CR ^N ^O
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^P thru ^S
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^T thru ^W
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^X ^Y ^Z ESC
+	DB	 TRASH,  TRASH,  TRASH,  TRASH	; ^\ ^] ^^ ^_
+	DB	 BLANK,  ALPHA,  QUOTE,  ALPHA	; SPC EPT " #
+	DB	 ALPHA,  ALPHA,  ALPHA,  QUOTE	; $ % & '
+	DB	OPERAT, OPERAT, OPERAT, OPERAT	; ( ) * +
+	DB	 COMMA, OPERAT,  ALPHA, OPERAT	; , - . /
+	DB	NUMERC, NUMERC, NUMERC, NUMERC	; 0 thru 3
+	DB	NUMERC, NUMERC, NUMERC, NUMERC	; 4 thru 7
+	DB	NUMERC, NUMERC,  ALPHA, ENDLIN	; 8 9 : ;
+	DB	OPERAT, OPERAT, OPERAT,  ALPHA	; < = > ?
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; @ thru C
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; D thru G
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; H thru K
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; L thru O
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; P thru S
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; T thru W
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; X Y Z [
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; \ ] ^ _
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; ` a b c
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; d thru g
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; h thru k
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; l thru o
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; p thru s
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; t thru w
+	DB	 ALPHA,  ALPHA,  ALPHA,  ALPHA	; x y z {
+	DB	 ALPHA,  ALPHA,  ALPHA,  TRASH	; | } ~ RUB
+;
+	ENDFUNCTION
+;
+	PAGE
+;
+; This function gets operator number num from the operator table.  The function
+; returns 0 if the operator was not found, 1 if it was.
+;
+; Function is called as follows:
+;
+;	getopr(num,opratr,bs,token);
+;
+;	num	Character containing the number of the desired entry.
+;			0 represents the first entry in the table.  The
+;			table is in alphabetical order for the benefit
+;			of the binary searching routine (written in C).
+;	opratr	Pointer to a 5-character array which will receive the
+;			operator's name (null terminated).
+;	bs	A dud argument to maintain compatibility with getopc.
+;	token	A pointer to a character that will receive the operator's
+;			token byte.
+;
+NUM	EQU	ARG0
+OPRATR	EQU	ARG1
+BS	EQU	ARG2
+TOKEN	EQU	ARG3
+;
+	FUNCTION GETOPR
+;
+	LXI	H, NUM		;Get entry number.
+	DAD	SP
+	MOV	A,M
+	CPI	OPRTLL		;Entry in table?
+	LXI	H, 0		;If not, return 0.
+	RNC
+;
+	MOV	L,A		;Find entry by computing
+	ADD	A		;(5 * num) + table base.
+	ADD	A
+	ADD	L
+	MOV	L,A
+	LXI	D, OPRTBL
+	DAD	D
+	MOV	E,L
+	MOV	D,H
+;
+	LXI	H, OPRATR	;Find operator return area.
+	DAD	SP
+	MOV	A,M
+	INX	H
+	MOV	H,M
+	MOV	L,A
+;
+	PUSH	B		;Move operator name to return area.
+	MVI	C, 4
+MOVOPR:	LDAX	D
+	INX	D
+	MOV	M,A
+	INX	H
+	DCR	C
+	JNZ	MOVOPR
+	POP	B
+;
+	MVI	M, 0		;Terminate operator name.
+;
+	LXI	H, TOKEN	;Find token return area.
+	DAD	SP
+	MOV	A,M
+	INX	H
+	MOV	H,M
+	MOV	L,A
+;
+	LDAX	D		;Move token to return area.
+	MOV	M,A
+;
+	LXI	H, 1		;Return 1 for successful get.
+	RET
+;
+; The operator table itself:
+;
+;	The operator tokens are as follows:
+;
+GETKN	EQU	1
+NETKN	EQU	2
+LETKN	EQU	3
+ANDTKN	EQU	4
+ORTKN	EQU	5
+XORTKN	EQU	6
+NOTTKN	EQU	7
+MODTKN	EQU	8
+SHLTKN	EQU	9
+SHRTKN	EQU	10
+HITKN	EQU	11
+LOWTKN	EQU	12
+GTTKN	EQU	'>'
+EQTKN	EQU	'='
+LTTKN	EQU	'<'
+;
+OPRTLB	EQU	$
+
+OPRTBL:	DB	'AND', 0,	ANDTKN
+	DB	'EQ', 0, 0,	EQTKN
+	DB	'GE', 0, 0,	GETKN
+	DB	'GT', 0, 0,	GTTKN
+	DB	'HIGH',		HITKN
+	DB	'LE', 0, 0,	LETKN
+	DB	'LOW', 0,	LOWTKN
+	DB	'LT', 0, 0,	LTTKN
+	DB	'MOD', 0,	MODTKN
+	DB	'NE', 0, 0,	NETKN
+	DB	'NOT', 0,	NOTTKN
+	DB	'OR', 0, 0,	ORTKN
+	DB	'SHL', 0,	SHLTKN
+	DB	'SHR', 0,	SHRTKN
+	DB	'XOR', 0,	XORTKN
+;
+OPRTLL	EQU	($ - OPRTLB) / 5	;Calculate length of table.
+;
+	ENDFUNCTION
+;
+	PAGE
+;
+; This function returns the number of operators in the operator table
+; for the benefit of the binary searching routine (written in C).
+;
+; This function is called as follows:
+;
+;	numoprs();
+;
+	FUNCTION NUMOPRS
+;
+	LXI	H, OPRTLL	;Return number of opcodes.
+	RET
+;
+	ENDFUNCTION
+;
+; End of package:
+;
+	END
+;	The o

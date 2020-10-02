@@ -1,0 +1,86 @@
+FILTER.DOC 6/85 Ted Carnevale
+
+     Although most of my programming is done under CP/M, I have 
+to work with several different machines that use different, 
+incompatible operating systems.  When it comes time to transfer 
+files between machines, there is no end of difficulty with extra 
+or missing line feeds, carriage returns, and cr-lf pairs.
+     This is a real pain to correct manually, so I wrote filter.c 
+to handle this drudgery for me.  It's written for the Software 
+Toolworks compiler, which runs under CP/M and is excellent except 
+that it does peculiar things to the cr-lf pair that marks end of 
+line in CP/M unless files are read and written in binary mode.  
+(Peculiar to CP/M programmers, that is, but perfectly logical and 
+reasonable under other operating systems that use a different 
+convention for marking end of line).  c80def.h contains some 
+#defines that are generally handy, including a few that are vital 
+to this program.  In case you don't have C80, filter.obj has the 
+compiled program.
+     Instructions for using filter are displayed if it is invoked 
+with incorrect or no command line arguments.  Basically, it is 
+invoked like so:
+
+     filter infile outfile -opstring
+
+where opstring tells filter what to do (-c to insert cr before 
+lf, -l to insert lf after cr, -n to insert cr lf after cr lf, -xb 
+to strip blanks, -xc to remove cr, -xl to remove lf, -xn to 
+convert cr lf cr lf to cr lf).  The opstring must be preceded by 
+a dash, but it may occur anywhere on the command line after 
+filter.  Incorrect options are ignored.  Several options can be 
+specified at one time, but watch out for unintended effects if 
+you do that!  The order in which things are done depends on the 
+order of statements in the switch clause in dowork().
+     The name of the source file is the very first non-opstring 
+on the command line after filter, and the name of the destination 
+file is the second non-opstring.  Only infile is mandatory--if 
+infile is not specified, filter prints a help message and exits.  
+If outfile is not specified, filter outputs to the console.  Note 
+that CP/M may do funny things if it encounters an isolated cr or 
+lf, so what you see on the console when using the c or l options 
+isn't necessarily what would go into the destination file.  For 
+example, 
+
+     filter xxx -xc 
+
+would simply show the contents of xxx on the console apparently 
+unchanged, but 
+
+     filter xxx -xc yyy
+
+would write yyy without carriage returns (as you would see 
+immediately if you "type yyy").
+     Beware of "text files" in which some characters have the 
+high bit set, e.g. files produced in WordStar's document mode.  
+The filter will fail to recognize these as printable characters, 
+and they will be stripped from the output.  It would be easy to 
+incorporate another command line option (flagged by the character 
+w, for example) that would allow you to mask out the high bit 
+when desired, or to just put it into the program as a permanent 
+feature if you prefer.  I didn't bother since pip's z option does 
+this for me if necessary.
+     Furthermore, I didn't bother to implement blank compression 
+into tabs, since C80 comes with a nice, small utility that does 
+that.  But if you really want to add it, go ahead.
+
+
+
+Date      Version   Comments
+----------------------------
+6/30/85   2.1       First public release
+7/6/85    2.2       Some programs output text files that are 
+                    terminated with a single ^Z, others fill the 
+                    last CP/M logical sector with ^Z's.  Version 
+                    2.1 couldn't handle source files that ended 
+                    in only one ^Z.  Version 2.2 can.
+7/19/85   3.2       CP/M files that contain an exact multiple of 
+                    128 bytes do NOT end with ^Z.  Prior versions 
+                    would hang when they got past the last 
+                    character in such a file.  In this version, 
+                    xgetc() has been revised to correct this 
+                    problem.  Also, file input is buffered.  A 
+                    bigger buffer could be used (most economical 
+                    to do this dynamically with alloc()), which 
+                    would speed up access on floppy-based 
+                    hardware.
+

@@ -1,0 +1,205 @@
+Documentation for stand-alone program
+
+
+1. Stand-Alone Program
+
+	A stand-alone program is a program you can execute without
+	CP/M in I8080. The program performs a disk file access and
+	console I/O by calling the BIOS module of I8080 directly.
+
+2. Execution Environment
+
+	A stand-alone program is stored in Intel hexa format under the host
+	operating system. This file can be created using assembler under CP/M.
+	However, the coding suitable for the operating system is necessary 
+	when the program runs under the different operating system from CP/M.
+
+	The program starts from the address 0 instead of 100H. At the beginning
+	of the execution of the program, the program counter is the only
+	register whose content is initialized. The other registers need to be
+	initialized. Note that the value of the stack pointer isn't 
+	initialized, either.
+
+	To terminate the execution of the program, an I8080 instruction,
+	HLT, should be executed. After the termination of the program,
+	it exits to the host operating system. The program can't be
+	terminated by executing RET instruction or jumping to the address 0.
+
+3. BIOS 
+
+	A stand-alone program can perform input and output functions 
+	using the service corresponding to BIOS under CP/M. This, however,
+	doesn't mean that the program calls CP/M BIOS. When a stand-alone 
+	program is executing, CP/M BIOS doesn't exist.  The program uses
+	only service functionally corresponding to CP/M BIOS.
+
+	To utilize BIOS functions, an I8080 instruction, ESC is used.
+	ESC instruction is two bytes and consists of two EDH. It also
+	has a one byte operand that represents the function number.
+	In total, 12 functions are defined below.
+
+	0	System initialization
+	1	Program reload
+	2	Keyboard checking
+	3	Character input from keyboard
+	4	Character output to display
+	5	Character output to printer
+	6	Character output to aux
+	7	Character input from aux
+ 	12	Setup of disk I/O buffer
+	13	Sector input from disk
+	14	Sector ouput to disk
+	15	Printer checking
+
+
+4. Disk Input/Output
+
+	A stand-alone program can access to a file in the host operating 
+	system because of the virtual disk. In that case, please keep in
+	mind things discussed below.
+
+	Files accessed from the program must exist before it starts 
+	executing. It is impossible to detect the end of file when either
+	reading or writing files. You can make a file bigger by writing 
+	to the file, although you cannot make it smaller.
+
+5. Input/Output Instructions
+
+	A stand-alone program can perform input and output using not only BIOS
+	calls but input/ouput instructions of I8080. When using the I8080
+	instructions, the input and output operations are not performed by 
+	the host hardware but the simulation of the instructions.
+
+	To use the input/output instructions, you need to create the 
+	appropriate simulation program for devices around LSI and record
+	the validity of ports used for I/O operations. After you create
+	the program, you need to recompile I8080 itself.
+
+	In default, this feature is selected with an option if no available 
+	port exists. 
+
+
+6. Parameter passing and returned value in BIOS call
+
+	Some functions need parameters. The values of parameters will be stored 
+	in C register or BC register pair. When a function returns a value, 
+	the returned value will be stored in A register. However, as for the 
+	function 13 and 14, DE register pair will be used for parameters.
+
+	The functions 13 and 14 uses the indirect method to get the disk 
+	address information. The parameter those functions receive is the 
+	address of a three byte long area in memory. Each byte, there, 
+	specifies a drive number, track number and sector number respectively. 
+	In DE register pair, the first address of the area will be stored 
+	as a parameter.
+
+	The number from 0 to 7 is acceptable for the disk drive number. 
+	The disk drive number 0 corresponds to CP/M disk drive A and
+	so on up to the drive H. The valid track number is from 0 to 76.
+	However, the tracks 0 and 1 are valid only if a physical drive
+	is available. In the virtual disk, the number from 2 to 76 is
+	valid. The sector number is valid from 0 to 25.
+
+
+7. Description of BIOS functions
+
+	0 System initialization
+
+	This function is called only once immediately after CP/M BIOS is loaded.
+	Although this function is defined for the historical reasons,
+	it actually does nothing. It can be ignored in the stand-alone 
+    	program.
+
+	1 Program reload
+	
+	This function reloads a currently executing program into memory.
+	It is defined for CP/M warm start. If the reload is successful,
+	it returns 0 in register A. If it fails, a value but 0 is returned.
+	When this function is used in a stand-alone program, note that the 
+	contents of the boot file is loaded and overwrites in memory.
+
+	2 Keboard checking
+
+	This function checks if the keyboard is ready to receive input
+	(File handle 0 in MSDOS). If it is ready, 0FFH is returned in register
+	A. If not, 0 is returned.
+
+	3 One character input from keyboard
+	
+	This function inputs a character from keyboard (File handle 0 in 
+	MSDOS). The character is stored in register A. If there is no 
+	character from the keyboard, it waits until a character is available. 
+	No echo of the character is performed.
+
+	4 One character ouput to display
+
+	This function outputs a character to dispaly (File handle 1 in MSDOS).
+	The output character is stored in register C. If the display is not
+	ready, this function waits until the display is ready.
+
+	5 One character output to printer
+
+	This function outputs a chracter to printer (File handle 3 in MSDOS).
+	The output character is stored in register C. If the printer is not
+	ready, this function waits until the printer is ready.
+
+	6 One character ouput to aux
+
+	This function ouputs a character to auxiliary device (File handle 4 in
+	MSDOS).
+	The output character is stored in register C. If the device is not
+	ready, this function waits until the device is ready.
+
+	7 One character input from aux
+
+	This function inputs a character from the auxiliary device (File handle
+	is 4 in MSDOS). The input character is stored in register C. If a 
+	character is not ready, this function waits until one is available.
+
+	12 Setup of disk I/O buffer
+
+	This function sets up a disk I/O buffer. The buffer address is 
+	stored in a register pair BC.  The size of the buffer is at most 
+	128 byte long.
+	Once this function is used to allocate a buffer, all disk access is
+	performed through this buffer until the buffer is set up again.
+	A buffer isn't set up after a stand-alone program starts executing.
+	The result will not be guaranteed when the disk is accessed without
+	setting up an I/O buffer. The same is true when the buffer size exceeds
+	the limit.
+
+	13 Sector input from disk
+
+	This function inputs a sector from the virtual disk. It is called
+	after the address where the sector address is stored is entered
+	in register pair DE. The contents of the sector that is specified
+	with the sector address is transferred into the buffer already
+	set up by BIOS 12. If the transfer is successful, it returns 0 in
+	register A. If it fails, any value but 0 is returned.
+	If the specified sector address doesn't exist in the virtual disk,
+	the contents of the buffer will be unknown, although it will terminate
+	normally.
+
+	14 Sector output to disk
+
+	This function outputs a sector to the virtual disk. It is called
+	after the address where the sector address is stored is entered in
+	register pair DE. The contents of the buffer by already set up
+	with BIOS 12 is transferred into the specified sector. If the transfer
+	is successful, it returns 0 in register A. If an error occures,
+	the function returns any value but 0.
+	If the specified sector address doesn't exist in the virtual disk,
+	the contents of the buffer will be unknown although it will terminate
+	normally.
+	
+	15 Printer checking
+
+	This function checks if the printer (File handle 3 in MSDOS) is ready 
+	to output. If the printer is ready, the function returns 0FFH in 
+	register A. Otherwise, it returns 0.
+
+
+
+	
+
+

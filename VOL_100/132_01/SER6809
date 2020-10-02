@@ -1,0 +1,70 @@
+;+
+;	Serial Input routine for the 6809
+;	I/O port configured for Radio Shack color computer
+;-
+bitime	=	0x176	;Time constant for 1200 baud bit interval
+halfbit	=	0x29	; 1/2 bit time for center bit sync
+IPORT	=	0xFF22	; Color computer i/o port address
+IMASK	=	1	; Bit position of input bit in port
+;
+;+
+;	input call to receive a character
+;-
+serinp:
+	.byte	0x1A,0x50	;orcc 50, kill interrupts
+	bsr	inwait		;get character
+	clr	b
+	.byte	0x1E,0x89	;Exg B,A
+	rts			;exit, character in b
+;
+;+
+;	inwait	waits for an input character to start and
+;	receives it.
+;-
+inwait:
+	mov	IPORT,a
+	and	$IMASK,a		; Get the bit out
+	beq	inwait		; wait on line = 0 
+;
+serget:
+	.byte	0x34,0x34	;PSHS X,Y,B
+	.byte	0x10,0x8E,0,8	;LDY #8 = bitcounter
+	.byte	0x8E
+	.word	halfbit	;LDX bitime /2 
+	clr	a		; clear receive register
+;+
+;	sync up on the start bit transition
+;-
+sync:
+	mov	IPORT,b	;get port value
+	and	$IMASK,b		;Test bit value
+	bne	sync		;wait on start bit = 1
+start:
+	.byte	0x30,0x1F	;LEAX -1,X
+	beq	assemble	;one half bit time has expired
+	mov	IPORT,b
+	and	$IMASK,b
+	beq	start		;count down the start bit
+	mov	$-1,a		; Glitch on start,return error
+	.byte	0x35,0x34	;PULS X,Y,B
+	rts			;error exit
+assemble:
+	.byte	0x8E
+	.word	bitime		; set one bit time wait
+assemb1:
+	.byte	0x30,0x1F	; LEAX -1,x ,dec bit timer
+	bne	assemb1
+	mov	IPORT,b
+	and	$IMASK,b
+	beq	assemb2
+	or	$0x80,a		; or in the bit
+assemb2:
+	.byte	0x31,0x3F	;LEAY -1,Y decr. bit count
+	beq	seriox		; exit if done
+	lsr	a		; move the bit down for the next pass
+	bra	assemble
+seriox:
+	.byte	0x35,0x34	;PULS X,Y,B
+	rts			; character in A
+ter in A
+cracter

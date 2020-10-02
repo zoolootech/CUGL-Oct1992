@@ -1,0 +1,176 @@
+/*  VERSION 0001    (DATE: 28.III.85)  (TIME: 9:54 am)                  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+	Modified: To QE from e (ver 4.6a) by J.W. Haefner -- Oct 84-Mar 85
+
+	FILE: qe8
+
+	FUNCTIONS: loc,gettext,getline,inject,deltp,puttext,readtext,getc,
+			opentext,balloc,error
+
+	PURPOSE: get and put text lines into and out of storage
+
+*/
+
+#include "qe.h"
+
+loc(line,move)	/*returns line+move, adjusted to be within text*/
+int line, move;
+{
+	int y;
+
+	if ( (y=line+move) < 1) y=1;
+	if (lastl == UNKNOWN && y > lastread) readtext(y);
+	if (y > lastl) return lastl;
+	return y;
+}
+
+gettext(line)	/*makes 'line' the current line*/
+int line;
+{
+	strcpy(text,getline(line));
+	cline=line;
+}
+
+char *getline(line)	/*returns address of text of line 'line' and updates
+		  	  page usage*/
+int line;
+{
+	int slot;
+
+	line=loc(line,0);
+	if ( (slot=pageloc[tp[line].page]) <= 0)
+		slot=swappin(tp[line].page);
+	if (usage[slot] > FREE) usage[slot]=++clock;
+	return slotaddr[slot] + tp[line].moffset;
+}
+
+inject(line,txt)	/* inserts 'txt' after 'line' */
+int line;
+char *txt;
+{
+	int l, p, balloc();
+	struct addr anaddr;
+
+	if ( &tp[lastread+2] >= slotaddr[tppages]) {
+		/*need another slot to store tp's in */
+		if (tppages+2 == slotsinmem) {
+			error("Too many lines of text");
+			return FAIL;
+			}
+		if (usage[tppages] == NOTAVAIL) /*ie page is being alloc'ed into*/
+			allocp=PAGESIZE+1; /*force alloc into new page*/
+		swapout(tppages);
+		usage[tppages++]=NOTAVAIL;
+		}
+	if (++line < ++lastread)
+		movmem(&tp[line],&tp[line+1],(lastread-line)*sizeof(anaddr));
+	tp[line].moffset=p=balloc(1+strlen(txt));
+	tp[line].page=newpage;
+	strcpy(p+npaddr,txt);
+	if (lastl != UNKNOWN)lastl++;
+	return line;
+}
+
+deltp(from,num)	/*deletes 'num' lines from 'from' onwards by shifting pointers*/
+int from, num;
+{
+	struct addr anaddr;
+
+	movmem(&tp[from+num],&tp[from],(lastread+1-(from+num))*sizeof(anaddr));
+	if (lastl != UNKNOWN) lastl-=num;
+	lastread-=num;
+	if (lastl < 1)lastl=1;
+	if (lastread < 1)lastread=1;
+}
+
+puttext()	/*replaces cline's text if it has been altered*/
+{
+	int p, cp, balloc();
+
+	if (altered) {
+		if (!trail) {
+			for (cp=strlen(text)-1; cp >= 0 && isspace(text[cp]);
+				 cp--) text[cp]='\0';
+			}
+		tp[cline].moffset=p=balloc(1+strlen(text));
+		tp[cline].page=newpage;
+		strcpy(p+npaddr,text);
+		altered=NO;
+		}
+}
+
+readtext(line)	/*reads file being edited into virtual memory until 'line'
+		  is read, or eof.  If eof, sets lastl to number of last line
+		  read.  File is assumed to be already open*/
+int line;
+{
+	char txt[LLIM], *t;
+	int i, c, l;
+
+	while (lastread < line) {
+		for (i=0, t=&txt[0]; i < LLIM && ((c=getc(textbuf)) >= ' ' ||
+			c != '\n' && c != FAIL && c != ENDFILE); i++)
+			    if (c) *(t++)=c;
+			else i--;
+		if (txt[i-1] == '\r') t--; 
+		*t='\0';
+		if ( (l=inject(lastread,txt)) == FAIL) goto toomuch;
+		else if ((lastread=l)%100 == 0) putlineno(lastread);
+		if ( (goteof= c == ENDFILE || c == FAIL) )  goto eof;
+		}
+	return;
+
+eof: 
+	fclose(textbuf);
+toomuch: 
+	lastl=lastread;
+}
+
+opentext(name)	/*open the file being edited for reading*/
+char *name;
+{
+	if (fopen(name,textbuf) == FAIL) {
+		error("Can't open file");
+		name[0]='\0';
+		lastl=1;
+		return FAIL;
+		}
+	return YES;
+}
+
+balloc(n)	/*allocate and return the offset in newpage of a vector size n*/
+unsigned n;
+{
+	sint slot;
+
+	if (allocp  + n >= PAGESIZE) {
+		/*no room in current newpage; get another*/
+		if (pageloc[newpage] > 0)usage[pageloc[newpage]]=INUSE;
+		pageloc[++newpage]=slot=freememslot();
+		usage[slot]=NOTAVAIL;
+		allocp=0; 
+		npaddr=slotaddr[slot];
+		}
+	allocp+=n;
+	return allocp-n;
+}
+
+error(message)
+char *message;
+{
+	if (errmess != NULL) return;
+	gotoxy(32,0);
+	puts(errmess=message);
+	resetcursor();
+	inbufp=0;
+}
+
+ifting pointers*/
+int from, num;
+{
+	str

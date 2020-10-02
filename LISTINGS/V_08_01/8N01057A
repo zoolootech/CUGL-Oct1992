@@ -1,0 +1,83 @@
+*****Hermite (Listing 2)*****
+
+
+#define SUB(i,j,k) (i)*(k)+(j)
+
+
+double Hermite (x,y,n,norm,lambda,k,flag,res,err)
+/*
+ *  Given n data points (x[],y[]) find the Hermite cubic approximation
+ *  to this data using the k nots lambda[]. If flag = true then find the
+ *  knots from the routine app_knots() otherwise lambda[] is set by the
+ *  user. The 2k result is returned in res[] and the error at each point
+ *  is returned in err[].The overdetermined system of equations is 
+ *  solved with respect to the value of norm, uses L1-norm if norm = 1,
+ *  uses the L2-norm if norm = 2, and uses the minimax norm if norm = 3.
+ *  The return value z is the size of the resultant norm.
+ */
+double *x,*y,*lambda,*res,*err;
+int n,norm,k,flag;
+{
+double *a,z;
+int i,j,l,kk,m,m2;
+/*
+ *   Find whether the knots are to be computed.
+ */
+if (flag) app_knots (x,n,lambda,k);
+/*
+ *   Now form the system of equations one equation per data point.
+ */
+m2 = n*2*k;
+/*
+ *  Allocate space for the matrix.
+ */
+a = (double*)calloc(m2,sizeof(double));
+if (a==0) printf ("\n NO DYNAMIC SPACE AVAILABLE");
+else
+  {
+    for (i=0; i<m2; i++) *(a+i) = 0.0;
+    coeff_cubic (a,n,m,x,y,lambda,k);  /* Set up the matrix.  */
+      switch (norm)
+        {
+          case 1:
+               z = L1_approx(a,n,m,m,y,res,err);  /* L1-norm solution  */
+               break;
+          case 2:
+               z = CH_lsq (a,n,m,m,y,res,err);    /* L2-norm solution  */
+               break;
+          default:
+               z = Cheby (a,n,m,m,y,res,err);     /* Minimax norm solution  */
+               break;
+        }
+   free (a);
+  }
+return (z);
+}
+
+
+
+void app_knots (x,n,lambda,k)
+/*
+ *  Given n x[] values compute k knots lambda[] such that the 
+ *  distribution of points in each interval is nearly the same.
+ */
+double *x,*lambda;
+int n,k;
+{
+int i,j,s,t;
+lambda[0] = x[0];
+lambda[k-1] = x[n-1]; 
+if (k>2)
+    {
+     i = n/(k-1);  j = (n-(i*(k-3)))/2;
+     lambda[1] = x[j];
+     if (k>3)
+            {
+             s = j;
+             for (t=2; t<k-1; t++)
+                {s+=i;
+                 lambda[t] = x[s];
+                }
+           }
+    }
+}

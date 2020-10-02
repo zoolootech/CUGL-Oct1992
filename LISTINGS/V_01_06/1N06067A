@@ -1,0 +1,353 @@
+/**********************************************************
+ * SAMPLE.C
+ * Dialog Postprocessing Demonstration 
+ * (c) Stuart Browning,1990
+ */
+
+#define LINT_ARGS
+#define NOMINMAX
+
+#include <stdio.h>
+#include <windows.h>
+#include "sample.h"
+
+HANDLE    hInst;             
+
+long FAR PASCAL MainWindowProc(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL MainDialogFunc(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL PostProcessProc1(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL PostProcessProc2(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL About(HWND,unsigned,WORD,LONG);
+
+/***********************************************************
+ * WinMain()
+ */
+int PASCAL WinMain(hInstance,hPrevInstance,lpCmdLine,nCmdShow)
+    HANDLE hInstance;
+    HANDLE hPrevInstance;
+    LPSTR  lpCmdLine;
+    int nCmdShow;
+    {
+    WNDCLASS WndClass;
+    HWND hWnd;
+    MSG msg;
+
+    hInst=hInstance;                            
+    /*
+     * Register Main Window Class
+     */
+    if (!hPrevInstance){
+       WNDCLASS WndClass;
+       WndClass.lpszClassName = (LPSTR)"MainWindow";
+       WndClass.hInstance     = hInstance;
+       WndClass.lpfnWndProc   = MainWindowProc;
+       WndClass.style         = CS_HREDRAW|CS_VREDRAW;
+       WndClass.hbrBackground = CreateSolidBrush(
+                                  RGB(0xFF,0xFF,0x80));
+       WndClass.hIcon         = NULL;
+       WndClass.lpszMenuName  = (LPSTR)"MainMenu";
+       WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+       WndClass.cbClsExtra    = NULL;
+       WndClass.cbWndExtra    = NULL;
+       if (!RegisterClass(&WndClass))
+          return(NULL);
+       }
+    /*
+     * Create Main Window
+     */
+    hWnd=CreateWindow("MainWindow",            
+                      "Dialog Postprocessing Demonstration",    
+                      WS_OVERLAPPEDWINDOW, 
+                      CW_USEDEFAULT,       
+                      0,                   
+                      CW_USEDEFAULT,       
+                      0,                   
+                      NULL,                
+                      NULL,                
+                      hInstance,           
+                      NULL);               
+    if (!hWnd)
+      return(NULL);
+    /*
+     * Message Loop
+     */
+    while (GetMessage(&msg,NULL,0,0)){   
+       TranslateMessage(&msg);
+       DispatchMessage(&msg);
+       }
+    return (msg.wParam);
+    }
+/**********************************************************
+ * MainWindowProc()
+ */
+long FAR PASCAL MainWindowProc(hWnd,message,wParam,lParam)
+    HWND hWnd;
+    unsigned message;
+    WORD wParam;
+    LONG lParam;
+    {
+    switch (message){
+       case WM_CREATE:
+            ShowWindow(hWnd,SW_SHOWNORMAL);
+            UpdateWindow(hWnd);
+            break;
+       case WM_CLOSE:
+       case WM_ENDSESSION:
+            DestroyWindow(hWnd); 
+            break;
+       case WM_COMMAND:
+            switch(wParam){
+                case IDM_ABOUT:
+                     DoDialogParam(hInst,
+                                   hWnd,
+                                   "ABOUT",
+                                   About,
+                                   0L);
+                     break;
+                case IDM_EXIT:
+                     SendMessage(hWnd,WM_CLOSE,0,0L);
+                     break;
+                case IDM_OPTION1:
+                     DoDialogParam(hInst,
+                                   hWnd,
+                                   "SAMPLEDLG",
+                                   MainDialogFunc,
+                                   0L);
+                     break;
+                case IDM_OPTION2:
+                     DoDialogParam(hInst,
+                                   hWnd,
+                                   "SAMPLEDLG",
+                                   MainDialogFunc,
+                                   PostProcessProc1);
+                     break;
+                case IDM_OPTION3:
+                     DoDialogParam(hInst,
+                                   hWnd,
+                                   "SAMPLEDLG",
+                                   MainDialogFunc,
+                                   PostProcessProc2);
+                     break;
+                default:break;
+                }
+            break;
+       case WM_DESTROY:
+            PostQuitMessage(0);
+            break;
+       default:return(DefWindowProc(hWnd,
+                                    message,
+                                    wParam,
+                                    lParam));
+       }
+    return(NULL);
+    }
+/**********************************************************
+ * DoDialogParam
+ */
+BOOL DoDialogParam(hInst,hWnd,Resource,lpProc,InitParm)
+    HANDLE hInst;
+    HWND hWnd;
+    char *Resource;
+    FARPROC lpProc;
+    DWORD InitParm;
+    {
+    FARPROC lpfn;
+    BOOL ReturnCode;
+    lpfn = MakeProcInstance(lpProc,hInst);
+    ReturnCode=DialogBoxParam(hInst,
+                              Resource,
+                              hWnd,
+                              lpfn,
+                              InitParm);
+    FreeProcInstance(lpfn);
+    return(ReturnCode);
+    }
+/**********************************************************
+ * MainDialogFunc
+ */
+BOOL FAR PASCAL MainDialogFunc(hDlg,message,wParam,lParam)
+    HWND hDlg;
+    unsigned message;
+    WORD wParam;
+    LONG lParam;
+    {
+    static FARPROC lpPostProcessProc;
+    switch (message){
+       case WM_INITDIALOG:   
+            SetWindowText(hDlg,
+                          "Main Dialog Function");
+            SetDlgItemText(hDlg,
+                           ID_LITERAL1,
+                           "Not much excitement here !");
+            /*
+             * Check lParam. If it is not NULL, store the
+             * pointer in a static FARPROC pointer.
+             */
+            if(lParam!=NULL)
+               lpPostProcessProc=MakeProcInstance(
+                                 (FARPROC)lParam,
+                                 hInst);
+            else
+               lpPostProcessProc=NULL;
+            /*
+             * If PostProcessProc pointer passed, call it
+             */
+            if(lpPostProcessProc!=NULL)
+               if ((BOOL)CallWindowProc(lpPostProcessProc,
+                                        hDlg,
+                                        message,
+                                        wParam,
+                                        lParam))
+                  break;
+            break;
+       case WM_MOVE:
+            /*
+             * If PostProcessProc pointer passed, call it
+             */
+            if(lpPostProcessProc!=NULL)
+               if ((BOOL)CallWindowProc(lpPostProcessProc,
+                                        hDlg,
+                                        message,
+                                        wParam,
+                                        lParam))
+                  break;
+            return(FALSE);
+       case WM_CLOSE:
+            SendMessage(hDlg,WM_COMMAND,ID_OK,0L); 
+            break;
+       case WM_COMMAND:
+            switch(wParam){
+               case ID_OK:
+                    /*
+                     * If PostProcessProc pointer passed, call it
+                     */
+                    if(lpPostProcessProc!=NULL)
+                       if ((BOOL)CallWindowProc(lpPostProcessProc,
+                                                hDlg,
+                                                message,
+                                                wParam,
+                                                lParam))
+                           break;
+                    if(lpPostProcessProc!=NULL)
+                       FreeProcInstance(lpPostProcessProc);
+                    EndDialog(hDlg,TRUE);
+                    break;
+               default:return(FALSE);
+               }
+            break;
+       default:return(FALSE);
+       }
+   return(TRUE);
+   }
+/**********************************************************
+ * PostProcessProc1
+ */
+BOOL FAR PASCAL PostProcessProc1(hDlg,message,wParam,lParam)
+   HWND hDlg;
+   unsigned message;
+   WORD wParam;
+   LONG lParam;
+   {
+   switch (message){
+      case WM_INITDIALOG:   
+           SetWindowText(hDlg,
+                         "PostProcessProc1 Override");
+           SetDlgItemText(hDlg,
+                          ID_LITERAL1,
+                          "Message:WM_INITDIALOG");
+           SetDlgItemText(hDlg,
+                          ID_LITERAL2,
+                          "Action:Changes caption");
+           return(TRUE);
+      case WM_COMMAND:
+           switch(wParam){
+              case ID_OK:
+                   SetDlgItemText(hDlg,
+                                  ID_LITERAL1,
+                                  "Message:WM_COMMAND");
+                   SetDlgItemText(hDlg,
+                                  ID_LITERAL2,
+                                  "Action:Confirms OK");
+                   if (MessageBox(hDlg,
+                                  "Are you Sure you wish to close ?",
+                                  "Confirm",
+                                   MB_OKCANCEL|MB_ICONQUESTION)
+                                   ==IDCANCEL)
+                      return(TRUE);
+                   else return(FALSE);
+              default:return(FALSE);
+              }
+           break;
+      default:return(FALSE);
+      }
+  return(TRUE);
+  }
+/**********************************************************
+ * PostProcessProc2
+ */
+BOOL FAR PASCAL PostProcessProc2(hDlg,message,wParam,lParam)
+   HWND hDlg;
+   unsigned message;
+   WORD wParam;
+   LONG lParam;
+   {
+   static RECT rc;
+   switch (message){
+      case WM_INITDIALOG:   
+           SetWindowText(hDlg,
+                         "PostProcessProc2 Override");
+           SetDlgItemText(hDlg,
+                          ID_LITERAL1,
+                          "Message:WM_INITDIALOG");
+           SetDlgItemText(hDlg,
+                          ID_LITERAL2,
+                          "Action:Changes caption");
+           GetWindowRect(hDlg,&rc);
+           return(TRUE);
+      case WM_MOVE:   
+           SetDlgItemText(hDlg,
+                          ID_LITERAL1,
+                          "Message:WM_MOVE:");
+           SetDlgItemText(hDlg,
+                          ID_LITERAL2,
+                          "Action:Please don't move me !");
+           MoveWindow(hDlg,
+                      rc.left,
+                      rc.top,
+                      rc.right-rc.left,
+                      rc.bottom-rc.top,
+                      TRUE);
+           return(TRUE);
+      default:return(FALSE);
+      }
+   return(TRUE);
+   }
+/**********************************************************
+ * About()
+ */
+BOOL FAR PASCAL About(hDlg,message,wParam,lParam)
+   HWND hDlg;
+   unsigned message;
+   WORD wParam;
+   LONG lParam;
+   {
+   switch (message){
+        case WM_CLOSE:
+             SendMessage(hDlg,WM_COMMAND,ID_OK,0L); 
+             break;
+        case WM_COMMAND:
+             switch(wParam){
+                case ID_OK:
+                     EndDialog(hDlg,TRUE);
+                     break;
+                default:return(FALSE);
+                }
+             break;
+        default:return(FALSE);
+        }
+    return(TRUE);
+    }
+
+
+
+

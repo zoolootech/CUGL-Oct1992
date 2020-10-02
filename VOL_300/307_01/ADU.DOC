@@ -1,0 +1,896 @@
+
+
+
+
+
+
+
+
+
+
+
+
+                         şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄş
+                                      AN
+                                   ADAPTABLE
+                                     DISK
+                                    UTILITY
+
+                         şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                          AME Computing Systems 1989
+                                16 Leyte Drive
+                             Surrey Downs  SA 5126
+                                   Australia
+
+
+
+CONTENTS
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+
+                                                            Page
+
+Section 1.  Overview                                        1
+
+            1.0 Introduction                                1
+            1.1 Operation                                   1
+            1.2 Adjusting the PC's                          1
+                Disk Format Tables                          1
+            1.3 Adapting the Utility                        1
+            1.4 Determining the Disk Format                 2
+
+Section 2.  Commands                                        8
+            
+            2.1   Dump                                      8
+            2.2   Edit                                      8
+            2.3   Read a Sector                             8
+            2.4   Write a Sector                            9
+            2.5   Increment or Decrement                    9
+                  Sector or Track
+            2.6   Set/Specify Current                       9
+                  disk location
+            2.7   Vary disk parameter limits                10
+            2.8   Sector Translation and                    11
+                  Format Skew
+            2.9   Disk Copy                                 12
+            2.10  Modify Disk Base Table
+            2.11  Log Drive                                 12
+            2.12  Copy                                      12
+            2.13  Quit                                      12
+
+
+Section 3. Examples                                        13
+
+Tables:  1. Contents of the PC's DISK_BASE table            3
+         2. Disk status bytes                               4
+
+Listings:  1. C structure                                   5
+           2. Typical calling technique                     5
+           3. Functions                                     6
+        
+                           AN ADAPTABLE DISK UTILITY
+
+SECTION 1.  OVERVIEW
+
+1.0   Introduction
+
+There are many reasons for wanting to read non-standard formats.
+These range from wishing to look at backup disks created through
+such programmes as PC-BACKUP, FASTBACK, to reading other computer
+disk formats.  However, probably the most common reason is that
+the PC, to most people, was not their first machine.  Many of us
+started with CP/M and Apple IIs before graduating to the PC and
+we had to find some way of porting that old data to the PC.  If
+you still have the old computer, no problem, just load up a copy
+of MITE or PROCOMM on the PC and then with one of the many public
+domain CP/M communication packages, connect an RS-232 link
+between the computers, and that's it.  Many other utilities have
+in-built formats and work on the premise your disk format just
+'must' be supported and have no inbuilt tools to allow you to
+adapt the package to your format. 
+
+1.1 Operation
+
+ADU, for an Adaptable Disk Utility, will scan the disk, building
+up a disk parameter table. Once such a table is set up you can
+adjust any of the disk operating system dependencies such as
+system track offsets, before reading and editing.  The user
+interface follows other utilities by providing an inbuilt full
+screen editor, so that patching and editing the disk is a simple
+task.
+
+It should be noted that this disk utility has been designed to
+specifically work with only floppy disk drives.  Hence even
+though you may specify greater than 2 drives, this does not infer
+that the system fixed disk can be scanned.  Thus, for example if
+drives A: and B: are 360k drives and drive C: is a fixed disk,
+and drive D: is a 3.5" floppy, ADU will ignore drive C:.  Hence
+under this senario you may log drives 0,1 or 3.  The reason for
+this is that ADU will always use INT 13H for all its disk I/O to
+ensure compatibility.
+
+ADU is also limited by the physical limits of the PC's Floppy
+Disk Controller.  That is if the FDC can read 360k, 1.2M, 1.44M
+drives then it will function correctly provided the disk format
+recording method is Modified Frequency Modulation (MFM) or
+Standard Frequency Modulation (FM).  The recording methods used
+by Apple (GCR) is incompatible with the PC's disk controller and
+cannot therefore be used to read Apple disks.  The method
+normally used to overcome this problem is to design a device
+which is format insensitive and reads all the disk data
+irrespective of gaps and format fields etc.  Software is then
+used to re-construct the data.
+
+
+1.2 Adjusting the PC's Disk Format Tables
+
+The standard PC diskette format is made up of 40 tracks, each
+containing 9 sectors of 512 bytes/sector.  Vary this in any way
+and the PC chokes.  The PC will make a great deal of noise
+recalibrating and retrying but in vain, a point not lost on
+software vendors who protect their product through this form of
+copy protection.  For an interesting article on how to achieve a
+limited
+level of copy protection see Micro Systems/Journal, July/August
+1986.
+  
+The first step in achieving a more flexible and unconstrained
+disk utility was to tell the PC's FDC to adapt to a non-PCDOS
+type disk format.  It is the IBM PC's BIOS with its inbuilt
+flexibility in allowing many of its functions to be table driven
+that solves the problem.  For instance, each time the BIOS is
+called to perform a disk function through INT 13H, it calls BIOS
+routine GET_PARM which indexes into a table called DISK_BASE. 
+DISK_BASE is a collection of FDC parameters which tells the BIOS
+in what manner the FDC chip must be programmed to correctly read
+the diskette.  Table 2 explains the variables and a partial
+listing from the disk utility ADU is included as listings 1 to 3
+in order to demonstrate how to vary the DISK_BASE pointer from
+within a high level language.
+
+1.3 Adapting the Utility
+  
+Some of the parameters relating to the GAP lengths must be
+determined empirically and are of most concern during attempts to
+read multiple sectors during a diskcopy or formatting process. 
+This is due to the fact that these GAPs are basically buffers
+designed to allow the controller's data separator the option of
+'turning off' during splices or periods of unknown data.  If the
+Phase Locked Loop (PLL) within the data separator was not
+instructed to turn off, it may get out of synchronisation and
+thereby not be able to lock onto the identification (ID) marks. 
+An incorrect GAP setting can thus 'turn off' the data separator
+during an area of good data.  Errors of this type normally
+manifest themselves as 'Time out errors' (BIOS return code 80H). 
+The BIOS's diskette status area is maintained at address
+0040:0041.  The diskette status data map is shown in Table 2.
+
+
+
+1.4 Determining the Disk Format
+
+ADU determines the disk format by first replacing the current
+generic disk vector with an alternate set as shown in Listing 2. 
+Once this vector is in place, ADU calls the BIOS by using INT
+13H.  The call to the BIOS's disk I/O routine is done with a
+generic set of parameters.  Thus, if the BIOS does not return an
+error then the set of parameters chosen is correct for the
+particular disk.  If, on the otherhand, the BIOS does return an
+error then the parameter you are trying to determine is adjusted. 
+ For example, the bytes/sector code would be continually varied
+from 00 to 05 on, say, track 0, sector 1 until a nil error is
+returned.  This obviously represents the bytes/sector. Once the
+number of bytes/sector is determined, it is a small matter to
+begin a sector 1 looking for the total number of sectors by
+incrementing the sector number performing a seek/verify until an
+error occurs.  This error would then represent the sector limit. 
+Next, look for a match on side 1 to determine the number of
+sides.  We're almost there:  all we need to know now is the
+number of tracks, set an upper limit and begin stepping out.  The
+number of sectors per block are user definable, as are all the
+other parameters, but defaults to 8 sectors per block.  The
+number of sectors/block is only important during the copying of
+CP/M type disks.  As with other parameters, the block size is
+able to be varied so if you don't want to work in blocks then
+just set sectors/block to one. 
+
+
+                                
+                  
+                     
+                                                            
+     DB   11001111B ;SRT=C, HD UNLOAD=F                     
+     DB   2         ;HEAD LOAD=1,MODE=DMA                   
+     DB   37        ;WAIT AFTER OPERATION UNTIL             
+                    ;MOTOR TURNS OFF                        
+     DB   2         ;CODE FOR 512 BYTES/SECTOR              
+                    ;1=256,2=512,3=1024 ETC                 
+     DB   9         ;LAST SECTOR ON TRACK                   
+     DB   2AH       ;GPL IS GAP3 LENGTH FOR DATA            
+                    ;READ AND DETERMINES HOW LONG           
+                    ;VCO WILL 'IDLE'.  MUST BE              
+                    ;ADJUSTED.                              
+     DB   0FFH      ;DATA LENGTH, LEAVE AT 0FFH             
+     DB   50H       ;GAP3 LENGTH FOR FORMAT COMMAND         
+                    ;MUST BE ADJUSTED FOR SOME              
+                    ;DISK FORMATS.                          
+     DB   0F6H      ;FORMAT FILLER BYTE. CAN BE             
+                    ;ALTERED IF REQUIRED.                   
+     DB   25        ;HEAD SETTLING TIME (MILLI SECONDS)     
+     DB   4         ;MOTOR START TIME (1/8 SECONDS)         
+                                                            
+Table 1: Contents of the PC's DISK_BASE table.
+
+                                                            
+Note:
+
+The set of parameters contained in DISK_BASE are used by the
+BIOS for normal diskette operations. This paramater block is
+pointed to by the BIOS variable DISK_POINTER located at
+0000:0078, which is equivalent to the address of interrupt
+1EH. This pointer value can be redirected to point to a new
+set of parameters thus allowing the PC to access non DOS
+type formats. 
+           
+
+  
+SEGMENT 0040:OFFSET   
+   
+OFFSET  LABEL            DESCRIPTION   
+   
+003E    SEEK_STATUS      DRIVE RECALIBRATION STATUS   
+                         BITS 3-0 = DRIVE 3-0. DRIVE   
+                         NEEDS RECAL IF BIT = 0   
+   
+003F    MOTOR_STATUS     MOTOR STATUS   
+                         BIT 3-0 = DRIVE 3-0 AND   
+                         INDICATES DRIVE IS   
+                         CURRENTLY RUNNING   
+   
+0040    MOTOR_WAIT       COUNTER BEFORE DRIVE   
+                         TIME OUT. JAMMING A    
+                         LOWER VALUE THAN 37 WILL   
+                         REDUCE THE NORMAL WAIT TIME.   
+   
+0041    DISKETTE_STATUS  BIOS RETURNS STATUS BYTE HERE   
+                         TIME_OUT       80H   
+                         BAD_SEEK       40H   
+                         BAD_CONTROLLER 20H   
+                         BAD_CRC        10H   
+                         DMA_BOUNDARY   09H   
+                         BAD_DMA        08H   
+                         SECTOR_NOT_FND 04H   
+                         WRITE_PROTECT  03H   
+                         BAD_ADDR_MARK  02H   
+                         BAD_CMD        01H   
+   
+0042    CONTROLLER_STAT  AN AREA OF 7 BYTES IS RESERVED   
+                         FOR BIOS TO FILL WITH THE    
+                         CONTROLLER STATUS BYTES.  SEE   
+                         THE I8272 DATA SHEET FOR THE   
+                         VALUES RETURNED.   
+   
+   
+Table 2: Disk Status Bytes.   
+             
+Note:
+
+The PC's BIOS maintains a set of status bytes in the PC's
+low memory area.  Data segment 0040  
+is used to store these and other variables.  The hardware
+disk analyser makes use of these bytes.  
+  
+  
+
+
+
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄÄş
+Listing 1.  C structure to define the parameters
+          contained in the PC BIOS's DISK_BASE.    
+    
+    
+typedef struct {                       
+     unsigned char srt;            /* Step rate            
+*/    
+     unsigned char hld;            /* Head load time       
+*/    
+     unsigned char motor_wait;     /* Motor Wait time      
+*/    
+     unsigned char bytes_sect;     /* Bytes/Sector code    
+*/    
+     unsigned char eot;            /* Last sector          
+*/    
+     unsigned char rw_gap;         /* Gap 3                
+*/    
+     unsigned char dtl;            /* Data length norm 0xff
+*/    
+     unsigned char format_gap;     /* Gap used in format   
+*/    
+     unsigned char format_fill;    /* Format fill (f6h)    
+*/    
+     unsigned char hs;             /* Head step period     
+*/    
+     unsigned char motor_start;    /* Motor start time     
+*/    
+} disk_base;                       /* disk_base template   
+*/    
+    
+/*    
+     Declarations to user disk_base.    
+*/    
+    
+disk_base  alien_base, dos_base;   /* disk base structures 
+*/    
+disk_base  far *pc_disk_vector;    /* pointers to both the 
+*/    
+disk_base  far *alien_disk_vector; /* standard and alien   
+*/    
+                                   /* disk bases           
+*/  
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄÄÄ
+
+
+
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄÄÄÄÄÄş
+ 
+Listing 2.  Typical calling technique to routines 
+          which setup alien disk_base by filling
+          disk_base with alternate parameters, and
+          then altering the disk_parameter pointer
+          to point to the new DISK_BASE. (See listing 3)
+  
+   
+pc_disk_vector = get_disk_vector(); /* save standard table 
+*/   
+set_alien_parms();                  /* fill the alien      
+*/   
+                                    /* disk_base with some 
+*/   
+                                    /* initial values      
+*/   
+set_disk_vector(alien_disk_vector); /* replace standard
+table */  
+                                    /* with alien table    
+*/   
+ 
+
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄş
+
+
+
+ 
+
+
+
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄÄÄ
+
+
+Listing 3.        Functions which are called by both ADU.C
+            and DE.C to modify the disk_base parameters
+            and to manipulate the disk_parameter
+            pointer to point to the modified disk_base.
+            See listing 2 for method of interfacing.  
+
+/*
+      Get the current disk vector by asking DOS    
+   to fetch the interrupt vector from 0x1E.  The    
+   pointer is returned, and is saved by the calling    
+   module.
+*/
+   
+disk_base far *get_disk_vector() {    
+struct SREGS segregs;    
+disk_base far *longptr;    
+unsigned long ls,lo;    
+    
+     inregs.h.ah = 0x35;           /* DOS function number */ 
+  
+     inregs.h.al = 0x1E;           /* Disk vector number */ 
+  
+     intdosx (&inregs,&outregs,&segregs);    
+     ls = (unsigned long)(segregs.es << 16);   
+     lo = (unsigned long)outregs.x.bx;    
+     longptr = (disk_base far *)(ls | lo);   /* convert to
+the */  
+  
+                                             /* correct type
+*/    
+     return (longptr);    
+}    
+/*    
+     Replace current disk vector with the value    
+     pointed to by vectptr.  This routine is normally    
+     used to swap between the Alien and PC disk vectors.    
+*/    
+    
+set_disk_vector(vectptr) disk_base far *vectptr; {    
+struct SREGS segregs;    
+    
+     inregs.h.ah = 0x25;    
+     inregs.h.al = 0x1E;    
+     inregs.x.dx = FP_OFF(vectptr);    
+     segregs.ds  = FP_SEG(vectptr);    
+     intdosx (&inregs,&outregs,&segregs);    
+     return outregs.x.ax;    
+}    
+/*    
+     Initialise all default variable settings.  Used    
+     during initial programme activation and during logs.   
+
+*/    
+set_alien_parms() {    
+    
+/* Standard DOS format   */    
+    
+     dos_base.srt = 0xcf;              
+     dos_base.hld = 2;    
+     dos_base.motor_wait = 25;    
+     dos_base.bytes_sect = 2;    
+     dos_base.eot = 8;    
+     dos_base.rw_gap = 0x2a;    
+     dos_base.dtl = 0xff;    
+     dos_base.format_gap = 0x50;    
+     dos_base.format_fill = 0xf6;    
+     dos_base.hs = 25;    
+     dos_base.motor_start = 4;    
+         
+/*    
+ Basic ALIEN disk data.  Most parameters are    
+ modified on the fly during the disk    
+ identification process.    
+*/    
+    
+     alien_base.srt = 0xcf;    
+     alien_base.hld =  2;    
+     alien_base.motor_wait = 0x25;    
+     alien_base.dtl = 0xff;    
+     alien_base.format_fill = 0xf6;    
+     alien_base.hs = 25;    
+     alien_base.motor_start = 4;    
+  
+/* Gap tables can be obtained from 8272 data sheet */ 
+   
+     if (alien_base.eot <= 9) {         /* standard format
+*/    
+          alien_base.rw_gap = 0x2a;    
+          alien_base.format_gap = 0x50;    
+     }                                  /* see 8272 data
+sheet */  
+  
+     else {                             /* for other
+formats*/    
+          alien_base.rw_gap = 0x02;    
+          alien_base.format_gap = 0x20;    
+     }     
+şÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ
+ÄÄÄÄÄÄÄÄÄş
+ 
+ 
+ 
+     
+SECTION 2: COMMANDS
+            
+This section describeS each command including examples
+of each command. Apart from the disk commands, the
+function keys F1, F3 and F4 provide the following
+utility:
+
+      F1 will give you help.      
+      F3 will re-issue the command without CR.     
+      F4 will re-issue the command with CR.     
+     
+All commands are either single or double letter. 
+Capital letters in the following sections indicate the
+number of significant  letters in the command. Commands
+may be separated by a semicolon.  For example, +S;R;E 
+will increment the sector, read it in, then go to edit
+mode. 
+
+
+2.1  Dump 
+
+Dump has no arguments and will dump the current buffer
+contents to the screen in both hex and ascii formats. 
+No editing facilities are provided within Dump, as this
+command is normally used when searching the disk for
+data sequences, etc.   To assist searching for
+particular text issue the command >>+s;r;d. Pressing F4
+will interrupt the dump and increment the sector.  Be
+aware that this command will not increment the sector
+past the last sector on the disk.       
+        
+     
+2.2  Edit
+
+The Edit command has no arguments, and will allow full
+screen editing of the current buffer's contents.  The
+following keys on the PC are supported in this mode:
+
+      Left Arrow:             Move the cursor left
+      Right Arrow:            Move the cursor right
+      Up Arrow:         Move the cursor towards the top of
+the                                       buffer
+      Down Arrow:             Move the cursor towards the
+bottom of the                                   buffer
+      End:              Moves the cursor to the end of the
+buffer
+      Home:                   Move the cursor to the
+beginning of the                                            
+buffer
+      Esc:              Exits the Edit session WITHOUT
+saving to                                       disk
+      F5:               Writes buffers contents to disk
+      F6:               Reads disk sector to buffer for
+editing etc
+
+
+2.3  Read a Sector
+
+Read  [T] [S] [H]:
+
+The Read command will read either the currently
+selected disk sector into memory, or the command line
+sector location.  If a command line option is used the
+default ADU Track, Sector and Head parameters are
+altered to the ones selected as part of the Read
+command.  Either decimal or hexadecimal numbers may be
+entered.  For example:
+
+      Read 0x20 9 0     will read in sector 9, side 0 of
+track 32                                        into memory.
+      Read 21,3,1             will read in sector 3, side 1
+of track 21                                           into
+memory.
+
+2.4  Write a Sector
+
+Write  [T] [S] [H]:
+
+The Write command will write the current buffer
+contents to the currently selected disk sector.  If a
+command line option is used the default ADU Track,
+Sector and Head parameters are altered to the ones
+selected as part of the Write command.  Either decimal
+or hexadecimal numbers may be entered.  For example:
+
+      Write 0x20 9 0    will read in sector 9, side 0 of
+track 32                                        into memory.
+      Write 21,3,1            will read in sector 3, side 1
+of track 21                                           into
+memory.
+
+
+2.5  Increment or Decrement Sector or Track
+
++S,-S
+
+This command will decrement or increment the current
+sector by unity.  If an attempt is made to increment or
+decrement outside the selected sector range an error
+message is generated.
+
+
++T,-T
+
+This command will decrement or increment the current
+track by unity.  If an attempt is made to increment or
+decrement outside the selected track range an error
+message is generated.
+
+
+2.6  Set/Specify Current disk location
+
+The set command allows a sector, track, or block to be
+selected without having to use either the increment or
+decrement command.  The set command is restricted to
+the allowable disk parameter limits.  
+
+Set Block (SB):  Sb N
+      
+The set block command will set the current block number
+to N.  This has the effect of calculating the relevant
+track, side and sector number and setting the
+parameters accordingly.
+
+Set Track (ST): ST N:
+
+The set track command will set the current track number
+to N.
+
+Set Sector (SS): SS N:
+
+The set Sector command will set the current track
+number to N.
+
+Set Head (SH):  SH N     
+     
+The set head command will set the current head number
+to N.
+
+
+2.7  Vary disk parameter limits  
+
+The Vary Parameter command allows a configuration of
+disk parameters to be selected which are outside of
+those which were detected by the disk utility as it
+logged the disk.  This is a useful command if it is
+considered the disk has an un-usual formatting scheme. 
+The vary command varies the internal ADU parameters
+whereas the Set command varies the current controller
+head position.  For example:
+
+      VT 41             Vary number of tracks to 41
+      VO 2        Vary system offset to 2
+
+Vary Block  VB N:
+
+The Vary block command will vary the number of
+calculated blocks on the disk.  The default
+sectors/block is assumed to be 8.  If you do not wish
+to work in terms of blocks (used in C/PM) you may use
+VB to set the sectors/block to 1.
+
+Vary Track  VT N:
+
+The Vary Track command will vary the number of tracks
+on the disk from that which was calculated at log.  For
+example a 40 track drive can be set to 41 in order to
+look at the outer tracks.
+
+Vary siZe  VZ N:
+
+The Vary siZe command will vary the number of bytes per
+sector. For example to vary from the standard value of
+512 bytes/sector, for example VZ 1024
+would set the number of bytes/sector to 1024.
+
+Vary End of Track  VE N:
+
+The Vary End of track command will vary the number of
+sectors/track on the disk.  For example if a DOS disk
+is scanned, and ADU has determined the disk has 9
+sectors/track VE 10, will allow you to look for higher
+numbered sectors on other tracks.
+
+Vary Heads  VH N:
+
+The Vary Heads command allows the number of heads to be
+altered.
+
+Vary Drives  VD N:
+
+This command allows the number of Drives in a system
+configuration to be varied from the current default
+which is two.  That is A and B.
+
+Vary Offset  VO N:
+
+The Vary Offset command allows the block offset to be
+varied.  The block offset is normally the beginning of
+the data on the disk, and is a way of jumping over the
+system area on the disk.  If this is not desirable then
+the VO 0 command would allow ADU to begin calculating
+blocks from track 0, sector 1, of side 0.  Also, for
+example if you wished to map the disk from a the
+perspective of the sectors of the disk then the command
+VO 0; VB 1 would allow ADU to map blocks to sectors. 
+Hence the number of blocks would be the number of
+sectors on the disk.  This would allow you to copy
+every sector of the disk into a DOS file.  
+
+Taking the example one step further.  Assume you wished
+to copy the first sector of every track on side 0 to a
+DOS file called side0.doc, the following command
+sequence would be used:
+
+      VO 0; VB 1; VE 1; VH 1; C C:side0.doc 0/39
+
+
+2.8  Sector Translation and Format Skew
+
+Some disk systems employ interleaving through either
+software or hardware in order to speed the response of
+the disk access.   This technique is essential in a
+matching of the CPU speed to the disk controller speed
+so that the minimum latency is obtained during disk
+accesses. 
+
+ADU supports hardware skew when formatting a disk, so
+that if a disk needs to be copied which employs a
+hardware sector interleaving then it will be necessary
+to use the Format Skew (FS) command to vary the
+physical location of the sectors on the disk's track.              
+   
+
+When reading a disk which has employed software skew
+then it follows that the data coming off the disk will
+not be in sequence, hence the Sector Translation (SX)
+command can be used to rearrange the sequence of
+sectors on being read off the disk.  This allows you to
+ensure the data being search or copied will be
+contiguous.
+
+Format Skew  FS [n1,n2,n3.....]
+
+This command allows the Format process to work
+correctly when carrying out a "disk copy" of an Alien
+Disk.  Once you have determined the skew the source
+disk has used, using the Sector Translate (SX) command
+then the FS command is used to key in the correct
+sector sequence, for example
+
+      FS 1,3,5,7,9,2,4,6,8
+
+programmes ADU with a sector interleaving of 2. 
+
+The single command of FS will output the current skew
+table onto the status line.
+
+Sector Translate SX [n1,n2,n3.....]
+
+This command allows you to experiment with the Disk's
+sector translation in order to ensure that the data
+being read off the disk is contiguous.  This command
+provides an important tool when attempting to copy
+files off an alien disk to a DOS file or attempting to
+carry out a "Disk Copy".
+
+If a text file exists on the alien disk of greater in
+length than one sector then it should be possible to
+vary the sector table until the text appears contiguous
+when using a command sequence such as +s;r;e.  If you
+wish to make a disk copy of the disk then the format
+skew (FS) may also have to be used.
+
+The single command of SX will output the current
+translation table onto the status line.
+
+
+
+2.9  Disk Copy DC
+
+The current implementation of Disk Copy assumes you
+will be copying from the A drive to the B drive and
+that furthermore both A and B drives have compatible
+hardware.  This disk copy process will begin by reading
+disk A on a cylinder per cylinder basis before
+formatting the B disk using the current disk and format
+skew tables.  After a successful cylinder format,
+diskcopy will then write the cylinder to the disk in
+drive B.
+
+If the Disk Copy command appears to time out, then this
+could be due to the controller timing out due to an
+incorrect Format Skew.  Vary the format skew using the
+FS command.
+
+
+2.10  Modify Disk Base Parameters  DB [p1,p2,p3....]
+
+The Disk Base command allows the PC's disk base
+parameter Block to be modified independently of this
+programme's Log facility.  Thus if the disk scan is not
+successful for any reason, then the disk parameters may
+be adjusted or tunned to a particular disk.
+
+The command DB without parameters will display the
+current contents of the table.  If there is any doubt
+about the purpose of these values, refer either to the
+IBM PC Technical Reference Manual, the Intel 8272 data
+sheet.  Table 1 gives a succinct summary of the purpose
+of the parameters. 
+
+2.11  Log Drive   L [N]
+
+The log command allows a new disk to be analysed.  If
+no drive is specified then the existing drive is used. 
+The number of drives allows is variable using the Vary
+Drive command.  The default value is always two.
+
+   
+2.12  Copy Command  C N:fn Blocks Range
+
+This command allows a range of blocks to be copied from
+the alien disk to a contiguous DOS file.  The block
+size is dependent on the user and can be set to one
+sector representing a block by using the command VB 1. 
+This is a very useful command if a file resides on an
+obscure formatted disk.  Determining the format is
+usually straight forward and coupled with this command
+allows the old file to be easily ported to the PC.  If
+you wish to copy individual sectors, rather than the
+number of sectors which make up a block, then set the
+block size to 1 sector/block using the VB 1 command.
+
+For example to copy a file client.doc from an alien
+disk to a your a DOS disk in your B drive use the
+command:
+
+            C B:client.doc 2,3,4,6/39.
+
+This command sequence copies blocks 2,3,4 and 6 to 39
+inclusive from the alien disk to the B drive under the
+file name client.doc
+
+   
+2.13  Quit Command:  Q
+
+The quit command restores all the PC's environment to
+that which existed prior to ADU being invoked and then
+exits ADU.
+
+
+
+
+SECTION 3: EXAMPLES
+ 
+ 
+ 
+>>C c:junk.dat 2/32        ; copies blocks 2 to 32 from
+alien disk 
+                           ; into file junk.dat on
+drive C: 
+ 
+>>R 32,2,0;E               ; reads data into buffer
+from track 32, 
+                           ; sector 2, side 0, and then
+enters edit mode 
+>>W                        ; ...after editing W will
+write back to disk 
+                           ; using the current
+Track,sector and side. 
+ 
+>>+T;R;D                   ; Increment Track, read data
+into buffer and 
+                           ; then dump to screen. 
+ 
+As a final example, suppose you want, for some reason,
+to copy only  sector 1 from each track on side 0 to a
+file on say drive C, for analysis, Then the following
+commands will allow you to do it: (note they could all
+be on one line!) 
+ 
+>>Vb 1                     ; set sectors per block to 1
+
+>>Ve 1                     ; set disk to 1 sector per
+track 
+>>Vh 1                     ; set disk to single sided
+ie one head 
+>>Vo 0                     ; set first block offset to
+track 0 
+>>C C:sects.1 0/39         ; copy blocks 0 to 39 to
+file sects.1 
+                           ; on drive C:               
+                    
+ 
+>>Vz 1024                  ; vary sector size, useful
+for looking 
+                           ; at strange disks which are
+for example 
+                           ; copy protected. 
+
+

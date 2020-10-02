@@ -1,0 +1,200 @@
+
+LISTING.1
+
+
+#include <os2def.h>
+#include <io.h>
+#include <fcntl.h>
+#include <bios.h>
+#include <dos.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
+ 
+#pragma pack(1)
+//
+
+/***************************************************************************/
+/* #defines                                                                */
+/***************************************************************************/
+#define CHUNK 0x2000L
+ 
+#define SUPER_BLOCK 0x10
+ 
+#define FIXED_DRIVE 0x81
+#define HPFS_PART 7
+ 
+#define  DOWN (-1)
+#define  SAME 0
+#define  UP 1
+ 
+#define STDOUT 1
+                                 // Return codes to DOS
+#define NO_ARG    1
+#define BAD_DISK  2
+#define NO_FILE   3
+#define IO_ERR    4
+//
+
+/***************************************************************************/
+/* structures                                                              */
+/***************************************************************************/
+typedef ULONG RSN;               // Relative Sector Number
+ 
+typedef struct {
+   BYTE  BootInd;
+   BYTE  BH;
+   BYTE  BS;
+   BYTE  BCyl;
+   BYTE  SysInd;
+   BYTE  EH;
+   BYTE  ES;
+   BYTE  ECyl;
+   RSN   PartitionOffset;
+   ULONG NumSect;
+} PartitionEntry;
+ 
+static struct {
+   char  BootCode [0x1BE];
+   PartitionEntry Partitions[4];
+   USHORT Signature;
+} VolumeBootSector;
+ 
+static struct {
+   char  JMP[3];
+   char  OEM[8];
+   USHORT BytesPerSector;
+   BYTE  SectorsPerCluster;
+   USHORT ReservedSectors;
+   BYTE  NumOfFATs;
+   USHORT NumRootDirEntries;
+   USHORT SectorsInMedia;
+   char  MediaDescriptor;
+   USHORT SectorsIn1FAT;
+   USHORT SectorsInTrack;
+   USHORT NumOfHeads;
+   ULONG NumOfHiddenSectors;
+   ULONG LongSectorsInMedia;
+   char  BootCode[0x1DE];
+} PartitionBootSector;
+ 
+typedef struct {
+   USHORT uscDirEntrySize;       // 00
+   BYTE  bSplitFlag;             // 02
+#define     DIR_SPLITS  4
+#define     END_OF_DIR  8
+   BYTE  bFlags;                 // 03
+#define     FLAG_DIR    0x10
+   RSN   ulPointedSector;        // 04
+   ULONG ulDate1;                // 08
+   ULONG ulcFileLength;          // 0C
+   ULONG ulDate2;                // 10
+   ULONG ulDate3;                // 14
+   BYTE  bReserved2[6];          // 18
+   BYTE  bcNameLength;           // 1E
+   BYTE  bName[1];               // 1F    Variable length item
+} DirEntryType;                  //       Formal length 0x20 bytes
+ 
+typedef struct {
+   ULONG ulMagicNumber;          // 00
+   BYTE  bReserved1[8];          // 04
+   BYTE  bcEntryNameLen;         // 0C
+   BYTE  sEntryName[0xF];        // 0D
+   RSN   ulParentSector;         // 1C
+   BYTE  bReserved2[0x14];       // 20
+   USHORT uscExtendedAttributes; // 34
+   BYTE  bReserved3;             // 36
+   BYTE  bEntryType;             // 37
+   BYTE  bFragFileInd;           // 38
+#define     MANY_FRAGMENTS 0x80
+   BYTE  bReserved4[4];          // 39
+   BYTE  bcFragNum;              // 3D
+   BYTE  bReserved5[2];          // 3E
+   union {
+      struct {
+         ULONG ulcFragSectors;
+         RSN   ulFragSector;
+      }  ManyFrags[0xC];         // 40
+      struct {
+         ULONG ulcFragSoFar;
+         ULONG ulcFragSectors;
+         RSN   ulFragSector;
+      }  FewFrags[8];            // 40
+   } FragTable;
+   ULONG ulcFileLength;          // 58
+   BYTE  Reserved6[0x1A4];       // 5C
+} EntryFnodeType;
+ 
+typedef struct {
+   ULONG ulMagicNumber;          // 00
+   BYTE  bReserved1[4];          // 04
+   BYTE  bTopOfDir;              // 08
+//#define      IS_TOP      1     //       Bit on in "root" fnode of directory
+   BYTE  bReserved2[3];          // 09
+   RSN   ulParentSector;         // 0C
+   RSN   ulMyself;               // 10
+   DirEntryType FirstDirEntry;   // 14    Formal length 0x20 bytes
+   BYTE  bReserved3[0x7CC];      // 34
+} DirectoryClusterType;
+ 
+typedef struct {
+   ULONG ulMagicNumber;          // 00
+   RSN   ulMyself;               // 04
+   RSN   ulParentSector;         // 08
+   BYTE  bFragFileInd;           // 0C
+   BYTE  bReserved1[4];          // 0D
+   BYTE  bcFragNum;              // 11
+   BYTE  bReserved2[2];          // 12
+   struct {                      // 14
+      ULONG ulcFragSoFar;
+      ULONG ulcFragSectors;
+      RSN   ulFragSector;
+   } FragTable[1];               //       Formal length  0xC bytes
+   BYTE  bReserved[0x7E0];       // 20
+} FragmentedFileTableType;
+ 
+typedef struct {
+   BYTE  bReserved1[0xC];        // 00
+   RSN   RootDirFnode;           // 0C
+   BYTE  bReserved2[0x1F0];      // 10
+} SuperBlockType;
+//
+
+/***************************************************************************/
+/* global variables                                                        */
+/***************************************************************************/
+static struct diskinfo_t DiskInfo;
+static PartitionEntry *HPFSPartition;
+static USHORT BytesPerSector = sizeof (VolumeBootSector);
+static USHORT SectorsInFullTrack;
+static USHORT SectorsInSegment;
+static USHORT HugeShift;
+static RSN RootDirSector;
+static EntryFnodeType~r DirFnode;
+static DirectoryClusterType DirectoryCluster;
+static SuperBlockType SuperBlock;
+static union {
+   FragmentedFileTableType ManyFragsFnode;
+   EntryFnodeType FewFragsFnode;
+} FileFnode;
+static USHORT Level = 0;
+static ULONG FileSize;
+static char FileBuff[CHUNK];
+//
+
+/***************************************************************************/
+/* function definitions                                                    */
+/***************************************************************************/
+void _bios_disk_with_retry (struct diskinfo_t *Info);
+void DoFewFrags (EntryFnodeType *Fnode);
+void DoManyFrags (FragmentedFileTableType *FTable);
+void DoSectors (ULONG FragSize, RSN FragSector);
+BOOL FindDirEntry (char *EntryName, DirEntryType **Location);
+void FindFile (const char *path);
+void FindFileFnode (char *);
+void GetBootRecords (void);
+void GetRootDir (void);
+void GetRelativeSectors (RSN SectorLoc, USHORT SectorNum, void *Into);
+int main (int argc, char *argv[]);
+void MakeFilename (char *path, char *dir, char *filname);
+//

@@ -1,0 +1,94 @@
+
+/*============================start=================================*/
+/* mark_stack():    reports the amount of stack space that remains  */
+/* unused throughout a C program's execution; useful for adjusting  */
+/* the STACK size smaller to save memory; suitable for use with     */
+/* any Microsoft (MSC) or Borland (BC) C compiler, and for any      */
+/* memory model (T,S,M,C,L,H); software adapted from the book,      */
+/* ENCYCLOPEDIA C, by R.Radcliffe (Sybex/1991), Fig 15.12, Pg 645.  */
+/*==================================================================*/
+
+#include <dos.h>                    /* FP_SEG(), FP_OFF()           */
+#include <stdio.h>                  /* printf()                     */
+#include <stdlib.h>                 /* exit()                       */
+
+/*---------------------custom prototypes----------------------------*/
+
+void mark_stack(void);              /* custom function prototype    */
+static void report_stack(void);     /* custom function prototype    */
+
+/*---------------------extern/static data---------------------------*/
+
+#if defined(_MSC_VER)               /* _MSC_VER predefined by MSC   */
+    extern char end;                /* MSC stack bottom in crt0.asm */
+#elif defined(__TURBOC__)           /* __TURBOC__ predefined by TC  */
+    extern unsigned _stklen;        /* BC stack size for any model  */
+#else
+    #error "This software IS NOT suitable for your C compiler!!"
+#endif
+
+static char far * st_top;           /* TOS (high&) of unused stack  */
+static char far * st_bot;           /* BOS (low&) of unused stack   */
+static char far * ptr;              /* scratch pointer variable     */
+static unsigned st_seg;             /* current SS register value    */
+static unsigned st_ptr;             /* current SP (SS:offset) value */
+static char mark = 0xff;            /* any "clean" stack footprint  */
+static unsigned unused;             /* count of unused stack bytes  */
+
+/*--------------------function mark_stack()-------------------------*/
+
+void mark_stack(void)               /* begin function mark_stack()  */
+{
+#if defined(_MSC_VER)
+    _asm {                          /* MSC start of inline assembly */
+    mov st_seg, ss                  /* MSC get current SS register  */
+    mov st_ptr, sp                  /* MSC get current SP register  */
+    }
+#elif defined(__TURBOC__)           /* BC inline asm requires TASM  */
+    st_seg = _SS;                   /* BC get current SS register   */
+    st_ptr = _SP;                   /* BC get current SP register   */
+#endif
+
+FP_SEG(st_top) = st_seg;            /* TOS segment& for MSC + BC    */
+FP_OFF(st_top) = st_ptr;            /* TOS offset& for MSC + BC     */
+
+#if defined(_MSC_VER)               /* calculate MSC BOS far&       */
+    st_bot = (char far *) &end;
+#endif
+
+#if defined(__TURBOC__)             /* calculate TC BOS far&        */
+    FP_SEG(st_bot) = st_seg;
+  #if defined(__TINY__) || defined(__SMALL__) || defined(__MEDIUM__)
+    FP_OFF(st_bot) = 0xffffu - _stklen + 1u;
+  #elif defined(__COMPACT__) || defined(__LARGE__) || defined(__HUGE__)
+    FP_OFF(st_bot) = 0x0000u;
+  #endif
+#endif
+
+ptr = st_bot;                       /* set low& of unused stack     */
+while (ptr < st_top) *ptr++ = mark; /* walk "cleanly" on the stack  */
+atexit(report_stack);               /* log function with atexit()   */
+}                                   /* end function mark_stack()    */
+
+/*---------------------function report_stack()----------------------*/
+
+static void report_stack(void)      /* begin function report_stack()*/
+{                                   /* atexit() style prototype     */
+ptr = st_bot;                       /* set low& of unused stack     */
+while (*ptr++ == mark) unused++;    /* remaining "clean" footprints */
+printf("\nUnused Stack = %u Bytes", unused);
+}                                   /* end function report_stack()  */
+
+/*-------------------embedded test driver main()--------------------*/
+
+#if !defined(NDEBUG)                /* conditional compilation      */
+int main (void)                     /* embedded test driver main()  */
+{
+/* any auto/static data here!                                       */
+mark_stack();                       /* ENTER AS 1ST EXECUTABLE STMT */
+/* remaining logic of main() here!                                  */
+exit(0);                            /* report_stack() upon exit     */
+}                                   /* end function main()          */
+#endif
+
+/*==============================stop================================*/

@@ -1,0 +1,67 @@
+; @************************************************************************
+; @
+; @	This subroutine is modeled after the DeSmet PCIO.A routines.
+; @	It calls interrupt 10 to get the current cursor position.  In 
+; @	conjunction with the DeSmet routines, this allows you to save the 
+; @ 	current position, jump to a new area, and return.
+; @
+; @		Usage:		get_cur(&row, &col);
+; @
+; @     The parameters row and col are modified.  get_cur does not return 
+; @     a value. 
+; @
+; @************************************************************************
+		dseg
+;	equates for bios interface.
+
+;	the interrupt and codes for the screen interface interrupt.
+
+video		equ	10h		;interrupt for dealing with screen
+
+mode		equ	0		;code for setting new screen mode
+curtype		equ	1		;code for setting new cursor type
+setcur		equ	2		;code for addressing cursor
+readcur		equ	3		;code for reading cursor location
+readlp		equ	4		;code for reading light pen position
+setpage		equ	5		;code to select active page
+scrollup	equ	6		;code to scroll screen up
+scrolldn	equ	7		;code to scroll screen nown
+readch		equ	8		;code to read a character from screen
+writeach	equ	9		;code to write char and attributes
+writech		equ	10		;code to write character only
+setpal		equ	11		;code to set new setpal or border
+wdot		equ	12		;code to write a dot
+rdot		equ	13		;code to read a dot
+wtty		equ	14		;code to write as if teletype
+state		equ	15		;code to find current screen status
+
+
+
+		cseg
+;	get_cur_		get cursor position
+
+;				Usage:		get_cur(&row, &col);
+
+		public	get_cur_		
+get_cur_:				; clear rest of line
+		push	bp
+		mov	bp,sp
+		push	ax
+		push	dx
+		push	bx
+		mov	bh,0		;assume page zero_
+		mov	ah,readcur	;see where we are
+		int	video
+		mov	bx,[bp+4]	;addr(row)      
+		mov	al,dh		;get row
+		mov	ah,00		;and make full word
+		mov	[bx],ax
+		mov	bx,[bp+6]	;starting column
+		mov	al,dl		;get column
+		mov	[bx],ax
+		pop	bx
+		pop	dx
+		pop	ax
+		pop	bp
+		ret
+

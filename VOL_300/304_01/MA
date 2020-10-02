@@ -1,0 +1,255 @@
+.. Device independent macros; printer file should precede this.
+.if !\.x\=2 .ab "macros: bad version"
+.if !\.y\=0 .ab "macros: bad subversion"
+..........................................................
+.de finish
+.if continued .{\"need another page for footnotes
+.footer
+.}
+.if rflag .{\"still have references to print
+.bp
+.nf
+.references
+.br
+.rm references
+.nr rflag 0
+.}
+.if ilflag .{\"still have figs to list
+.bp
+.nf
+.figs
+.br
+.rm figs
+.nr ilflag 0
+.}
+.;;
+........................
+.de PAGINATION
+.he //-#-//
+.;;
+........................
+.nr H# 1
+.af H# I
+.de H
+.br
+.sp 2
+.ne 4
+^B\\H#\\.$1^b
+.nr H# +1
+.;;
+.........................
+..
+.ds RL0 L------l--------l-----------------------------------------------R
+..
+.de RL
+.if $ .rl "$1"
+.if $=0 .rl "\RL0\"
+.;;
+..........................
+.nr e# 1
+..
+.de En\"Equation numbering
+(\\e#\\)
+.bj
+.if $ .ds $1 \\e#\\
+.nr e# +1
+.;;
+..............\" REFERENCES with .RS,.RF
+.nr r# 1\"to enumerate references
+.nr rflag 0\"references flag
+.ds rn ^+\\r#\\^-
+........................
+.di references
+.ev 2
+.sp 2
+.ce 1
+^U^BREFERENCES^b^u
+.sp 1
+.ev
+.di
+.............................
+.de RS ;reference start 
+.br
+.ev 2
+.if $ .ds $1 \\rn\\
+.da references
+\\rn\\\\
+.;;
+.............................
+.de RF ;reference finish
+.br
+.sp 1
+.ev
+.di
+.nr r# +1
+.nr rflag 1
+.;;
+.........................
+.nr i# 1	;illustration number
+.nr ilflag 0	;illustration flag
+.........................
+.di figs
+.ev 2
+.ce 1
+^U^BFIGURE CAPTIONS^u^b
+.sp 1
+.ev
+.di
+.................................
+.de IS	;illustration caption
+.br
+.if $ .ds $1 \\i#\\
+.da figs
+.ev 2
+^BFig. \\i#\\ ^b
+.;;
+.................................
+.de IE	;illustration end cap.
+.br
+.sp 1
+.ev
+.di
+.nr i# +1
+.nr ilflag 1
+.;;
+.................................
+.. \" Paragraph macro related, following MM
+.nr Pi 5 \" # of leading blanks at head of paragraph
+.nr Ps 1 \" # blank lines between paragraphs
+.nr Pt 1 \" do indent
+.nr Pt 0 \" no indent
+.de P
+.br
+.sp Ps
+.ne 2
+.if $&0$1 .ti +Pi
+.if ($=0)&Pt .ti +Pi
+.;;
+.nr bottom \.p\-\.m3\-\.m4\
+.nr Fs 0 \" number of blank lines between before each footnote
+.nr fncnt 0\"footnote count for current page
+.nr leftover 0\"length of diversion, "fnotes"
+.nr f# 1 \"for enumeration of footnotes
+.nr continued 0\"flag when going to later page
+.ds fn ^+\\f#\\^-\"used to create superscripted reference to footnote
+.ds tag ""
+..
+.wh 1 pinit\"initialization at start of each page
+.wh 200 footer\"printing of footnotes; initially out of way
+..................................
+.de pinit
+.nr bottom \\.p\\-\\.m3\\-\\.m4\\
+..nr fncnt 0
+.nr cfnloc 0
+.ch footer \\.p\\-bottom
+.if leftover .{
+.di fnotes
+.ev 2
+.nr continued 1
+.nf
+.overflow
+.rm overflow
+.FE
+.}
+.;;
+........................
+.de footer
+.nr leftover 0
+.if fncnt>0 .{
+.ev 2
+.nf
+.separator
+.fnotes
+.br
+.rm fnotes
+.if '\\.z\\'overflow' .{
+.di
+.nr leftover \\dn\\
+.}
+.nr fncnt 0
+.ev
+.}
+.bp
+.;;
+..........................
+.de catchit
+.wh bottom-1
+.if fncnt>0 .di overflow
+.;;
+.de FS
+.ev 2
+.da fnotes
+.nr fncnt +1
+.sp Fs
+.fi
+.rm tag
+.ie $ .ds tag $1
+.el .{
+.ds tag "\\f#\\. "
+.nr f# +1
+.}
+\\tag\\\\
+.;;
+.....................
+.de FE
+.br
+.ev
+.di
+.nr leftover \\dn\\
+.nr cfnloc (\\dn\\+\\.m3\\+\\.m4\\+2)
+.ie (\\nl\\<(\\bottom\\-5))&((\\nl\\+2)>(\\.p\\-\\cfnloc\\)) .{
+.ch footer \\nl\\+2
+.wh bottom-1 catchit
+.}
+.el .{
+.ch footer \\.p\\-\\cfnloc\\
+.if \\nl\\>=(\\bottom\\-5) .nr continued 1
+.}
+.;;
+...............................
+.de separator
+.br
+.ti 0
+.ie !continued __________
+.el _____________________________________________________________
+.br
+.nr continued 0
+.;;
+........................
+.de signed
+.br
+.sp 3
+.ti 45
+$1
+.br
+.if $>1 .{
+.ti 45
+$2
+.br
+.}
+.if $>2 .{
+.ti 45
+$3
+.br
+.}
+.if $>3 .{
+.ti 45
+$4
+.br
+.}
+.;;
+..............................................
+.............. initializations ...............
+..............................................
+.ev 1\"for page header, footer environment
+.RL
+.ev
+.RL
+.ev 2 \"for diversions such as footnotes, endnotes,illustrations
+.RL
+.ev
+..
+.sc #
+.fo //DRAFT//
+.it 10 PAGINATION\"it will start after first page
+.em finish

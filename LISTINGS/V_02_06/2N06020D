@@ -1,0 +1,41 @@
+#include <stdio.h>
+#include "snooper.h"
+
+#ifndef NDEBUG
+int dump = 0;       /* use __EXTERN_DECL() to reference */
+                    /* 'dump' in other source modules...*/
+
+/* Typing "+help" on command line prints out
+ * argument explanation strings. .... */
+static DEBUG_ARGS Argtab[] = {
+"dump", &dump,"Dump called() argument to file 'debug.000'",
+0, 0, 0
+};
+#endif  /* NDEBUG */
+
+static char buffer[BUFSIZ];
+
+void print_byte(int x)
+{
+    /* Prints formatted string to file "debug.000"
+     * if 'dump' is non-zero and argument 'x' is
+     * negative.
+     */
+    __WATCH(dump && x < 0,__FIL0__,
+                 d_printf("called(): arg = %d\n", x));
+
+    /* continue ..... */
+}
+
+void main(int argc, char **argv )
+{
+    int i;
+    FILE *fp;
+
+    __GETARGS(Argtab);  /* extract "dump" from cmd line */
+    fp = fopen("testfile", "r" );
+    fread(buffer,1,BUFSIZ,fp);
+    for( i = 0 ; i < BUFSIZ ; ++i ) {
+        print_byte((int) buffer[i]);
+    }
+}

@@ -1,0 +1,321 @@
+/*-
+ *  ---------------------------------------------
+ *  File:       I8255FNC.C
+ *  Creator:    Blake Miller
+ *  Version:    01.00.00            October 1990
+ *  Language:   Microsoft Quick C   Version 2.0
+ *  Purpose:    Intel 8255A Digital IO Functions
+ *  ---------------------------------------------
+ */
+
+/*  Include Files ----------------------------*/
+#define     I8255FNC_C_DEFINED  1
+#include    "I8255GEN.H"
+#undef      I8255FNC_C_DEFINED
+
+/*  Function Prototypes ----------------------*/
+void I8255_init(I8255DAT *data,int address);
+void I8255_config(I8255DAT *data,int pa_dir,
+				  int pb_dir,int cl_dir,int ch_dir);
+void I8255_bitput(I8255DAT *data,int bit,int state);
+void I8255_bitget(I8255DAT *data,int bit,int *state);
+void I8255_put_byte(I8255DAT *data,int p_num,
+					unsigned char p_dat);
+void I8255_get_byte(I8255DAT *data,int p_num,
+					unsigned char *p_dat);
+void I8255_dump_bytes(I8255DAT *data);
+void I8255_load_bytes(I8255DAT *data);
+
+/*  ---------------------------------------------
+ *  Function Definitions
+ *  ---------------------------------------------
+ */
+
+/*- 8255 : Initialize Data Space -------------**
+ *  Initialize the data to safe values.
+ *  Passed:
+ *      pointer :   port data
+ *      integer :   I8255 base address
+ */
+void I8255_init (I8255DAT *data, int address)
+	{
+	data->stat = I8255_ST_OK;
+	data->base = address;
+	data->mode = 0;
+	data->adat = 0;
+	data->bdat = 0;
+	data->cdat = 0;
+	}
+
+/*- 8255 : Configure --------------------------**
+ *  Configure the 8255A for all ports in Mode 0.
+ *  Pass an integer representing the IN or OUT
+ *  state for each port.  TRUE (!0) will mean
+ *  input, and FALSE (0) will mean output.
+ *  Passed:
+ *      pointer :   port data
+ *      integer :   direction Port A
+ *      integer :   direction Port B
+ *      integer :   direction Port C Low
+ *      integer :   direction Port C High
+ */
+void I8255_config (I8255DAT *data, int pa_dir, int pb_dir,
+							   int cl_dir, int ch_dir)
+	{
+	data->mode = I8255_SET;
+	if ( pa_dir )   data->mode |= I8255_PA_IN;
+	if ( pb_dir )   data->mode |= I8255_PB_IN;
+	if ( cl_dir )   data->mode |= I8255_CL_IN;
+	if ( ch_dir )   data->mode |= I8255_CH_IN;
+	chp_portwt ( I8255_CNTRL(data->base), data->mode );
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Bit Put ----------------------------**
+ *  Set/Clear one of the bits in the 8255.
+ *  A state of 1 sets the bit and a state of
+ *  0 clears the bit.
+ *  Passed:
+ *      pointer :   port data
+ *      integer :   bit number
+ *      integer :   state : TRUE (!0) = SET,
+ *                          FALSE (0) = CLEAR
+ *      Loads stat with appropriate error code
+ */
+void I8255_bitput (I8255DAT *data, int bit, int state)
+	{
+	int             port;   /* port number  */
+	int             padd;   /* port address */
+	unsigned char   mask;   /* byte mask    */
+	unsigned char   oval;   /* out value    */
+
+	if ( (bit < 1) || (bit > 24) ){
+		data->stat = I8255_ST_BB;
+		return;
+		}
+	bit--;
+	port = ( bit / 8 );     /* port number (0 - 2)          */
+	bit = bit % 8;          /* modulo to get the bit number */
+	mask = 0x01;            /* assume low bit of byte       */
+	mask = mask << bit;     /* shift left to requested bit  */
+	if ( state ){           /* bit set  */
+		switch ( port ){
+			case 0:         /* port A   */
+				data->adat = data->adat | mask;
+				break;
+			case 1:         /* port B   */
+				data->bdat = data->bdat | mask;
+				break;
+			case 2:         /* port C   */
+				data->cdat = data->cdat | mask;
+				break;
+			}
+		}
+	else {                  /* bit clear    */
+		mask = ~mask;
+		switch ( port ){
+			case 0:         /* port A   */
+				data->adat = data->adat & mask;
+				break;
+			case 1:         /* port B   */
+				data->bdat = data->bdat & mask;
+				break;
+			case 2:         /* port C   */
+				data->cdat = data->cdat & mask;
+				break;
+			}
+		}
+	switch ( port ){
+		case 0:         /* port A   */
+			padd = I8255_PORTA (data->base);
+			oval = data->adat;
+			break;
+		case 1:         /* port B   */
+			padd = I8255_PORTB (data->base);
+			oval = data->bdat;
+			break;
+		case 2:         /* port C   */
+			padd = I8255_PORTC (data->base);
+			oval = data->cdat;
+			break;
+		default:        /* bad port number  */
+			data->stat = I8255_ST_BP;
+			return;
+			break;
+		}
+	chp_portwt ( padd, oval );
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Bit Get ----------------------------**
+ *  Read one of the bits in the 8255.
+ *  A state of 1 indicates a set bit and a state of 0
+ *  indicates a clear bit.
+ *  Passed:
+ *      pointer :   port data
+ *      integer :   bit number
+ *      pointer :   integer :   state :
+ *                  1 = SET, 0 = CLEAR
+ *      Loads stat with approrpiate error code.
+ *      Loads state with 0 or 1.
+ */
+void I8255_bitget (I8255DAT *data, int bit, int *state)
+	{
+	int             port;   /* port number  */
+	int             padd;   /* port address */
+	unsigned char   ival;   /* in value     */
+
+	if ( (bit < 1) || (bit > 24) ){
+		data->stat = I8255_ST_BB;
+		return;
+		}
+	bit--;
+	port = ( bit / 8);      /* port number (0 - 2)          */
+	bit = bit % 8;          /* modulo to get the bit number */
+	switch ( port ){
+		case 0:         /* port A   */
+			padd = I8255_PORTA(data->base);
+			break;
+		case 1:         /* port B   */
+			padd = I8255_PORTB(data->base);
+			break;
+		case 2:         /* port C   */
+			padd = I8255_PORTC(data->base);
+			break;
+		default:        /* bad port number  */
+			data->stat = I8255_ST_BP;
+			return;
+			break;
+		}
+	chp_portrd ( padd, &ival );
+	ival = ival >> bit;
+	ival = ival & 0x01;
+	*state = (unsigned int) ival;
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Byte Put ---------------------------**
+ *  Write one of the bytes in the 8255A.
+ *  The port number should be 1 - 3 as follows:
+ *  1 = Port A,  2 = Port B,  3 = Port C
+ *  Passed:
+ *      pointer         :   port data
+ *      integer         :   port number
+ *      unsigned char   :   port data
+ *      Loads stat with any error ID.
+ */
+void I8255_put_byte (I8255DAT *data, int p_num, unsigned char p_dat)
+	{
+	int             padd;   /* port address */
+
+	if ( (p_num < 1) || (p_num > 3) ){
+		data->stat = I8255_ST_BP;
+		return;
+		}
+	p_num--;
+	switch ( p_num ){
+		case 0:         /* port A   */
+			padd = I8255_PORTA(data->base);
+			data->adat = p_dat;
+			break;
+		case 1:         /* port B   */
+			padd = I8255_PORTB(data->base);
+			data->bdat = p_dat;
+			break;
+		case 2:         /* port C   */
+			padd = I8255_PORTC(data->base);
+			data->cdat = p_dat;
+			break;
+		default:        /* bad port number  */
+			return;
+			break;
+		}
+	chp_portwt ( padd, p_dat );
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Byte Get ---------------------------**
+ *  Read one of the bytes in the 8255.
+ *  The port number should be 1 - 3 as follows:
+ *  1 = Port A,  2 = Port B,  3 = Port C
+ *  Reads the 8255A and returns data in
+ *  variable as well as loading port data area.
+ *  Passed:
+ *      pointer :   port data
+ *      integer :   port number
+ *      pointer :   unsigned char : returned port data
+ *  Returns:
+ *      Loads stat with appropriate error code.
+ *      Loads p_dat with returned data.
+ */
+void I8255_get_byte (I8255DAT *data, int p_num,
+				   unsigned char *p_dat)
+	{
+	int             padd;   /* port address */
+	unsigned char   ival;   /* input value  */
+
+	if ( (p_num < 1) || (p_num > 3) ){
+		data->stat = I8255_ST_BP;
+		return;
+		}
+	p_num--;
+	switch ( p_num ){
+		case 0:         /* port A   */
+			padd = I8255_PORTA(data->base);
+			break;
+		case 1:         /* port B   */
+			padd = I8255_PORTB(data->base);
+			break;
+		case 2:         /* port C   */
+			padd = I8255_PORTC(data->base);
+			break;
+		}
+	chp_portrd ( padd, &ival );   /* input data   */
+	switch ( p_num ){
+		case 0:         /* port A   */
+			data->adat = ival;
+			break;
+		case 1:         /* port B   */
+			data->bdat = ival;
+			break;
+		case 2:         /* port C   */
+			data->cdat = ival;
+			break;
+		}
+	*p_dat = ival;
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Dump Bytes -------------------------**
+ *  Write all of the bytes from the data area to the 8255.
+ */
+void I8255_dump_bytes (I8255DAT *data)
+	{
+	chp_portwt ( I8255_PORTA(data->base), data->adat );
+	chp_portwt ( I8255_PORTB(data->base), data->bdat );
+	chp_portwt ( I8255_PORTC(data->base), data->cdat );
+	data->stat = I8255_ST_OK;
+	}
+
+/*- I8255 : Load Bytes -------------------------**
+ *  Read all of the bytes of the 8255 into the data area.
+ */
+void I8255_load_bytes (I8255DAT *data)
+	{
+	unsigned char   ival;   /* input value  */
+
+	chp_portrd ( I8255_PORTA(data->base), &ival );
+	data->adat = ival;
+	chp_portrd ( I8255_PORTB(data->base), &ival );
+	data->bdat = ival;
+	chp_portrd ( I8255_PORTC(data->base), &ival );
+	data->cdat = ival;
+	data->stat = I8255_ST_OK;
+	}
+
+/*-
+ *  -------------------------------------------------------
+ *  END I8255FNC.C Source File
+ *  -------------------------------------------------------
+ */
+

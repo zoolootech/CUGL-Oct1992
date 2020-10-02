@@ -1,0 +1,280 @@
+.he	/page #
+.ce 2
+A General Purpose Symbol Table Function Library
+by Robert Ramey
+
+Many programs manipulate words with associated data.
+These programs have a lot in common but are often written
+from scratch when it is really not necessary.  This article
+presents a set of functions written in the "C" programming
+language which can be incorporated into any program without
+recompilation.  This will eliminate the time spent coding,
+debugging and compiling these functions for each new
+application.  Since one set of functions suffices for all
+symbol table applications,  program improvement is much
+easier.  Any improvements in the functions
+are automatically incorporated in the programs that use them.
+Finally,  the functions are reentrant in that even though
+a given program may use more than one type of symbol table
+there are only one set of functions.  This will make the
+final resulting program smaller.
+
+An Illustration.  A Word Frequency Analysis Program.
+
+Listing 1 shows how the functions are used in a simple program.
+The object of the program is to read one or more files of text
+and print out a table indicating the number of times each word
+is used.
+
+The program starts by calling the function symmk() which allocates
+memory for management of the symbol table.  The first parameter
+is the size of the data structure to be associated with each
+symbol.  In this case that data structure is one integer to be
+used to accumulate the number of times that symbol is used.
+The second parameter is the hash frame factor.  For best
+results one should choose a number approximating the number of
+symbols expected to be placed in the table.  Why will become
+clear when the operation of the rountines is explained.
+The subrouine symmk() returns a pointer to a structure containing
+data used by the symbol table functions.  This pointer must be stored
+by the calling program and passed as a parameter when using
+any of the symbol table functions.  Its only useful
+function is to permit one program to use several types of
+symbol tables simultaneously.
+
+Next the command line is processed.  Each file named is opened
+and the file is processed by the function ldwords().  This
+function retrieves each word through the function getwrd.
+The function symlkup() is used to check to see if the word is
+in the symbol table already.  If the word is already in the table
+symlkup() returns a pointer to
+the string found in the symbol table.  symdat() is called
+to retrieve the address of the data related to the symbol.
+Finally this data is incremented to indicate that the word
+in the symbol table has reoccurred in the text.
+
+If the word is not found in the symbol table, symlkup() returns
+a NULL.  In this case symadd() is called.  symadd() like symlkup()
+returns a pointer to the new symbol in the text.  symdat() is
+again used to retrieve a pointer to data. This data is an
+integer to initialized with 1.
+
+Once all words in the text have been reviewed,  we want to
+retrieve all the symbols with their data to print the frequency
+table.  The function symdmp() is called repeatedly to retrieve the
+pointer to each symbol.  The first parameter used by symdmp() is
+as usual the symbol table pointer.  The second parameter indicates
+that this is the initial call (0) or a subsecuent call (!=0).
+On each call, symdmp() returns a pointer to a symbol table entry
+or NULL indicating that there are no more symbols in the table.
+The symbol pointers are not returned in any useful sequence.
+However it is garenteed that each symbol will be returned once
+and only once.  Again symdat() is used to find the data given the
+symbol.  As each symbol is retreived it is displayed by calling the
+standard library function printf().
+
+The Method Used.
+
+The basic method used by the functions is well known to most
+programers and documented in all books on data management.  
+Given a symbol, a numeric value within a limited range is created
+using a simple algorithm.  This is called hashing the symbol.
+That numeric value is used as an index to select a chain of structures
+to which the symbol is added.  When it comes time to search for
+a symbol the numeric index is calculated and the corresponding
+chain of structures is sequencially searched.  This is much
+shorter than searching among all the symbols would be.
+
+Data Structures Used.
+
+When designing this family of functions I wanted them to be general
+and efficient for a wide range of applications.  This is the only
+way to discourage the temptation to fiddle with the code for each
+application.  This has led to slightly unusual use of the "C" language.
+
+Two separate data structures are used.
+Neither structure can be described exactly in the "C" language.  The
+problem is that they are of variable length.  Hence, not all
+"C" constructs for dealing with structures can be used.
+When symmk() is called it returns a pointer to the following
+structure:
+
+.nf
+.ne 14
+SYMBOLTABLE
+
+Variable Name	Size		Function
+=============	====		========
+_element_size	sizeof(int)	contains the size of data structure
+				associated with each symbol.
+
+_hash_factor	sizeof(int)	contains the number of chains of
+				symbols maintained.
+
+_hash_table[1]	sizeof(SYMBOLENTRY *)	each element of the array
+		* (_hash_factor) points to the start of a chain of
+				symbols.
+.fi
+
+The _hash_table is declared to be an array of 1 element.
+One of the parameters used when symmk() is called is the hashing
+factor.  symmk() requests space sufficient store the above structure
+with this number of elements in _hash_table.  This ensures that
+although more than one element of _hash_table is accessed,  there
+will be no conflict with other storage in memory.  The "C" language
+does not prohibit access beyond array limits.  In fact _hash_table
+does not even have to be declared as an array.  I did so to make the
+more understandable.  We can use this structure in those operations
+which do not use its size.  That is, we can access elements through a
+structure pointer.
+However, we cannot use array syntax to access these structures,
+nor can we allocate fixed storage for such structures.
+
+Each time symadd() is called a structure of the following type is
+created:
+
+.nf
+.ne 13
+SYMBOLENTRY
+
+Size		Function
+====		========
+(_element_size)	Contains data area to be filled and read by
+		calling functions.
+
+sizeof(char *)	pointer to next symbol in chain.
+
+sizeof(char *)	pointer to previous symbol in chain.
+
+strlen(symbol)	NULL terminated string which is the symbol itself.
+.fi
+
+This structure has no variable names because it is not explictly
+described in the code.  A symbol table entry consists of the
+data to be manipulated by the calling functions,  pointers for
+a two way linked list and a variable length string which is
+the symbol itself.  This structure permits flexiblity in data
+and symbol sizes.  However we cannot use the standard "C"
+language structure operators.  Pointers to symbol table entries
+contain the address of the character string which is the symbol
+itself.  Hence standard string manipulation functions such as
+strlen(), strcpy(), etc. can be used with no problem.
+
+In order to retrieve the address of the data we must use a special
+function symdat() which returns a pointer to the data area of
+the symbol table entry.
+symdat() returns a character pointer.  However,  object pointed
+to is not a character.  It could be anything.  The value
+returned by symdat should always be cast to a pointer to the type
+of objects allocated.  This will permit the use symdat in
+constructs such as:
+
+	(OBJECT *)symdat(symbol)->object_member = 0;
+
+where OBJECT is a structure declared in the calling program.
+Failure to use casts in this case will result in execution
+errors on machines in which character pointers and other pointers
+have different formats.  Personally,  I think casts are underused.
+Often they will clarify what a piece of code is intended to do an
+help avoid particularly difficult hard to detect errors.  They take no
+runtime overhead unless they are really necessary, permit
+a program like LINT to be more useful, and make it much easier
+to port programs like this one to different machines.
+
+Summary of Functions
+
+In the table below the following types are assumed.  SYMBOLTABLE *
+is a pointer returned by a symmk() call. SYMBOLENTRY * is a character
+pointer containing the address of a symbol placed in the symbol table
+with the symadd() function.  Note that although this address can
+be used as string pointer to the value of the symbol,  the converse
+is not true.  That is a pointer to a string which is equal to the
+symbol not the same as a pointer to a symbol table entry.  Failure
+to make this distinction will produce disatrous results.
+In order to emphasize this distinction,  I have included the
+typedef statement defining SYMBOLENTRY as a character pointer.
+
+.nf
+SYMBOLTABLE *
+symmk(data_size,hash_factor)	Initializes a symbol table.
+				Returns pointer to symbol table
+				structure if successful.
+				Returns NULL if not enough memory
+				available.
+SYMBOLENTRY *
+symlkup(SYMBOLTABLE *,symbol)	Given character string, returns symbol
+				entry pointer if symbol is found in
+				table.  Otherwise returns NULL.
+SYMBOLENTRY *
+symadd(SYMBOLTABLE *,symbol)	Adds symbol to symbol table
+				allocating requiered data area.
+				returns pointer to symbol if success-
+				full, NULL otherwise.  Can only fail
+				for lack of available memory.
+void
+symdel(SYMBOLTABLE *,SYMBOLENTRY *) Deletes symbol from symbol table.
+				Returns no value.
+SYMBOLENTRY *
+symdmp(SYMBOLTABLE *,initial)	Retrieve each symbol once and only
+				once.  Returns NULL if no more symbols
+				in table.  Otherwise returns pointer
+				to next symbol if initial == FALSE
+				or first symbol if initial == TRUE.
+char *
+symdat(SYMBOLTABLE *,SYMBOLENTRY *) Returns character pointer
+				containing address of data area.
+void
+symrmv(SYMBOLTABLE *)		Deletes the entire symbol table and
+				returns allocated memory to memory
+				manager.
+.fi
+
+The operation of the functions is described within the code so I
+won't go into it here.  The manner of implementation has a number
+of implications if you use the functions.
+
+There is no checking of parameters passed to functions.  This is done
+in order to make the functions as fast as possible.  Generally speaking
+I don't think that programs that pass correct parameters should be
+penalized because someone may write programs that pass incorrect ones.
+Besides no function could easily make the distinction anyhow.
+
+symadd() does not check to see if the symbol already exists in the
+symbol table.  This means if your program is such that you can be
+sure symbols aren't repeated (sorted data for example) addsym wastes
+no time.  If you aren't careful you may add the same symbol
+to the table more than once.  In this case the functions symlkup(),
+and symadd() will return pointers to the last symbol entered.
+This can be very useful in some applications in which symbols have
+a temporary definition which differs from a more perminant one.
+An example of this is the "C" compiler which permits global and
+local symbols to be equal but with local symbols taking precedence.
+If the most recently added occurence of a symbol is deleted via
+symdel(), subsequent calls to symlkup() will return the previously
+added symbol.  This is extremely useful behavior is a side effect
+of the method of implementation of the functions symadd(), symlkup()
+and symdel().
+
+Possible Improvements
+
+The functions _nxtsym, _prvsym should really be implemented via
+preprocessor expansions.  I didn't do it as my preprocessor isn't
+complete.  symdat() should probably replaced in the calling
+program by a preprocessor expansion which includes proper
+type casting for each symbol table.  Routines could be added
+to save and reload entire symbol tables, thereby creating a system
+which can be used for indexing records.  The underlying algorithm
+could be altered or replaced to permit more operations such as
+sequencial retrieval of symbols, or retrieval of symbols given
+an approximate key.  None of these possible improvements would
+have to change the usage of the functions expained above.
+In fact, one could create a family of functions with different
+capabilities but all with the same usage.
+
+Acknowledgements
+
+The idea for this set of functions was pretty much stolen from
+our version of the RATFOR Software Tools package.  The functions have
+no author listed. The functions here are all new and exploit the
+flexiblity of "C".
+

@@ -1,0 +1,620 @@
+
+This is the README file for DJ's GCC port to DOS ("djgpp")
+
+Contents:
+    * Overview
+    * What's available
+    * How to install
+    * Common questions
+    * Deviations and Caveats
+    * Copyright information
+
+Disclaimer: This software is distributed WITHOUT ANY WARRANTY; without
+even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.
+
+DJ Delorie
+USmail: 24 Kirsten Ave, Rochester, NH 03867-2954, USA
+email:  dj@ctron.com
+
+
+
+
+
+Overview:
+
+This package contains a 32-bit 80386 DOS extender with symbolic
+debugger, a C/C++ compiler with utilities, development libraries, and
+source code.  It generates full 32-bit programs and supports full
+virtual memory with paging to disk. 
+
+Requirements:
+
+A 80386-based IBM compatible PC or PS/2, approximately 4-5Mb of hard
+drive space, and 512K RAM. 
+
+Supported Wares:
+
+* Up to 128M of extended memory (expanded under VCPI)
+* Up to 128M of disk space used for swapping
+* SuperVGA 256-color mode up to 1024x768
+* 80387
+* XMS & VDISK memory allocation strategies
+* VCPI programs, such as QEMM and 386MAX
+
+Unsupported:
+
+* DPMI programs, such as Windows 3.0
+* Multiprocessing (fork())
+
+
+
+
+File location:
+
+    host:      grape.ecs.clarkson.edu
+    login:     ftp
+    password:  send your e-mail address
+    directory: ~ftp/pub/msdos/djgpp
+
+Many thanks to the sysops at Clarkson for providing a home to djgpp!
+
+As a convenience to non-FTP users, djgpp is also stored on Clarkson's
+archive server, sun.soe.clarkson.edu.  To access the archive server,
+do this:
+   % mail archive-server@sun.soe.clarkson.edu
+   Subject: <none>
+   help
+   index msdos/djgpp
+   ^D
+
+NOTE: In accordance with FSF CopyLeft, you are not allowed to upload
+this program to a distribution site unless that site also makes the FSF
+sources for these programs available.  Please read the file COPYING for
+more details.  FSF sources are available on prep.ai.mit.edu, and on
+either grape.ecs.clarkson.edu or sun.soe.clarkson.edu
+
+NOTE: If your application links in object modules that were written
+by FSF, your application counts as a "derived work" and must obey
+the provisions of the FSF Copyrights.  See the file COPYING for
+details.  Specifically, the C++ classes in libc.a and obstacks are
+FSF works that are covered by the GNU GPL.  The mere act of compiling
+does not affect the copyright status of your program.
+
+
+File formats:
+
+    .ZIP format - djgpp.zip - one 2.2M file, contains everything.
+
+    split .ZIP - djgppzip.000 through djgppzip.005 (or so), each
+                 320K-ish.  Use the merge program to merge them into 
+                 djgpp.zip ("merge djgppzip djgpp.zip").
+
+    other - readme, merge.c/.exe, split.c/.exe are separately available
+
+
+
+Directories:
+
+    bin          all binaries (cpp, cc1, extender, etc)
+    lib          all libraries (crt0.*, libc.a, libgr.a, libpc.a)
+    include      all include files
+    docs         all documents (including this one)
+    go32         sources for the extender
+    drivers      various SuperVGA drivers
+    libsrc       sources for the libraries
+    diffs        diffs from FSF distributions to dos-compilable
+    utils        sources for the utilities
+    samples      sample C++ sources using graphics & mouse
+    emu387       80387 emulator for non-80387 systems
+
+
+bin:
+    bison.exe    lalr(1) parser
+    flex.exe     lexical parser
+    cpp.exe      C and C++ preprocessor
+    cc1.exe      C compiler
+    cc1plus.exe  C++ compiler
+    as.exe       80386/80387 assembler
+    ld.exe       a.out (BSD) format linker
+    ar.exe       archive utility
+    nm.exe       name list utility
+    size.exe     a.out section size utility
+    strip.exe    symbol stripper
+    objdump.exe  display info from .o file
+    gcc.exe      compilation coordinator
+    go32.exe     basic 32-bit DOS extender
+    debug32.exe  32-bit DOS extender with symbolic debugger
+    stub.exe     stub to prepend on aout files to make .exe files
+    aout2exe.bat turns aout file to .exe by prepending stub.exe
+    diff.exe     creates diffs, including context diffs
+    patch.exe    patches source from diffs, including context diffs
+    djtarx.exe   tar extractor for FSF tarfiles if you don't have a tar
+    utod.exe     convert Unix text files to DOS text files
+    dtou.exe     convert DOS text files to Unix text files
+    split.exe    split big binaries into many little binaries
+    merge.exe    merge many little binaries back into one big binary
+    gprof.exe    profile report generator
+
+lib:
+
+    libc.a       all standard routines (BSD style), and C++ methods & support
+    libm.a       math routines
+    libgr.a      graphics routines and mouse support
+    libpc.a      routines for PC support (in/out, getkey, kbhit, screen utils)
+    *_p.a        profiled libraries
+    crt0.s       C runtime source
+    crt0.o       C runtime object
+    bison.simple bison support
+    bison.hairy  bison support
+    flex.skel    flex support file
+    libflex.a    flex support library
+
+include:
+
+    Most BSD-style and SYSV-style include files.  These mostly came from
+    the G++ sources.
+    sys/*.h      MS-DOS specific
+    graphics.h   for libgr.a
+    pc.h         for libpc.a
+    mouse.h      for mouse routines in libgr.a
+
+docs:
+
+    readme       this document
+    copying      GNU General Public License
+    copying.dj   Copyright information for items (C) DJ Delorie
+    debug32.doc  instructions for the symbolic debugger
+    internal.doc information about how the extender works
+    libc.doc     differences and enhancements
+    libm.doc     list of implemented functions
+    libpc.doc    documentation
+    libgr.doc    documentation
+
+go32:
+
+    sources for the extender.  Requires Turbo C and Turbo Assembler
+
+drivers:
+
+    VGA and SuperVGA drivers - source and binary.  Use the GO32 environment
+    variable to select and configure one of these according to the VGA card
+    you have.
+
+libsrc:
+
+    Sources for the libraries.  These are compiled with gcc.  The makefile
+    is set up for NDMAKE.  The source files came from three sources:
+    
+        (1) Me.  Mostly the system call routines, and some string routines.
+            All of libpc.a, libgr.a, libm.a .
+        (2) FSF.  These are the GCC support routines, C++ support, and
+            other routines that came with gcc (malloc, obstack, alloca, etc)
+        (3) BSD.  These are mostly the stdio and stdlib routines, and
+            the rest of the string routines.  BSD requires that I mention
+            that their sources are copyright BSD and that I have modified
+            some to comply with the include files provided by FSF.  These
+            sources are the "freed files" everyone keeps talking about.
+
+diffs:
+
+    Context diffs from the original FSF sources to the GNUDOS sources.  See
+    the README and VERSIONS files in that directory for more info.
+
+utils:
+
+    Sources for djtarx, utod, dtou, split, and merge.
+
+samples:
+
+    Various samples showing how to use the mouse, graphics, C++, setjmp(),
+    etc.
+
+emu387:
+
+    80387 emulator and source code.  I don't expect this to work perfectly,
+    but should cover most normal floating point math.  To use, add
+    "emu /djgpp/emu387/emu387" to the GO32 environment variable.  (ie:
+    set GO32=emu /djgpp/emu387/emu387)
+
+
+
+
+
+
+
+
+INSTALLING:
+
+To install, you must do the following:
+
+* Create a directory to install in, like c:\djgpp.
+
+* Create a "temp" directory, like c:\tmp.
+
+* Un-zip djgpp.zip in that directory.
+    C:\DJGPP> pkunzip -d djgpp.zip
+
+* Add the following lines to C:\AUTOEXEC.BAT:
+    set GCCBIN=c:\djgpp\bin
+                 ^ Use DOS slashes here so that AOUT2EXE.BAT will work
+    set GCCINC=c:/djgpp/include
+    set GCCLIB=c:/djgpp/lib
+    set GCCTMP=c:/tmp
+    set GO32TMP=c:/tmp
+    set GO32=ansi driver c:/djgpp/drivers/SOMETHING.grd gw 1024 gh 768
+                         ^^^ whatever driver works with your VGA (optional)
+    set BISON_SIMPLE=c:/djgpp/lib/bison.simple
+    set BISON_HAIRY=c:/djgpp/lib/bison.hairy
+    set FLEX_SKELETON=c:/djgpp/lib/flex.skeleton
+
+  TMP and TEMP are checked if GCCTMP isn't set
+  GO32TMP is where go32 puts its paging file (GCCTMP, TMP, TEMP are checked,
+  in that order, also)
+
+  Remember that unless you manually type these at the command line,
+  they won't take effect until you reboot.  Don't include the "ansi"
+  keyword in the "go32" variable if you don't have an ANSI.SYS driver
+  or equivalent.
+
+* Add your binaries directory to your PATH in C:\AUTOEXEC.BAT
+    SET PATH= . . . ;C:\DJGPP\BIN
+
+That's it! G++ is now installed on your system.
+
+
+
+
+
+The GO32 environment variable:
+
+
+This variable controls the options available in go32 or debug32.  The
+syntax of this variable is:
+
+  SET GO32=[parm [value]] [parm [value]] . . .
+
+Parameters:
+
+  ansi           Use ANSI commands to control the color in debug32
+  mono           Use the Monochrome monitor for debugging - useful when
+                   debugging graphics applications
+  1rm            Redirect stdout (file #1) to the monochrome monitor
+  2rm            Redirect stderr (file #2) to the monochrome monitor
+  1r2            Redirect stdout (file #1) to stderr (file #2)
+  2r1            Redirect stderr (file #2) to stdout (file #1)
+
+  emu [path]     Use the specified file as the 80387 emulator
+
+  driver [path]  Use the specified file as the graphics driver
+  gw [width]     Default graphics width
+  gh [height]    Default graphics height
+  tw [width]     Default text width
+  th [height]    Default text height
+
+
+These parameters may occur in any order.
+
+Note that "1rm" and "2rm" are done before "1r2" and "2r1", so "1rm 2r1" sends
+stdout to the mono monitor and stderr to any redirection used.
+
+Examples:
+
+  C:\> set GO32=mono driver c:\djgpp\drivers\tseng4k.grd gw 1024 gh 768 tw 132 th 43
+  C:\> set GO32=ansi
+  C:\> set GO32=driver c:\djgpp\drivers\tseng4k.grd ansi
+  C:\> set GO32=mono 1rm 2rm
+
+
+
+
+
+
+
+Common Questions:
+
+Q: When I run "gcc e:\proj\prog.c" it says "undefined escape sequence \p"?
+A: Gcc is a *unix* compiler - you must use *unix* slashes (e:/proj/prog.c).
+   Environment variables (like GCCINC) may, however, use either, as they
+   are converted.
+
+Q: I type "GCC PROG.C" and ld complains about PROG.C not being an object.
+Q: I type "gcc prog.cxx" to compile a C++ program, and ld complains.
+A: Gcc is *not* case insensitive like DOS is, and it uses the file's
+   extension to determine how to compile a file.  Valid extensions are:
+     .cc = C++ source (passed through cpp)
+     .c = C source that must be passed through cpp first
+     .i = raw C source (no cpp pass)
+     .S = assembler that must be passed through cpp first
+     .s = raw assembler source (no cpp pass)
+   any other file is passed to the linker
+
+Q: I compile my program, but can't run the output file.
+A: DOS doesn't know how to run unix-style a.out files.  That's what the
+   extender is for.  To run an a.out file called myprog, type
+     "go32 myprog . . ."
+
+Q: Gcc doesn't recognize // as a comment in my C programs.
+A: That's because // isn't a comment in C.  If you want to compile C++,
+   then write C++ programs.  Gcc is really two compilers in one, not
+   one compiler that compiles both C and C++.  That's why you get
+   cc1 and cc1plus.
+
+Q: I'm reading in data files, but the data gets corrupted.
+A: The default file type is DOS text, even for read() and write().  You must
+   tell the system that a file is binary through the "b" flag in fopen(),
+   or O_BINARY in open().
+
+Q: I get "fatal signal 2" when I run gcc.
+A: When gcc reports a "signal", it really means that an error occurred
+   trying to run the given program.  The "signal" number is the DOS error
+   code, and 2 means "file not found".  Check the GCCBIN environment
+   variable and make sure it points to the directory with cpp.exe,
+   cc1.exe, etc.
+
+Q: The binaries I get with the distribution are .exe files, but gcc creates
+   a.out files.  I rename the a.out's to .EXE's, but they still don't work.
+A: To get an .EXE from an a.out, you must *prepend* either go32.exe,
+   debug32.exe, or stub.exe to the file:
+     copy /b stub.exe+myprog myprog.exe
+
+Q: What is stub.exe?
+A: Stub.exe simply calles go32.exe, and passes it information it needs to
+   run the a.out file attached to it.  Stub is much smaller than go32, so
+   less disk space is used.  Also, if you change go32, you don't have to
+   change stub, and all the stub-ized programs will use the new go32
+   automatically.
+
+Q: I want to change cc1.  How do I do this?
+A: First, get the GNU sources from FSF.  They're usually available at
+   prep.ai.mit.edu in /u/emacs, if not elsewhere.  Use djtarx to un-tar
+   them, as djtarx knows how to handle unix file names that aren't valid
+   DOS file names.  Look in the "diffs" sources to see what to change the
+   names to when they conflict.  Next, apply the "diffs" over the
+   GNU sources (making sure you have the right version of GNU - see the
+   versions file).  For the gcc-1.39 sources, you must run utod (or some
+   other unix-to-dos converter) to compile gcc.exe, then run config-d.bat,
+   then run makeall.bat.  For gpp-1.39, copy the g++ sources over the
+   completed gcc sources, apply the gpp diffs, then run makeall.bat (gpp's
+   now).  For all other programs, just run make.  Note that the makefiles
+   are tuned for ndmake, since it knows how to make response files.
+   Specific instructions are documented in the diffs directory.
+
+Q: I don't have an 80387.  How do I compile floating point programs?
+A: Add "emu c:\djgpp\emu387\emu387" to the GO32 environment variable
+   (see go32 section above).  This tells go32 to use the given file
+   as an 80387 emulator.  If you don't load this emulator, and you try
+   to run floating point without a 387, you will get an error.
+
+Q: I installed an 80387 emulator in my AUTOEXEC, but it still doesn't
+   work.  Why?
+A: The CPU is running in *protected* mode, not real mode, and the information
+   needed to emulate the 80387 is different.  Not to mention that the
+   exceptions never get to the real-mode handler.  You must use the emu387
+   emulator, which is designed for go32.
+
+Q: I can't run a.out programs under Windows.
+A: Nope, you can't.  Go32 only supports VCPI, and Windows provides
+   DPMI 0.9, which isn't enough for Go32 to work correctly.
+
+Q: Can I run this on my 286?  It has protected mode also...
+A: True, but the 286 isn't a 32-bit processor.  A 386 really is required.
+
+Q: Can I use gcc on my 512K machine?
+A: Yes, but the disk better have at least 4Mb of free space for paging.
+   Go32 will use all available extended memory (up to 128M) and up to
+   128M of disk space, for a grand total of 256M of virtual memory for
+   your application.  Try a malloc(50*1024*1024) some day.
+
+Q: Why do my compiles are running VERY SLOW, even though I use a ramdisk
+   for swap and a disk cache?
+A: Gcc requires at least 1Mb of virtual memory to run, usually close to 1.5M.
+   If there isn't this much real memory available, it starts paging to disk.
+   It's good to leave about 1M of extended (not expanded) memory available
+   for go32 to run programs with.  When it needs to page a lot, you spend
+   most of your time paging and little time actually running.  Note that
+   if you are running with a VCPI server, like QEMM or 386MAX, then go32
+   will use *expanded* memory for it's physical memory needs, not
+   extended.
+
+Q: How much memory is available when I use the system() call?
+A: Everything but what go32 is loaded with.  The program is completely
+   paged out to memory (including the page tables themselves) before
+   the second program is executed.  Currently, this is about 100K
+   less than was available before go32 was executed.
+
+
+
+
+
+
+Deviations and Caveats:
+
+GCC/G++ deviates from the U**x version in a number of ways, mostly to
+accomodate deficiencies in the MS-DOS environment, and my own laziness.
+
+* An 80387 is required to do floating point.  An emulator is provided.
+  cc1 and cc1plus shouldn't use the 387 unless compiling floating point
+  code.  The environment variable "387" can override the auto-detection
+  routine:
+    SET 387=YES   to force 387 handlers to be enabled
+    SET 387=NO    to force 387 accesses to fault
+    SET 387=QUERY to get a message showing the results of the auto-detection
+  If no 80387 is present and the program attempts to use it, a message
+  indicating where the instruction is will be displayed.  To use the
+  387 emulator, add "emu c:\djgpp\emu387\emu387" to the GO32 environment
+  variable.  Specifying use of the emulator overrides the "387"
+  environment variable.
+
+* The VDISK method of allocating extended memory is supported.  The
+  INT 15h method is also.  When the extender runs out of conventional and
+  extended memory, it uses a paging file named $(GCCTMP)/pageXXXX.386, where
+  XXXX is an unspecified hex value.  This file is normally removed on exit.
+
+* Up to 128 MB of physical memory and 128 MB of disk swap space are allowed.
+  A 512K machine is sufficient, but very slow due to paging.
+
+* The utilies support the MS-DOS standard response file method for giving
+  more than 128 bytes of command line.  Example: "gcc -o foo @foo.lnk" where
+  foo.lnk contains a list of .o files.
+
+* Since MS-DOS does not distinguish case in file names, some .h files
+  used for C++ have had underscores prepended to them to avoid conflict
+  (ie: String.h conflicts with string.h, so it became _String.h).
+
+* When using ar to create archives, be warned that the ar version
+  supplied cannot update an archive that's been sequenced (ar s foo.a),
+  and cannot sequence a file that's been sequenced.  Also, ld cannot
+  use an archive that's not sequenced.  The following method is suggested:
+      ar rv mylib.a $(OBJS)
+      cp mylib.a mylib2.a
+      ar rvs mylib2.a
+      (and then link with mylib2.a)
+
+* The extender can be added to any gcc-compiled program by copying go32.exe
+  to be <program>.exe, where <program> is the 32-bit program.  For example,
+  if "hello" is a gcc-compiled a.out file, and "hello.exe" is a copy of
+  go32.exe, then when "hello.exe" runs, it loads the file called "hello"
+  in the same directory, and executes it if present.  Otherwise,
+  the first parameter is the executable (ie: go32 cc1plus foo.cc).
+
+* The extender can be merged to create one .exe file that is the extender
+  and the executable in one file, by using the stub.exe program:
+      copy /b stub.exe+myprog myprog.exe
+  This will only work if go32.exe is in your search path, because stub.exe
+  runs it.  Alternatively, you can prepend go32.exe itself to an a.out file
+  to get a single executable (stub.exe is much smaller).  Note that if
+  you re-compile go32 or stub, you must strip off the symbol table first. 
+
+* The extender runs programs at logical address 0.  A copy of the first
+  1 MB of physical memory (including the AT channel) is mapped to
+  0xE0000000 in the program's address space.  The stack grows down from
+  0x7FFFFFFC in the program's address space.  Data usually starts at
+  0x00400000.
+
+* The paging mechanism understands how SuperVGA's map their memory onto
+  the AT bus and automatically swaps pages as the program tries to
+  access them.  The program sees a linear range from 0xD0000000 to
+  0xD0100000 that corresponds to each pixel in the 256-color modes
+  of SuperVGAs.  To use this feature, you'll have to set the GO32
+  environment variable like this:
+    C>set go32=driver c:\djgpp\drivers\tseng4k.grd gw 640 gh 480 tw 132 th 43
+  These parameter pairs can be omitted or rearranged as needed.  They are
+  the "driver" name, default graphics width and height, and default
+  text width and height. Libgr.a doesn't have to be recompiled, nor
+  do graphics programs, when a different graphics mode is selected
+  (the extender handles it).  It is strongly recommended that the program
+  use the GR_default_graphics and GR_default_text modes to switch to
+  graphics or text.  These modes use the parameters specified by the
+  GO32 environment variable, allowing the user to select a favorite
+  graphics and text mode.
+
+* Symbols are stored in virtual memory, so you won't run out of symbol
+  space until both extended memory and the disk are all used up.  For
+  large programs, you might notice a slight delay while it looks up
+  symbols.  Programs with a lot of lines in a given module may run out
+  of memory as the line number table is built in real memory and transferred
+  to virtual memory.
+
+* Signals are not reported to the program.  However, interrupts do continue
+  to get serviced while in protected mode (ie: keypress, timer, etc).
+  CTRL-C will get you back to the debugger in debug32, and you can continue
+  from where you stopped.  All signals (ie: exceptions) cause debugging
+  traps in debug32, or general faults in go32.
+
+
+
+Copyright Information:
+
+* Source code for the GNU utilities is copyright (c) Free Software Foundation.
+  For more information on the FSF copyright, see their source code or write
+  Free Software Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
+
+  A copy of their file "COPYING" is included in the docs directory.  Some of
+  the FSF source code has been modified to operate properly in the MS-DOS
+  environment.
+
+* Source code for most of libc.a are copyright (c) Regents of the University
+  of California.  These files include copyright information in them.  The
+  utilities are compiled against these libraries, and thus contain software
+  developed by the University of California, Berkeley, and its contributors.
+  Some of the BSD source code has been modified to operate properly in the
+  MS-DOS environment.
+
+* Any sources not falling under the copyrights of FSF or UCB (as above) are
+  Copyright (c) 1991 DJ Delorie, 24 Kirsten Ave, Rochester NH 03867-2954.
+  To contact me via E-Mail, sent to "dj@ctron.com".  Cabletron Systems Inc
+  is in no way involved with this project; I just happen to work for them
+  during the day.
+
+Terms and Conditions:
+
+* Source code copyright FSF is distributed under the terms of the GNU
+  Public General License.  See the file "COPYING" in doc.arc for more
+  information.  If your program links in object modules (in libc.a) that
+  are compiled from GNU sources, then your entire program must be
+  distributed under the terms of the GNU GPL as a "derived work".  These
+  modules are the C++ class library (including the streams classes) and
+  obstacks.  The sources in libsrc have the copyright notices in them
+  for the various modules.
+
+* Source code copyright UCB is distributed under the terms listed in the
+  UCB source code itself.
+
+* Source code copyright DJ Delorie is distributed under the terms of the
+  GNU General Public Licence, with the following exceptions:
+  ("go32.exe" refers to go32.exe and debug32.exe)
+
+  * There are no conditions on distributing copies of stub.exe as
+    it is originally distributed in this software package.
+
+  * If a user creates an application, prepends a copy of go32.exe onto
+    the beginning of it, and distributes it free of charge, then the
+    user is under no obligations to distribute source or pay royalties.
+    Note that the copyright terms of the FSF and/or UCB must be
+    obeyed regardless of this.
+  
+  * If a user creates an application, prepends a copy of go32.exe onto
+    the beginning of it, and charges a fee for the software, then a
+    royalty of $5 or 5% of the selling price per copy sold must be paid
+    to DJ Delorie, 24 Kirsten Ave, Rochester NH 03867-2954.  Note that
+    shareware programs are not considered "sold" until payment is rendered
+    for them.
+
+  * For all other cases, source code for go32.exe must be distributed
+    with any distributed copies of go32.exe.
+  
+  * Software that requires go32.exe to run, but is not distributed with
+    a copy of go32.exe, incurs no obligations with regards to the
+    above sections.
+
+  * Contact me for special terms if none of the above are suitable.
+
+  * Donations are always appreciated.
+
+  The intent of this copyright is this: If you make money by using the
+  programs I wrote, I get some of it.  If you use your sources to
+  teach others how to write programs, I'll support you.
+
+  Changes to source code copyright BSD or FSF are copyright DJ Delorie, but
+  fall under the terms of the original copyright.
+
+
+
+
+
+Donations may be made to any of the following:
+
+    DJ Delorie
+    24 Kirsten Ave
+    Rochester, NH  03867-2954
+    USA
+
+    Free Software Foundation
+    675 Mass Ave
+    Cambridge, MA 02139
+    USA
+
+    University of California
+    Berkeley, CA  (sorry, I don't know their ZIP code)
+    USA

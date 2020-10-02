@@ -1,0 +1,63 @@
+program TestMaskEdit;
+uses MaskEdit, WObjects, WinProcs;
+type
+    TAMaskEdit = object(TMaskEdit)
+        procedure InputChar(Pressed:char;
+            StartPos, EndPos : integer); virtual;
+    end;
+    PAMaskEdit = ^TAMaskEdit;
+    TTestMaskEdit = object(TApplication)
+        TestEdit    : PMaskEdit;
+        TestAEdit   : PAMaskEdit;
+        procedure InitMainWindow; virtual;
+    end;
+
+{ InputChar - implement pattern character 'A'. }
+
+procedure TAMaskEdit.InputChar(Pressed:char;
+    StartPos, EndPos : integer);
+begin
+
+    { if 'A', only allow alpha and map to upper case }
+
+    if Pattern[StartPos] = 'A' then
+        begin
+        if Pressed in ['a'..'z','A'..'Z'] then
+            begin
+            if Pressed in ['a'..'z'] then
+                Pressed    := UpCase(Pressed);
+            PutChar(Pressed);
+            end
+        else
+            MessageBeep(0);
+        end
+    else
+        TMaskEdit.InputChar(Pressed, StartPos, EndPos);
+end;
+
+procedure TTestMaskEdit.InitMainWindow;
+begin
+    MainWindow := New(PWindow, Init(nil, 'Test MaskEdit'));
+
+    TestEdit  := New(PMaskEdit, Init(MainWindow, 98,
+        '(nnn) nnn-nnnn', 20, 20, 115, 30, 14));
+{
+Normally, you would put "State" in a static text field, but I
+want to demonstrate literal alphabetic characters...
+}
+    TestAEdit := New(PAMaskEdit, Init(MainWindow, 99,
+        '\S\t\a\t\e [AA]', 20, 55, 115, 30, 15));
+end;
+
+
+var    App : TTestMaskEdit;
+    TestEdit : PEdit;
+begin
+
+    App.Init('Test Numeric Edit');
+    SetFocus(App.TestEdit^.HWindow);
+    App.Run;
+    App.Done;
+end.
+{ End of File } 
+

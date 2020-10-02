@@ -1,0 +1,63 @@
+;
+; BDS C Standard Library Machine Language Functions  v1.44  4/2/81
+;
+; Modifications by Rick Hollinbeck (*RH*):
+;	bios modified to not alter hl for the seldsk function (9)
+;
+;
+; Bios:
+;
+;	bios(n,c)
+;
+; Call to bios jump table routine n, with BC set to c. n=0 for boot,
+; n=1 for wboot, n=2 for const, etc.
+;
+	prelude	bios
+	
+	call arghak	
+	push b
+	lhld base+1	;get addr of jump table + 3
+	dcx h		;set to addr of first jump
+	dcx h
+	dcx h
+	lda arg1	;get function number (1-85)
+	mov b,a		;multiply by 3
+	add a
+	add b
+	mov e,a		;put in DE
+	mvi d,0
+	dad d		;add to base of jump table
+	push h		;and save for later
+	lhld arg2	;get value to be put in BC
+	mov b,h		;and put it there
+	mov c,l
+	reloc <lxi h,>,retadd	;where call to bios will return to
+	xthl		;get address of vector in HL
+	pchl		;and go to it...
+retadd:
+; *RH* Modified to leave hl alone for seldsk
+;
+	push psw
+	push h
+	lxi h,arg1	;check for seldsk
+	mvi a,9		;seldsk
+	cmp m
+	pop h
+	reloc jz, nomod
+	pop psw
+	mov l,a		;all done. now put return value in HL
+	mvi h,0
+	reloc jmp, biosret
+nomod:	pop psw
+biosret: pop b
+	ret		;and return to caller
+
+	postlude bios
+ hl for the seldsk function (9)
+;
+;
+; Bios:
+;
+;	bios(n,c)
+;
+; Call to bios jump table routine n, with B

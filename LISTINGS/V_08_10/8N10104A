@@ -1,0 +1,25 @@
+
+      ch = (char)(y >> 6);
+      if (ch != old_page) /* only change page if different */
+        {
+          dx = ati_extreg;
+          asm("     cli     ");
+          asm("     mov     al,0b2h");
+       asm(dx,"     out     dx,al");
+          asm("     inc     dl");
+          asm("     in      al,dx");
+          asm("     mov     ah,al");
+          asm("     and     ah,0e1h");
+       asm(ch,"     or      ah,ch");
+          asm("     mov     al,0b2h");
+          asm("     dec     dl");
+          asm("     out     dx,ax");
+          asm("     sti     ");
+          old_page = ch;
+        }
+      addr = 655360 + ((y << 9) % 65536) + (x >> 1);
+      peek(addr, val); /* read existing color of pixel pair */
+      if (x % 2) val = color | (val & 0xF0); /* change left pixel */
+      else val = (color << 4) | (val & 0x0F); /* change right pixel */
+      poke(addr, val); /* write pixel pair */
+

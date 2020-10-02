@@ -1,0 +1,674 @@
+/*
+    Screen
+        2.50
+        19-Jun-1990
+        ANSI C for MS-DOS w/monochrome or color text
+        display
+
+        Provides a set of functions for manipulating a
+        text display. To drastically improve the speed
+        of this module, NO RANGE CHECKING is done!
+        Invalid line/column values may cause portions
+        of non-video memory to be corrupted!
+
+        Written by Scott Robert Ladd. Released into
+        the public domain.
+*/
+
+#include "conio.h"
+#include "dos.h"
+#include "screen.h"
+#include "stdarg.h"
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+
+static ScrType      VideoType    = ST_UNKNOWN;
+static ScrMode      VideoMode    = SM_UNKNOWN;
+static ScrMode      OriginalMode = SM_UNKNOWN;
+static ScrAccess    AccessMode   = SA_DIRECT;
+static unsigned int Width        = 0;
+static unsigned int Length       = 0;
+static unsigned int BaseAdr      = 0;
+static unsigned int CursorShape  = 0;
+static int          CursorHidden = 0;
+static int *        SavedScreen  = NULL;
+static unsigned int SavedCursPos = 0;
+static int          SavedCursShp = 0;
+static union REGS   regs;
+
+#if !defined(MK_FP)
+    #define MK_FP(seg,off) (void far *)(((long)/
+            (seg) << 16L) | (long)(off))
+#endif
+
+ScrType ScrOpen(void)
+    {
+    int i, status_changed;
+    unsigned char orig_status;
+    int far * vmemptr;
+
+    /* Attempt to identify the type of video adapter installed.
+       Call VGA "Identify Adapter Service" first */
+
+    regs.h.ah = 0x1A;
+    regs.h.al = 0;
+    int86(0x10,&regs,&regs);
+
+    if (regs.h.al == 0x1A)
+        {
+        switch (regs.h.bl)
+            {
+            case 1 :
+                VideoType = ST_MDA;
+                break;
+
+            case 2 :
+                VideoType = ST_CGA;
+                break;
+
+            case 4 :
+            case 5 :
+                VideoType = ST_EGA;
+                break;
+
+            case 7 :
+            case 8 :
+                VideoType = ST_VGA;
+                break;
+
+            case 10:
+            case 11:
+            case 12:
+                VideoType = ST_MCGA;
+                break;
+
+            default:
+                return 1;
+            }
+        }
+    else
+        {
+        /* VGA services not available -- maybe it's EGA */
+
+        regs.h.ah = 0x12;
+        regs.x.bx = 0x0010;
+        int86(0x10,&regs,&regs);
+
+        /* if BX is 0x10, we have an EGA */
+
+        if (regs.x.bx != 0x10)
+            VideoType = ST_EGA;
+        else
+            {
+            /* check two-bit "monitor type" setting in equipment word */
+
+            int86(0x11,&regs,&regs);
+
+            switch ((regs.h.al & 0x30) >> 4)
+                {
+                case 0 :
+                    return 1;
+
+                case 1 :
+                case 2 :
+                    VideoType = ST_CGA;
+                    break;
+
+                case 3 :
+                    /* if we have a mono adapter, a Hercules can be
+                       differentiated from an MDA by seeing if the high bit
+                       of the status register changes */
+
+                    status_changed = 0;
+
+                    orig_status = (unsigned char)(inp(0x03BA) & 0x80);
+
+                    for (i=0; (i<30000) && (!status_changed); ++i)
+                        if (orig_status != (unsigned char)/
+                                           (inp(0x03BA) & 0x80))
+                            status_changed = 1;
+
+                    if (status_changed)
+                        VideoType = ST_HGC;
+                    else
+                        VideoType = ST_MDA;
+                }
+            }
+        }
+
+    /* store the segment of video memory */
+
+    if ((VideoType == ST_MDA) || (VideoType == ST_HGC))
+        BaseAdr = 0xB000;
+    else
+        BaseAdr = 0xB800;
+
+    /* save the original cursor shape */
+
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+
+    int86(0x10,&regs,&regs);
+
+    SavedCursShp = regs.x.cx;
+
+    /* and the orihginal cursor position */
+
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+
+    int86(0x10,&regs,&regs);
+
+    SavedCursPos = regs.x.dx;
+
+    /* find width of the orginal screen */
+
+    regs.h.ah = 0x0F;
+    int86(0x10,&regs,&regs);
+
+    Width = (int) regs.h.ah;
+
+    /* find length of the original screen */
+
+    regs.x.ax = 0x1130;
+    regs.h.bh = 0;
+    regs.x.dx = 0;
+
+    int86(0x10,&regs,&regs);
+
+    Length = regs.x.dx + 1;
+
+    if (Length == 1)
+        Length = 25;
+
+    /* now, allocate a buffer to hold the original
+       screen contents... */
+
+    SavedScreen = malloc(Length * Width * 2);
+
+    /* ...and save the original screen */
+
+    if (SavedScreen != NULL)
+        for (i = 0; i < Length * Width; i++)
+            {
+            vmemptr = MK_FP(BaseAdr,i << 1);
+            SavedScreen[i] = *vmemptr;
+            }
+
+    /* make note of the original screen mode */
+
+    switch (Width)
+        {
+        case 40:
+            OriginalMode = SM_25x40;
+            break;
+
+        case 80:
+            switch (Length)
+                {
+                case 25:
+                    OriginalMode = SM_25x80;
+                    break;
+                case 30:
+                    OriginalMode = SM_30x80;
+                    break;
+                case 43:
+                    OriginalMode = SM_43x80;
+                    break;
+                case 50:
+                    OriginalMode = SM_50x80;
+                }
+        }
+
+    /* if we have an identifiable screen mode, make it
+       the current mode */
+
+    if (OriginalMode != -1)
+        VideoMode = OriginalMode;
+
+    /* mark the cursor as visible */
+
+    CursorHidden = 0;
+
+    /* get outa here */
+
+    return VideoType;
+    }
+
+void ScrClose()
+    {
+    int i;
+    int far * vmemptr;
+
+    /* reset to orginal mode */
+
+    if ((OriginalMode != VideoMode) &&/
+        (OriginalMode != SM_UNKNOWN))
+        ScrSetMode(OriginalMode);
+
+    /* restore original screen contents */
+
+    if (SavedScreen != NULL)
+        for (i = 0; i < Length * Width; i++)
+            {
+            vmemptr = MK_FP(BaseAdr,i << 1);
+            *vmemptr = SavedScreen[i];
+            }
+
+    /* restore original cursor shape */
+
+    regs.h.ah = 1;
+    regs.x.cx = SavedCursShp;
+
+    int86(0x10,&regs,&regs);
+
+    /* restore original cursor position */
+
+    regs.h.ah = 2;
+    regs.h.bh = 0;
+    regs.x.dx = SavedCursPos;
+
+    int86(0x10,&regs,&regs);
+    }
+
+int ScrSetMode(ScrMode mode)
+    {
+    /* don't change to the current mode */
+
+    if (VideoMode == mode)
+        return 1;
+
+    /* if we don't know the type of screen we have,
+       don't change mode */
+
+    if (OriginalMode == SM_UNKNOWN)
+        return 1;
+
+    /* make sure the mode requested is valid */
+
+    if ((mode < SM_25x40) || (mode > SM_50x80))
+        return 0;
+
+    /* set modes */
+
+    switch (mode)
+        {
+        case SM_25x40:
+            if ((VideoType == ST_MDA) || (VideoType == ST_HGC))
+                return 0;
+            else
+                {
+                regs.x.ax = 0x0001;
+                int86(0x10,&regs,&regs);
+
+                Length = 25;
+                Width  = 40;
+                }
+
+            break;
+
+        case SM_25x80:
+            if ((VideoType == ST_MDA) || (VideoType == ST_HGC))
+                {
+                regs.x.ax = 0x0007;
+                int86(0x10,&regs,&regs);
+                }
+            else /* color */
+                {
+                regs.x.ax = 0x0003;
+                int86(0x10,&regs,&regs);
+
+                switch (VideoType)
+                    {
+                    case ST_CGA:
+                        regs.x.ax = 0x1112;
+                        int86(0x10,&regs,&regs);
+                        break;
+
+                    case ST_EGA:
+                        regs.x.ax = 0x1111;
+                        int86(0x10,&regs,&regs);
+                        break;
+
+                    case ST_VGA:
+                        regs.x.ax = 0x1114;
+                        int86(0x10,&regs,&regs);
+                        break;
+
+                    default:
+                        return 0;
+                    }
+                }
+
+
+            Length = 25;
+            Width  = 80;
+
+            break;
+
+        case SM_30x80:
+            if (VideoType == ST_VGA)
+                {
+                regs.x.ax = 0x0003;
+                int86(0x10,&regs,&regs);
+
+                regs.x.ax = 0x1111;
+                regs.h.bl = 0;
+                int86(0x10,&regs,&regs);
+
+                Length = 30;
+                Width  = 80;
+                }
+            else
+                return 0;
+
+            break;
+
+        case SM_43x80:
+        case SM_50x80:
+            if ((VideoType >= ST_EGA) || (VideoType <= ST_VGA))
+                {
+                regs.x.ax = 0x0003;
+                int86(0x10,&regs,&regs);
+
+                regs.x.ax = 0x1112;
+                regs.h.bl = 0;
+                int86(0x10,&regs,&regs);
+
+                if (VideoType == ST_EGA)
+                    Length = 43;
+                else
+                    Length = 50;
+
+                Width  = 80;
+                }
+            else
+                return 0;
+
+            break;
+
+        default:
+            return 0;
+        }
+
+    VideoMode = mode;
+
+    ScrClear();
+
+    return 1;
+    }
+
+ScrMode ScrGetMode(void)
+    {
+    return VideoMode;
+    }
+
+void ScrSetAccess(ScrAccess access)
+    {
+    AccessMode = access;
+    }
+
+ScrAccess ScrGetAccess(void)
+    {
+    return AccessMode;
+    }
+
+void ScrDimensions(unsigned int * wid, unsigned int * len)
+    {
+    *wid = Width;
+    *len = Length;
+    }
+
+void ScrCursorHide(void)
+    {
+
+    if (CursorHidden)
+        return;
+
+    /* save the current cursor shape */
+
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+
+    int86(0x10,&regs,&regs);
+
+    CursorShape = regs.x.cx;
+
+    /* make the cursor invisible */
+
+    regs.h.ah = 1;
+    regs.x.cx = 0x2000;
+
+    int86(0x10,&regs,&regs);
+
+    CursorHidden = 1;
+    }
+
+void ScrCursorUnhide(void)
+    {
+    if (!CursorHidden)
+        return;
+
+    /* restore the cursor shape */
+
+    regs.h.ah = 1;
+    regs.x.cx = CursorShape;
+
+    int86(0x10,&regs,&regs);
+
+    CursorHidden = 0;
+    }
+
+void ScrCursorSetPos(unsigned int line, unsigned int col)
+    {
+    regs.h.ah = 2;
+    regs.h.bh = 0;
+    regs.h.dh = (char)line;
+    regs.h.dl = (char)col;
+
+    int86(0x10,&regs,&regs);
+    }
+
+void ScrCursorGetPos(unsigned int * line, unsigned int * col)
+    {
+    regs.h.ah = 3;
+    regs.h.bh = 0;
+
+    int86(0x10,&regs,&regs);
+
+    *line = regs.h.dh;
+    *col  = regs.h.dl;
+    }
+
+void ScrPutChar(unsigned int line, unsigned int col,
+                unsigned char attr, char ch)
+    {
+    unsigned int far * vmemptr;
+
+    if (AccessMode == SA_DIRECT)
+        {
+        vmemptr  = MK_FP(BaseAdr,((line * Width << 1) +
+                   (col << 1)));
+        *vmemptr = ((unsigned int)attr << 8) | (unsigned char)ch;
+        }
+    else
+        {
+        regs.h.ah = 2;
+        regs.h.bh = 0;
+        regs.h.dh = (char)line;
+        regs.h.dl = (char)col;
+
+        int86(0x10,&regs,&regs);
+
+        regs.h.ah = 9;
+        regs.h.al = ch;
+        regs.h.bh = 0;
+        regs.h.bl = attr;
+        regs.x.cx = 1;
+
+        int86(0x10,&regs,&regs);
+        }
+    }
+
+void ScrGetChar(unsigned int line, unsigned int col,
+                unsigned char * attr, char * ch)
+    {
+    unsigned int far * vmemptr;
+
+    if (AccessMode == SA_DIRECT)
+        {
+        vmemptr = MK_FP(BaseAdr,((line * Width << 1) +
+                  (col << 1)));
+
+        *attr = (unsigned char)(*vmemptr >> 8);
+        *ch   = (char)(*vmemptr & 0xFF);
+        }
+    else
+        {
+        regs.h.ah = 2;
+        regs.h.bh = 0;
+        regs.h.dh = (char)line;
+        regs.h.dl = (char)col;
+
+        int86(0x10,&regs,&regs);
+
+        regs.h.ah = 8;
+        regs.h.bh = 0;
+
+        int86(0x10,&regs,&regs);
+
+        *attr = regs.h.ah;
+        *ch   = regs.h.al;
+        }
+    }
+
+void ScrPrintf(unsigned int line, unsigned int col,
+               unsigned char attr, char * format, ...)
+    {
+    va_list args;
+    char * buffer;
+
+    buffer = malloc(256);
+
+    va_start(args, format);
+
+    vsprintf(buffer,format,args);
+     
+    va_end(args);
+     
+    ScrPutStr(line, col, attr, buffer);
+
+    free(buffer);
+    }
+
+void ScrPutStr(unsigned int line, unsigned int col,
+               unsigned char attr, char * str)
+    {
+    unsigned int i;
+
+    for (i = 0; (str[i] != '\000') && (i < Width); ++i)
+        ScrPutChar(line, col + i, attr, str[i]);
+    }
+
+void ScrDrawBox(unsigned int topLine, unsigned int leftCol,
+                unsigned int btmLine, unsigned int rightCol,
+                unsigned char attr, BoxType typeBox)
+    {
+    char v = 0, h = 0;
+    unsigned int  c, l;
+
+    if ((typeBox == BT_NONE)
+    || (leftCol >= rightCol)
+	|| (topLine >= btmLine))
+        return;
+
+    switch (typeBox)
+        {
+        case BT_SINGLE:
+            v = '\xB3';
+            h = '\xC4';
+            ScrPutChar(topLine, leftCol,  attr, '\xDA');
+            ScrPutChar(topLine, rightCol, attr, '\xBF');
+            ScrPutChar(btmLine, leftCol,  attr, '\xC0');
+            ScrPutChar(btmLine, rightCol, attr, '\xD9');
+            break;
+        case BT_DOUBLE:
+            v = '\xBA';
+            h = '\xCD';
+            ScrPutChar(topLine, leftCol,  attr, '\xC9');
+            ScrPutChar(topLine, rightCol, attr, '\xBB');
+            ScrPutChar(btmLine, leftCol,  attr, '\xC8');
+            ScrPutChar(btmLine, rightCol, attr, '\xBC');
+            break;
+        case BT_SOLID:
+            v = '\xDB';
+            h = '\xDB';
+            ScrPutChar(topLine, leftCol,  attr, '\xDB');
+            ScrPutChar(topLine, rightCol, attr, '\xDB');
+            ScrPutChar(btmLine, leftCol,  attr, '\xDB');
+            ScrPutChar(btmLine, rightCol, attr, '\xDB');
+        }
+
+    for (c = leftCol + 1; c < rightCol; ++c)
+        {
+        ScrPutChar(topLine, c, attr, h);
+        ScrPutChar(btmLine, c, attr, h);
+        }
+
+    for (l = topLine + 1; l < btmLine; ++l)
+        {
+        ScrPutChar(l, leftCol,  attr, v);
+        ScrPutChar(l, rightCol, attr, v);
+        }
+    }
+
+
+void ScrScrollUp(unsigned int topLine, unsigned int leftCol,
+                 unsigned int btmLine, unsigned int rightCol,
+                 unsigned char attr, unsigned int noOfLines)
+    {
+    regs.h.ah = 6;
+    regs.h.al = (unsigned char)noOfLines;
+    regs.h.bh = attr;
+    regs.h.ch = topLine;
+    regs.h.cl = leftCol;
+    regs.h.dh = btmLine;
+    regs.h.dl = rightCol;
+
+    int86(0x10,&regs,&regs);
+    }
+
+void ScrScrollDown(unsigned int topLine, unsigned int leftCol,
+                   unsigned int btmLine, unsigned int rightCol,
+                   unsigned char attr, unsigned int noOfLines)
+    {
+    regs.h.ah = 7;
+    regs.h.al = (unsigned char)noOfLines;
+    regs.h.bh = attr;
+    regs.h.ch = topLine;
+    regs.h.cl = leftCol;
+    regs.h.dh = btmLine;
+    regs.h.dl = rightCol;
+
+    int86(0x10,&regs,&regs);
+    }
+
+void ScrClear()
+    {
+    unsigned int l, c;
+
+    for (l = 0; l < Length; ++l)
+        for (c = 0; c < Width; ++c)
+            ScrPutChar(l,c,7,' ');
+
+    ScrCursorSetPos(0,0);
+    }
+
+void ScrClearLine(unsigned int line, unsigned int col)
+    {
+    unsigned int c;
+
+    for (c = col; c < Width; ++c)
+        ScrPutChar(line,c,7,' ');
+    }

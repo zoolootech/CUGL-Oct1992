@@ -1,0 +1,40 @@
+
+
+struct timer *
+timer_declare(time,event)
+unsigned int time;              /* time to wait in 10msec ticks */
+char *event;
+{
+        struct timer *t;
+
+        disable_interrupts();
+
+        for (t=timers;t<&timers[MAX_TIMERS];t++) {
+                if (!t->inuse) break;
+        }
+
+        /* out of timers? */
+        if (t == &timers[MAX_TIMERS]) return(0);
+
+        /* install new timer */
+        t->event = event;
+        t->time = time;
+        if (!timer_next) {
+                /* no timers set at all, so this is shortest */
+                time_timer_set = time_now;
+                start_physical_timer((timer_next = t)->time);
+        } else if ((time + time_now) < (timer_next->time + time_timer_set)) {
+                /* new timer is shorter than current one, so */
+                timers_update(time_now - time_timer_set);
+                time_timer_set = time_now;
+                start_physical_timer((timer_next = t)->time);
+        } else {
+                /* new timer is longer, than current one */
+        }
+        t->inuse = TRUE;
+        enable_interrupts();
+        return(t);
+}
+
+listing 5
+

@@ -1,0 +1,12 @@
+c:\ake\pictga DBO.OUT dbo.tga
+c:\ake\pictga DRL.OUT drl.tga
+c:\ake\pictga DRE.OUT dre.tga
+c:\ake\pictga DTO.OUT dto.tga
+c:\ake\pictga DLL.OUT dll.tga
+c:\ake\pictga DFR.OUT dfr.tga
+c:\ake\pictga gBO.OUT gbo.tga
+c:\ake\pictga gRL.OUT grl.tga
+c:\ake\pictga gRE.OUT gre.tga
+c:\ake\pictga gTO.OUT gto.tga
+c:\ake\pictga gLL.OUT gll.tga
+c:\ake\pictga gFR.OUT gfr.tga

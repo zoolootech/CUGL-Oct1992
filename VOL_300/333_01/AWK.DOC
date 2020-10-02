@@ -1,0 +1,2046 @@
+
+
+
+
+
+
+                               gAWK Documentation
+                           Feb 10, 1989 - Bob Withers
+
+
+                                  INTRODUCTION
+
+         This document is intended as a description of the AWK
+         language as implemented in gAWK, a public domain program
+         which originated with the GNU project.  It is not intended as
+         an all inclusive training document, please see the references
+         section for material that meets this need.
+
+         AWK is a pattern matching language which may be used to
+         create programs which manipulate ASCII data files.  AWK
+         derives some of its features from SNOBOL and some from the
+         'C' language.
+
+         The basic AWK program consists of a series of patterns and
+         associated actions.  Each input record is tested with each
+         pattern in the program and the actions associated with those
+         that match are executed.  The format for an AWK program is as
+         follows:
+
+                  pattern         { action }
+                  pattern         { action }
+
+         AWK input is generally processed by an "implicit input loop"
+         which was borrowed from the SNOBOL language.  AWK reads input
+         records from the specified files, breaks them into fields
+         based upon program controllable delimiters, and matches them
+         against the patterns in the AWK program.  Each pattern which
+         is TRUE for the current record has its associated action
+         statements executed.
+
+         The fields created for each record are given special variable
+         names and may be used by the AWK program.  The special
+         variable $0 is used to reference the entire input record in
+         exactly the format it was read.  $1 refers to the first field
+         of the record, $2 the second, and so on.  For example,
+         suppose AWK was breaking fields apart based on a comma
+         delimiter.  The record:
+
+              Now,is the, time, for all good men
+
+         would be parsed as follows:
+
+              $0 = "Now,is the, time, for all good men"
+              $1 = "Now"
+              $2 = "is the"
+              $3 = " time"
+              $4 = " for all good men"
+
+         Special builtin AWK variables provide information about the
+         parsing of input lines and allow programs to override the
+
+
+
+                          gAWK Documentation - Page 1
+
+
+
+
+
+
+
+
+         default processing.  After each input record is parsed into
+         fields the builtin variable NF is set to the number of fields
+         in the record.  In the above example NF would be set to 4.
+
+         Two builtin variables control the way AWK parses input files
+         into records and fields.  The RS (Record Separator) builtin
+         variable is used by AWK to determine the delimiter for
+         records.  It may be set to any single character and is by
+         default set to the newline character ("\n").  The variable FS
+         (Field Separator) is used by AWK to determine how fields
+         within records are parsed.  Until recently FS was restricted
+         to a single character value also.  The current Unix version
+         of AWK (called nawk) has greatly enhanced the use of the FS
+         variable and these enhancements are supported in this version
+         of gAWK.  Rather than having FS represent a single character
+         field delimiter gAWK treats the contents of FS as a regular
+         expression.  The default value of FS in gAWK is "[ \t]+"
+         which means that fields are delimited by one or more blanks
+         or tabs (whitespace).  For most input files this default is
+         acceptable but both the FS and RS variables may be overridden
+         on either the AWK command line or within an AWK program.
+         More information is provided on both builtin variables and
+         regular expression later in this document.
+
+                          AWK COMMAND LINE PARAMETERS
+
+         The format of the AWK command line is as follows:
+
+         AWK [-Ffs] [-Rrs] {"program" | -f progfile} [datfile ...]
+
+         In the above command line brackets [ ] indicate and optional
+         argument and braces { } indicate a choice.
+
+         The optional -F switch may be used from the command line to
+         override the default value of the FS builtin variable used to
+         parse input records into fields.  Under both MSDOS and OS/2
+         it is best to enclose the -F switch within double quotes if
+         it contains spaces or special characters.  For example to
+         parse input fields delimited by commas, semi-colons, and
+         colons one might code the -F switch as "-F[,;:]".
+
+         The optional -R switch can be used to override the default
+         value for the RS builtin value.  If, for example, records are
+         to be delimited by an ampersand we could code the -R switch
+         as -R@.
+
+         In general these command line switches are seldom used.  The
+         AWK language provides a means to override these variables
+         within the program and this is generally preferable to having
+         to remember to place the correct value on the command line.
+
+         The actual statements of the AWK program are either supplied
+         on the command line or in an ASCII text file.  Providing the
+         AWK program on the command line is very popular in the Unix
+
+
+
+                          gAWK Documentation - Page 2
+
+
+
+
+
+
+
+
+         environment, however, due to limitations of the command line
+         length under MSDOS and OS/2 it is practical only for very
+         short programs.  The following AWK program is supplied on the
+         command line and will print all the records in the file
+         MYFILE.DAT:
+
+                  AWK "{ print $0 }" MYFILE.DAT
+
+         It is more common for a program to be placed in an ASCII file
+         and specified on the command line via the -f switch.  The
+         recommended file name extension for these files is .AWK.  If
+         the above program were placed in the file MYPROG.AWK the
+         following command line would perform the same function as the
+         previous:
+
+                   AWK -f myprog.awk myfile.dat
+
+         The file(s) to be operated upon follow the switches and/or
+         AWK program on the command line.  Any number of files may be
+         specified and the normal MSDOS and OS/2 wildcard characters
+         may be used to include all matching file names.  The files
+         are processed in the order they are listed on the command
+         line.
+
+         Special command line assignment statements may also be
+         included within the file name list of the command line.
+         These assignments take place in the order they appear on the
+         command line.  This feature may be used to provide
+         information to the AWK program relative to the files being
+         processed.  The format of these assignment statements are
+         variable=value and they are only restricted by the limits of
+         the command line length.  Again, if the value contains spaces
+         or special characters it is best to enclose the entire
+         assignment within double quotes to instruct the operating
+         system shell to parse it as a single argument to AWK.
+         Following is an example that uses the variable "p" to
+         instruct the AWK program of the number of the file currently
+         being processed:
+
+         AWK -f myprog.awk p=1 file1.dat p=2 file2.dat p=3 file3.dat
+
+         In the above execution the program MYPROG.AWK can refer to
+         the variable "p" to determine which file is being processed.
+         "p" is set to 1 before processing begins on FILE1.DAT.  It is
+         set to 2 when FILE1.DAT is closed and before FILE2.DAT is
+         opened, and so on.  There are better methods built into AWK
+         to determine this information but this example illustrates
+         the feature of command line assignments.
+
+                              REGULAR EXPRESSIONS
+
+         Many useful programs can be written with AWK without the use
+         of regular expressions, however, they are one of the most
+         powerful features of the language.  We will therefore take a
+
+
+
+                          gAWK Documentation - Page 3
+
+
+
+
+
+
+
+
+         short detour into a discussion of regular expressions before
+         looking at the pattern matching features of AWK.
+
+         A regular expression is a notation for specifying a pattern
+         for matching strings.  Regular expressions contain characters
+         which have special meaning and may be considered operators
+         just as plus (+) and minus (-) are arithmetic operators in
+         most languages.  These special characters are called
+         metacharacters.  Following are the regular expression
+         metacharacters supported by AWK:
+
+                    \  ^  $  .  [  ]  |  (  )  *  +  ?
+
+         A regular expression in AWK is surrounded by forward slash
+         characters and does not have to contain any metacharacters.
+         A regular expression without metacharacters matches itself.
+         The regular expression /ABC/ will match and string that
+         contains the substring "ABC".  Note that the match is case
+         sensitive and will not match the substring "ABc".  The
+         following table describes the format of regular expressions
+         where "c" is a non metacharacter, "m" is a metacharacter, and
+         "r" is a regular expression:
+
+            c        Matches the non metacharacter c
+           \m        Treats metacharacter m as a literal character
+            ^        Forces match to the beginning of the string
+            $        Forces match to the end of the string
+            .        Matches and single character
+          [ccc]      Matches any single character in the class
+          [^ccc]     Matches any single character not in the class
+          [c-c]      Matches the range of characters specified
+          [^c-c]     Matches any character not in the range specified
+          r | r      Matches any string that matches either expression
+          (r1)(r2)   Matches string that matches r1 and is immediately
+                     followed by a string that matches r2
+          (r)*       Matches zero or more consecutive strings matched
+                     by r.  AWK matches the longest string possible.
+          (r)+       Matches one or more consecutive strings matched
+                     by r.  AWK matches the longest string possible.
+          (r)?       Matches zero or one occurrence of the string
+                     matched by r.
+
+         As we've already seen a regular expression that contains no
+         metacharacters matches itself.  If this were the extent of
+         features offered, regular expressions would be of little use.
+         It is the metacharacters or "operators" which provide the
+         power of regular expressions.  We will look at each of the
+         metacharacters, describe how they are used, and give some
+         examples.
+
+         The "literal" metacharacter \ is used to remove the special
+         properties associated with a metacharacter so that it can be
+         matched as a normal character.  To match a string containing
+         a dollar sign we could code a regular expression /\$/ which
+
+
+
+                          gAWK Documentation - Page 4
+
+
+
+
+
+
+
+
+         would do the job.  Likewise to match the letter A followed by
+         a backslash followed by the letter B we could code the
+         regular expression /A\\B/.  The literal metacharacter is also
+         used to give special meaning to otherwise normal characters.
+         These special characters were inherited from the 'C' language
+         and should be familiar.  They are:
+
+              \b        backspace character
+              \f        formfeed character
+              \n        newline character
+              \r        carriage return character
+              \t        tab character
+              \ddd      octal value ddd where ddd is 1 to 3 digits
+                        between 0 and 7
+
+         The match beginning of line metacharacter forces a match to
+         occur at the beginning of a line.  The symbol used is the
+         caret (^).  To match all lines which begin with a Z we could
+         code /^Z/.  Note that the caret only has meaning at the
+         beginning of a regular expression (and within character
+         classes as we'll see shortly).  The use of a caret within a
+         regular expression is treated as a normal character although
+         is it prudent to use the backslash literal metacharacter
+         anyway if that is the intend.  For example, the regular
+         expression /AB^/ should match the same strings as /AB\^/.
+
+         The match end of line ($) metacharacter is similar to the
+         caret operator only it forces the match to the end of the
+         line.  Matching all lines which end with a question mark
+         could be coded as /\?$/.  Note that since the question mark
+         is a metacharacter its use as a literal must be "quoted" by
+         the literal metacharacter.
+
+         Lets look at some examples using both the caret and the
+         dollar sign:
+
+              /^XX$/      Matches strings which consist of only the
+                          two characters "XX"
+              /^.$/       Matches strings which are exactly one
+                          character
+              /^\.$/      Matches strings which are exactly one
+                          character and are equal to a period.
+                          (compare this with the previous example)
+
+         The period (.) metacharacter, as seen in the above examples
+         matches any single character.  Therefore the regular
+         expression /A..B/ will match any string which has a capital
+         letter A and a capital letter B separated by any two other
+         characters.
+
+         The bracket metacharacters [ ] are used to define characters
+         classes.  A character class can be used to match a single
+         character but allows alternatives to be supplied.  To match
+         any string which contains the letter A or the letter B we
+
+
+
+                          gAWK Documentation - Page 5
+
+
+
+
+
+
+
+
+         could code /[AB]/.  To match any string that start with an A
+         or a B we code /^[AB]/.  If a character class begins with a
+         caret the operation is negated, i.e. the expression matches
+         characters that are not part of the class.  To match strings
+         which begin with anything other than an A or a B we could
+         code /^[^AB]/.  Don't confuse the begin of line metacharacter
+         with the character class negation character.  A caret
+         appearing anywhere within a character class is treated as a
+         literal character, /[A^B]/ will match string containing
+         either an A, a B, or a caret.
+
+         Character classes allow a range of characters to be specified
+         by using a dash to separate the first character of the range
+         from the last.  Matching a string containing any lower case
+         letter could be coded as /[a-z]/ which is much easier than
+         having to enumerate all twenty six letters.  Multiple ranges
+         may be specified and combined with single letter values.  The
+         regular expression /[A-CXYI-K]/ will match a string
+         containing any of the following characters A,B,C,X,Y,I,J,K.
+         Expressions containing ranges may also be negated as in
+         /[^ABJ-K]/.
+
+         The next metacharacter is the alteration or "OR" operator.
+         This operator allows an expression to match if any of its
+         subexpressions match.  The expression /A|B/ will match any
+         string containing either A or B.
+
+         Parenthesis are used to group expressions to override the
+         normal operator precedence.  For example the expression
+         /ABC|XYZ/ looks like it might match strings containing either
+         ABC or XYZ.  However, due to the higher precedence of the |
+         operator it actually matches strings containing either ABCYZ
+         or ABXYZ.  To match strings containing either ABC or XYZ we
+         must code the expression as /(ABC)|(XYZ)/.
+
+         We will treat the last three metacharacters as a group and
+         label them the "repeat operators".  Technically they are
+         known as the closure operators and their function is to allow
+         a subexpression to be repeated.  The * metacharacter repeats
+         a subexpression zero or more times.  The expression /A*/
+         matches the strings "", "A", "AA", "AAA", and so on. Likewise
+         /AB*/ matches "A", "AB", "ABB", etc.  Parenthesis may be used
+         to repeat more than a single character as in /(AB)*/ which
+         would match "", "AB", "ABAB", etc.
+
+         The + metacharacter is similar to the * but it will not match
+         the NUL string "" (zero repeats) like * does.  The expression
+         /[ABC]+/ will match one or more consecutive characters in the
+         set ABC as in "A", "B", "CA", CCCBA", etc.
+
+         The final metacharacter is the question mark and is used to
+         match exactly zero or one occurrence of the expression.  The
+         expression /AB?/ will match "A" or "AB".
+
+
+
+
+                          gAWK Documentation - Page 6
+
+
+
+
+
+
+
+
+         In AWK all of the repeat metacharacters will match the
+         largest possible substring, therefore given the string
+         "AAAAAAAAAA" and the regular expression /A+/ the entire
+         string will be matched rather than just the first character.
+
+                                    PATTERNS
+
+         Patterns in AWK are used to select particular input records
+         for a specific type of processing.  They are conditional
+         expressions which cause their associated action to be
+         performed if they are TRUE.  Following are the types of
+         patterns supported:
+
+              BEGIN          Special pattern which is performed before
+                             the first input file is opened.
+              END            Special pattern which is performed after
+                             the last input file has been processed.
+              expression     Action is executed for each input line
+                             where "expression" is TRUE.
+              /reg exp/      Action is executed for each input line
+                             that is matched by the regular
+                             expression.
+              compound pat   A compound pattern is comprised of
+                             several patterns connected by the boolean
+                             operators && (AND), || (OR), ! (NOT), and
+                             parentheses.
+              pat1, pat2     A range pattern matches each input line
+                             starting with one matched by "pat1" up to
+                             and including one matched by "pat2".
+              empty          The empty pattern consists of only an
+                             action.  The pattern is unconditionally
+                             TRUE and the action is executed for every
+                             input record.
+
+         The BEGIN and END special patterns are not used to match
+         input lines but rather are used to perform program
+         initialization and termination.  The action associated with
+         the BEGIN pattern is executed before AWK reads any input
+         records.  It can be used to initialize variables, print
+         headings, or set AWK builtin variables which control input
+         and output field splitting.  The END special pattern is
+         matched after all input files have been processed.  It can be
+         used perform cleanup or print accumulated totals.  For
+         example, the following AWK program counts the number of input
+         lines and uses the END pattern to print out the result:
+
+                      { ++cnt }
+
+            END       { print cnt, "records were read" }
+
+         The first pattern/action pair in this program adds one to the
+         variable "cnt" for each input record processed by AWK.  It
+         consists of only an action, making use of the "empty" pattern
+         to match all input records.  After all input records are
+
+
+
+                          gAWK Documentation - Page 7
+
+
+
+
+
+
+
+
+         processed, the END pattern/action pair is executed and
+         prints the accumulated value of "cnt".
+
+         The "expression" pattern is a conditional expression which,
+         if TRUE, will cause the action associated with it to be
+         executed.  AWK has a rich set of comparison operators which
+         may be used in conjunction with builtin variables, program
+         defined variables, and/or AWK field variables.  The following
+         table presents the comparison operators supported by this
+         version of AWK:
+
+                       <         Less than
+                       <=        Less than or equal to
+                       ==        Equal to
+                       !=        Not equal to
+                       >=        Greater than or equal to
+                       >         Greater than
+                       ~         Matched by
+                       !~        Not matched by
+
+         If we wanted to process input records which contained more
+         than 5 fields we could make use of the NF builtin variable to
+         construct a pattern that would match these records: NF > 5.
+         AWK conditional expressions can also contain arithmetic or
+         string operators.  If our input data had employee hourly rate
+         in field #1 and number of hours worked in field #3 then the
+         pattern $1 * $3 > 100 would select input records where the
+         employee's pay is greater than $100.00.
+
+         Most of the comparison operators used in AWK are similar to
+         those available in other high level languages and should be
+         readily understood.  The match operators found in AWK are not
+         quite as common and deserve some explanation.  These
+         operators are used to match an expression against a regular
+         expression.  The tilde (~) is the match operator and can be
+         negated by use of the exclamation mark (!~).  For example, if
+         we wanted to print records where the 5th field contained the
+         string "Jones" we could code the following program:
+
+              $5 ~ /Jones/       { print $0 }
+
+         This program will use the literal regular expression
+         specified as the second argument of the match operator to
+         compare against the expression which is the left argument.
+         If a match is found the pattern is TRUE and the action is
+         executed.  Likewise printing all records which did not
+         contain the string "Jones" in field 5 would be coded as:
+
+              $5 !~ /Jones/       { print $0 }
+
+         Note that the match operation is a regular expression search.
+         If field five contained the string "Where is Jones?" the
+         regular expression /Jones/ would match it.  If an exact match
+         is desired use the equality operator as in:
+
+
+
+                          gAWK Documentation - Page 8
+
+
+
+
+
+
+
+
+              $5 == "Jones"         { print $0 }
+
+         The match operator supports a new AWK feature called "dynamic
+         regular expressions".  This feature allows the value of an
+         expression to be compiled as a regular expression and used as
+         such.  The value of this expression must be a valid regular
+         expression or a run time error will occur.  Consider the
+         pattern "$1 ~ $5" which instructs AWK to treat the value of
+         field #5 as a regular expression and use it to match the
+         contents of field #1.  For each input record field #5 could
+         be a different regular expression.  Our program to search for
+         the string "Jones" in field #5 could be coded as:
+
+              BEGIN        { str = "Jones" }
+
+              $5 ~ str     { print $0 }
+
+         Use of dynamic regular expressions requires AWK to syntax
+         check and compile the expression each time it is used.  For
+         this reason dynamic regular expressions are not as efficient
+         as literal regular expressions which are checked and compiled
+         only once.  They are however very powerful and are well worth
+         the slight performance degradation if your application needs
+         them.
+
+         There is a case of regular expression matching which occurs
+         so frequently that AWK provides a special shorthand notation.
+         The pattern "$0 ~ /Jones/" will match the regular expression
+         against the entire input record and evaluate as TRUE if there
+         is a match.  This format of the match operator can be
+         shortened to simply specifying the regular expression.  The
+         following program will print all records which contain the
+         string "Jones".
+
+              /Jones/       { print $0 }
+
+         Compound Patterns
+
+         A compound pattern is an expression which uses logical
+         operators to combine other patterns.  The available logical
+         operators are AND (&&), OR (||), and NOT (!).
+
+              $1 == "Jones" && NF > 10
+
+         The above program will print each input record where the
+         first field is equal to the string "Jones" AND the number of
+         fields in the record is greater than ten.  Note that we have
+         omitted the action portion of the program.  If a pattern is
+         present the action may be omitted and will perform the
+         default action which is equivalent to { print $0 }.
+
+              $1 == "Jones" || !(NF > 10)
+
+         The above program will print all input records where the
+
+
+
+                          gAWK Documentation - Page 9
+
+
+
+
+
+
+
+
+         first field is equal to the string "Jones" OR the number of
+         fields in the record is less than or equal to ten (take a
+         good look at it).
+
+         Range Pattern
+
+         The range pattern is a special construct which can be used to
+         match a series of input records.  The format is "pat1, pat2"
+         where pat1 and pat2 are regular expressions.  The pattern
+         will return TRUE when pat1 matches an input line and continue
+         to be TRUE up to (and including) an input line which matches
+         pat2.  For example:
+
+              /Jones/, /Sampson/
+
+         This program will print all input records beginning with one
+         matching the string "Jones" and continuing up to and
+         including a record that matches "Sampson".
+
+         Summary of Patterns
+
+              Pattern         Example               Matches
+
+              BEGIN           BEGIN        Before any input is read
+
+              END             END          After all input has been
+                                           read
+
+              expression      $1 > 50      Lines with the first field
+                                           greater than 50
+
+              matching        /Jones/      Lines that contain the
+                                           substring "Jones"
+
+              compound        $1 < 5 && $1 > 0
+                                           Lines where the first field
+                                           is between 1 and 4
+
+              range           NR == 1, NR == 20
+                                           The first 20 input records
+
+                                    ACTIONS
+
+         The action portion of an AWK program defines the statements
+         to be executed with a pattern associated with them is found
+         to be TRUE for the current input record.  As we've seen the
+         actions portion can be omitted in which case the default
+         action of printing the matching record is performed.  The
+         pattern portion of a statement may also be omitted which
+         creates a pattern that will match all input records.
+         However, both the pattern and action cannot be omitted,
+         either one or both must be present.
+
+         The statements supported by AWK in the actions section are
+
+
+
+                          gAWK Documentation - Page 10
+
+
+
+
+
+
+
+
+         similar to the constructs of the 'C' Language.  Following are
+         the allowable statements, capital letters indicate portions
+         of the statement which includes variable information:
+
+              print EXPRESSION-LIST
+              printf(FORMAT, EXPRESSION-LIST)
+              if (EXPRESSION) STATEMENT
+              if (EXPRESSION) STATEMENT else STATEMENT
+              while (EXPRESSION) STATEMENT
+              do STATEMENT while (EXPRESSION)
+              for (EXPRESSION; EXPRESSION; EXPRESSION) STATEMENT
+              for (VARIABLE in ARRAY) STATEMENT
+              delete ARRAY-ELEMENT
+              break
+              continue
+              next
+              exit
+              { STATEMENTS }
+              VARIABLE = EXPRESSION
+
+         Expressions
+
+         Expressions in AWK can consist of constants, variables,
+         builtin variables, field variables, arithmetic expressions,
+         string expressions, conditional expressions, relational
+         expressions, builtin functions, or user defined functions.
+         We will look at each of these in turn.
+
+         Expressions - Constants
+
+         AWK supports two data types which are NUMBER and STRING.
+         String constants are written surrounded by double quotes and
+         may contain "escape characters" as used in 'C' Language
+         strings.  For example, to create a string literal which
+         contains the single character double quote we would code
+         "\"".  Other examples of string constants are "Jones",
+         "Hello, World", and "" which is the NUL string.
+
+         Number constants are real numbers and are written without
+         quotes.  Numbers may be written as integers (556), decimal
+         numbers (5.17), or exponential notation (5.17E-2).  All
+         numbers are stored in floating point which, in this
+         implementation, uses the 'C' type double.
+
+         Expressions - Variables
+
+         User defined variables in AWK are created when they are first
+         referenced.  The programmer does not need to specify the type
+         of data the variable will store, AWK infers this from the
+         operations performed on the variable.  In fact the type of
+         data may change during the execution of the program and AWK
+         will convert the current contents of the variable to the
+         required type.  All variables are created empty.  In the case
+         of string variables they contain the NUL string and in the
+
+
+
+                          gAWK Documentation - Page 11
+
+
+
+
+
+
+
+
+         case of number variables they contain the number zero.
+
+         Each user defined variable is composed of letters, numbers,
+         and underscores and must not begin with a number.  Examples
+         are: total_count, sum, and my_var.
+
+         Expressions - Builtin Variables
+
+         AWK contains a number of builtin variables which may be used
+         to obtain information and/or control the operation of reading
+         and splitting fields.  All builtin variable names are spelled
+         with all capital letters.  Following is a list of supported
+         builtin variables:
+
+              Variable                    Meaning
+
+              ARGC            Number of command line arguments
+              ARGV            Array of command line arguments
+              FILENAME        Name of the current input file
+              FNR             Record number within the current file
+              FS              Input field separator (reg exp)
+              NF              Number of fields in the current record
+              NR              Record number of current record relative
+                              to start of execution
+              OFMT            Output format for numbers
+              OFS             Output field separator (string)
+              ORS             Output record separator
+              RLENGTH         Length of string matched by match()
+                              function
+              RS              Input record separator
+              RSTART          Start of string matched by match()
+                              function
+              SUBSEP          Subscript separator
+
+         Following are the default values of these builtin variables:
+
+                       Variable        Default
+
+                       ARGC            Varies
+                       ARGV            Varies
+                       FILENAME        Varies
+                       FNR             Varies
+                       FS              "[ \t]+"
+                       NF              Varies
+                       NR              Varies
+                       OFMT            "%.6g"
+                       OFS             " "
+                       ORS             "\n"
+                       RLENGTH         0
+                       RS              "\n"
+                       RSTART          0
+                       SUBSEP          "\034"
+
+         The builtin variables may be used just like user defined
+
+
+
+                          gAWK Documentation - Page 12
+
+
+
+
+
+
+
+
+         variables.  For example, the following program will count the
+         number of input files and display this value and the end of
+         processing:
+
+              prev != FILENAME   { ++no_files; prev = FILENAME }
+
+              END                { print no_files, "file(s) input" }
+
+         The user defined variable "prev" is created and initialized
+         to the NUL string and will therefore not be equal to the
+         first filename processed.  When this happen the variable
+         "no_files" is incremented and the value of "prev" is set
+         equal to the current filename.  At the end of input the
+         number of different files encountered is displayed.
+
+         Expressions - Field Variables
+
+         As discussed previously, AWK splits input records into fields
+         based on the regular expression contained in the builtin
+         variable FS.  These fields may be accessed or modified by the
+         AWK program by field number.  Fields are numbered beginning
+         from one (1).  The dollars ($) specifier is used to inform
+         AWK that an expression refers to a field.  For example, $1
+         refers to the first field in a record and $5 refers to the
+         fifth field.  The special field variable $0 is used to refer
+         to the entire input record just as it was read in by AWK.
+
+         The expressions used to specify field variables do not need
+         to be numeric constants but can be any numeric expression.
+         Given that the builtin variable NF contains the number of
+         fields in the current records the variable $(NF - 1) refers
+         to the next to the last field.  Assume that an AWK program
+         was to print out the value of a single field for each input
+         record and that the number of the field to be printed was
+         contained in the first field of each record.  The following
+         AWK program would meet this specification:
+
+                           { print $($1) }
+
+         This version of AWK permits assignments to field variables.
+         If a single field is assigned a new value the contents of the
+         $0 variable are modified accordingly.  If a new value is
+         assigned to the $0 variable all field variables are
+         recalculated and a new value is assigned to NF.
+
+         Expressions - Arithmetic Expressions
+
+         AWK provides the usual arithmetic operators which may be used
+         to calculate numeric results.  All Arithmetic is performed in
+         floating point using double precision storage.  Following are
+         the individual operators supported:
+
+
+
+
+
+
+                          gAWK Documentation - Page 13
+
+
+
+
+
+
+
+
+
+
+           Operator     Function                Example
+
+              +         Addition                $1 + $2
+              -         Subtraction             total + $4
+              -         Unary minus             -total
+              *         Multiplication          x * y
+              /         Division                $1 / x
+              %         Modulo (remainder)      x % y
+              ^         Exponentiation          $1 ^ 5
+              ++        Pre/Post increment      ++x or x++
+              --        Pre/Post decrement      --x or x--
+
+         Expressions - String Expressions
+
+         There is only one string operator supported by AWK.  It is
+         concatenation and is represented by spaces between variables
+         and/or constants.  The following program assigns some
+         constants to string variables and the concatenates them into
+         a single variable:
+
+              BEGIN     {   x = "String 1"; y = "String 2"
+                            z = "(" x ":" y ")"
+                            print z
+                            exit
+                        }
+
+         The output of this program will be:
+
+              (String 1:String 2)
+
+         While discussing string expressions seems like a good
+         opportunity to bring up AWK's use of dynamic regular
+         expression.  A dynamic regular expression in AWK is simply a
+         string variable which is treated as a normal regular
+         expression.  Strings which contain valid regular expressions
+         can be used anywhere that a literal regular expression can be
+         used.  For example the following program makes use of a
+         dynamic regular expression to print input which consist
+         solely of integer numbers:
+
+              BEGIN      { num = "^[0-9]$" }
+
+              $0 ~ num
+
+         Notice that the action portion of the second rule of this
+         program is missing.  A missing action performs the default
+         action of printing the input record when the pattern is TRUE.
+
+         The astute reader will have observed that AWK's builtin
+         variable FS is nothing more than a dynamic regular expression
+         which is used to delimit fields within input records.
+
+
+
+
+                          gAWK Documentation - Page 14
+
+
+
+
+
+
+
+
+
+         Expressions - Conditional Expressions
+
+         The AWK conditional expression has the form:
+
+                         exp1 ? exp2 : exp3
+
+         Exp1 is evaluated and if the result of it is TRUE (nonzero or
+         nonNUL) the value of the conditional expression is the value
+         of exp2.  If exp1 is FALSE then the value of the conditional
+         expression is the value of exp3.  Consider the following AWK
+         program fragment:
+
+              END       {
+                            print tot, "file" tot == 1 ? "" : "s",
+                                       "read"
+                        }
+
+         Presumably the variable "tot" was calculated during the
+         course of the program and represents the number of files
+         read.  The END action intends to print out this number.  We
+         make use of a conditional statement in this action to make
+         the word "file" singular if there was only one file read,
+         otherwise we make it plural by adding an "s".  Notice that we
+         use the string concatenation operator to append the "s" to
+         the literal "file" during printing to avoid having a field
+         separator placed between them.
+
+         Expressions - Relational Expressions
+
+         Relational expressions consist of expressions formed using
+         the AWK comparison operators.  These expressions have either
+         a TRUE (1) or FALSE (0) value.  Following are the comparison
+         operators supported by AWK:
+
+            Operator          Meaning               Example
+
+              <          Less than                  x < y
+              <=         Less than or equal to      x <= y
+              ==         Equal to                   x == y
+              !=         Not Equal to               x != y
+              >=         Greater than or equal to   x >= y
+              >          Greater than               x > y
+              ~          Is matched by              x ~ y
+              !~         Is not matched by          x !~ y
+
+         Relational expressions may be combined by using the logical
+         operators && (AND), || (OR), and ! (NOT).
+
+         Expressions - Builtin Functions
+
+         The functions built into AWK may be divided into two
+         categories: arithmetic and string.  The following tables list
+         the available functions in each category.  The notation used
+
+
+
+                          gAWK Documentation - Page 15
+
+
+
+
+
+
+
+
+         to represent the type of function arguments is:
+
+                       x, y     ==>  Numbers
+                       s, t     ==>  Strings
+                       r        ==>  Regular Expression
+                       a        ==>  AWK array variable
+
+                          Arithmetic Builtin Functions
+
+              Function             Value Returned
+
+              atan2(x,y)    arctangent of x/y
+              cos(x)        cosine of x, with x in radians
+              exp(x)        exponential function of x, e ^ x
+              int(x)        integer part of x
+              log(x)        natural (base e) logarithm of x
+              rand()        random number n, where 0 <= n < 1
+              sin(x)        sine of x, with x in radians
+              sqrt(x)       square root of x
+              srand(x)      seed random number generator with x
+
+                            String Builtin Functions
+
+              gsub(r,s)     substitute s for r globally in $0, return
+                            the number of substitutions made
+              gsub(r,s,t)   substitute s for r globally in string t,
+                            return the number of substitutions made
+              index(s,t)    return first position of string t in
+                            string s or 0 if t is not present
+              length(s)     return the number of characters in s
+              lower(s)      return string s with all upper case
+                            letters converted to lower case
+              match(s,r)    test if string s contains a substring
+                            matched by regular expression r, return
+                            index of match or 0 if none; sets builtin
+                            variables RSTART and RLENGTH
+              reverse(s)    return the string s reversed
+              split(s,a)    split string s into array a on FS, return
+                            number of fields split
+              split(s,a,r)  split string s into array a on regular
+                            expression r, return number of fields
+              sprintf(f,exp,...) similar to the C sprintf function.
+                            string f is a format specifier and the
+                            expression list is used to "fill in" the
+                            % placeholders.  the return value is the
+                            resultant string
+              sub(r,s)      substitute s for the leftmost longest
+                            substring of $0 matched by r, return the
+                            number of substitutions made (0 or 1)
+              sub(r,s,t)    substitute s for the leftmost longest
+                            substring of t matched by r, return the
+                            number of substitutions made (0 or 1)
+              substr(s,x)   return the suffix of s starting at
+                            position x
+
+
+
+                          gAWK Documentation - Page 16
+
+
+
+
+
+
+
+
+              substr(s,x,y) return substring of s starting at position
+                            x for length y
+              system(s)     invoke an operating system command shell
+                            and execute string s as a command
+              upper(s)      return string s with all lower case
+                            letters converted to upper case
+
+         Expressions - User Defined Functions
+
+         User defined functions are not supported in this version of
+         AWK.  Support for this feature is currently under
+         construction and will be available in the next release of the
+         software.
+
+         Statements
+
+         The AWK statements define the actions to be performed upon
+         variables and expressions.  The available statements are very
+         "C like" in both syntax and semantics.  The types of
+         statements supported are listed in the introduction to the
+         ACTIONS section.  AWK statements may be terminated by a semi-
+         colon, however, this is only required if more than one
+         statement appears on a single line.  For example:
+
+              BEGIN       { FS = "\t";  OFS = ","; }
+
+         In this example the semi-colon following the first assignment
+         statement is required, however the second (or last) semi-
+         colon may be omitted.
+
+         We will now take a closer look at each of these.
+
+         Statements - print
+
+         The "print" statement is used to produce simple output from
+         one or more expressions.  Each expression to be printed is
+         separated by a comma.  If desired, the expression list may be
+         surrounded by parentheses.  Each comma separated expression
+         is printed as an output field.  Fields in the output record
+         are separated by the value contained in the OFS builtin
+         variable.  The last expression in the print statement is
+         terminated by the "record separator" value contained in the
+         ORS builtin variable.  String expressions are converted for
+         output via the "%s" format specifier.  Numeric expressions
+         are converted for output by using the format specifier
+         contained in the OFMT builtin variable which defaults to
+         "%.6g".  This value can be changed by the program to alter
+         the format of numeric fields.
+
+         The following example uses the "print" statement to process a
+         comma delimited input file containing five fields while
+         exchanging the positions of the second and third fields:
+
+
+
+
+
+                          gAWK Documentation - Page 17
+
+
+
+
+
+
+
+
+              BEGIN        { FS = OFS = "," }
+
+                           { print($1, $3, $2, $4, $5) }
+
+         The output of the print statement will be directed to the
+         standard output device (stdout) by default.  The program may
+         over-ride this default by use of the AWK redirection operator
+         to place the output in a file or on a printer.
+
+              print "This will be written to file XYZ.DAT" >"XYZ.DAT"
+
+              outfile = "XYZ.DAT"
+              print "This will be written to file XYZ.DAT" >outfile
+
+              print "This will go to the printer" >"PRN"
+
+         Statements - printf
+
+         The "printf" statement in AWK is very similar to its
+         counterpart in the 'C' language.  The first parameter of the
+         printf statement is a string containing "format specifiers"
+         which determine how the remaining parameters are formatted
+         and printed.  The format string is always required,
+         additional parameters are required based on the number of
+         specifiers in the format string.
+
+         A format specifier has the following parts:
+
+               %[-][0][width][.prec]char
+               ! !  !    !      !    +----> printf format ctrl char
+               ! !  !    !      +---------> max string width or number
+               ! !  !    !                  digits to right of decimal
+               ! !  !    +----------------> minimum width for field
+               ! !  +---------------------> pad with leading zeros
+               ! +------------------------> left justify result
+               +--------------------------> format string specifier
+
+         Items within square brackets ([ ]) are optional.  The
+         following table lists the valid printf format control
+         characters:
+
+              Character          PRINTF Expression
+
+                  c            ASCII character
+                  d            decimal integer
+                  e            [-]d.ddddddE[+-]dd
+                  f            [-]ddd.dddddd
+                  g            e or f format whichever is shorter
+                  o            unsigned octal number
+                  s            string
+                  x            unsigned hexidecimal number
+                  %            literal % character
+
+         As is the case with the "print" statement the output of the
+
+
+
+                          gAWK Documentation - Page 18
+
+
+
+
+
+
+
+
+         "printf" statement may be redirected via the AWK redirection
+         operator (>).  One difference from the "print" statement is
+         that the "printf" statement requires the programmer to fully
+         specify all field and record delimiters.  The OFS and ORS
+         builtin variables are not used with "printf" and must be
+         supplied in the format string if so desired.
+
+         Statements - if
+
+         The AWK "if" statement is implemented in the same manner as
+         is found in the 'C' language.  The basic format is as
+         follows:
+
+                        if (expression)
+                            statement1
+                        else
+                            statement2
+
+         If the expression in TRUE statement1 is executed otherwise
+         statement2 is executed.  The "else" portion is optional and
+         need not be coded if there is not alternative action to take
+         when "expression" is FALSE.  Both statement1 and statement2
+         may be replaced by several statements if the statements are
+         enclosed within curly braces:
+
+                        if ($1 == "Jones")
+                        {
+                            $2 = "Common Name"
+                            jones_cnt++
+                        }
+                        else
+                            $2 = "Uncommon Name"
+
+         Statements - while
+
+         The AWK "while" statement executes a statement or block of
+         statements enclosed within curly braces as long as the
+         supplied expression is TRUE.  If the expression starts off
+         being FALSE the statements are never executed.  Following is
+         the format of the "while" statement:
+
+                     while (expression) statement
+
+         Following is an example:
+
+                     i = NF
+                     while (i > 0)
+                     {
+                         print $i
+                         --i
+                     }
+
+         Statements - do
+
+
+
+
+                          gAWK Documentation - Page 19
+
+
+
+
+
+
+
+
+         The "do" statement is similar to the "while" statement with
+         the exception that the test of the expression is made after
+         the statement has been executed.  For this reason the
+         statement(s) within a "do" loop will always be executed at
+         least one time even if the expression starts off being FALSE.
+         The format of the "do" statement is:
+
+                     do statement while (expression)
+
+         Following is an example:
+
+                     i = NF
+                     do
+                     {
+                         print $i
+                         --i
+                     } while (i > 0)
+
+         In this example, what will happen if NF == 0?
+
+         Statements - for
+
+         The AWK "for" statement has two forms, one which should be
+         familiar to 'C' programmers and one which should be familiar
+         to SNOBOL programmers.  The SNOBOL version allows looping
+         through all the elements of an AWK array and we will defer
+         discussion of this variant until we talk about associative
+         arrays in AWK.
+
+         The 'C' version of "for" has the following format:
+
+                     for (exp1; exp2; exp3) statement
+
+         This version of the "for" statement can best be described via
+         the programming constructs from which it is comprised.
+         Following is AWK language code which implements a "for"
+         statement using constructs we have already covered:
+
+                      exp1
+                      while (exp2)
+                      {
+                          statement
+                          exp3
+                      }
+
+         In verbiage this means that exp1 is executed at the start of
+         the loop one time.  Then while exp2 is TRUE the statement
+         associated with the "for" is executed followed by exp3.  This
+         loop continues until exp2 is FALSE.  Note that if exp2 is
+         FALSE at the beginning of the loop it is never executed.
+         Following is an example of this type of "for" statement:
+
+                      for (i = NF; i > 0; --i)
+                          print $i
+
+
+
+                          gAWK Documentation - Page 20
+
+
+
+
+
+
+
+
+         Looking back at our example in the discussion of the "while"
+         statement you will note that this example performs the
+         identical function.
+
+         Statements - delete
+
+         The "delete" statement removes an element of an associative
+         array from memory.  Again, we will defer discussion of this
+         statement to the section on AWK arrays.
+
+         Statements - break
+
+         The AWK break statement is used to terminate one of the
+         looping constructs prior to its normal termination.  Use of
+         the "break" statement outside of a loop is invalid.  The
+         following examples demonstrate the use of "break":
+
+                      i = NF
+                      while (1)
+                      {
+                          if (i > 0)
+                              print $i
+                          else
+                              break
+                          --i
+                      }
+
+                      for (i = NF; 1; --i)
+                          if (i > 0)
+                              print $i
+                          else
+                              break
+
+         Statements - continue
+
+         The "continue" statement in AWK, as in 'C', is used within a
+         loop to immediately return to the expression evaluation
+         portion of the looping statement.  In the case of a "while"
+         or a "do" loop the loop expression is evaluated and the loop
+         is continued or terminated based on its value.  In the case
+         of a for loop, exp3 is executed and then exp2 is evaluated to
+         determine if the loop should terminate.  In either case the
+         remaining code in the loop is not executed during the current
+         iteration.  The following example prints out all fields of a
+         record which contain valid integer numbers.  The "continue"
+         statement is used to skip the printing if the match for
+         numeric value fails:
+
+                      for (i = 1; i <= NF; ++i)
+                      {
+                          if ($i !~ /^[0-9]+$/)
+                              continue
+                          printf("%d ", $i)
+                      }
+
+
+
+                          gAWK Documentation - Page 21
+
+
+
+
+
+
+
+
+         Statements - next
+
+         The AWK "next" statement is used to terminate the processing
+         of the current input record and continue the implied input
+         loop with the next record to be processed.  Recall that each
+         input record is matched against every pattern in the program
+         and, if TRUE, executes the corresponding action.  If a
+         particular pattern decides that the program should not
+         continue processing a particular record the "next" statement
+         can be used to discard the current record and proceed with
+         the next one.  The following example uses "next" to discard
+         records that have less than five fields:
+
+              NF < 5          { next }
+
+              $6 == "Jones"   { print "Record", NR, "is a Jones" }
+
+         Statements - exit
+
+         The "exit" statement can be used within an AWK action to
+         terminate processing of the program before the end of input.
+         The "exit" statement will terminate the implied input loop
+         and execute the END action if the program has one.  If the
+         "exit" statement appears within the action associated with
+         the END pattern it simply terminates the program.  The
+         following program terminates processing after reading 20
+         input records:
+
+              NR > 20         {
+                                  print "Terminating execution"
+                                  exit
+                              }
+
+                              { print "Processing record", NR }
+
+              END             { print "Done processing" }
+
+         Statements - assignment
+
+         The AWK assignment statement is similar to its 'C'
+         counterpart.  It is used to assign a new value to a variable.
+         The AWK assignment statement supports all the 'C' variations
+         such as:
+
+                 Operator       Format            Meaning
+
+                     =          x  = y            x = y
+                    +=          x += y            x = x + y
+                    -=          x -= y            x = x - y
+                    *=          x *= y            x = x * y
+                    /=          x /= y            x = x / y
+                    %=          x %= y            x = x % y
+                    ^=          x ^= y            x = x ^ y
+
+
+
+
+                          gAWK Documentation - Page 22
+
+
+
+
+
+
+
+
+         Builtin Functions
+
+         The Expressions section above presented a table of the
+         functions built into AWK.  We will now examine each of these
+         functions in closer detail.
+
+         Builtin Functions - atan2(x, y)
+
+         This function calculates the arctangent of x / y.  The return
+         value is in the range -PI to PI.  The signs of both arguments
+         are used to determine the quadrant of the return value.  The
+         following example prints the arctangent of 1.0 and -1.0:
+
+              print "Arctangent of 1 and -1 is:", atan2(-1, 1)
+
+         Builtin Functions - cos(x)
+
+         This function returns the cosine of its parameter x.  The
+         following example displays the cosine of PI:
+
+              PI = 3.14159265359
+              print "Cosine of PI is:", cos(PI)
+
+         Builtin Functions - exp(x)
+
+         This function returns the value of e raised to the x power.
+         The following prints the value of e ^ 2.
+
+              print exp(2)
+
+         Builtin Functions - gsub(r, s, t)
+
+         The gsub() function performs a global substitution of string
+         s for each match of regular expression r in string t.  If
+         string t is omitted from the call $0 is used in its place.
+         The regular expression supplied as r may be a literal regular
+         expression or a string which is to be treated as a dynamic
+         regular expression.  The function returns the number of
+         substitutions made.  Following is an example:
+
+              t = "It is the best time, isn't it?"
+              cnt = gsub(/is/, "was", t)
+              printf "Count(%d), Result(%s)\n", cnt, t
+
+         This code will print the following:
+
+              Count(2), Result(It was the best time, wasn't it?)
+
+         Builtin Functions - index(s, t)
+
+         The index() function searches the string s for the substring
+         t and returns the position of the first match or zero if t is
+         not a substring of s.  Following is an example:
+
+
+
+
+                          gAWK Documentation - Page 23
+
+
+
+
+
+
+
+
+              s = "It was the best of times"
+              print index(s, "best"), index(s, "It"), index(s, "xyz")
+
+         This code will produce the following output:
+
+              12 1 0
+
+         Builtin Functions - length(s)
+
+         This function will return the length of the string s in
+         characters.
+
+         Builtin Functions - lower(s)
+
+         The lower() function converts all upper case letters in
+         string s to lower case.  It returns the converted string.
+         This function is not included in Unix versions of AWK and is
+         a gAWK extension.
+
+              s = lower("NOW is The timE 1234")
+              print s
+
+         This code will produce the following output:
+
+              now is the time 1234
+
+         Builtin Functions - int(x)
+
+         The int() function returns a numeric value which is the
+         largest integer less than x.  The following examples
+         demonstrate this function:
+
+              print "This should print  2:", int(2.12345)
+              print "This should print -5:", int(-4.5)
+
+         Builtin Functions - log(x)
+
+         This function returns the natural logarithm of x.  This
+         function is undefined for negative values and will produce a
+         run time error.
+
+         Builtin Functions - match(s, r)
+
+         The match() function searches string s for a match with
+         regular expression r.  It returns the position of the
+         beginning of the match or zero if no match occurred.  As a
+         side effect it sets builtin variables RSTART and RLENGTH.
+         RSTART is set to the beginning position of the match and
+         RLENGTH is set to the length of the matched string.
+         Following are several examples:
+
+
+
+
+
+
+
+                          gAWK Documentation - Page 24
+
+
+
+
+
+
+
+
+              s = "I must be kind, only to be cruel"
+              t = ".*"
+              print match(s, /(kind)|(be)/), RSTART, RLENGTH
+              print match(s, t), RSTART, RLENGTH
+              print match(s, "none"), RSTART, RLENGTH
+
+         The following output is produced by this code:
+
+              7 7 2
+              1 1 32
+              0 0 0
+
+         Builtin Functions - rand()
+
+         This function returns a pseudorandom number which is greater
+         than or equal to zero but less than one.  Refer to the
+         srand() function for information on seeding the random number
+         generator.
+
+         Builtin Functions - reverse(s)
+
+         This function returns its argument as a string in which all
+         the characters are reversed.  For example:
+
+                   print reverse("ABCDEF")
+
+         The above statement will produce the output FEDCBA.  The
+         reverse() function is a gAWK extension and is not available
+         in Unix AWK.
+
+         Builtin Functions - sin(x)
+
+         This function returns the sine of its argument x.  The
+         following example prints the sine of PI / 2 which should be
+         1.0.
+
+              PI = 3.1415926535
+              print "Sine of PI / 2:", sin(PI / 2)
+
+         Builtin Functions - split(s, a, r)
+
+         The split() function is used to split a string "s" into
+         fields in array "a" based upon a regular expression "r".  The
+         regular expression passed may be either a literal expression
+         (/regexp/) or a dynamic expression ("regexp").  If "r" is
+         omitted then the current value of the FS builtin variable is
+         used.  The split() functions uses the regular expression to
+         find field delimiters within the string.  It then creates an
+         associative array of fields and returns the number of fields
+         (or array elements) created.  For example, the following code
+         will split a string delimited by commas and then print out
+         each individual field in the string.
+
+
+
+
+
+                          gAWK Documentation - Page 25
+
+
+
+
+
+
+
+
+              str  = "Now,is the,time,for all,good,men and women"
+              flds = split(str, arr, /,/)
+              print "The string contains", flds, "fields"
+              for (i = 1; i <= flds; ++i)
+                  print "Field", i, "(" arr[i] ")"
+
+         The above code should produce the following output:
+
+              The string contains 6 fields
+              Field 1 (Now)
+              Field 2 (is the)
+              Field 3 (time)
+              Field 4 (for all)
+              Field 5 (good)
+              Field 6 (men and women)
+
+         Builtin Functions - sprintf(fmt [,exp] ...)
+
+         The sprintf() function is very similar to its C language
+         counterpart with the exception that the AWK sprintf() returns
+         its resultant string rather than being passed a pointer of a
+         buffer to place it in.  The format string "fmt" is the only
+         required argument and it may contain format specifiers as
+         documented under the "printf" statement.  The variable number
+         of "exp" arguments passed should equal the number of print
+         specifiers in the format string.  The return value is the
+         resultant string after applying the expression list to the
+         format string as defined by the format specifiers.  Following
+         is an example:
+
+              x = sprintf("Current filename is %s", FILENAME)
+              print "(" x ")"
+
+         Builtin Functions - sqrt(x)
+
+         This function returns the square root of x.  It is undefined
+         for negative numbers and will produce a run time error.
+
+         Builtin Functions - srand(x)
+
+         The srand() function may be used to set a starting point for
+         generating a series of pseudorandom numbers.  It may be
+         called with or without an argument.  If an argument is passed
+         that value is used to seed the random number generator.  If
+         no argument is passed the random number generator is seeded
+         from the current time of day.
+
+         Builtin Functions - sub(r, s, t)
+
+         The sub() function is similar to the gsub() function but
+         makes at most one substitution.  sub() will substitute "s"
+         for the leftmost substring of "t" which is matched by the
+         regular expression "r".  If "t" is omitted it is assumed to
+         be $0.  The sub() function returns the number of
+
+
+
+                          gAWK Documentation - Page 26
+
+
+
+
+
+
+
+
+         substitutions made which will be either zero or one.  The
+         argument "r" may be either a literal or dynamic regular
+         expression.
+
+         Builtin Functions - substr(s, x, y)
+
+         The substr() function returns the substring of "s" which
+         begins at position "x" for a length of "y".  The length
+         argument "y" may be omitted in which case substr() returns
+         the substring beginning at position "x" for the remainder of
+         the string.  If "x" is greater then the number of characters
+         in string "s" a NUL string is returned.  Following are some
+         examples and the output they produce:
+
+                          STATEMENT                     OUTPUT
+
+              print substr("ABCDEFGHIJK", 5)            EFGHIJK
+              print substr("ABCDEFGHIJK", 5, 2)         EF
+              print substr("ABCDEFGHIJK", 11, 1)        K
+              print substr("ABCDEFGHIJK", 12, 1)
+
+         Builtin Functions - system(s)
+
+         The system() function will invoke a new command shell and
+         execute the string "s" as a command under this child shell.
+         The string passed may be a builtin MSDOS or OS/2 command such
+         as DIR, or an external program file.  The return value of the
+         function is the return code of the command executed.  The
+         following example displays a sorted directory list using the
+         SORT.EXE filter:
+
+              BEGIN      {
+                             fil = "$$$.tmp"
+                             system(sprintf("dir | sort >%s", fil))
+                             ARGV[1] = fil
+                             ARGC    = 2
+                         }
+
+                         {
+                             if (" " == substr($0, 1, 1))
+                                 next
+                             printf("%-16s %6d\n", $1 "." $2, $3
+                         }
+
+              END        { system(sprintf("del %s", fil)) }
+
+         Builtin Functions - upper(s)
+
+         The upper() function returns its argument string with all
+         lower case letters converted to upper case.  This function is
+         a gAWK extension and is not available under Unix AWK.
+
+
+
+
+
+
+                          gAWK Documentation - Page 27
+
+
+
+
+
+
+
+
+                              SPECIAL AWK FEATURES
+
+         Associative Arrays
+
+         As we have hinted at during discussion of various other
+         features, AWK supports arrays similar to the manner in which
+         SNOBOL implements them.  In AWK an array subscript is a
+         string rather than a number as in most languages.  It is,
+         therefore, perfectly legal in AWK to reference arr["HI"] as
+         an array element.  You should also note that this is not the
+         same array element as defined by arr["hi"].  Array subscripts
+         which are specified as numbers are converted to strings so
+         arr["22"] and arr[22] refer to the same array element.  In
+         converting numbers to strings no leading zeros are added and
+         since all subscript characters are significant arr["01"] and
+         arr[1] do NOT refer to the same element.
+
+         Multidimensional arrays in AWK are created with the same
+         notation as used in most languages, i.e. arr[i, j, k],
+         however, in AWK the multiple subscripts are concatenated
+         together to form a single subscript.  The value of the
+         builtin variable SUBSEP is placed between each subscript
+         value.  If an array element is assigned a value with the
+         statement arr["SUB1", "SUB2"] = "hi" it can also be
+         referenced as arr["SUB1" SUBSEP "SUB2"].  The SUBSEP builtin
+         variable is initialized to the octal number /034 (Ctrl-\)
+         however it can be changed by the programmer to any character
+         or string which will allow multidimensional array elements to
+         be unique.
+
+         AWK arrays are dynamically created and can be expanded or
+         contracted at will.  There is no need to declare a variable
+         as an array, simply assigning it values as a subscripted
+         variable is sufficient.  The AWK "delete" statement may be
+         used to remove elements from an array.  The format of the
+         delete statement is "delete arr-element" and it is written as
+         "delete arr[1]" in AWK code.  The delete statement removes
+         the specified element from the array and frees all storage it
+         occupied.
+
+         Associative Arrays - Membership Test
+
+         Since an array element can be created simply by referring to
+         it by name it is not possible to test for the existence of a
+         particular element via a statement of the form:
+
+              if (arr[1] == "")
+                   ....
+
+         Since the reference to arr[1] will create it if it doesn't
+         already exist and assign it the default variable value of a
+         NUL string the above statement is unconditionally true.  A
+         special format of the if statement exists within AWK for the
+         purpose of testing an array element for existence:
+
+
+
+                          gAWK Documentation - Page 28
+
+
+
+
+
+
+
+
+              if ("1" in arr)
+                  ....
+
+         In the above example if the array element arr["1"] exists the
+         statement will be TRUE otherwise it will be FALSE.  If the
+         element doesn't exist it will not be created by this
+         statement.  The membership test can be used to test for
+         members of multidimensional arrays by using the following
+         format:
+
+              if ((i, j) in arr)
+                  ....
+
+         Associative Arrays - Element Enumeration
+
+         An array in most conventional languages is pre-defined to the
+         compiler or interpreter and restricted to certain bounds.  In
+         general, either 0 or 1 is implicitly defined as the lower
+         bound and the upper bound is programmer defined.  In either
+         case the subscript value for all elements is known as the
+         range of numbers from the lower to the upper bound.  In AWK
+         this is not the case as the set of array subscripts in use is
+         disjoint.  AWK provides a variation of the "for" statement
+         which allows all active subscripts within an array to be
+         enumerated.  The format of this statement is:
+
+              for (sub in arr)
+                  ....
+
+         This loop will be executed once for each element of the array
+         "arr".  On each iteration of the loop the scalar variable
+         "sub" will be assigned the value of the current array
+         subscript.  Therefore, the code:
+
+              for (sub in arr)
+                  print "arr[" sub "]=", arr[sub]
+
+         will print out all the elements of array "arr".
+
+         This version of the "for" statement does not support
+         multidimensional array notation for subscripts, however, it
+         can be used on multidimensional arrays since, as previously
+         mentioned, they are really stored as single dimension arrays
+         with concatenated subscript values.  If the individual
+         subscript elements need to be accessed that can be obtained
+         via the split() builtin function.  For example:
+
+              arr[1, 1] = 1; arr[1, 2] = 2; arr[1, 3] = 3
+              for (i in arr)
+              {
+                  split(i, x, SUBSEP)
+                  print "arr[" x[1] "," x[2] "," x[3] "]=",
+                        arr[x[1], x[2], x[3]]
+              }
+
+
+
+                          gAWK Documentation - Page 29
+
+
+
+
+
+
+
+
+         Associative Arrays - Example
+
+         We will leave this discussion of AWK arrays by presenting an
+         example of there use which, I believe, will demonstrate how
+         powerful they can be.  The following short AWK program will
+         read any number of text files specified on the command line
+         and produce a report of the number of lines in each file:
+
+                      { cnt[FILENAME]++ }
+
+              END     {
+                          for (i in cnt)
+                          {
+                              printf("File %-16s %5d line%s\n",
+                                     i, cnt[i],
+                                     cnt[i] == 1 ? "" : "s")
+                          }
+                      }
+
+         Please note that the majority of the code in this example is
+         concerned with displaying the output of the program.  The
+         actual work of counting the lines within each file is
+         performed with a single AWK statement.
+
+
+                                   REFERENCES
+
+         Aho, Alfred V., Brian W. Kernighan, and Peter J. Weinberger
+         [1988] "The AWK Programming Language", Addision-Wesley
+         Publishing Company, 1988.
+
+         Downs, Brian W. [1989], "AWK Comes of Age, Part 1", Unix
+         World, January 1989, pp 103-109.
+
+         Downs, Brian W. [1989], "AWK Comes of Age, Part 2", Unix
+         World, February 1989, pp 115-122.
+
+         Kernighan, Brian W., and Rob Pike [1984], "The UNIX
+         Programming Environment", Prentice-Hall, 1984.
+
+         Tare, R. S. [1987], "UNIX Utilities", McGraw-Hill, 1987.
+
+                                    CREDITS
+
+         This package was originally developed in cooperation with the
+         GNU Project headed by Dr. Richard Stallman.  It has been
+         enhanced and modified by numerous authors and is distributed
+         under the guidelines of the Free Software Foundation.  These
+         guidelines may be found in a separate file named "COPYING".
+
+         To the best of my knowledge all of the authors of this
+         package agree with this distribution policy and fully support
+         the free distribution of software in source code form.
+
+
+
+
+                          gAWK Documentation - Page 30
+
+
+
+
+
+
+
+
+         The original version of gAWK was developed by Paul Rubin in
+         1986 and released to the GNU Project.
+
+         The original version of the gAWK builtin functions was
+         written by Jay Fenlason in 1986.
+
+         The enhancements for range patterns and various other fixes
+         were made by a programmer identified only as "jfw".
+
+         Numerous fixes were applied by a programmer identified only
+         as "JF".
+
+         All of the newer features of AWK were implemented by Bob
+         Withers.  The code was also ported to both MSDOS and OS/2
+         systems under Microsoft C V5.10.
+
+         The AWK grammer for this release was processed by the PD
+         version of YACC which was originally developed by J van
+         Katwijk of The Delft University of Technology, Delft, The
+         Netherlands.  This code has been extensively modified and
+         ported by Bob Denny, Scott Guthery, and Bob Withers among
+         others.
+
+         There are, I'm sure, other hands through which this code has
+         passed on its way to me but I have not been able to identify
+         them.  To those programmers I apologize for the omission and
+         express thanks for their efforts.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+                          gAWK Documentation - Page 31
+
+

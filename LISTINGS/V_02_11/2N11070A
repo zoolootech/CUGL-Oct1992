@@ -1,0 +1,43 @@
+program UserRuntimeErrorHandling;
+var
+  ExitSave : pointer;                           { System's exit routine }
+  DataSegment : word;                           { Saved DS register }
+
+  { *** Application's declaration part *** }
+
+{SF+}
+
+procedure RuntimeErrorHandler;
+begin
+
+  { *** Application's error handler
+    Runtime error code in ExitCode -- See Turbo Pascal Manual *** }
+
+ ExitProc := @RuntimeErrorHandler;
+ asm
+   mov sp, bp;                                  { Setup stack frame       }
+   mov ds, DataSegment;                         { Restore DS register     }
+   pop bx;                                      { Pop flags               }
+   pop ax;                                      { Pop return address, ofs }
+   pop ax;                                      { Pop return address, seg }
+   mov ax, WORD PTR ErrorAddr + 2;              { Get error address, seg }
+   add ax, $10;                                 { Adjust error addr, seg }
+   add ax, PrefixSeg;
+   push ax;                                     { Push error address, seg }
+   mov ax, WORD PTR ErrorAddr;                  { Get error address, ofs }
+   push ax;                                     { Push error address, ofs }
+   push bx;                                     { Push flags }
+  end;
+end; { RuntimeErrorHandler }
+
+{$F-}
+
+begin
+  ExitSave := ExitProc;
+  ExitProc := @RuntimeErrorHandler;
+  DataSegment := DSeg;
+
+  { *** Application's code area *** }
+
+  ExitProc := ExitSave;
+end.

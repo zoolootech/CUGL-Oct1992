@@ -1,0 +1,338 @@
+;	CTOATBLS.CSM -- Constant tables for CTOA CRL-to-CSM postprocessor
+
+;	This file contains two functions, OPCTABL and CCCTABL.  They return
+;	pointers to constant tables of opcodes and C.CCC entry points,
+;	respectively.  They are created in assembly language because BDS C
+;	won't do initializers, and boy do I wish Leor would do something
+;	about that.
+
+	MACLIB	"BDS.LIB"
+
+; OPCTABL
+
+;	struct opc_entry {
+;		char mask;		/* Mask to AND with opcode */
+;		char value;		/* Value to compare with opcode&mask */
+;		char opcode [5];	/* Opcode name in ASCII */
+;		char type;		/* Type of opcode (see below) */
+;		} *opctabl ();
+
+;	Opcode types are as follows:
+
+OP$SIMPLE  	EQU	1	; Simple 1-byte operation
+OP$LXI     	EQU	2	; LXI
+OP$RPSP    	EQU	3	; Register pair operation that can use SP
+OP$REG53   	EQU	4	; Register operation with reg # in bits 5-3
+OP$MVI     	EQU	5	; MVI
+OP$DATA1   	EQU	6	; LDA or STA; address in 1-byte data area
+OP$DATA2   	EQU	7	; LHLD or SHLD; address is 2-byte data area
+OP$MOV     	EQU	8	; MOV
+OP$ARITH   	EQU	9	; Arithmetic operation between A and register
+OP$CONRET  	EQU	10	; Conditional return
+OP$RPPSW   	EQU	11	; PUSH or POP
+OP$CONTRA  	EQU	12	; Conditional transfer
+OP$TRANS   	EQU	13	; Unconditional CALL or JMP
+OP$IARITH  	EQU	14	; Immediate arithmetic
+OP$RST     	EQU	15	; Restart other than 6
+OP$IO      	EQU	16	; IN or OUT
+OP$RST6    	EQU	17	; Restart 6
+OP$WHAT    	EQU	18	; Unknown operation
+
+	FUNCTION	OPCTABL
+
+	lxi	h, optbl
+	ret
+
+optbl:
+
+;	First, the opcodes that don't fit neat patterns
+
+	db	0FFh, 022h, 'shld', 0h, OP$DATA2
+	db	0FFh, 02Ah, 'lhld', 0h, OP$DATA2
+	db	0FFh, 032h, 'sta', 0h, 0h, OP$DATA1
+	db	0FFh, 03Ah, 'lda', 0h, 0h, OP$DATA1
+	db	0FFh, 076h, 'hlt', 0h, 0h, OP$SIMPLE
+	db	0FFh, 0F7h, 0h, 0h, 0h, 0h, 0h, OP$RST6
+
+;	The rest of the opcodes, in numerical order
+
+	db	0FFh, 000h, 'nop', 0h, 0h, OP$SIMPLE
+	db	0CFh, 001h, 'lxi', 0h, 0h, OP$LXI
+	db	0CFh, 002h, 'stax', 0h, OP$RPSP
+	db	0CFh, 003h, 'inx', 0h, 0h, OP$RPSP
+	db	0C7h, 004h, 'inr', 0h, 0h, OP$REG53
+	db	0C7h, 005h, 'dcr', 0h, 0h, OP$REG53
+	db	0C7h, 006h, 'mvi', 0h, 0h, OP$MVI
+	db	0FFh, 007h, 'rlc', 0h, 0h, OP$SIMPLE
+	db	0CFh, 009h, 'dad', 0h, 0h, OP$RPSP
+	db	0CFh, 00Ah, 'ldax', 0h, OP$RPSP
+	db	0CFh, 00Bh, 'dcx', 0h, 0h, OP$RPSP
+	db	0FFh, 00Fh, 'rrc', 0h, 0h, OP$SIMPLE
+	db	0FFh, 017h, 'ral', 0h, 0h, OP$SIMPLE
+	db	0FFh, 01Fh, 'rar', 0h, 0h, OP$SIMPLE
+	db	0FFh, 027h, 'daa', 0h, 0h, OP$SIMPLE
+	db	0FFh, 02Fh, 'cma', 0h, 0h, OP$SIMPLE
+	db	0FFh, 037h, 'stc', 0h, 0h, OP$SIMPLE
+	db	0FFh, 03Fh, 'cmc', 0h, 0h, OP$SIMPLE
+	db	0C0h, 040h, 'mov', 0h, 0h, OP$MOV
+	db	0F8h, 080h, 'add', 0h, 0h, OP$ARITH
+	db	0F8h, 088h, 'adc', 0h, 0h, OP$ARITH
+	db	0F8h, 090h, 'sub', 0h, 0h, OP$ARITH
+	db	0F8h, 098h, 'sbb', 0h, 0h, OP$ARITH
+	db	0F8h, 0A0h, 'ana', 0h, 0h, OP$ARITH
+	db	0F8h, 0A8h, 'xra', 0h, 0h, OP$ARITH
+	db	0F8h, 0B0h, 'ora', 0h, 0h, OP$ARITH
+	db	0F8h, 0B8h, 'cmp', 0h, 0h, OP$ARITH
+	db	0C7h, 0C0h, 'r', 0h, 0h, 0h, 0h, OP$CONRET
+	db	0CFh, 0C1h, 'pop', 0h, 0h, OP$RPPSW
+	db	0C7h, 0C2h, 'j', 0h, 0h, 0h, 0h, OP$CONTRA
+	db	0FFh, 0C3h, 'jmp', 0h, 0h, OP$TRANS
+	db	0C7h, 0C4h, 'c', 0h, 0h, 0h, 0h, OP$CONTRA
+	db	0CFh, 0C5h, 'push', 0h, OP$RPPSW
+	db	0FFh, 0C6h, 'adi', 0h, 0h, OP$IARITH
+	db	0C7h, 0C7h, 'rst', 0h, 0h, OP$RST
+	db	0FFh, 0C9h, 'ret', 0h, 0h, OP$SIMPLE
+	db	0FFh, 0CDh, 'call', 0h, OP$TRANS
+	db	0FFh, 0CEh, 'aci', 0h, 0h, OP$IARITH
+	db	0FFh, 0D3h, 'out', 0h, 0h, OP$IO
+	db	0FFh, 0D6h, 'sui', 0h, 0h, OP$IARITH
+	db	0FFh, 0DBh, 'in', 0h, 0h, 0h, OP$IO
+	db	0FFh, 0DEh, 'sbi', 0h, 0h, OP$IARITH
+	db	0FFh, 0E3h, 'xthl', 0h, OP$SIMPLE
+	db	0FFh, 0E6h, 'ani', 0h, 0h, OP$IARITH
+	db	0FFh, 0E9h, 'pchl', 0h, OP$SIMPLE
+	db	0FFh, 0EBh, 'xchg', 0h, OP$SIMPLE
+	db	0FFh, 0EEh, 'xri', 0h, 0h, OP$IARITH
+	db	0FFh, 0F3h, 'di', 0h, 0h, 0h, OP$SIMPLE
+	db	0FFh, 0F6h, 'ori', 0h, 0h, OP$IARITH
+	db	0FFh, 0F9h, 'sphl', 0h, OP$SIMPLE
+	db	0FFh, 0FBh, 'ei', 0h, 0h, 0h, OP$SIMPLE
+	db	0FFh, 0FEh, 'cpi', 0h, 0h, OP$IARITH
+	db	000h, 000h, 'db', 0h, 0h, 0h, OP$WHAT
+
+	ENDFUNC	OPCTABL
+
+; CCCTABL
+
+;	The following function defines the locations in C.CCC accessed directly
+;	by code external to the run-time package.
+
+;	struct cccentry {
+;		unsigned address;	/* Address of the word in C.CCC */
+;		char flags;		/* Flags (see below) */
+;		char name [7];		/* Name of the entry point */
+;		} *ccctabl ();
+
+;	The flags are as follows:
+
+CODE	EQU	080h		; Entry is a procedure address
+DATA	EQU	040h		; Entry is a data address
+NMACLIB	EQU	020h		; Entry does not appear in BDS.LIB
+
+LOCAL	EQU	004h		; Offset that follows is a local address
+;	Bits 1-0 are the number of bytes in an offset, if any, following
+;	a CALL to the entry point.
+
+	FUNCTION	CCCTABL
+
+	lxi	h,cccdefs
+	ret
+
+cccdefs:			; Definitions for BDS C 1.50
+
+;	Constant locations at head of C.CCC
+
+	dw	fexitv
+	db	CODE, 'fexitv', 0h
+	dw	extrns
+	db	DATA, 'extrns', 0h
+	dw	cccsiz
+	db	DATA, 'cccsiz', 0h
+	dw	codend
+	db	DATA, 'codend', 0h
+	dw	freram
+	db	DATA, 'freram', 0h
+
+;	C.CCC entry points
+
+	dw	error
+	db	CODE, 'error', 0h, 0h
+	dw	setfcb
+	db	CODE, 'setfcb', 0h
+	dw	fgfd
+	db	CODE, 'fgfd', 0h, 0h, 0h
+	dw	fgfcb
+	db	CODE, 'fgfcb', 0h, 0h
+	dw	setfcu
+	db	CODE, 'setfcu', 0h
+	dw	setusr
+	db	CODE, 'setusr', 0h
+	dw	rstusr
+	db	CODE, 'rstusr', 0h
+	dw	khack
+	db	CODE, 'khack', 0h, 0h
+	dw	clrex
+	db	CODE, 'clrex', 0h, 0h
+	dw	eqwel
+	db	CODE, 'eqwel', 0h, 0h
+	dw	smod
+	db	CODE, 'smod', 0h, 0h, 0h
+	dw	usmod
+	db	CODE, 'usmod', 0h, 0h
+	dw	smul
+	db	CODE, 'smul', 0h, 0h, 0h
+	dw	usmul
+	db	CODE, 'usmul', 0h, 0h
+	dw	usdiv
+	db	CODE, 'usdiv', 0h, 0h
+	dw	sdiv
+	db	CODE, 'sdiv', 0h, 0h, 0h
+	dw	cmphd
+	db	CODE, 'cmphd', 0h, 0h
+	dw	cmh
+	db	CODE, 'cmh', 0h, 0h, 0h, 0h
+	dw	cmd
+	db	CODE, 'cmd', 0h, 0h, 0h, 0h
+	dw	ma1toh
+	db	CODE, 'ma1toh', 0h
+	dw	ma2toh
+	db	CODE, 'ma2toh', 0h
+	dw	ma3toh
+	db	CODE, 'ma3toh', 0h
+	dw	ma4toh
+	db	CODE, 'ma4toh', 0h
+	dw	ma5toh
+	db	CODE, 'ma5toh', 0h
+	dw	ma6toh
+	db	CODE, 'ma6toh', 0h
+	dw	ma7toh
+	db	CODE, 'ma7toh', 0h
+	dw	arghak
+	db	CODE, 'arghak', 0h
+
+;	C.CCC RAM addresses
+
+	dw	errnum
+	db	DATA, 'errnum', 0h
+	dw	pbase
+	db	DATA, 'pbase', 0h, 0h
+	dw	ysize
+	db	DATA, 'ysize', 0h, 0h
+	dw	xsize
+	db	DATA, 'xsize', 0h, 0h
+	dw	psize
+	db	DATA, 'psize', 0h, 0h
+	dw	rseed
+	db	DATA, 'rseed', 0h, 0h
+	dw	args
+	db	DATA, 'args', 0h, 0h, 0h
+	dw	iohack
+	db	DATA, 'iohack', 0h
+	dw	allocp
+	db	DATA, 'allocp', 0h
+	dw	alocmx
+	db	DATA, 'alocmx', 0h
+	dw	tmp
+	db	DATA, 'tmp', 0h, 0h, 0h, 0h
+	dw	tmp1
+	db	DATA, 'tmp1', 0h, 0h, 0h
+	dw	tmp2
+	db	DATA, 'tmp2', 0h, 0h, 0h
+	dw	tmp2a
+	db	DATA, 'tmp2a', 0h, 0h
+	dw	ungetl
+	db	DATA, 'ungetl', 0h
+	dw	unused
+	db	DATA, 'unused', 0h
+	dw	curusr
+	db	DATA, 'curusr', 0h
+	dw	usrnum
+	db	DATA, 'usrnum', 0h
+	dw	mode
+	db	DATA, 'mode', 0h, 0h, 0h
+	dw	freeze
+	db	DATA, 'freeze', 0h
+	dw	pending			; Special case 'cuz name too long
+	db	DATA+NMACLIB, 'pendin', 0h
+	dw	pendch
+	db	DATA, 'pendch', 0h
+	dw	quitc
+	db	DATA, 'quitc', 0h, 0h
+
+;	Compiler-accessed operators not in BDS.LIB:
+
+	dw	014Dh
+	db	CODE+NMACLIB+2, 'ldei', 0h, 0h, 0h
+	dw	015Ch
+	db	CODE+NMACLIB+1, 'sdei', 0h, 0h, 0h
+	dw	016Bh
+	db	CODE+NMACLIB+2, 'lsei', 0h, 0h, 0h
+	dw	0177h
+	db	CODE+NMACLIB+1, 'ssei', 0h, 0h, 0h
+	dw	0183h
+	db	CODE+NMACLIB+LOCAL+2, 'ldli', 0h, 0h, 0h
+	dw	0190h
+	db	CODE+NMACLIB+LOCAL+1, 'sdli', 0h, 0h, 0h
+	dw	019Dh
+	db	CODE+NMACLIB, 'pzinh', 0h, 0h
+	dw	01A3h
+	db	CODE+NMACLIB, 'pnzinh', 0h
+	dw	01A9h
+	db	CODE+NMACLIB, 'pcinh', 0h, 0h
+	dw	01AFh
+	db	CODE+NMACLIB, 'pncinh', 0h
+	dw	01B5h
+	db	CODE+NMACLIB, 'ppinh', 0h, 0h
+	dw	01BBh
+	db	CODE+NMACLIB, 'pminh', 0h, 0h
+	dw	01C1h
+	db	CODE+NMACLIB, 'pzind', 0h, 0h
+	dw	01C7h
+	db	CODE+NMACLIB, 'pnzind', 0h
+	dw	01CDh
+	db	CODE+NMACLIB, 'pcind', 0h, 0h
+	dw	01D3h
+	db	CODE+NMACLIB, 'pncind', 0h
+	dw	01D9h
+	db	CODE+NMACLIB, 'ppind', 0h, 0h
+	dw	01DFh
+	db	CODE+NMACLIB, 'pmind', 0h, 0h
+	dw	01EBh
+	db	CODE+NMACLIB, 'blau', 0h, 0h, 0h
+	dw	01ECh
+	db	CODE+NMACLIB, 'albu', 0h, 0h, 0h
+	dw	01F2h
+	db	CODE+NMACLIB, 'bgau', 0h, 0h, 0h
+	dw	01F3h
+	db	CODE+NMACLIB, 'agbu', 0h, 0h, 0h
+	dw	01F9h
+	db	CODE+NMACLIB, 'blas', 0h, 0h, 0h
+	dw	01FAh
+	db	CODE+NMACLIB, 'albs', 0h, 0h, 0h
+	dw	0204h
+	db	CODE+NMACLIB, 'bgas', 0h, 0h, 0h
+	dw	0205h
+	db	CODE+NMACLIB, 'agbs', 0h, 0h, 0h
+	dw	02E4h
+	db	CODE+NMACLIB, 'sderbl', 0h
+	dw	02E5h
+	db	CODE+NMACLIB, 'shlrbe', 0h
+	dw	02F2h
+	db	CODE+NMACLIB, 'sdelbl', 0h
+	dw	02F3h
+	db	CODE+NMACLIB, 'shllbe', 0h
+
+;	Dummy entry at end to stop scan
+
+	dw	*error
+	db	0, '*error', 0h
+
+	ENDFUNC		CCCTABL
+
+	end
+01B5h
+	db	CODE+NMACLIB, 'ppinh', 0h, 0h
+	dw	01BBh
+	db	CODE+NMACLIB, 'pminh', 0h, 0h
+	dw	01C1h
+	db	CO

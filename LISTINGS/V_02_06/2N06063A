@@ -1,0 +1,136 @@
+#include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <ctype.h>
+#include "StdWin.h"
+
+static char CommandBuffer[120];
+#define MAXARGS 50
+
+/* buffer for command line arg expansion */
+static char Buffer[MAXARGS][25];
+
+/* CommandLine displays a one line edit control
+   dialog box and returns a facsimile of the command line */
+
+int CommandLine(argv)
+char **argv;
+{
+
+  FARPROC lpCommandLineDlg,lpCommandLineParseDlg;
+  BYTE *ptr;
+  HWND hListBox;
+  int matches,i,State = 0;
+  /* CommandBuffer needs two null terminators */
+  memset(CommandBuffer,0,sizeof(CommandBuffer));
+  /* call Windows to display the dialog */
+  lpCommandLineDlg = MakeProcInstance(CommandLineDlg,hInst);
+  i=DialogBox(hInst,"COMMAND",GetFocus(),lpCommandLineDlg);
+  FreeProcInstance(lpCommandLineDlg);
+  /* process the command line */
+  if(i == ID_CANCEL) return(0);
+  i = 1;
+
+  /* set up argument pointers */
+  argv[0] = WindowTitle;
+  ptr = CommandBuffer;
+  Redirected = 0;
+  /* break the command buffer into strings */
+  while(*ptr)
+	{
+	/* find beginning */
+	while(*ptr && isspace(*ptr)) ptr++;
+	if(!*ptr) break;
+	argv[i] = ptr;
+	/* find end of arg */
+	while(*ptr && !isspace(*ptr)) ptr++;
+	*ptr = 0;
+	/* see if there are wild cards in this argument */
+	if((strchr(argv[i],'*') || strchr(argv[i],'?'))&&!State)
+		{
+		/* create a listbox window, don't show the window */
+		hListBox = CreateWindow("listbox",NULL,WS_CHILD,
+				CW_USEDEFAULT,CW_USEDEFAULT,CW_USEDEFAULT,
+				CW_USEDEFAULT,GetFocus(),1,hInst,NULL);
+		if(hListBox){
+			ShowWindow(hListBox,SW_HIDE);
+			/* ask the listbox to expand the wild card */
+			matches = SendMessage(hListBox,LB_DIR,0,
+				(DWORD)((char far *)argv[i])) + 1;
+			/* get the matches */
+			matches = min(matches,MAXARGS-i);
+			while(matches){
+				SendMessage(hListBox,LB_GETTEXT,--matches,
+					(DWORD)((char far *)&Buffer[i-1][0]));
+				argv[i] = Buffer[i-1];
+				i++;
+				}
+			i--;
+			}
+		DestroyWindow(hListBox);
+		}
+	if(State)       /* This argument is a filename */
+		{
+		hOutFile = OpenFile(argv[i],&OFStruct,OF_CREATE);
+		if(hOutFile == -1) hOutFile = 0;
+		if(State == 1 && hOutFile)   /* if redirected */
+			/* don't print to screen */
+			Redirected = 1;
+		State = 0;
+		/* don't pass these args to main */
+		i -= 2;
+		argv[i+1] = argv[i+2] = NULL;
+		}
+
+	/* see if next argument is redirection or pipe */
+	if(!strcmp(argv[i],">"))
+		State = 1;
+	else if(!strcmp(argv[i],"|"))
+		State = 2;
+	else State = 0;
+
+	ptr++;
+	i++;
+	}
+  return(i);
+}
+
+/**********************************************************
+
+	FUNCTION: CommandLineDlg(HWND, unsigned, WORD, LONG)
+
+**********************************************************/
+
+BOOL FAR PASCAL CommandLineDlg(hDlg,message,wParam,lParam)
+HWND hDlg;
+unsigned message;
+WORD wParam;
+LONG lParam;
+{
+
+
+	switch (message) {
+		case WM_INITDIALOG:
+			SetDlgItemText(hDlg,ID_TITLE,WindowTitle);
+			SetFocus(GetDlgItem(hDlg,ID_EDIT));
+			break;
+
+		case WM_COMMAND:
+			switch (wParam) {
+				case ID_OK:
+					GetDlgItemText(hDlg,ID_EDIT,
+						CommandBuffer,
+						sizeof(CommandBuffer));
+
+				case ID_CANCEL:
+					EndDialog(hDlg, wParam);
+					break;
+
+				}
+		break;
+		}
+	return (FALSE);
+}
+
+

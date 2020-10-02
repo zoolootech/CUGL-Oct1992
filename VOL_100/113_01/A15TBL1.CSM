@@ -1,0 +1,293 @@
+	TITLE	'Machine Language Functions for 1805A Cross-Assembler V 1.2'
+	PAGE	60
+;
+;	1805A Cross-Assembler Version 1.2
+;
+;	Copyright (c) 1980, 82, 83, 85 William C. Colley, III.
+;
+;	July 1982 -- Adapted from my 1802 cross-assembler.  WCC3.
+;
+;	Vers 1.0 -- March 1983 -- Added 1805A opcodes to the 1805 set.  WCC3.
+;
+;	Vers 1.1 -- March 1983 -- Added CPU pseudo-op to combine 1802 and 1805A
+;			cross-assemblers into a single program.  WCC3.
+;
+;	Vers 1.2 -- June 1985 -- Fixed IF block nesting mechanism bug and bug
+;			in 1805A SCAL opcode.  WCC3.
+;
+; File:	A15TBL1.CSM
+;
+; Machine Language Functions -- Module #1 of 2.
+;
+
+;
+; Arguments are passed via offsets from the stack pointer.
+; They are defined as follows:
+;
+ARG0	EQU	2		;First argument.
+ARG1	EQU	4		;Second argument.
+ARG2	EQU	6		;Third argument.
+ARG3	EQU	8		;Fourth argument.
+;
+	PAGE
+;
+; This function gets opcode number num from the opcode table.  The function
+; returns 0 if the opcode was not found, 1 if it was.
+;
+; Function is called as follows:
+;
+;	getopc(num,opcode,value,attrib);
+;
+;	num	Character containing the number of the desired entry.
+;			0 represents the first entry in the table.  The
+;			table is in alphabetical order for the benefit
+;			of the binary searching routine (written in C).
+;	opcode	Pointer to a 5-character array which will receive the
+;			opcode's name (null terminated).
+;	value	Pointer to a character that will receive the opcode's
+;			value.
+;	attrib	Pointer to a character that will receive the opcode's
+;			attibute byte.
+;
+NUM	EQU	ARG0
+OPCODE	EQU	ARG1
+VALUE	EQU	ARG2
+ATTRIB	EQU	ARG3
+;
+	FUNCTION GETOPC
+;
+	LXI	H, NUM		;Get entry number.
+	DAD	SP
+	MOV	A,M
+	CPI	OPTBLL		;Entry in table?
+	LXI	H, 0		;If not, return 0.
+	RNC
+;
+	MOV	L,A		;Find entry by computing
+	DAD	H		;  (6 * num) + table base.
+	MOV	E,L
+	MOV	D,H
+	DAD	H
+	DAD	D
+	LXI	D,OPCTBL
+	DAD	D
+	MOV	E,L
+	MOV	D,H
+;
+	LXI	H, OPCODE	;Find opcode return area.
+	DAD	SP
+	MOV	A,M
+	INX	H
+	MOV	H,M
+	MOV	L,A
+;
+	PUSH	B		;Move opcode out to return area.
+	MVI	C, 4
+MOVOPC:	LDAX	D
+	INX	D
+	MOV	M,A
+	INX	H
+	DCR	C
+	JNZ	MOVOPC
+	POP	B
+;
+	MVI	M, 0		;Terminate opcode.
+;
+	LXI	H, ATTRIB	;Find attribute byte return area.
+	DAD	SP
+	MOV	A,M
+	INX	H
+	MOV	H,M
+	MOV	L,A
+;
+	LDAX	D		;Move attribute byte to return area.
+	INX	D
+	MOV	M,A
+;
+	LXI	H, VALUE	;Find value byte return area.
+	DAD	SP
+	MOV	A,M
+	INX	H
+	MOV	H,M
+	MOV	L,A
+;
+	LDAX	D		;Move value byte to return area.
+	MOV	M,A
+;
+	LXI	H, 1		;Return 1 for successful get.
+	RET
+;
+; The opcode table itself:
+;
+;	Each entry has a four-byte name, a one-byte attribute,
+;	and a one-byte value.  The value is the lowest
+;	numbered opcode having that name.
+;
+;	The attribute byte bits are allocated as follows:
+;
+;		7 = Pseudo-op.
+;		6 = If pseudo-op, if group (no label allowed).
+;		6 = If opcode, 68 group (two-byte opcode).
+;		3-5 = Processor number (0 if pseudo-op).
+;		0-2 = Number of bytes (0 if pseudo-op).
+;
+OPTBLB	EQU	$
+
+OPCTBL:	DB	'ADC', 0,	01H,	74H
+	DB	'ADCI',		12H,	7CH
+	DB	'ADD', 0,	01H,	0F4H
+	DB	'ADI', 0,	12H,	0FCH
+	DB	'AND', 0,	01H,	0F2H
+	DB	'ANI', 0,	12H,	0FAH
+	DB	'B1', 0, 0,	1AH,	34H
+	DB	'B2', 0, 0,	1AH,	35H
+	DB	'B3', 0, 0,	1AH,	36H
+	DB	'B4', 0, 0,	1AH,	37H
+	DB	'BCI', 0,	5BH,	3EH
+	DB	'BDF', 0,	1AH,	33H
+	DB	'BGE', 0,	1AH,	33H
+	DB	'BL', 0, 0,	1AH,	3BH
+	DB	'BLK', 0,	80H,	05H
+	DB	'BM', 0, 0,	1AH,	3BH
+	DB	'BN1', 0,	1AH,	3CH
+	DB	'BN2', 0,	1AH,	3DH
+	DB	'BN3', 0,	1AH,	3EH
+	DB	'BN4', 0,	1AH,	3FH
+	DB	'BNF', 0,	1AH,	3BH
+	DB	'BNQ', 0,	1AH,	39H
+	DB	'BNZ', 0,	1AH,	3AH
+	DB	'BPZ', 0,	1AH,	33H
+	DB	'BQ', 0, 0,	1AH,	31H
+	DB	'BR', 0, 0,	1AH,	30H
+	DB	'BXI', 0,	5BH,	3FH
+	DB	'BYTE',		80H,	02H
+	DB	'BZ', 0, 0,	1AH,	32H
+	DB	'CID', 0,	42H,	0DH
+	DB	'CIE', 0,	42H,	0CH
+	DB	'CPU', 0,	80H,	0DH
+	DB	'DACI',		53H,	7CH
+	DB	'DADC',		42H,	74H
+	DB	'DADD',		42H,	0F4H
+	DB	'DADI',		53H,	0FCH
+	DB	'DBNZ',		7CH,	20H
+	DB	'DEC', 0,	09H,	20H
+	DB	'DIS', 0,	01H,	71H
+	DB	'DSAV',		42H,	76H
+	DB	'DSBI',		53H,	7FH
+	DB	'DSM', 0,	42H,	0F7H
+	DB	'DSMB',		42H,	77H
+	DB	'DSMI',		53H,	0FFH
+	DB	'DTC', 0,	42H,	01H
+	DB	'ELSE',		0C0H,	07H
+	DB	'END', 0,	80H,	06H
+	DB	'ENDI', 	0C0H,	08H
+	DB	'EQU', 0,	80H,	01H
+	DB	'ETQ', 0,	42H,	09H
+	DB	'GEC', 0,	42H,	08H
+	DB	'GHI', 0,	09H,	90H
+	DB	'GLO', 0,	09H,	80H
+	DB	'IDL', 0,	01H,	00H
+	DB	'IF', 0, 0,	0C0H,	09H
+	DB	'INC', 0,	09H,	10H
+	DB	'INP', 0,	29H,	68H
+	DB	'IRX', 0,	01H,	60H
+	DB	'LBDF',		23H,	0C3H
+	DB	'LBNF',		23H,	0CBH
+	DB	'LBNQ',		23H,	0C9H
+	DB	'LBNZ',		23H,	0CAH
+	DB	'LBQ', 0,	23H,	0C1H
+	DB	'LBR', 0,	23H,	0C0H
+	DB	'LBZ', 0,	23H,	0C2H
+	DB	'LDA', 0,	09H,	40H
+	DB	'LDC', 0,	42H,	06H
+	DB	'LDI', 0,	12H,	0F8H
+	DB	'LDN', 0,	09H,	00H
+	DB	'LDX', 0,	01H,	0F0H
+	DB	'LDXA',		01H,	72H
+	DB	'LOAD',		80H,	0CH
+	DB	'LSDF',		01H,	0CFH
+	DB	'LSIE',		01H,	0CCH
+	DB	'LSKP',		01H,	0C8H
+	DB	'LSNF',		01H,	0C7H
+	DB	'LSNQ',		01H,	0C5H
+	DB	'LSNZ',		01H,	0C6H
+	DB	'LSQ', 0,	01H,	0CDH
+	DB	'LSZ', 0,	01H,	0CEH
+	DB	'MARK',		01H,	79H
+	DB	'NBR', 0,	1AH,	38H
+	DB	'NLBR',		23H,	0C8H
+	DB	'NOP', 0,	01H,	0C4H
+	DB	'OR', 0, 0,	01H,	0F1H
+	DB	'ORG', 0,	80H,	00H
+	DB	'ORI', 0,	12H,	0F9H
+	DB	'OUT', 0,	29H,	60H
+	DB	'PAGE',		80H,	0BH
+	DB	'PHI', 0,	09H,	0B0H
+	DB	'PLO', 0,	09H,	0A0H
+	DB	'REQ', 0,	01H,	7AH
+	DB	'RET', 0,	01H,	70H
+	DB	'RLDI',		74H,	0C0H
+	DB	'RLXA',		4AH,	60H
+	DB	'RNX', 0,	4AH,	0B0H
+	DB	'RSHL',		01H,	7EH
+	DB	'RSHR',		01H,	76H
+	DB	'RSXD',		4AH,	0A0H
+	DB	'SAV', 0,	01H,	78H
+	DB	'SCAL',		74H,	80H
+	DB	'SCM1',		42H,	05H
+	DB	'SCM2',		42H,	03H
+	DB	'SD', 0, 0,	01H,	0F5H
+	DB	'SDB', 0,	01H,	75H
+	DB	'SDBI',		12H,	7DH
+	DB	'SDI', 0,	12H,	0FDH
+	DB	'SEP', 0,	09H,	0D0H
+	DB	'SEQ', 0,	01H,	7BH
+	DB	'SET', 0,	80H,	0AH
+	DB	'SEX', 0,	09H,	0E0H
+	DB	'SHL', 0,	01H,	0FEH
+	DB	'SHLC',		01H,	7EH
+	DB	'SHR', 0,	01H,	0F6H
+	DB	'SHRC',		01H,	76H
+	DB	'SKP', 0,	01H,	38H
+	DB	'SM', 0, 0,	01H,	0F7H
+	DB	'SMB', 0,	01H,	77H
+	DB	'SMBI',		12H,	7FH
+	DB	'SMI', 0,	12H,	0FFH
+	DB	'SPM1',		42H,	04H
+	DB	'SPM2',		42H,	02H
+	DB	'SRET',		4AH,	90H
+	DB	'STM', 0,	42H,	07H
+	DB	'STPC',		42H,	00H
+	DB	'STR', 0,	09H,	50H
+	DB	'STXD',		01H,	73H
+	DB	'TEXT',		80H,	04H
+	DB	'WORD',		80H,	03H
+	DB	'XID', 0,	42H,	0BH
+	DB	'XIE', 0,	42H,	0AH
+	DB	'XOR', 0,	01H,	0F3H
+	DB	'XRI', 0,	12H,	0FBH
+;
+OPTBLL	EQU	($ - OPTBLB) / 6	;Calculate length of table.
+;
+	ENDFUNCTION
+;
+	PAGE
+;
+; This function returns the number of opcodes in the opcode table
+; for the benefit of the binary searching routine (written in C).
+;
+; This function is called as follows:
+;
+;	numopcs();
+;
+	FUNCTION NUMOPCS
+;
+	LXI	H, OPTBLL	;Return number of opcodes.
+	RET
+;
+	ENDFUNCTION
+;
+; End of package:
+;
+	END
+EP', 0,	

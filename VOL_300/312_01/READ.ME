@@ -1,0 +1,161 @@
+                              Make-Maker
+
+                              Jim Yehle
+
+                              Sep 28, 89
+
+
+The 'make' utility is a real time-saver, as everybody who's used it knows.
+But as projects grow and the list of #included files gets complex, the
+management of make-files can turn into a real headache.  MAKEMAKE was
+created to relieve you of this burden.
+
+It's obvious how to construct a make-file once you know 1) all of the object
+files which your linker uses to make an executable file, and 2) all of
+the source files that each of those object files depends on.  This includes
+not only the primary source file, but all files #included (along with 
+nested inclusions) by that source file.  Knowing these things, generation
+and maintenance of a make-file is a purely mechanical process, whose tedium
+is relieved somewhat by features offered by the make utility (such as macro
+definitions and implied rules).
+
+If it's a mechanical process, why can't it be automated? you ask.  Ah, you're
+way ahead of me.  Cincdep.awk is a program which looks into a C source file
+and extracts all (even nested) #include files, then builds a dependency list
+which is a component of a make-file.  Another program wraps around the single-
+file cincdep process to invoke it for each constituent file, and to build
+the primary target file's (i.e. executable file's) dependency list.  This
+upper-level program takes as its input a linker-configuration file.  Parsing
+the idiosyncracies of your linker's syntax will have to be left as an exercise
+for the reader.  So far I've built make-makers for Borland's Turbo Linker and
+Intel's iRMX binder;  they are called tlr2mak.awk and cf2mak.awk respectively,
+after "Turbo Link Response" (using XXXX.TLR files) and "Configure" (using
+XXXX.CF files).
+
+You don't need to be limited to C for your only programming language.  Other 
+dependency generators can be written to find included files according to
+the syntax of other languages.  I have included dependency scanner programs
+for two other languages, Intel's 80x86 assembler (aincdep.awk) and PL/M
+compiler (pincdep.awk).  The make-maker programs are easily extended to
+support multiple languages.
+
+I realize that this code is not written in C.  However, it is for parsing
+C code.  Doubtless many C Users' Group members are UNIX users or have
+some other access to awk interpreters.  Unfortunately, CUG's bawk cannot
+be used on this code, since it is not a true awk.
+
+I have recently put together an object-file extractor which works with
+library-building files.  The librarian is Intel's LIB286 for their iRMX
+operating system, but the principle could be adapted to other librarians
+such as Borland's TLIB.  LIB286 is run with input redirected from what I
+call a Library-Input (.LBI) file.  It contains all the ADD commands needed
+to build the library from scratch, then save it and exit.  With TLIB, this
+.LBI file could become a batch file which first deletes your custom library
+and then calls TLIB once for each object file to be added, using the "+"
+(add object file) operation.  (Restricting the batch file to one object file
+per TLIB invocation makes the awk parsing easier.)  I have included the awk
+program LBI2MAK.AWK as an example.
+
+
+The assumed output form uses UNIX make's syntax.  Other make-like utilities
+use the same general game plan, so quirks are pretty easy to handle.  For
+example, MicroSoft's "make" wants the primary target dependency list last,
+rather that first, since it treats it just like the rest of the dependency
+lists.  SoftFocus' SNAKE won't even work with non-implied compile-command
+rules, so you'll have to supply a rules file and force the compile-line
+to be blank (by specifying an empty compile-command, and asking that no
+components of the source-file name be used in the compile line).  Snake's
+exception is the link command, which can be stated directly.  
+
+Niceties:  reads the linker's configuration file directly.  There's no
+special file you need to maintain for the dependency generator which keeps
+parallel information (and which you're likely to forget to update when 
+you make changes to the link-configuration file).
+Only a simple make utility is called for.  Maybe I'll write one.  The only
+functions required of it are that it scan a single dependency list at a time
+(which has but one member left of the colon) and look at files' timestamps.
+It doesn't even need to process the command; it can just spit out a list of
+them into a batch file which can get executed later.
+
+Note: you can take all of the debug stuff out.  It may speed things up, but
+I would be surprised.  Most of the execution time comes from opening and
+reading files, and from repeated executions of the AWK interpreter.  (Copying
+the interpreter to a RAM drive and executing it from there probably has the
+most significant effect on speed.  If you're blessed with DOS, that is.)
+The make-making process can get slow because of all of the file I/O and the
+slow speed of awk interpreters, but it's probably not something you'll need
+to do very frequently.
+
+This code takes advantage of the 1985 enhancements to the original (1977) awk
+language.  (My reference was "The AWK Programming Language," by Alfred V. Aho,
+Brian W. Kernighan and Peter J. Weinberger, published by Addison-Wesley.)
+Factors such as recursively-called user-defined functions preclude converting
+this code to run on the older awk.  Sorry!
+
+
+
+Example batch files (for MS/PC-DOS):
+
+In all of these examples, I use my own directory conventions.  I have a source-
+file root directory for each (major) project or development environment, with
+a subdirectory under it for each language, and an INC directory under each one
+of those for include-files.  I move the SUBST pseudo-drive S: about to projects'
+root directories.  I also use drives L:, O: and M: for the directories where 
+linker input files, object files, and makefiles live.
+
+The batch command CALL, in versions of DOS earlier than 3.3, can be replaced
+wherever they appear, with COMMAND /C.
+
+The makefiles which these batch files produce have the executable-file's name
+with an extension .MAK.  This requires running MAKE with the -f option to
+replace "makefile" as the default makefile name.
+
+
+rem TLR2MAK.BAT
+rem 
+rem  Produces a makefile, given a Turbo Link response (.TLR) file as input
+rem
+awk -f s:\awk\tlr2mak.awk l:\%1.tlr outfile=m:\%1.mak lc=tlink lcf=n >temp.bat
+call temp.bat
+
+
+rem TL.BAT
+rem
+rem  Run Turbo Linker with ALL arguments taken from a TLR file
+rem
+tlink @l:\%1.tlr
+
+
+Here's an example of the a turbo link response file BAWK.TLR:
+
+/c /d /x+
+\turboc\lib\c0s o:\bawk o:\bawkdo o:\bawkact o:\bawkpat o:\bawksym
+o:\bawk
+
+\turboc\lib\emu \turboc\lib\maths \turboc\lib\graphics \turboc\lib\cs
+
+
+
+Contents of the disk:
+
+   read.me         This explanatory text file
+   cincdep.awk     C dependency generator
+   tlr2mak.awk     Turbo Link Response file object-file extractor
+   cf2mak.awk      Intel Linker (binder) configuration file object-file extractor
+   lbi2mak.awk     Intel librarian input-file object-file extractor
+   aincdep.awk     Intel 80x86 assembly language dependency generator
+   pincdep.awk     Intel PL/M dependency generator
+
+
+
+
+AUTHOR'S RELEASE
+
+
+It is my intention that this code be used by members of my profession to
+ease some of the tedium of software development.  It is against my wishes
+that this material be sold for somebody else's monetary gain.  Feel free
+to distribute it by any means you like, charging only direct costs such as
+for the medium and postage.  I hereby release this material into the public
+domain for the C Users' to distribute.
+

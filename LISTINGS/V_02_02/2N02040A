@@ -1,0 +1,68 @@
+/*-
+ *  -------------------------------------------------------
+ *  File:       PORTIO.C
+ *  Creator:    Blake Miller
+ *  Version:    01.00.00            October 1990
+ *  Language:   Microsoft Quick C   Version 2.0
+ *  Purpose:    80X86 IN and OUT Instruction C Interface
+ *              Similar to MSC inp and outp instructions.
+ *  -------------------------------------------------------
+ */
+
+void chp_portwt (int d_port, unsigned char d_byte);
+void chp_portrd (int d_port, unsigned char *d_byte);
+
+/*- Byte Get ---------------------------------**
+ *  Read a byte from one of the 80X86 ports.
+ *  Duplicates the library function inp()
+ */
+void chp_portrd (int d_port, unsigned char *d_byte)
+	{
+	unsigned char   t_byte = 0; /* temporary byte   */
+
+	/*  set port address
+	 *  get data into AL
+	 *  store data into temporary variable
+	 *  Note: Use temporary variable because ASM has no idea
+	 *  what a pointer to an unsigned char is!
+	 */
+	_asm    {
+		PUSH    AX
+		PUSH    DX
+
+		MOV     DX, d_port
+		IN      AL, DX          ; get byte into AL
+		MOV     t_byte, AL      ; transfer data to C
+
+		POP     DX
+		POP     AX
+		}
+
+	*d_byte = t_byte;   /* transfer data to caller  */
+	}
+
+/*- Byte Put ---------------------------------**
+ *  Write a byte to one of the 80X86 ports.
+ *  Duplicates the library function outp()
+ */
+void chp_portwt (int d_port, unsigned char d_byte)
+	{
+	_asm    {
+		PUSH    AX
+		PUSH    DX
+
+		MOV     DX, d_port
+		MOV     AL, d_byte
+		OUT     DX, AL
+
+		POP     DX
+		POP     AX
+		}
+	}
+
+/*-
+ *  -------------------------------------------------------
+ *  END PORTIO.C Source File
+ *  -------------------------------------------------------
+ */
+

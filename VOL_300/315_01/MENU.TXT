@@ -1,0 +1,242 @@
+
+DOCUMENTATION FOR MENU.C
+
+Documentation dated 8/89.
+Program and documentation Copyright (c) 1989, E.R.I.  All rights reserved.
+
+INTRODUCTION
+     MENU.C is a source file for supporting text-based menus.  This document
+presents an overview of the MENU functions and explains each externally-visible
+function individually.
+     MENU.C requires ANSI.SYS, which should be installed as a device on boot-up
+by including a line like: DEVICE=ANSI.SYS in your CONFIG.SYS file.  See the DOS
+manual for details.  In addition, if you are using the mouse for menu selection,
+MENU.C requires MOUSE.SYS, which is distributed with the mouse hardware.  The
+mouse must be Microsoft mouse-compatible.  To install MOUSE.SYS, you should have
+a line like: DEVICE=MOUSE.SYS in your CONFIG.SYS file.
+     MENU.C supports a minimal menuing system.  Typically, a menu will be
+created by calling two functions: print_headline(), which prints an underlined
+title at the top of the menu, and menu(), which displays the menu options.  The
+options are presented as strings.  One option is highlighted.  The user can
+change what option is highlighted, and select the highlighted option.  The menu
+routine returns an integer from 0 to (number of options - 1), which is used to
+determine which selection was made.  Typically, the value returned by menu()
+will be used in a switch statement to take the appropriate action.  Note well:
+the menu functions do not automatically clear the screen when invoked, as there
+are times when one wants to use a split-screen style of menu, with non-menu data
+or entry areas displayed on another part of the screen.  Thus, you must clear
+the screen before calling menu() if the menu is the only thing that you want to
+be visible on the screen.
+     A second kind of menu is available for selecting a file from a highlighted
+list of choices (get_file()).  This routine returns a structure containing the
+selected filespec and an error flag.  The basic similarity with menu() is that
+both functions work from a list of strings by highlighting a particular option
+and providing standard ways for navigating through the list of options.
+get_file() automatically clears the screen for you, and so is not compatible
+with split-screen operation.
+     MENU.C provides for selection by keyboard and/or Microsoft-compatible
+mouse.  There are functions for enabling and disabling the different input
+devices (mouse_flag_toggle()) and for adjusting the sensitivity of the mouse, if
+used (menu_mouse_config()).  By default, input is from the keyboard only.  This
+maintains compatibility with versions of MENU.C that antedate mouse support.
+When the mouse is used, pressing the RIGHT mouse button registers a selection.
+That is, the RIGHT button is the mouse equivalent of the carriage-return key.
+     The use of MENU.C function calls is demonstrated in the file, MENU_DEM.C.
+Note that MENU_DEM.C assumes that the mouse is being supported.  If you do not
+have a mouse installed, you should not run this sample program.
+
+DATA STRUCTURES USED IN MENU.C
+     The only MENU.C-specific data structure is string_struc, defined as
+follows:
+typedef struct
+{
+     char string[80];
+     int error_flag;
+}string_struc;
+The structure is defined in menu.h.
+     string_struc is used by get_file() to return the file specification (file
+name plus path) for the selected file.  and an error code for whether the file
+specification is a valid filename or not.  string_struc.string is the filespec
+string, and string_struc.error_flag is the error code associated with it.
+
+EXTERNALLY-VISIBLE FUNCTIONS IN MENU.C
+     The MENU.C external functions and #defines are declared in the header file
+menu.h.  You should #include that header in any program that utilizes the MENU.C
+routines.
+
+
+
+FUNCTION: clear_input_devices()
+TYPE: void
+ARGUMENTS: none.
+
+     clear_input_devices() flushes the keyboard buffer and, if the mouse is 
+active, makes sure that the buttons are not being pressed and clears the mouse
+counter registers.			
+
+
+
+FUNCTION: get_file()
+TYPE: struct of type string_struc
+ARGUMENTS: none.
+
+     get_file() selects a file from a highlighting menu.  The user is prompted
+for a filename template a al DOS (e.g., *.C), and a pathname for the directory.
+The routine then displays all matching files, plus an entry, "Quit".  The user
+moves the highlight with cursor keys or (if enabled by mouse_flag_toggle()) the
+mouse.  If there are more than MAX_FILES (defined in menu.h, as of 8/89 =100)
+matching files, get_file() returns the value -1 in the error_flag element of
+string_struc.  If the user selects "Quit", get_file() returns the value 1 in the
+error_flag element.  If the user selects a valid file, get_file() returns that
+file name and the path associated with it in the string element of string_struc
+and a value of 0 for the error_flag element.  A valid filespec in the string
+element can be used directly in an fopen() call ( e.g.,
+f=fopen(foo.string,"r");).
+
+
+
+FUNCTION: get_mouse_flag()
+TYPE: int
+ARGUMENTS: none.
+
+     get_mouse_flag() returns the current status of the mouse status flag in the
+menu routines.  If the value returned is -1, menu selection is possible only by
+mouse; if the value returned is 0, keyboard-only selection is active; if the
+value returned is 1, selection by mouse or keyboard is possible.  The reason for
+this function's existence is that I assume that MENU.C will be the main
+repositor of input device style for a program.  In programs that are
+configurable by the user, this call will tell the programmer what kinds of input
+devices he should support.  If the mouse is enabled for input in MENU, you
+should support mouse input in other parts of the program as well.
+
+
+
+FUNCTION: menu()
+TYPE: int
+ARGUMENTS: seven ints and an array of string pointers.
+
+     menu(top,left,tab,columns,lf,entries,label,options) is the main menu
+function of MENU.C.  It creates a menu of options as follows: top is an integer
+specifying the number of spaces down from the top of the screen for the menu to
+begin (0 to 24); left is an integer telling how many spaces in from the left
+margin of the screen for the menu to begin (0 to 79); tab is an integer
+specifying how many spaces between the beginning of one column and the next in
+the menu (i.e., total number of spaces per column); columns is the number of
+columns in the menu; lf is the number of spaces between rows in the menu (>=1);
+entries is the total number of options in the menu; label is a flag variable, as
+follows: if it is less than -1, the menu options will automatically be assigned
+letters from 'A' up, and the user may select a menu item by pressing the
+associated letter; if the value is -1, the menu options will be automatically
+assigned a letter, but the user cannot select the item by pressing the
+associated letter key; if the value is 0, the options are not automatically
+labeled at all; if the value is +1, the options are automatically numbered from
+1 (0 is used as the number above 9 if necessary), but the user cannot select by
+number; if the value is above 1, the options are auto-numbered and the user may
+select by numeral.  In all cases of auto numbering or lettering, the programmer
+is responsible for ensuring that there are no more menu items than 26 for
+letters or 10 for numerals.  The options field is an array of string pointers
+that are used for the menu option strings.  The programmer is responsible for
+ensuring that the string (plus auto-labeling, if used) fits in the field that he
+has allocated for it.  The function returns the subscript of the string of the
+selected option (i.e., the first menu item =0, last item = entries-1, etc.).  If
+the keyboard is not disabled by mouse_flag_toggle() (q.v.), users may move the
+menu highlight by cursor key.  The item is selected by pressing the carriage
+return.  If selection by letter or number is enabled with the appropriate
+argument of label, users may select by pressing the associated key.  Note that
+this form of selection does NOT wait for a carriage return.  If the  mouse is
+enabled by mouse_flag_toggle(), the user may select by moving the mouse to
+highlight the desired option, then pressing the RIGHT mouse button.
+
+
+
+FUNCTION: menu_mouse_config()
+TYPE: void
+ARGUMENTS: one int and two doubles
+
+     menu_mouse_config(sensitivity, on_time, off_time) configures the mouse
+sensitivity for use with the menu selection.  sensitivity sets the number of
+mickeys that the mouse must move in the x or y direction during a mouse-polling
+interval in order for the movement to be accepted.  This argument cuts down on
+"jitter" from digitizing errors or small motions by users.  The mouse is read in
+gated intervals.  on_time is the time in seconds of the gate, and off_time is
+the time in seconds between gates.  That is, if on_time is 0.05 seconds and
+off_time is 0.15 seconds, the mouse would be read every 0.2 seconds, with an 25%
+duty cycle.  The use of off_time is to give a positive feel to menu item
+selection.  It provides a pause, rather like the delay in key "repeat" features
+when you hold down a keyboard key.  The default settings for the mouse are:
+sensitivity=3, on_time=0.05 sec, and off_time=0.15 sec.  It should be noted that
+the granularity of the timer is approximately 0.05 sec.  Thus, 0,05 sec is the
+same as 0.06 sec, for example.
+
+
+
+FUNCTION: mgetch()
+TYPE: int
+ARGUMENTS: none.
+
+	mgetch() is a substitute for getch() that supports the mouse if it
+is currently active (if mouse_flag_toggle() is set for mouse support).  It
+returns the key that was pressed if keyboard input, or the mouse button that
+was pressed if the mouse is active and one of its buttons was pressed.  The 
+mouse button values are: CARRIAGE RETURN for the RIGHT mouse button, and ascii
+127 for either the LEFT mouse button or BOTH buttons.
+
+
+
+FUNCTION: mgets()
+TYPE: char *
+ARGUMENTS: one character array.
+
+	mgets() is a substitute for gets() that supports the mouse if it is
+currently active (if mouse_flag_toggle() is set for mouse support). It returns
+the string that was entered.  The RIGHT mouse button is treated as the same
+as CARRIAGE RETURN.  The reason for this is to allow default values to be 
+selected by either CARRIAGE RETURN or the RIGHT mouse button.
+
+
+
+FUNCTION: mouse_flag_toggle()
+TYPE: void
+ARGUMENTS: one int
+
+     mouse_flag_toggle(val) sets the menu input device option variable as
+follows: if val == 0, input is accepted from the keyboard only; if val > 0,
+input is accepted from either the keyboard or the mouse; if val < 0, input is
+accepted from the mouse only.  The default is keyboard-only input.
+
+
+
+FUNCTION: pathprint()
+TYPE: void
+ARGUMENTS: one string
+
+     pathprint(string) prints the user's position in the heirarchical menu on
+the bottom of the menu.  For example, if the user is in submenu FOO of menu BAR,
+the menu will show on line 24:
+You are here: BAR->FOO.
+     In order to use pathprint() properly, you must call it from every menu or
+from none.  You provide a string that designates the menu of the current level,
+and pass THAT NAME ONLY.  pathprint() automatically updates the path for you.
+Note that each menu must have a unique pathprint() name.
+
+
+
+FUNCTION: print_headline()
+TYPE: void
+ARGUMENTS: one string and two ints.
+J
+     print_headline(string, x, y) prints string, starting at x, y on the screen.
+Its intended use is for printing titles on menus.  string will be underlined if
+you are using a monochrome screen, or in a different color (by default, blue) if
+you are using a color screen.  The reange of x is 1 to 80.  The range of y is 1
+to 25.
+
+
+
+FUNCTION: reset_menu()
+TYPE: void
+ARGUMENTS: one int
+
+     reset_menu(choice) sets the menu highlight to choice.  It is used to keep
+the current selection highlighted on a menu as you move up and down the
+heirarchical menu structure.

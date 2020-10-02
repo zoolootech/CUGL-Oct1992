@@ -1,0 +1,125 @@
+#include	<stdio.h>
+#include	<ctype.h>
+#include	<string.h>
+#include	<graphics.h>
+
+extern	struct	menu	*m;
+extern	int		m_total;
+extern	int		current;
+extern	FILE	*menu_amp;
+
+#define	MAX_MENU_CHOICES	400
+#define	MAX_MENU_LENGTH		16
+#define	INVALID				-1
+#define	LEFT				0
+#define	TOP					1
+#define	RIGHT				2
+#define	BOTTOM				3
+#define	KEY					4
+#define	TEXT_LINE			12  /* text height + leading in pixels */
+#define	TEXT_HEIGHT			8	/* text height in pixels */
+#define	TEXT_WIDTH			8	/* text width in pixels */
+#define	FALSE				0
+#define	TRUE				1
+
+/*
+************************************************************************
+*	out_menu - display menu currents to user
+*
+*	Parameters:
+*		edge (out) - menu current screen coordinates and index values
+*
+*	Global:
+*		m_total - total menu currents in menu array
+*		m[]->level - menu current level in hiearachy
+*		m[]->name - text string for menu
+*		menu_area[4] - edges of menu display area
+*		current - current menu current
+*
+*	Copyright:
+*		Original code by William H. Roetzheim
+*		Copyright 1989 by William H. Roetzheim
+*		All rights reserved.
+**********************************************************************
+*/
+
+void out_menu(int edge[MAX_MENU_CHOICES][6])
+{
+	int		i,j;
+	int		found;
+	int		x;			/* x position on line */
+	int		y;			/* y position on line */
+	char	string[MAX_MENU_LENGTH];
+	char	location[161];
+	int		level;
+	int		item = 0;
+	struct	environment	*e;
+
+	for (i = 0; i < MAX_MENU_CHOICES; i++)
+	{
+		edge[i][0] = INVALID;	/* invalid (i.e. empty ) */
+		edge[i][1] = INVALID;
+		edge[i][2] = INVALID;
+		edge[i][3] = INVALID;
+		edge[i][4] = INVALID;
+		edge[i][5] = INVALID;
+	}
+
+	level = m[current].level;
+	/* move up to first element in this list */
+	while ((current > 0) && (m[current -1].level >= level )) current--;
+
+	/* clear old menu currents */
+	fill_box(menu_area[LEFT], menu_area[TOP], menu_area[RIGHT], menu_area[BOTTOM]);
+
+	/* now display each menu current individually */
+	x = 8;	/* pointer onto x coordinate of menu fill_box */
+	y = 2;
+	while ((current < m_total) && (m[current].level >= level))
+	{
+		if (m[current].level == level)
+		{
+			fseek(menu_amp, current * MAX_MENU_LENGTH, SEEK_SET);
+			fread(string,MAX_MENU_LENGTH,1,menu_amp);
+
+			if (x + textwidth(string) > menu_area[RIGHT])
+			{
+				y += TEXT_LINE;
+				x = 8;
+			}
+			if ((y > TEXT_LINE + 2) || (item >= MAX_MENU_CHOICES))
+			{
+				error (11,"out_menu");
+				break;
+			}
+			/* find location of key letter */
+			for (i = 0; i < strlen(string) -1; i++)
+			{
+				found = TRUE;
+				for (j = 0; j < item; j++)
+				{
+					if (edge[j][KEY] == toupper(string[i])) found = FALSE;
+				}
+				if (found == TRUE) break;
+			}
+			edge[item][KEY] = toupper(string[i]);
+			line(x + (i * TEXT_WIDTH), y + TEXT_HEIGHT, x + ((i + 1) * TEXT_WIDTH),
+				y + TEXT_HEIGHT);
+
+			edge[item][LEFT] = x;	/* left edge */
+			outtextxy(x,y,string);
+			x += textwidth(string);
+
+			edge[item][TOP] = 0;	/* top */
+			edge[item][RIGHT] = x;	/* right edge */
+			edge[item][BOTTOM] = y + TEXT_HEIGHT;	/* bottom edge */
+
+
+			edge[item][5] = current;
+
+			x += 16;	/* space between words */
+			item++;
+		}
+		current++;
+	}
+}

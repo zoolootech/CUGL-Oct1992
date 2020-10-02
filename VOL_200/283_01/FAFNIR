@@ -1,0 +1,103 @@
+
+#----------------------------------------------------------------------
+# Makes FAFNIR.LIB "Elysian Fields" Forms Editor, 12/15/88, d.c.oshel
+#----------------------------------------------------------------------
+# plus separate console input/output library, LIAO.LIB
+# plus combined library FAFNIR4L.LIB
+#
+#   update 12/15/88, now uses Microsoft Systems Journal direct screen
+#                    writes with genuine CGA *SNOWBUSTER* routines!
+#                    See MSJ, Nov. 1988, p. 1; also LVIDEO.ASM
+#
+# plus ES.EXE, a simple(!) screen file editor (partially assembler)
+#----------------------------------------------------------------------
+# compiler:         Microsoft C 5.0
+# assembler:        MASM 5.1
+# operating system: MS-DOS 2.0
+# memory model:     Small, if making ES.EXE; otherwise, use Large
+#----------------------------------------------------------------------
+
+# defaults are for LARGE model libraries; I have not yet completely
+# debugged small model modules for use with MSJ video i/o primitives
+# -- 12/15/88, d.c.oshel
+
+MDL=/AL
+CIO=liao
+FAF=lfaf
+LIB=4l
+ASM=lvideo
+
+# console i/o library
+
+$(CIO).lib: $(ASM).asm cvideo.c \
+gotoxy.c keyin.c savescrn.c scroll.c \
+swapscrn.c vidinit.c wbox.c window.c wink.c wprintf.c wputs.c \
+dlrcvt.c sound.c tm.c julday.c \
+clairol.c crypt.c fstats.c julian.c keydefs.c oldedits.c typeafil.c
+     del $(CIO).lib
+     masm $(ASM)/ML/E/Z;
+     cl /c $(MDL) /Ox cvideo.c
+     lib $*+$(ASM)+cvideo;
+     del *.obj
+     cl /c $(MDL) /Ox vidinit.c gotoxy.c keyin.c
+     cl /c $(MDL) /Ox savescrn.c scroll.c swapscrn.c 
+     cl /c $(MDL) /Ox wbox.c window.c wink.c wprintf.c wputs.c
+     lib $*+vidinit+gotoxy+keyin+savescrn+scroll;
+     lib $*+swapscrn+wbox+window+wink+wprintf+wputs;
+     del *.obj
+     del *.bak
+     cl /c $(MDL) dlrcvt.c sound.c tm.c julday.c
+     lib $*+dlrcvt+sound+tm+julday;
+     del *.obj
+     del *.bak
+     cl /c $(MDL) clairol.c crypt.c fstats.c julian.c keydefs.c oldedits.c typeafil.c
+     lib $*+clairol+crypt+fstats+julian+keydefs+oldedits+typeafil;
+     del *.obj
+     del *.bak
+
+
+
+
+# ======  THIS IS THE FAFNIR FORMS ENGINE PROPER  ======
+#
+
+$(FAF).lib: fafnir.c usstates.c counties.c 
+     del $(FAF).lib
+     cl /c $(MDL) fafnir.c usstates.c counties.c
+     lib $*+fafnir+usstates+counties;
+     del *.obj
+
+
+# combine the two libraries into one
+
+fafnir$(LIB).lib: $(FAF).lib $(CIO).lib
+     del fafnir$(LIB).lib
+     lib fafnir$(LIB)+$(CIO).lib+$(FAF).lib,fafnir$(LIB).xrf;
+     del $(FAF).lib
+     del $(CIO).lib
+
+
+# A demonstration program for the Fafnir library functions
+# This demo gives the library a severe workout under all memory models
+
+demo$(LIB).exe: demo.c fafnir$(LIB).lib
+     cl /Fedemo$(LIB) $(MDL) demo.c -link fafnir$(LIB)
+     del *.obj
+
+# Microsoft Systems Journal's own demonstration program
+# Fafnir does not use some of Jeff Prosise's functions, so these are
+# proved out here (including my mods to his code!)
+
+jdemo$(LIB).exe: msjdemo.c fafnir$(LIB).lib
+     cl /Fejdemo$(LIB) $(MDL) msjdemo.c -link fafnir$(LIB)
+     del *.obj
+
+# screen file editor, small model only (note: ES.EXE is distributed!)
+
+# NOTICE: uncomment this only if Small Model, i.e., MDL=/AS
+#
+# es.exe: $*.c keys.asm futility.lib
+#    masm keys/ML/E/Z;
+#    cl $*.c keys \msc5\lib\setargv -link /NOE fafnir4s
+#    del *.obj
+

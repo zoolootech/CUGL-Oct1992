@@ -1,0 +1,61 @@
+
+Listing 1
+
+(1) Change CONFIG.SYS to this (assuming \dos is on drive C):
+ country=002,,c:\dos\country.sys
+ device=c:\dos\display.sys con=(ega,,2)
+
+(2) Change AUTOEXEC.BAT to this:
+ nlsfunc
+ mode con codepage prepare=((863,850) c:\dos\ega.cpi)
+ chcp 850
+
+(3) Reboot.
+
+(4) Create, assemble and execute this program:
+;Program:  Given a certain accented character, return the
+;          plain equivalent via a code page collating table.
+;Author:   P. Gulutzan, Ocelot Computer Services Inc.
+;Note:     Requires MS-DOS 3.3 or later.
+;          This program was originally prepared with MS-DOS 4.0.
+;          One would probably want to do a few things differently
+;          with MS-DOS 5.0 or DR-DOS 6.0.
+
+d_cseg     segment byte public 'CODE'
+assume     cs:d_cseg
+
+xx         db 6 (0)
+
+start:
+;MS-DOS 3.3 function: "Get pointer to collating sequence table"
+mov        ax,6506h
+mov        bx,-1                ;codepage of interest = default
+mov        cx,512               ;length of receiving buffer
+mov        di,offset d_cseg:xx  ;doubleword pointer to buffer
+mov        si,seg d_cseg
+mov        es,si
+mov        dx,-1                ;country of interest = default
+int        21h
+;A failure here would probably indicate that CONFIG.SYS
+;and/or AUTOEXEC.BAT were not set up properly, in which case:
+;no display.
+jc         endit                        ;(failure)
+;At this point xx has:
+;  Byte    The subcode passed in AL for the function call: 06h
+;  Dword   The address of the collating sequence table
+les        di,es:[di+1]                ;Point to the table
+;Now es:di points to the collating sequence table, which has:
+;  Word    Number of characters. Will be < 256 if truncated.
+;  Byte(s) A lookup table for each character
+mov        bx,134               ;= the code for a + degree-sign
+mov        dl,es:[bx+di]        ;look it up in the collating table
+mov        ah,2                 ;display it
+int        21h
+endit:
+mov        ah,4ch               ;stop
+int        21h
+d_cseg ends
+end start
+
+(5) Observe that the result is the letter "A" (ASCII code 65).
+(6) Restore the original CONFIG.SYS and AUTOEXEC.BAT files.

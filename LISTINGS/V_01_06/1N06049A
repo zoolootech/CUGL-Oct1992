@@ -1,0 +1,418 @@
+//  CONTACTS    v1.00
+//      Borland Turbo C++ 1.01
+//      Zinc Interface Library v1.0
+//
+//      Maintains a simple database of contact information.
+//
+//      Written by Scott Robert Ladd.
+
+#pragma warn -wpar
+
+#include "fcntl.h"
+#include "sys\stat.h"
+#include "io.h"
+#include "string.h"
+#include "ui_win.hpp"
+#include "contacts.hlh"
+
+// database record!
+struct ContactRec
+    {
+    char LastName[20];
+    char FirstName[20];
+    char Company[40];
+    char Address1[40];
+    char Address2[40];
+    char City[16];
+    char State[16];
+    char ZIP[12];
+    char Phone[10];
+    };
+
+// create a new window type for input of records
+class ContactList : public UIW_WINDOW
+    {
+    private:
+        static int  FileHandle;
+        static int  IsNew;
+        static long RecNo;
+
+        static ContactRec Record;
+        static ContactRec TempRec;
+
+        static void ReadRecord();
+        static void WriteRecord();
+
+    public:
+        ContactList(char *filename, int left, int top);
+
+        ~ContactList();
+
+        static void AddRecord (void * item, UI_EVENT &event);
+        static void NextRecord(void * item, UI_EVENT &event);
+        static void PrevRecord(void * item, UI_EVENT &event);
+
+        static int GetHandle()
+            {
+            return FileHandle;
+            }
+    };
+
+// global values
+
+UI_DISPLAY *         Display;
+UI_EVENT_MANAGER *   EventManager;
+UI_WINDOW_MANAGER *  WindowManager;
+UI_ERROR_SYSTEM *    ErrorSys;
+UI_HELP_SYSTEM *     HelpSys;
+UIW_PULL_DOWN_MENU * CtrlMenu;
+UIW_POP_UP_ITEM *    OptionClose;
+ContactList *        CList = NULL;
+
+// constructor
+ContactList::ContactList(char *filename, int left, int top) :
+    UIW_WINDOW(left - 28,top - 7,56,14,WOF_NO_FLAGS,WOAF_NO_FLAGS,HELP_RECORD)
+    {
+    IsNew = TRUE;
+
+    Record.LastName[0]  = '\000';
+    Record.FirstName[0] = '\000';
+    Record.Company[0]   = '\000';
+    Record.Address1[0]  = '\000';
+    Record.Address2[0]  = '\000';
+    Record.City[0]      = '\000';
+    Record.State[0]     = '\000';
+    Record.ZIP[0]       = '\000';
+
+    strcpy(Record.Phone, "..........");
+
+    TempRec = Record;
+
+    // Open the file and read the first Record.
+    FileHandle = open(filename, O_RDWR);
+
+    if (FileHandle < 0)
+        FileHandle = open(filename, O_CREAT, S_IREAD | S_IWRITE);
+
+    if (FileHandle < 0)
+        return;
+
+    ReadRecord();
+
+    UIW_PULL_DOWN_MENU *menu = new UIW_PULL_DOWN_MENU(0, WOF_NO_FLAGS, WOAF_NO_FLAGS);
+
+	*menu
+		+ new UIW_PULL_DOWN_ITEM(" ~Previous ", MNIF_NO_FLAGS,
+            ContactList::PrevRecord)
+		+ new UIW_PULL_DOWN_ITEM(" ~Next ", MNIF_NO_FLAGS,
+            ContactList::NextRecord)
+		+ new UIW_PULL_DOWN_ITEM(" ~Add ", MNIF_NO_FLAGS,
+            ContactList::AddRecord);
+
+	*this
+		+ new UIW_BORDER
+		+ new UIW_MAXIMIZE_BUTTON
+		+ new UIW_MINIMIZE_BUTTON
+		+ new UIW_SYSTEM_BUTTON
+		+ new UIW_TITLE(filename, WOF_JUSTIFY_CENTER)
+		+ menu
+
+		+ new UIW_PROMPT(38, 0, "#", WOF_NO_FLAGS)
+        + new UIW_NUMBER(40, 0, 6, &RecNo, "", NMF_NO_FLAGS,
+			WOF_NO_ALLOCATE_DATA | WOF_NON_SELECTABLE)
+
+        + new UIW_PROMPT(1,  1, "Last Name...", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 1, 20, TempRec.LastName, 20, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  2, "First Name..", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 2, 20, TempRec.FirstName, 20, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  3, "Company.....", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 3, 40, TempRec.Company, 40, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  4, "Address.....", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 4, 40, TempRec.Address1, 40, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_STRING(13, 5, 40, TempRec.Address2, 40, STF_NO_FLAGS,
+			WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  6, "City........", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 6, 16, TempRec.City, 16, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  7, "State.......", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 7, 16, TempRec.State, 16, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  8, "ZIP.........", WOF_NO_FLAGS)
+        + new UIW_STRING(13, 8, 12, TempRec.ZIP, 12, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+
+        + new UIW_PROMPT(1,  9, "Phone.....", WOF_NO_FLAGS)
+        + new UIW_FORMATTED_STRING(13, 9, 15, TempRec.Phone, "LNNNLLNNNLCCCC",
+			"(...) ...-....", WOF_BORDER | WOF_NO_ALLOCATE_DATA);
+
+	// Make the ( File | Close ) option active and redisplay menu.
+    OptionClose->woFlags &= ~WOF_NON_SELECTABLE;
+    }
+
+// contact list destructor.
+ContactList::~ContactList()
+    {
+    WriteRecord();
+
+    close(FileHandle);
+
+    CList = 0;
+
+	// Make the ( File | Close ) option inactive and redisplay menu.
+    OptionClose->woFlags |= WOF_NON_SELECTABLE;
+    }
+
+// Read the next Record from the current contact list file.
+void ContactList::ReadRecord(void)
+    {
+    if (read(FileHandle, &TempRec, sizeof(ContactRec)) == sizeof(ContactRec))
+        {
+        Record = TempRec;
+        IsNew = FALSE;
+        }
+
+    RecNo = lseek(FileHandle, 0L, SEEK_CUR) / sizeof(ContactRec);
+
+    if (IsNew)
+        RecNo++;
+
+    // Update the contact list window if needed.
+    if (CList != NULL)
+        *WindowManager + CList;
+    }
+
+// Write the Record to the current contact list file.
+void ContactList::WriteRecord(void)
+    {
+    if (IsNew)
+        lseek(FileHandle, 0L, SEEK_END);
+    else
+        {
+        if (lseek(FileHandle, sizeof(ContactRec) * -1L, SEEK_CUR) < 0)
+            lseek(FileHandle, 0L, SEEK_SET);
+        }
+
+    write(FileHandle, &TempRec, sizeof(ContactRec));
+
+    IsNew = FALSE;
+
+    Record = TempRec;
+    }
+
+// Control menu ( Edit | Add ) option to add a new Record entry.
+void ContactList::AddRecord(void *item, UI_EVENT &event)
+    {
+    WriteRecord();
+
+    if (0L == lseek(FileHandle, 0L, SEEK_END))
+        IsNew = TRUE;
+
+    TempRec.LastName[0]  = '\000';
+    TempRec.FirstName[0] = '\000';
+    TempRec.Company[0]   = '\000';
+    TempRec.Address1[0]  = '\000';
+    TempRec.Address2[0]  = '\000';
+    TempRec.City[0]      = '\000';
+    TempRec.State[0]     = '\000';
+    TempRec.ZIP[0]       = '\000';
+
+    strcpy(TempRec.Phone, "..........");
+
+    ReadRecord();
+
+    Record = TempRec;
+    }
+
+// Control menu ( Edit | Next ) option to view/modify the next Record.
+void ContactList::NextRecord(void *item, UI_EVENT &event)
+    {
+    WriteRecord();
+    ReadRecord();
+    }
+
+// Control menu ( Edit | Previous ) option to view/modify the previous Record.
+void ContactList::PrevRecord(void *item, UI_EVENT &event)
+    {
+    WriteRecord();
+
+    if (lseek(FileHandle, sizeof(ContactRec) * -2L, SEEK_CUR) < 0)
+        lseek(FileHandle, 0L, SEEK_SET);
+
+    ReadRecord();
+    }
+
+// Button validate procedure for OK button on "Open CList.." window.
+static void OKButton(void *object, UI_EVENT &event)
+    {
+	// Put an "exit current window" message on the event queue.
+    event.type = S_DELETE_LEVEL;
+
+    EventManager->Put(event, Q_BEGIN);
+    }
+
+// Control menu ( File | Close ) option to close the current contact list.
+static void CloseCList(void *item, UI_EVENT &event)
+    {
+    // Remove and delete the current contact list window from the screen.
+    *WindowManager - CList;
+    delete CList;
+    }
+
+// Control menu ( File | Open ) option to open a contact list.
+static void OpenCList(void *item, UI_EVENT &event)
+    {
+	char filename[20];
+
+    filename[0] = '\0';
+
+    if (CList)
+        CloseCList(item, event);
+
+    // Create a window in the screen center to get contact list name.
+    int left = Display->columns / Display->cellWidth / 2;
+
+    int top = Display->lines / Display->cellHeight / 2;
+
+    *WindowManager
+		+ &(*new UIW_WINDOW(left - 20, top - 4, 40, 7, WOF_NO_FLAGS,
+			WOAF_MODAL | WOAF_NO_SIZE, HELP_OPEN)
+        + new UIW_BORDER
+        + new UIW_TITLE("Open new contact list...", WOF_JUSTIFY_CENTER)
+        + new UIW_PROMPT(2, 1, "File name...", WOF_NO_FLAGS)
+        + new UIW_STRING(15, 1, 20, filename, 12, STF_NO_FLAGS,
+            WOF_BORDER | WOF_NO_ALLOCATE_DATA)
+        + new UIW_BUTTON(18, 3, 5, "OK", BTF_NO_FLAGS,
+            WOF_JUSTIFY_CENTER, OKButton));
+
+	// Wait for user response.
+    int ccode;
+
+    do  {
+        EventManager->Get(event, Q_NORMAL);
+
+		// Send an "exit current window" message if ENTER key.
+		if (event.type == E_KEY &&
+            (event.rawCode == ENTER || event.rawCode == GRAY_ENTER))
+            {
+            event.type = S_DELETE_LEVEL;
+            }
+
+        ccode = WindowManager->Event(event);
+        }
+    while (ccode != L_EXIT && event.type != S_DELETE_LEVEL);
+
+    // Open/create the new contact list if possible.
+	if(filename[0] != '\0')
+        {
+        CList = new ContactList(filename, left, top);
+
+        // Add the new contact list to the window manager if no error.
+        if (CList->GetHandle() < 0)
+            {
+            ErrorSys->ReportError(WindowManager, -1, "Error opening file.");
+            delete CList;
+            }
+		else
+            *WindowManager + CList;
+        }
+    }
+
+// Control menu ( File | Help ) option to Display general help.
+static void Help(void *item, UI_EVENT &event)
+    {
+    // Call the help system to Display general help.
+    HelpSys->DisplayHelp(WindowManager, HELP_GENERAL);
+    }
+
+// Control menu ( File | Exit ) option to exit the program.
+static void Exit(void *item, UI_EVENT &event)
+    {
+	// Put an EXIT message on the event queue.
+	event.type = L_EXIT;
+    EventManager->Put(event, Q_BEGIN);
+    }
+
+static void CreateMenu(void)
+    {
+	// Create the main control menu.
+    CtrlMenu = new UIW_PULL_DOWN_MENU(0, WOF_NO_FLAGS, WOAF_NO_FLAGS);
+    CtrlMenu->woAdvancedFlags |= WOAF_LOCKED | WOAF_NON_CURRENT;
+
+	// ( File ) option pull down menu (Close is inactive).
+    UIW_PULL_DOWN_ITEM *fileOption = new UIW_PULL_DOWN_ITEM(" ~File ",
+                                                            MNF_NO_FLAGS, 0);
+
+    OptionClose = new UIW_POP_UP_ITEM("~Close contact list...", MNIF_NO_FLAGS,
+                                        BTF_NO_TOGGLE, WOF_NO_FLAGS,
+                                        CloseCList);
+
+    OptionClose->woFlags |= WOF_NON_SELECTABLE;
+
+	*fileOption
+        + new UIW_POP_UP_ITEM("~Open contact list...", MNIF_NO_FLAGS,
+            BTF_NO_TOGGLE, WOF_NO_FLAGS, OpenCList)
+        + OptionClose
+		+ new UIW_POP_UP_ITEM("~Help...", MNIF_NO_FLAGS,
+			BTF_NO_TOGGLE, WOF_NO_FLAGS, Help)
+		+ new UIW_POP_UP_ITEM
+		+ new UIW_POP_UP_ITEM("E~xit", MNIF_NO_FLAGS, BTF_NO_TOGGLE,
+			WOF_NO_FLAGS, Exit);
+
+	// Add the option menus to the control menu.
+    *CtrlMenu + fileOption;
+    *WindowManager + CtrlMenu;
+    }
+
+main()
+    {
+    // Initialize the Display, trying for graphics first.
+    Display = new UI_DOS_BGI_DISPLAY;
+
+    if (!Display->installed)
+        {
+        delete Display;
+        Display = new UI_DOS_TEXT_DISPLAY;
+        }
+
+	// Initialize the event and window managers.
+    EventManager  = new UI_EVENT_MANAGER(100, Display);
+
+    *EventManager
+        + new UI_BIOS_KEYBOARD
+        + new UI_MS_MOUSE
+        + new UI_CURSOR;
+
+    WindowManager = new UI_WINDOW_MANAGER(Display, EventManager);
+
+    HelpSys = new UI_HELP_WINDOW_SYSTEM("contacts.hlp",
+                                         WindowManager,HELP_GENERAL);
+
+    ErrorSys = new UI_ERROR_WINDOW_SYSTEM;
+
+	CreateMenu();
+
+    int ccode;
+
+    UI_EVENT event;
+
+    do  {
+        EventManager->Get(event, Q_NORMAL);
+        ccode = WindowManager->Event(event);
+        }
+    while (ccode != L_EXIT);
+
+    delete WindowManager;
+    delete EventManager;
+    delete Display;
+    }

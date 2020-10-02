@@ -1,0 +1,366 @@
+
+/***************************************************************************/
+/* function main                                                           */
+/***************************************************************************/
+int main (int argc, char *argv[])
+{
+   union REGS Myregs;
+ 
+   if (argc < 2) {
+      fprintf (stderr,
+            "This program sends the contents of an HPFS file to standard\n"
+            "output.  This may be piped to a file or device.\n"
+            "Usage:  getfile <filename>\n"
+            "where <filename is a fully qualified path without a drive\n"
+            "specification.\n");
+      exit (NO_ARG);
+   }
+   setmode (STDOUT, (int) O_BINARY);
+   Myregs.x.ax = 0x4400;               // IOCtl Get Data
+   Myregs.x.bx = STDOUT;
+   intdos (&Myregs, &Myregs);
+   Myregs.h.dh = 0;
+   Myregs.h.dl |= 0x20;                // Set raw mode
+   Myregs.x.ax = 0x4401;               // IOCtl Set Data
+   intdos (&Myregs, &Myregs);
+   GetBootRecords ();
+   GetRootDir ();
+   FindFileFnode (strupr(argv[1]));    // FileFnode will contain file fnode
+   DoFewFrags (&FileFnode.FewFragsFnode);
+   return (0);
+}
+//
+
+/***************************************************************************/
+/* function GetBootRecords                                                 */
+/***************************************************************************/
+void GetBootRecords ()
+{
+   PartitionEntry *ThisPartition;
+   unsigned MoreCyl;
+ 
+   DiskInfo.drive = FIXED_DRIVE;
+   DiskInfo.nsectors = 1;
+   DiskInfo.head = 0;
+   DiskInfo.track = 0;
+   DiskInfo.sector = 1;
+   DiskInfo.buffer = &VolumeBootSector;
+   _bios_disk_with_retry (&DiskInfo);
+   HPFSPartition = NULL;
+   for (ThisPartition = VolumeBootSector.Partitions;
+         ThisPartition <= &VolumeBootSector.Partitions[3];
+         ThisPartition++)
+      if (ThisPartition->SysInd == HPFS_PART) {
+         HPFSPartition = ThisPartition;
+         break;
+      }
+   if (HPFSPartition == NULL) {
+      fprintf (stderr, "No HPFS partition found, aborting...\n");
+      exit (BAD_DISK);
+   }
+   DiskInfo.head = HPFSPartition->BH;
+   MoreCyl = HPFSPartition->BS & 0xC0;
+   MoreCyl = MoreCyl << 2;
+   DiskInfo.track = HPFSPartition->BCyl + MoreCyl;
+   DiskInfo.sector = HPFSPartition->BS & 0x3F;
+   DiskInfo.buffer = &PartitionBootSector;
+   _bios_disk_with_retry (&DiskInfo);
+ 
+   BytesPerSector = PartitionBootSector.BytesPerSector;
+   SectorsInSegment = (USHORT) (0x10000UL / (ULONG) BytesPerSector);
+   HugeShift = 0x1000;
+   SectorsInFullTrack = PartitionBootSector.SectorsInTrack *
+                        PartitionBootSector.NumOfHeads;
+}
+//
+
+/***************************************************************************/
+/* function GetRootDir                                                     */
+/* Correct for OS/2 1.2 on ST-251 disk                                     */
+/***************************************************************************/
+void GetRootDir (void)
+{
+   GetRelativeSectors (SUPER_BLOCK, 1, &SuperBlock);
+   GetRelativeSectors (SuperBlock.RootDirFnode, 1, &DirFnode);
+   RootDirSector = DirFnode.FragTable.FewFrags[0].ulFragSector;
+}
+//
+
+/***************************************************************************/
+/* function FindFileFnode                                                  */
+/* Puts the file Fnode in FileFnode                                        */
+/***************************************************************************/
+void FindFileFnode (char *Fname)
+{
+   USHORT flast;
+ 
+   GetRelativeSectors (RootDirSector, 4, &DirectoryCluster);
+   flast = strlen (Fname) - 1;
+   if (Fname[flast] == '.')         // OS/2 directories do not contain ending
+      Fname[flast] = 0;             //    period of file names
+   FindFile (Fname);
+   FileSize = FileFnode.FewFragsFnode.ulcFileLength;
+}
+//
+
+/***************************************************************************/
+/* function FindFile                                                       */
+/***************************************************************************/
+void FindFile (const char *path)
+{
+   char PathCopy [_MAX_PATH];
+   char Element [_MAX_FNAME];
+   BOOL Result;
+   DirEntryType *CurrDirEntry;
+   RSN SectorNum;
+ 
+   Level++;
+   _fstrcpy (PathCopy, path); /* Make local copy */
+   MakeFilename (PathCopy, PathCopy, Element); /* Split and update */
+   if (PathCopy[0])                       // At least '\' left in path
+      PathCopy[strlen (PathCopy) - 1] = 0;// Erase the '\'
+   if (PathCopy[0] != 0)                  // More than '\'
+      FindFile (PathCopy);                // continue recursively
+   Result = FindDirEntry (Element, &CurrDirEntry);
+   if (Result != TRUE) {
+      fprintf (stderr, "Could not find %s, aborting...\n", path);
+      exit (NO_FILE);
+   }
+   if (Level > 1) {                       // Directory
+      if ((CurrDirEntry->bFlags & FLAG_DIR) == 0) {
+         fprintf (stderr, "%s is a file, not a directory. Aborting...\n",
+                  path);
+         exit (NO_FILE);
+      }
+   } else { /* File name */
+      if ((CurrDirEntry->bFlags & FLAG_DIR) != 0) {
+         fprintf (stderr, "%s is a directory, not a file. Aborting...\n",
+                  path);
+         exit (NO_FILE);
+      }
+   }
+   if (Level > 1) {                       // Directory fnode
+      GetRelativeSectors (CurrDirEntry->ulPointedSector, 1, &DirFnode);
+      SectorNum = DirFnode.FragTable.FewFrags[0].ulFragSector;
+      GetRelativeSectors (SectorNum, 4, &DirectoryCluster); // Directory body
+   } else
+      GetRelativeSectors (CurrDirEntry->ulPointedSector, 1, &FileFnode);
+   Level--;
+}
+//
+
+/***************************************************************************/
+/* function FindDirEntry                                                   */
+/* Assumes that correct directory cluster is in DirectoryCluster
+  */
+/***************************************************************************/
+BOOL FindDirEntry (char *EntryName, DirEntryType **Location)
+{
+   BYTE EntryNameLength, CmpLen;
+   DirEntryType *TmpLoc;
+   int UpDownLen, UpDown;
+   RSN SectorNum;
+ 
+   EntryNameLength = (BYTE) strlen (EntryName);
+   for (TmpLoc = &DirectoryCluster.FirstDirEntry;;) {
+      if (EntryNameLength > TmpLoc->bcNameLength) { // Compare lengths
+         CmpLen = TmpLoc->bcNameLength;
+         UpDownLen = UP;
+      } else {
+         CmpLen = EntryNameLength;
+         if (EntryNameLength < TmpLoc->bcNameLength)
+            UpDownLen = DOWN;
+         else
+            UpDownLen = SAME;
+      }
+      UpDown = memcmp (EntryName, TmpLoc->bName, CmpLen); // Compare contents
+      if (UpDown == SAME)                                // Contents same
+         UpDown = UpDownLen;                             // Judge by length
+      if (UpDown == SAME) {                              // Identical
+         *Location = TmpLoc;
+         return (TRUE);
+      }                                                  // Where to look now?
+      if (UpDown < 0) {                                  // Try down?
+         if ((TmpLoc->bSplitFlag & DIR_SPLITS) == 0)     // No connection
+            return (FALSE);                              //    File not there
+         SectorNum = *(RSN *)                         // Find connection
+                      (((BYTE *) TmpLoc) + TmpLoc->uscDirEntrySize - 4);
+         GetRelativeSectors (SectorNum, 4, &DirectoryCluster);
+         TmpLoc = &DirectoryCluster.FirstDirEntry;
+         continue;
+      }                                                  // Try same level
+      if ((TmpLoc->bSplitFlag & END_OF_DIR) != 0)        // No more here
+         return (FALSE);                                 //    File not there
+      TmpLoc = (DirEntryType *)                          // Next Entry
+                (((BYTE *) TmpLoc) + TmpLoc->uscDirEntrySize);
+   }
+}
+//
+
+/***************************************************************************/
+/* function MakeFileName                                                   */
+/***************************************************************************/
+void MakeFilename (char *path, char *dir, char *filname)
+{
+   char drive[_MAX_DRIVE], NDir [_MAX_DIR], ext[_MAX_EXT];
+ 
+   _splitpath (path, drive, NDir, filname, ext);
+   if ((ext[0] != 0) && (ext[1] != 0))
+      strcat (filname, ext);
+   strcpy (dir, NDir); // Caller may use same argument for "path" and "dir"
+}
+//
+
+/***************************************************************************/
+/* function DoFewFrags                                                     */
+/***************************************************************************/
+void DoFewFrags (EntryFnodeType *Fnode)
+{
+   ULONG FragSize;
+   RSN FragSector;
+   USHORT i;
+ 
+   if ((Fnode->bFragFileInd & MANY_FRAGMENTS) == 0) { // Few fragments
+      for (i = 0; FileSize != 0; i++) {
+         FragSize = Fnode->FragTable.FewFrags[i].ulcFragSectors *
+                     0x200;
+         if (FragSize > FileSize)
+            FragSize = FileSize;
+         FileSize -= FragSize;
+         FragSector = Fnode->FragTable.FewFrags[i].ulFragSector;
+         DoSectors (FragSize, FragSector);
+      }
+   } else {
+      for (i = 0; FileSize != 0; i++) {
+         GetRelativeSectors (Fnode->FragTable.ManyFrags[i].ulFragSector,
+                             4,
+                             &FileFnode);
+         DoManyFrags (&FileFnode.ManyFragsFnode);
+      }
+   }
+}
+//
+
+/***************************************************************************/
+/* function DoManyFrags                                                    */
+/***************************************************************************/
+void DoManyFrags (FragmentedFileTableType *FTable)
+{
+   ULONG FragSize;
+   RSN FragSector;
+   USHORT i;
+ 
+   if ((FTable->bFragFileInd & MANY_FRAGMENTS) == 0) {// Few fragments in
+                                                      // this cluster
+      for (i = 0; (FileSize != 0) && (i < FTable->bcFragNum); i++) {
+         FragSize = FTable->FragTable[i].ulcFragSectors *   0x200;
+         if (FragSize > FileSize)
+            FragSize = FileSize;
+         FileSize -= FragSize;
+         FragSector = FTable->FragTable[i].ulFragSector;
+         DoSectors (FragSize, FragSector);
+      }
+   } else {
+      for (i = 0; (FileSize != 0) && (i < FTable->bcFragNum); i++) {
+         GetRelativeSectors (FTable->FragTable[i].ulFragSector,
+                             4,
+                             &FileFnode);
+         DoManyFrags (&FileFnode.ManyFragsFnode);
+      }
+   }
+   GetRelativeSectors (FTable->ulParentSector, 4, &FileFnode);
+}
+//
+
+/***************************************************************************/
+/* function DoSectors                                                      */
+/***************************************************************************/
+void DoSectors (ULONG FragSize, RSN FragSector)
+{
+   USHORT Chunk, ChunkSectors;
+ 
+   while (FragSize > 0) {
+      Chunk = (USHORT) min ((ULONG) CHUNK, FragSize);
+      ChunkSectors = (Chunk + 0x1FF) / 0x200;
+      GetRelativeSectors (FragSector, ChunkSectors, FileBuff);
+      if ((unsigned) write (STDOUT, FileBuff, Chunk) != Chunk) {
+         perror ("Error writing to STDOUT");
+         exit (IO_ERR);
+      }
+      FragSize -= Chunk;
+      FragSector += ChunkSectors;
+   }
+}
+//
+
+/***************************************************************************/
+/* function GetRelativeSectors                                             */
+/***************************************************************************/
+void GetRelativeSectors (RSN SectorLoc, USHORT SectorNum, void *Into)
+{
+   RSN SectorsToLoc;
+   ULONG TempLONG;
+   USHORT RoomInSegment;
+ 
+   SectorLoc += HPFSPartition->PartitionOffset;
+   while (SectorNum) {
+      SectorsToLoc = SectorLoc;
+      DiskInfo.track = (USHORT) (SectorsToLoc / SectorsInFullTrack);
+      SectorsToLoc -= (ULONG) DiskInfo.track * (ULONG) SectorsInFullTrack;
+ 
+      DiskInfo.head = (USHORT) (SectorsToLoc /
+                        PartitionBootSector.SectorsInTrack);
+      TempLONG = 1L + SectorsToLoc - (ULONG) DiskInfo.head *
+                        (ULONG) PartitionBootSector.SectorsInTrack;
+      DiskInfo.sector = (USHORT) TempLONG;
+      DiskInfo.buffer = Into;
+      if (SectorNum + DiskInfo.sector <=
+                                 PartitionBootSector.SectorsInTrack + 1)
+         DiskInfo.nsectors = SectorNum;
+      else
+         DiskInfo.nsectors = PartitionBootSector.SectorsInTrack
+                         - DiskInfo.sector + 1;
+      if ((FP_OFF (Into)) == 0)
+         RoomInSegment = SectorsInSegment;
+      else
+         RoomInSegment = (USHORT) ((0x10000UL - (ULONG) FP_OFF (Into))
+                           / BytesPerSector);
+      if (DiskInfo.nsectors > RoomInSegment)
+         DiskInfo.nsectors = RoomInSegment;
+ 
+      _bios_disk_with_retry (&DiskInfo);
+ 
+      SectorNum -= DiskInfo.nsectors;
+      if (SectorNum) {
+         FP_OFF (Into) += DiskInfo.nsectors * BytesPerSector;
+         if (FP_OFF (Into) == 0)
+            FP_SEG (Into) += HugeShift;
+         SectorLoc += DiskInfo.nsectors;
+      }
+   }
+}
+//
+
+/***************************************************************************/
+/* function _bios_disk_with_retry                                          */
+/***************************************************************************/
+void _bios_disk_with_retry (struct diskinfo_t *Info)
+{
+   union REGS regs;
+   unsigned RetCode;
+ 
+   if (_bios_disk (_DISK_READ, Info) >> 8) {
+      regs.h.dl = (BYTE) Info->drive;
+      regs.h.ah = 0; /* Reset drive */
+      int86 (0x13, &regs, &regs);
+      RetCode = _bios_disk (_DISK_READ, Info) >> 8;
+      if (RetCode != 0) {
+         fprintf (stderr, "Error %u in low level disk read, aborting...\n",
+                  RetCode);
+         exit (IO_ERR);
+      }
+   }
+}
+//
+
+

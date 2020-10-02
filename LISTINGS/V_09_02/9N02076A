@@ -1,0 +1,1055 @@
+
+/*
+ *    10-Oct-1990 - created
+ */
+
+/******************************************************
+ *
+ *    Module:   olist.c
+ *
+ *    Purpose:  Functions to manage ordered lists using
+ *              skip lists.
+ *
+ *    (c) Copyright 1990 Kenneth L. Grogan, Jr.
+ *
+ *    You have permission to use this code for personal,
+ *    non-commercial purposes only. Any other use of this
+ *    code is prohibitted without the expressed written
+ *    consent of Kenneth L. Grogan, Jr.
+ *
+ ******************************************************/
+
+                       /* don't include externals */
+#define OLIST_X
+
+#include "local.h"
+#include "olist.h"
+#include "_olist.h"
+
+                           /* random level factor p */
+#define P_FACTOR        0.25
+#define P_LEVEL         (P_FACTOR * RAND_MAX)
+                           /* 8 levels will accomodate */
+                           /* 65536 items per list */
+                           /* for P_FACTOR = .25 */
+#define MAX_LEVEL       8
+
+#define this    ((SKIPLIST_T *)skip_list)
+
+#define OLIST_IS_INVALID(sl)    ((sl) == NULL)
+                           /* get appropriate nil node */
+#define NIL(sl)         (nil_node[(sl)->key_type])
+
+                           /* skip list node */
+struct sl_node
+{
+                           /* array of ptrs to nodes */
+    struct sl_node      **next;
+    SL_KEY              key;
+    void                *client_data;
+};
+typedef struct sl_node  SL_NODE;
+                           /* skip list level */
+typedef ubyte   SL_LEVEL;
+                           /* skip list */
+typedef struct
+{
+    SL_NODE     *header;
+    SL_NODE     *current;
+    size_t      size;
+    OLIST_KEY_T key_type;
+    SL_LEVEL    highest_level;
+    int         (*compare_func)();
+} SKIPLIST_T;
+                           /* maximum key values */
+static SL_KEY   max_key_value[OLIST_NUM_KEY_TYPES];
+                           /* nil pointers by key */
+static SL_NODE  *nil_node[OLIST_NUM_KEY_TYPES];
+
+                           /* global error flag */
+int     olist_errno;
+
+                           /* static prototypes */
+#include "__olist.h"
+
+/*********************************************************
+ *  olist_new: 
+ *
+ *  Create a new skip list. The new list will contain no
+ *      nodes except the header node.
+ *
+ *  Returns a pointer to the new list, or NULL if an
+ *  error occurs.
+ *********************************************************/
+
+OLIST olist_new (key_type, compare_func)
+    OLIST_KEY_T key_type;
+    int         (*compare_func)();
+{
+    register index_t    ii;
+    OLIST               skip_list;
+    SL_KEY              header_key;
+    SL_NODE             *header;
+
+    static bool first_time = TRUE;
+
+                           /* initialize */
+    if (first_time)
+    {
+        first_time = FALSE;
+        SET_MAXIMUM_KEY_VALUES();
+        if ( ! olist_make_nil_nodes())
+        {
+            olist_errno = OLIST_NO_MEMORY;
+            return (NULL);
+        }
+                         /* seed random generator */
+        RANDOMIZE();
+    }
+                           /* check key argument */
+    if ((key_type >= MIN_KEY) && (key_type <= MAX_KEY))
+    {
+                           /* make the list header node */
+        header = olist_make_node(MAX_LEVEL, header_key, NULL);
+        if (header != NULL)
+        {
+                           /* make the new skip list */
+            skip_list = (OLIST)malloc(sizeof(SKIPLIST_T));
+            if (skip_list != NULL)
+            {
+                this->header = header;
+                this->key_type = key_type;
+                this->compare_func = compare_func;
+                           /* the list starts empty */
+                olist_empty(skip_list);
+                           /* return the new skip list */
+                olist_errno = OLIST_SUCCESS;
+                return (skip_list);
+            }
+            else
+            {
+                free(header);
+                olist_errno = OLIST_NO_MEMORY;
+            }
+        }
+        else
+        {
+            olist_errno = OLIST_NO_MEMORY;
+        }
+    }
+    else
+    {
+                           /* invalid key type */
+        olist_errno = OLIST_INVALID_TYPE;
+    }
+    return (NULL);
+}
+
+/***********************************************************
+ *  olist_kill:
+ *
+ *  Destroy the specified skip list by freeing all of its
+ *  associated memory.
+ *
+ *  Returns TRUE if successful, otherwise FALSE.
+ **********************************************************/
+
+bool olist_kill (skip_list)
+    OLIST       skip_list;
+{
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this))
+    {
+        olist_errno = OLIST_INVALID;
+        return (FALSE);
+    }
+                           /* free each skip list nodes */
+    olist_free_all(skip_list);
+                           /* free the list header */
+    free(this->header->next);
+    free(this->header);
+                           /* prevent further access */
+    this->key_type = OLIST_NO_KEY;
+                           /* free the skip list */
+    free(this);
+                           /* skip list has been killed */
+    return (TRUE);
+}
+
+/***********************************************************
+ *  olist_size:
+ *    Return the number of nodes in the specified skip list.
+ **********************************************************/
+
+size_t olist_size (skip_list)
+    OLIST       skip_list;
+{
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* return the list size */
+    return (this->size);
+}
+
+/***********************************************************
+ *  olist_key_type:
+ *  Return the key type for the specified skip list.
+ **********************************************************/
+
+OLIST_KEY_T olist_key_type (skip_list)
+    OLIST       skip_list;
+{
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this))
+    {
+        olist_errno = OLIST_INVALID;
+        return (OLIST_NO_KEY);
+    }
+                           /* return the list key type */
+    return (this->key_type);
+}
+
+/***********************************************************
+ *  olist_add:
+ *
+ *  Add the specified client data to the specified skip list.
+ *  The argument replace_data has the following effect:
+ *
+ *  value  |   key already in the list   |  key not in the list
+ *  -----------------------------------------------------------
+ *  TRUE   | replace client data for key |  add key to the list
+ *  FALSE  |   return KEY_EXISTS error   |  add key to the list
+ *
+ *  Returns TRUE if the data was inserted or replaced,
+ *  otherwise FALSE.
+ **********************************************************/
+
+bool olist_add (skip_list, key_type, inkey, client_data,
+                               replace_data)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *inkey;
+    void        *client_data;
+    bool        replace_data;
+{
+    register index_t    ii;
+    SL_LEVEL            new_level;
+    SL_KEY              search_key;
+    SL_NODE             *new_node;
+    SL_NODE             *update_node[MAX_LEVEL];
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) ||
+        (KEY_IS_INVALID(this, key_type, inkey)))
+    {
+        olist_errno = OLIST_INVALID;
+        return (FALSE);
+    }
+                           /* get the appropriate key */
+    GET_KEY(search_key, key_type, inkey);
+                           /* start with the highest */
+                           /* level in the header node */
+    new_node = this->header;
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* get key before search key */
+        while (KEY_LT(this, new_node->next[ii]->key, search_key))
+        {
+            new_node = new_node->next[ii];
+        }
+        update_node[ii] = new_node;
+    } while (ii > 0);
+                           /* advance to the expected */
+                           /* search key location */
+    new_node = new_node->next[0];
+                           /* key equals search key? */
+    if (KEY_EQ(this, new_node->key, search_key))
+    {
+                           /* key already exists */
+        if (replace_data)
+        {
+                           /* just replace the data */
+            new_node->client_data = client_data;
+        }
+        else
+        {
+            olist_errno = OLIST_KEY_EXISTS;
+            return (FALSE);
+        }
+    }
+    else
+    {
+                           /* get a random level */
+        new_level = olist_get_new_level();
+        if (new_level > this->highest_level)
+        {
+                           /* max level increase is 1 */
+            new_level = this->highest_level + 1;
+            update_node[new_level] = this->header;
+        }
+                           /* make the new node */
+        new_node = olist_make_node(new_level + 1, search_key,
+                                             client_data);
+        if (new_node == NULL)
+        {
+            olist_errno = OLIST_NO_MEMORY;
+            return (FALSE);
+        }
+                           /* update highest level */
+        if (new_level > this->highest_level)
+        {
+            this->highest_level = new_level;
+        }
+                           /* update the node pointers */
+        for (ii = 0; ii <= new_level; ++ii)
+        {
+            new_node->next[ii] = update_node[ii]->next[ii];
+            update_node[ii]->next[ii] = new_node;
+        }
+                           /* inserted one new node */
+        ++(this->size);
+    }
+    return (TRUE);
+}
+
+/***********************************************************
+ *    olist_remove
+ *
+ *    Remove the specified node from the specified skip list.
+ *    Returns TRUE if the data was removed, otherwise FALSE.
+ **********************************************************/
+
+bool olist_remove (skip_list, key_type, inkey)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *inkey;
+{
+    register index_t    ii;
+    SL_KEY              search_key;
+    SL_NODE             *target_node;
+    SL_NODE             *update_node[MAX_LEVEL];
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) ||
+        (KEY_IS_INVALID(this, key_type, inkey)))
+    {
+        olist_errno = OLIST_INVALID;
+        return (FALSE);
+    }
+                           /* get the appropriate key */
+    GET_KEY(search_key, key_type, inkey);
+                           /* start with the highest */
+                           /* level in the header node */
+    target_node = this->header;
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* get key before search key */
+        while (KEY_LT(this, target_node->next[ii]->key,
+                                      search_key))
+        {
+            target_node = target_node->next[ii];
+        }
+        update_node[ii] = target_node;
+    } while (ii > 0);
+                           /* advance to the expected */
+                           /* search key location */
+    target_node = target_node->next[0];
+    if (KEY_EQ(this, target_node->key, search_key))
+    {
+                           /* for each level, replace */
+                           /* pointers to the target */
+                           /* node with the pointers */
+                           /* in the target node */
+        for (ii = 0; ii <= this->highest_level; ++ii)
+        {
+            if (update_node[ii]->next[ii] != target_node) break;
+            update_node[ii]->next[ii] = target_node->next[ii];
+        }
+        if (target_node == this->current)
+        {
+                           /* removing the current node */
+            this->current = target_node->next[0];
+        }
+        free(target_node);
+                           /* if the target node is */
+                           /* the only highest level */
+                           /* node, then decrease the */
+                           /* highest level */
+        while ((this->highest_level > 0) &&
+               (this->header->next[this->highest_level] ==
+                                                     NIL(this)))
+        {
+            --(this->highest_level);
+        }
+                           /* decrease the list size */
+        --(this->size);
+    }
+    else
+    {
+        olist_errno = OLIST_NOT_FOUND;
+        return (FALSE);
+    }
+
+    return (TRUE);
+}
+
+/***********************************************************
+ *                       olist_remove_all
+ *
+ * Remove all the nodes in the specified skip list.
+ * Returns TRUE if all data has been removed, otherwise FALSE.
+ **********************************************************/
+
+bool olist_remove_all (skip_list)
+    OLIST       skip_list;
+{
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this))
+    {
+        olist_errno = OLIST_INVALID;
+        return (FALSE);
+    }
+                           /* free each skip list node */
+    olist_free_all(skip_list);
+                           /* skip list is now empty */
+    return (TRUE);
+}
+
+/***********************************************************
+ *
+ *                              olist_find
+ *
+ *  Search the specified skip list for the node with the
+ *  specified key. If found, make this node the current node.
+ *
+ *  Returns the pointer to the client data in the found node,
+ *  or NULL if the key is not found or an error occurs.
+ *
+ **********************************************************/
+
+void *olist_find (skip_list, key_type, inkey)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *inkey;
+{
+    register index_t    ii;
+    SL_KEY              search_key;
+    SL_NODE             *target_node;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) ||
+        (KEY_IS_INVALID(this, key_type, inkey)))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* get the appropriate key */
+    GET_KEY(search_key, key_type, inkey);
+                           /* start with the highest */
+                           /* level in the header node */
+    target_node = this->header;
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* get key before search key */
+        while (KEY_LT(this, target_node->next[ii]->key,
+                                  search_key))
+        {
+            target_node = target_node->next[ii];
+        }
+    } while (ii > 0);
+                           /* advance to the expected */
+                           /* search key location */
+    target_node = target_node->next[0];
+    if (KEY_EQ(this, target_node->key, search_key))
+    {
+                           /* found the search key */
+        this->current = target_node;
+                           /* return the client data */
+        return (target_node->client_data);
+    }
+                           /* search key is not in list */
+    olist_errno = OLIST_NOT_FOUND;
+    return (NULL);
+}
+
+/***********************************************************
+ *
+ *                              olist_query
+ *  Search the specified skip list for the node with the
+ *  specified key. If found, make this node the current
+ *  node. If not found, then find the node with the next
+ *  closest key and make that node current.  If
+ *  find_before is TRUE, find the closest node before,
+ *  otherwise find the closest node after. Set the value
+ *  pointed to by the appropriate key type pointer to the
+ *  key value of the found node.
+ * 
+ *  Returns the pointer to the client data in the found
+ *  node, or NULL if there is no node found before or
+ *  after, or an error occurs.
+ *
+ **********************************************************/
+
+void *olist_query (skip_list, key_type, inkey, outkey,
+                              find_before)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *inkey;
+    void        *outkey;
+    bool        find_before;
+{
+    register index_t    ii;
+    SL_KEY              search_key;
+    SL_NODE             *node_before;
+    SL_NODE             *target_node;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) ||
+        (KEY_IS_INVALID(this, key_type, inkey)))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* get the appropriate key */
+    GET_KEY(search_key, key_type, inkey);
+                           /* start with the highest */
+                           /* level in the header node */
+    node_before = this->header;
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* get key before search key */
+        while (KEY_LT(this, node_before->next[ii]->key,
+                              search_key))
+        {
+            node_before = node_before->next[ii];
+        }
+    } while (ii > 0);
+                           /* advance to the expected */
+                           /* search key location */
+    target_node = node_before->next[0];
+    if ( ! KEY_EQ(this, target_node->key, search_key))
+    {
+        if (find_before)
+        {
+                           /* use the preceding node */
+            target_node = node_before;
+        }
+        if ((target_node == this->header) || (target_node ==
+                                   NIL(this)))
+        {
+                           /* no node before or after */
+            olist_errno = OLIST_NOT_FOUND;
+            return (NULL);
+        }
+    }
+                           /* make found node current */
+    this->current = target_node;
+                           /* set the appropriate key */
+    SET_KEY(target_node->key, key_type, outkey);
+                           /* return the client data */
+    return (target_node->client_data);
+}
+
+/***********************************************************
+ *
+ *                              olist_get_last
+ *
+ *  Get the client data for the last node in the specified
+ *  skip list (this would normally be the node with the largest
+ *  key in the list). Set the value pointed to by the
+ *  appropriate key type pointer to the key value of the last
+ *  node. Does not affect the current node.
+ *
+ *  Returns the pointer to the client data of the last node
+ *  in the list, or NULL if the list is empty or an error occurs.
+ *
+ **********************************************************/
+
+void *olist_get_last (skip_list, key_type, outkey)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *outkey;
+{
+    register index_t    ii;
+    SL_NODE             *target_node;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) || (key_type != this->key_type))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* start with the highest */
+                           /* level in the header node */
+    target_node = this->header;
+    if (target_node->next[0] == NIL(this))
+    {
+        olist_errno = OLIST_EMPTY;
+        return (NULL);
+    }
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* skip across node levels */
+        while (target_node->next[ii] != NIL(this))
+        {
+            target_node = target_node->next[ii];
+        }
+    } while (ii > 0);
+                           /* set the appropriate key */
+    SET_KEY(target_node->key, key_type, outkey);
+                           /* return the client data */
+    return (target_node->client_data);
+}
+
+/***********************************************************
+ *
+ *                              olist_do_first
+ *
+ *  Get the client data for the first node in the specified
+ *  skip list (this would normally be the node with the
+ *  smallest key in the list) and make this node the current
+ *  node if set_current is TRUE. Set the value pointed to by
+ *  the appropriate key type pointer to the key value of the
+ *  first node.
+ *
+ *  Returns the pointer to the client data of the first node
+ *  in the list, or NULL if the list is empty or an error occurs.
+ *
+ **********************************************************/
+
+void *olist_do_first (skip_list, key_type, outkey, set_current)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *outkey;
+    bool        set_current;
+{
+    SL_NODE     *target_node;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) || (key_type != this->key_type))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* the lowest header level */
+                           /* points to the first node */
+    target_node = this->header->next[0];
+    if (target_node == NIL(this))
+    {
+        olist_errno = OLIST_EMPTY;
+        return (NULL);
+    }
+    if (set_current)
+    {
+                           /* make this node current */
+        this->current = target_node;
+    }
+                           /* set the appropriate key */
+    SET_KEY(target_node->key, key_type, outkey);
+                           /* return the client data */
+    return (target_node->client_data);
+}
+
+/***********************************************************
+ *
+ *                              olist_do_next
+ *
+ *  Get the client data for the node following the current
+ *  node in the specified skip list (this will be the next
+ *  node in the key sequence) and make this node the current
+ *  node if set_current is TRUE. Set the value pointed to by
+ *  the appropriate key type pointer to the key value of the
+ *  next node.
+ *
+ *  Returns the pointer to the client data of the next node
+ *  in the list, or NULL if there is no current node, the 
+ *  list is empty or an error occurs.
+ *
+ **********************************************************/
+
+void *olist_do_next (skip_list, key_type, outkey, set_current)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *outkey;
+    bool        set_current;
+{
+    SL_NODE     *target_node;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) || (key_type != this->key_type))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* check for current node */
+    if (this->current == NULL)
+    {
+        olist_errno = OLIST_NO_CURRENT;
+        return (NULL);
+    }
+                           /* the lowest node level */
+                           /* points to the next node */
+    target_node = this->current->next[0];
+    if (target_node == NIL(this))
+    {
+                           /* at end of the list */
+        olist_errno = OLIST_END_OF_LIST;
+        return (NULL);
+    }
+    if (set_current)
+    {
+                           /* make this node current */
+        this->current = target_node;
+    }
+                           /* set the appropriate key */
+    SET_KEY(target_node->key, key_type, outkey);
+                           /* return the client data */
+    return (target_node->client_data);
+}
+
+/***********************************************************
+ *
+ *                           olist_get_current
+ *
+ *  Get the client data for the current node in the specified
+ *  skip list. Set the value pointed to by the appropriate
+ *  key type pointer to the key value of the next node. Does
+ *  not affect the current node.
+ *
+ *  Returns the pointer to the client data of the current node
+ *  in the list, or NULL if there is no current node or an
+ *  error occurs.
+ *
+ **********************************************************/
+
+void *olist_get_current (skip_list, key_type, outkey)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *outkey;
+{
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) || (key_type != this->key_type))
+    {
+        olist_errno = OLIST_INVALID;
+        return (NULL);
+    }
+                           /* check for current node */
+    if (this->current == NULL)
+    {
+        olist_errno = OLIST_NO_CURRENT;
+        return (NULL);
+    }
+    if (this->current == NIL(this))
+    {
+                           /* at end of the list */
+        olist_errno = OLIST_END_OF_LIST;
+        return (NULL);
+    }
+                           /* set the appropriate key */
+    SET_KEY(this->current->key, key_type, outkey);
+                           /* return the client data */
+    return (this->current->client_data);
+}
+
+/***********************************************************
+ *
+ *                              olist_compares
+ *
+ *  Returns the number of compares required to find the node
+ *  with the specified key in the specified skip list, or
+ *  zero (0) if the key is not found or an error occurs.
+ *
+ **********************************************************/
+
+int olist_compares (skip_list, key_type, inkey)
+    OLIST       skip_list;
+    OLIST_KEY_T key_type;
+    void        *inkey;
+{
+    register index_t    ii;
+    SL_KEY              search_key;
+    SL_NODE             *target_node;
+    int                 num_compares = 0;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this) ||
+        (KEY_IS_INVALID(this, key_type, inkey)))
+    {
+        olist_errno = OLIST_INVALID;
+        return (0);
+    }
+                           /* get the appropriate key */
+    GET_KEY(search_key, key_type, inkey);
+                           /* start with the highest */
+                           /* level in the header node */
+    target_node = this->header;
+    ii = this->highest_level + 1;
+    do {
+        --ii;
+                           /* get key before search key */
+        while (KEY_LT(this, target_node->next[ii]->key,
+                   search_key))
+        {
+            target_node = target_node->next[ii];
+            ++num_compares;
+        }
+        ++num_compares;
+    } while (ii > 0);
+                           /* advance to the expected */
+                           /* search key location */
+    target_node = target_node->next[0];
+    ++num_compares;
+    if (KEY_EQ(this, target_node->key, search_key))
+    {
+                           /* return the client data */
+        return (num_compares);
+    }
+                           /* search key is not in list */
+    olist_errno = OLIST_NOT_FOUND;
+    return (0);
+}
+
+/***********************************************************
+ *
+ *                              olist_report
+ *
+ *  Print to stdout the number of nodes at each level of the
+ *  specified skip list.
+ *
+ *  Returns the TRUE if successful, otherwise FALSE.
+ *
+ **********************************************************/
+
+bool olist_report (skip_list)
+    OLIST       skip_list;
+{
+    register index_t    ii;
+    SL_NODE             *target_node;
+    size_t              node_count;
+    size_t              total_node_count = 0;
+
+
+    olist_errno = OLIST_SUCCESS;
+                           /* check for valid skip list */
+    if (OLIST_IS_INVALID(this))
+    {
+        olist_errno = OLIST_INVALID;
+        return (FALSE);
+    }
+                           /* start with the highest */
+                           /* level in the header node */
+    ii = this->highest_level + 1;
+    if (this->size > 0) do
+    {
+        --ii;
+        node_count = 0;
+        target_node = this->header;
+                           /* skip across node levels */
+        while (target_node->next[ii] != NIL(this))
+        {
+            target_node = target_node->next[ii];
+            ++node_count;
+        }
+                           /* remove higher level */
+                           /* counts from this level */
+        node_count = node_count - total_node_count;
+        total_node_count = total_node_count + node_count;
+        printf("\nskip list level %u : %5u nodes (%d%%)",
+               ii + 1, node_count,
+               (int)(100.0 * ((double)node_count /
+                                        (double)this->size)));
+    } while (ii > 0);
+    if (total_node_count == this->size)
+    {
+        printf("\n\n Total number of nodes = %d\n",
+                                total_node_count);
+    }
+    else
+    {
+        printf("\n\n *** Total number of nodes does not \
+match list size\n");
+    }
+    return (TRUE);
+}
+
+/***********************************************************
+ *
+ *                           olist_free_all
+ *
+ *          Free all of the nodes in the specified skip list.
+ *
+ **********************************************************/
+
+static void olist_free_all (skip_list)
+    OLIST       skip_list;
+{
+    SL_NODE     *next_node;
+    SL_NODE     *target_node;
+
+                           /* free each skip list node */
+    next_node = this->header->next[0];
+    while (next_node != NIL(this))
+    {
+        target_node = next_node;
+        next_node = target_node->next[0];
+        free(target_node);
+    }
+                           /* initialize as empty list */
+    olist_empty(skip_list);
+}
+
+/***********************************************************
+ *
+ *                              olist_empty
+ *
+ *          Initialize the specified skip list as an empty list.
+ *
+ **********************************************************/
+
+static void olist_empty (skip_list)
+    OLIST       skip_list;
+{
+    register index_t    ii;
+
+
+    for (ii = 0; ii < MAX_LEVEL; ++ii)
+    {
+        this->header->next[ii] = NIL(this);
+    }
+    this->size = 0;
+    this->highest_level = 0;
+    this->current = NULL;
+}
+
+/***********************************************************
+ *
+ *                          olist_make_nil_nodes
+ *
+ *  Make the nil node for each key type and initialize the
+ *  keys and levels.
+ *
+ *  Return TRUE if successful, otherwise FALSE.
+ *
+ **********************************************************/
+
+static bool olist_make_nil_nodes ()
+{
+    register index_t    ii, jj;
+                           /* the key for each nil */
+                           /* must be the larger than */
+                           /* the largest available key */
+    for (ii = MIN_KEY; ii <= MAX_KEY; ++ii)
+    {
+        nil_node[ii] = olist_make_node(MAX_LEVEL,
+                                     max_key_value[ii], NULL);
+        if (nil_node[ii] == NULL)
+        {
+                           /* out of memory, so free */
+                           /* the nodes already made */
+            for (jj = MIN_KEY; jj < ii; ++jj)
+            {
+                free(nil_node[jj]);
+            }
+            return (FALSE);
+        }
+    }
+    for (ii = MIN_KEY; ii <= MAX_KEY; ++ii)
+    {
+        for (jj = 0; jj < MAX_LEVEL; ++jj)
+        {
+                           /* next node points to nil */
+            nil_node[ii]->next[jj] = nil_node[ii];
+        }
+    }
+    return (TRUE);
+}
+
+/***********************************************************
+ *                   olist_get_new_level
+ *
+ *      Return a random level from zero to MAX_LEVEL - 1.
+ **********************************************************/
+    
+static SL_LEVEL olist_get_new_level ()
+{
+    SL_LEVEL    new_level = 0;
+
+                           /* generate a random level */
+    while (RANDOM() < P_LEVEL)
+    {
+        ++new_level;
+    }
+    return ((SL_LEVEL)(MIN(new_level, MAX_LEVEL - 1)));
+}
+
+/***********************************************************
+ *                    olist_make_node
+ *  Create a new node structure and fill it with the
+ *  specified values.
+ *
+ *  Return a pointer to the new node, or NULL if an error
+ *  has occurs.
+ **********************************************************/
+    
+static SL_NODE *olist_make_node (level_num, new_key,
+                          client_data)
+    SL_LEVEL    level_num;
+    SL_KEY      new_key;
+    void        *client_data;
+{
+    SL_NODE     *new_node;
+    SL_NODE     **new_node_next;
+
+                           /* make the new node */
+    new_node = (SL_NODE *)malloc(sizeof(SL_NODE));
+    if (new_node != NULL)
+    {
+                           /* make the next node array */
+        new_node_next = (SL_NODE **)malloc(level_num *
+                                               sizeof(SL_NODE *));
+        if (new_node_next != NULL)
+        {
+            new_node->next = new_node_next;
+            new_node->key = new_key;
+            new_node->client_data = client_data;
+                           /* return the new node */
+            return (new_node);
+        }
+        free(new_node);
+    }
+    return (NULL);
+}
+

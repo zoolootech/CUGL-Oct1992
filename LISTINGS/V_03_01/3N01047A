@@ -1,0 +1,173 @@
+{ LISTING 2 }
+{$M 2048,1024,R-,S-,D-,L-,N-,A-}
+program Bye_With_Owl;
+
+   (* BYE2.PAS - Quick Exit For Windows - In Object Windows Library
+    * Written by Richard R. Sands in Turbo Pascal for Windows
+    *)
+
+USES
+   WObjects, WinTypes, WinProcs;
+
+{$R Bye2.Res}
+
+CONST
+   AppName = 'Bye2';
+   IniAppName = 'Bye';  { As listed in WIN.INI }
+
+   idm_Quit    = 100;  { Sys Message Command: Quit Windows }
+   idm_Confirm = 101;  { Sys Message Command: Confirm Exit }
+   idm_OS      = 102;  { Sys Message Command: Execute DOS Shell }
+   idm_About   = 103;  { Sys Message Command: Show About Dialog }
+
+type
+  { Define a TApplication descendant }
+  tWExitApp = object(tApplication)
+    procedure InitMainWindow; virtual;
+  end;
+
+  pByeWin = ^tByeWin;
+  tByeWin = object(tWindow)
+     Confirm: Boolean;  { ask before quitting? }
+
+     { Window/Object Setup }
+     constructor Init(AParent: pWindowsObject; ATitle: pChar);
+     procedure   GetWindowClass(var AWndClass : tWndClass); virtual;
+     procedure   SetUpWindow; virtual;
+
+     { Window Message Methods }
+     procedure   wmSysCommand(var Msg:tMessage); virtual wm_First + wm_SysCommand;
+     procedure   wmQueryOpen(var Msg:tMessage); virtual wm_First + wm_QueryOpen;
+
+     { Private Routines }
+     procedure   ToggleConfirm;
+     procedure   SetConfirmState;
+     procedure   Quit;
+  end;
+
+{ ------------------------------------------------------------------------- }
+{ tByeWin                                                                   }
+{ ------------------------------------------------------------------------- }
+constructor tByeWin.Init(AParent: pWindowsObject; ATitle: PChar);
+
+  { Construct the tByeWin's object. }
+
+  begin
+     Confirm := FALSE;  { Defaults to No Confirm }
+     tWindow.Init(AParent, Atitle);
+     Attr.Style := ws_Overlapped OR ws_MinimizeBox OR ws_SysMenu
+  end;
+
+{ ------------------------------------------------------------------------- }
+procedure tByeWin.GetWindowClass(var AWndClass : TWndClass);
+  begin
+    tWindow.GetWindowClass(AWndClass);
+    AWndClass.hIcon := LoadIcon(hInstance, 'ICON')  { Assign the icon }
+  end;
+
+{ ------------------------------------------------------------------------- }
+procedure tByeWin.SetUpWindow;
+  var SysMenu : hMenu;
+      Buffer : Array[0..1] of char;
+  begin
+     SysMenu := GetSystemMenu(hWindow, FALSE);
+
+     { Add Items to the System Menu }
+     AppendMenu(SysMenu, mf_SysMenu + mf_Separator, 0, NIL);
+     AppendMenu(SysMenu, mf_SysMenu, idm_Quit,    '&Exit Windows');
+     AppendMenu(SysMenu, mf_SysMenu, idm_Confirm, 'Confirm &Shutdown');
+     AppendMenu(SysMenu, mf_SysMenu, idm_OS,      '&Operating System');
+     AppendMenu(SysMenu, mf_SysMenu, idm_About,   '&About Bye...');
+
+     { Now get the state of the Confirm Option - This is in WIN.INI }
+     GetProfileString(IniAppName, 'Confirm', 'N', Buffer, sizeof(Buffer));
+     if Buffer[0] = 'Y' then
+        ToggleConfirm
+  end;
+
+{ ------------------------------------------------------------------------- }
+procedure tByeWin.wmSysCommand(var Msg:tMessage);
+
+  { Handle the System Menu Items that were installed }
+
+  var About: pDialog;
+  begin
+      case Msg.wParam of
+        idm_About  : begin
+                        New(About, Init(@Self, 'AboutBox'));
+                        Application^.ExecDialog(About);
+                     end;
+        idm_Confirm: ToggleConfirm;
+        idm_OS     : WinExec('Command.Com', sw_Normal);
+        idm_Quit   : Quit
+      else
+        DefWndProc(Msg)
+      end
+  end;
+
+{ ------------------------------------------------------------------------- }
+Procedure tByeWin.wmQueryOpen(var Msg:tMessage);
+  begin
+      Msg.Result := 0;  { If this returns 0 then we cannot restore our window }
+      Quit
+  end;
+
+{ ------------------------------------------------------------------------- }
+Procedure tByeWin.Quit;
+  begin
+      if Confirm then
+      begin
+          MessageBeep(0);
+          if MessageBox(hWindow, 'Are you sure you want to exit Windows?', 'Exit Windows?',
+                        mb_IconQuestion + mb_OkCancel) = id_Cancel then
+              EXIT
+      end;
+      SetConfirmState;   { Write our Confirm=Y/N entry in WIN.INI }
+      ExitWindows(0, 0)  { See 'ya }
+  end;
+
+{ ------------------------------------------------------------------------- }
+Procedure tByeWin.ToggleConfirm;
+  var SysMenu  : hMenu;
+  begin
+      SysMenu := GetSystemMenu(hWindow, FALSE);
+      Confirm := NOT Confirm;
+      if Confirm then
+         CheckMenuItem(SysMenu, idm_Confirm, mf_byCommand+mf_Checked)
+      else
+         CheckMenuItem(SysMenu, idm_Confirm, mf_byCommand+mf_UnChecked)
+  end;
+
+{ -------------------------------------------------------------------------- }
+Procedure tByeWin.SetConfirmState;
+  { Sets the [BYE]
+             Confirm=Y/N
+     WIN.INI setting }
+  var Buffer: Array[0..1] of char;
+  begin
+     if Confirm then Buffer[0] := 'Y'
+     else
+        Buffer[0] := 'N';
+     Buffer[1] := #0;  { Null terminate the String }
+     WriteProfileString(IniAppName, 'Confirm', Buffer)
+  end;
+
+{ ------------------------------------------------------------------------- }
+{ tWExitApp                                                                 }
+{ ------------------------------------------------------------------------- }
+procedure tWExitApp.InitMainWindow;
+
+  { Construct the TWExitApp's MainWindow object: A tByeWin }
+
+  begin
+     MainWindow := New(pByeWin, Init(nil, AppName))
+  end;
+
+{ ------------------------------------------------------------------------- }
+var WExitApp: tWExitApp;
+begin
+  WExitApp.Init(AppName);
+  ShowWindow(WExitApp.MainWindow^.hWindow, sw_ShowMinimized); { Minimize Window }
+  WExitApp.Run;
+  WExitApp.Done
+end.

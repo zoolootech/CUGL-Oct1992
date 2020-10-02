@@ -1,0 +1,156 @@
+
+
+/**********************************************************
+* NETBIOS.H -- Net BIOS definitions
+*
+*     Copyright 1990 Tom Jensen
+**********************************************************/
+
+/* Net Control Block commands */
+
+#define NET_CALL       0x10  /* Call to establish session */
+#define NET_LISTEN     0x11  /* Listen for session request*/
+#define NET_HANGUP     0x12  /* Close session             */
+#define NET_SEND       0x14  /* Send data                 */
+#define NET_RECV       0x15  /* Receive data              */
+#define NET_RECV_ANY   0x16  /* Receive data from any     */
+                             /* session                   */
+#define NET_CHAIN_SEND 0x17  /* Send multiple data blocks */
+
+#define NET_SEND_DGRAM 0x20  /* Send datagram             */
+#define NET_RECV_DGRAM 0x21  /* Receive datagram          */
+#define NET_SEND_BROAD 0x22  /* Send broadcast datagram   */
+#define NET_RECV_BROAD 0x23  /* Receive broadcast datagram*/
+
+#define NET_ADD_NAME   0x30  /* Add local network name    */
+#define NET_DEL_NAME   0x31  /* Delete local network name */
+#define NET_RESET      0x32  /* Reset adapter             */
+#define NET_ADAPT_STAT 0x33  /* Query adapter status      */
+#define NET_SES_STAT   0x34  /* Query session status      */
+#define NET_CANCEL     0x35  /* Cancel command            */
+#define NET_ADD_GROUP  0x36  /* Add group name            */
+
+#define NET_UNLINK      0x70  /* Drop session w/RPL host  */
+#define NET_SEND_NOACK  0x71  /* Send without             */
+                              /* acknowledgement          */
+#define NET_CHAIN_NOACK 0x72  /* Send multiple blocks     */
+                              /* without acknowledgement  */
+
+
+/* No wait (interrupt driven) option */
+/* must be ORed with NCB command     */
+
+#define NET_NOWAIT  0x80
+
+/* NETBIOS return codes */
+
+#define NB_OK       0x00    /* Command completed          */
+                            /* successfully               */
+#define NB_BUFLEN   0x01    /* Invalid buffer length      */
+#define NB_BADCMD   0x03    /* Invalid command            */
+#define NB_TIMEOUT  0x05    /* Command timed out          */
+#define NB_INCOMP   0x06    /* Data larger than buffer    */
+#define NB_NOACKX   0x07    /* Local No-Ack command       */
+                            /* failed                     */
+#define NB_SESINAC  0x08    /* Invalid session number     */
+#define NB_NORES    0x09    /* Not enough space for       */
+                            /* session                    */
+#define NB_SESCLOS  0x0A    /* Session closed             */
+#define NB_CANCELED 0x0B    /* Command canceled           */
+#define NB_DUPLNAM  0x0D    /* Duplicate local name       */
+#define NB_LNAMFULL 0x0E    /* Name table is full         */
+#define NB_ACTVLNAM 0x0F    /* Name to delete has active  */
+                            /* session, name de-registered*/
+#define NB_SESFULL  0x11    /* Local session table full   */
+#define NB_BADOPEN  0x12    /* No Listen cmd on remote    */
+#define NB_BADNNUM  0x13    /* Invalid name number        */
+#define NB_NONAME   0x14    /* Call name not found        */
+#define NB_BADNAME  0x15    /* Name not found or illegal  */
+                            /* 1st character, * or 0x00   */
+#define NB_DUPRNAM  0x16    /* Duplicate remote name      */
+#define NB_NAMEDEL  0x17    /* Name deleted, OK           */
+#define NB_SESABEND 0x18    /* Session ended abnormally   */
+#define NB_DUPNAMES 0x19    /* Duplicate names on network */
+#define NB_BADPROTO 0x1A    /* Packet received using      */
+                            /* incompatible protocol      */
+#define NB_BUSY     0x21    /* Interface busy             */
+#define NB_MAXCMDS  0x22    /* Too many cmds outstanding  */
+#define NB_BADLANA  0x23    /* Invalid LanaNum field      */
+#define NB_COMPCAN  0x24    /* Attempted Cancel of command*/
+                            /* completed or non-existant  */
+#define NB_RSRVADDN 0x25    /* Reserve name used for Add  */
+                            /* Group Name                 */
+#define NB_BADCAN   0x26    /* Invalid command to cancel  */
+
+/* Other errors represent unusual conditions or adapter   */
+/* malfunctions.  Most are system dependent.              */
+
+#define NB_CMDPEND  0xFF    /* Command still pending      */
+
+/* Far Address Union */
+
+struct segofs
+{
+  unsigned Ofs;               /* Address offset  */
+  unsigned Seg;               /* Address segment */
+};
+
+union MemAddr
+{
+  void far      *pfar;        /* Far address            */
+  struct segofs SegOfs;       /* Segment/offset address */
+};
+
+/* Net Control Block structure */
+
+struct NcbData
+{
+  unsigned char Command;      /* NETBIOS command         */
+  unsigned char RetCode;      /* Return code             */
+  unsigned char LSN;          /* Local session number    */
+  unsigned char Num;          /* Local name number       */
+  union MemAddr Buffer;       /* Buffer address          */
+  unsigned int  Length;       /* Buffer length           */
+  unsigned char CallName[16]; /* Name of target node     */
+  unsigned char Name[16];     /* Name of source node     */
+  unsigned char RTO;          /* Receive timeout value   */
+  unsigned char STO;          /* Send timeout value      */
+  union MemAddr Post;         /* Post routine address    */
+  unsigned char LanaNum;      /* LAN adapter number      */
+  unsigned char CmdCplt;      /* Command complete status */
+  unsigned char Reserve[14];  /* Reserved for NETBIOS    */
+};
+
+/* NETBIOS Library prototypes */
+
+void     NbNcbInit (struct NcbData *ncb, unsigned char cmd,
+         char *lnam, char *fnam);
+void     NbExpandName (char *buffer, char *name);
+unsigned NbAddName (struct NcbData *ncb, char *lnam);
+unsigned NbDelName (struct NcbData *ncb, char *lnam);
+unsigned NbListen (struct NcbData *ncb, char *lnam,
+         char *fnam, unsigned char *ses);
+unsigned NbPostListen (struct NcbData *ncb, char *lnam,
+         char *fnam);
+unsigned NbOpenSession (struct NcbData *ncb, char *lnam,
+         char *fnam, unsigned char *ses);
+unsigned NbCloseSession (struct NcbData *ncb, char *lnam,
+         char *fnam, unsigned char ses);
+unsigned NbCancel (struct NcbData *ncb);
+unsigned NbSessionStatus (struct NcbData *ncb, char *lnam,
+         char *fnam, char *buffer, int bufsiz);
+unsigned NbSendData (struct NcbData *ncb, char *lnam,
+         char *fnam, char *buffer, int bufsiz,
+         unsigned char ses);
+unsigned NbReceiveData (struct NcbData *ncb, char *lnam,
+         char *fnam, char *buffer, int bufsiz,
+         unsigned char ses);
+
+int      NetActive (void);
+int      NbNetActive (void);
+int      LocalName (char *name);
+unsigned DosVersion (void);
+
+unsigned NBCALL (struct NcbData *ncb);
+void     SETPOSTADDR (void far *post);
+

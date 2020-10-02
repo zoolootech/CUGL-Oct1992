@@ -1,0 +1,59 @@
+/****************** LISTING 4 - client.c  ******************/
+ 
+#include "ipc.h"
+ 
+extern  RCVBUF msgque[QSIZE];
+extern  BOOL qfull, qempty, qovrflo;
+extern  int qtail, qhead;
+ 
+main()
+{
+int     i, process_num, status;
+char    mbxname[16];
+MSGBUF  msgbuf;
+USHORT  rcvmbx, xmtmbx;
+ 
+/*++++++++++++ Startup ++++++++++++*/
+ 
+status = get_process_no(&process_num);
+sprintf(mbxname, "CLIENTMBX%d", process_num);
+status = open_comm_link(&rcvmbx,
+                sizeof(MSGBUF),mbxname);
+status = open_comm_link(&xmtmbx,
+                sizeof(MSGBUF),"SERVERMBX");
+status = SYS$DCLAST(&receive, rcvmbx, PSL$C_SUPER);
+ 
+msgbuf.xmt_prcnum = 0;
+msgbuf.msgtyp = ADDMBX;
+send(xmtmbx, &msgbuf, sizeof(MSGBUF));
+ 
+/*++++++++++ Main loop ++++++++++*/
+ 
+FOREVER {
+  status = SYS$WAITFR(RCVEF);
+  status = SYS$CLREF(RCVEF);
+  while (!qempty) { 
+    dequeue(&msgbuf);
+    switch(msgbuf.msgtyp) {
+ 
+      case INT_ARRAY:
+          for (i=0; i < 100; i++)
+              printf("\n%d", msgbuf.msg.array[i]);
+          break;
+ 
+      case TEXT:
+          printf("%s", msgbuf.msg.text);
+          break;
+ 
+      case SHUTDOWN:
+          close_comm_link(rcvmbx);
+          close_comm_link(xmtmbx);
+          exit(SUCCEED);
+          break;
+         
+      default:
+          break;
+    } 
+  }
+}  
+} 

@@ -1,0 +1,67 @@
+#include <stdio.h>
+#include <stdlib.h>
+
+/* 8514/A test program - lines */
+
+void main()
+{
+#define HOPEN 8 /* open adapter */
+  static struct {
+    short jlnth;
+    char qflgs,qmode,qstat;
+  } shopen = {3,0,0,0};
+
+#define HQDPS 31 /* query drawing process state size */
+  static struct {
+    short jlnth,jbsiz,jssiz,jpsiz;
+  } shqdps = {6,0,0,0};
+
+#define HINIT 48 /* initialize state */
+  static struct {
+    short jlnth,jbseg;
+  } shinit = {2,0};
+
+#define HLINE 0 /* line at given position */
+  static struct {
+      short jlnth,jxbeg,jybeg,jxend,jyend;
+  } shline = {8,0,0,0,767};
+
+#define HCLOSE 34 /* close adapter */
+  static struct {
+    short jlnth;
+    char qsusp;
+  } shclose = {1,0};
+
+  extern int c8514(int,void *); /* AI interface */
+  char pqstbf[416]; /* drawing process state buffer */
+  int ix; /* x position */
+
+  /* open the adapter interface */
+  if (c8514(HOPEN,&shopen)) {
+    printf("AI not loaded\n");
+    exit(1);
+  }
+  /* check the length of the state buffer */
+  c8514(HQDPS,&shqdps);
+  if (sizeof(pqstbf)-16 < shqdps.jbsiz) {
+    printf("drawing process state buffer too small\n");
+    exit(1);
+  }
+  /* initialize state buffer (on segment boundary) */
+  shinit.jbseg = ((unsigned long)pqstbf >> 16)+
+            (((unsigned long)pqstbf & 0xFFFF) >> 4)+1;
+  c8514(HINIT,&shinit);
+
+  /* draw some lines */
+  for (ix = 0; ix <= 1023; ix += 3) {
+    shline.jxbeg = ix;
+    shline.jxend = 1023-ix;
+    c8514(HLINE,&shline);
+  }
+  /* wait for operator and quit */
+  c8514(-1,NULL);
+  getchar();
+  c8514(HCLOSE,&shclose);
+  c8514(-1,NULL);
+  exit(0);
+}

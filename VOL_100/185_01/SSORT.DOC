@@ -1,0 +1,151 @@
+SSORT.DOC
+
+    SSORT is a merge sort utility.  That is, the limitations on
+the size of the file to be sorted is one of disk space rather
+than memory space. As configured, it allows up to 20 (recompile
+for more) sort keys to be specified.  SSORT has one built-in sort
+precedence order and has a command line option for overlaying an
+arbitrary number of others (one at a time) from a file called
+"SSORT.OVL".  This is useful, for instance, to select a
+descending sort.
+
+   This file (SSORT.DOC) contains information to patch the SSORT
+system to install your favorite collating sequences.  The ones
+supplied are: Lexicographical, Reverse Lexicographical, ASCII,
+Reverse ASCII.
+
+    As configured, the built-in collating sequence in SSORT
+treats all punctuation and non-printing characters as
+non-existent (not even consuming a column).  This means that
+A!@#$%^&*()B will sort adjacent to AB, for example. It also
+treats 'A' and 'a' as distinct but adjacent.  That is, a
+lexicographcal sort.  This is not REALLY lexicographical on a
+string basis.  To get that, 'A' and 'a' should have exactly the
+same sort percedence, but that would mean that several occurrences
+of the same string whose only difference was case would sort to a
+scrambled order within the equivalent strings, for instance.
+	AAAAA
+	aaaaa
+	aaaaa
+	AAAAA
+	AAAAA
+	aaaaa
+The drawback to the implemented version is that:
+	SSORT.C
+	SSORT.CSM
+	ssort.c
+is the results for the example data, since 's' is above 'S'
+in the collating sequence.  What is really wanted is "case blindness"
+on a string (not a character) basis, but I haven't figured out how to
+do that yet. Nor have I missed it much.
+
+The rules for the precedence orders for characters are contained
+in a table in the lexlate() function which is in LEXLATE.CSM.
+
+    The file called SSORT.OVL may contain an arbitrary number
+of collating sequences (actually only as many as 16384), any one
+of which may be overlayed at execution time by using the "-c"
+option (see below).  As configured, -c0 is reverse lecicographical,
+-c1 is ASCII, -c2 is reverse ASCII.
+
+
+
+Usage: ssort <infile> <outfile> [-c<entry number>] [-k<sort key list>]
+
+where -c<entry number> indicates:
+
+Use the <entry number>'th collating sequence in SSORT.OVL.
+
+where <sort key list> is:
+
+A comma separated list of column numbers or ranges
+specifing the sort key positions.
+	e.g.
+ssort messy.dat neat.dat -c3 -k3-5,7-9,1-2,12
+
+specifies that:
+
+1) The  input file is MESSY.DAT.
+2) The output file is  NEAT.DAT.
+3) The collating sequence to be used is number 3 in SSORT.OVL
+   note that the first sequence in SSORT.OVL is number 0.
+4)        The primary sort key is columns  3 thru 5.
+5) The first secondary sort key is columns  7 thru 9.
+6) The next  secondary sort key is columns  1 thru 2.
+7) The last  secondary sort key is columns 12 thru end of line.
+
+A sort key of 1 column may be specified as 3-3 for example.
+A sort key which goes to end of line need NOT be the last one.
+
+The leftmost column is numbered 1.
+The default sort key is the entire line.
+
+
+Files in SSORT.LBR
+
+SSORT.DQC    - This file in squeezed format
+'SSORT.SH    - MicroShell batch file to build SSORT.COM (similar to SUBMIT)
+	       If you have MicroShell, I probably don't have to tell you not
+	       to use it, since ASM gets confused when run from a shell file.
+	       Just treat it as build instructions.
+SSORT.CQ     - BDS C source for lexsort in a squeezed format
+LEXLATE.CQM  - BDS C '.CSM' (assembly language) file for the sort
+	       precedence routine.
+SSORT.OBJ    - SSORT.COM renamed so you can't execute on a RBBS
+SSORT.SYM    - The symbol table from the L2 linker for LEXSORT.COM
+SSORT.OVL    - A file of collating sequences (mentioned above)
+SORTORDR.AQM - ASM assembly language file (in squeezed format) to generate
+	       a customized SSORT.OVL
+	       instructions for use are contained within it.
+
+
+PATCH DATA:
+
+1)	    For those users would a different "built-in"
+	precedence order but do not have BDS C, the
+	combination of LEXLATE.CSM and LEXSORT.SYM show where
+	the table ends up in memory and hence in LEXSORT.COM.
+	This is the address of LEXLATE + 0EH.  As configured,
+	the magic address is (251b + 000e = 2529).
+
+	    The rules are that this is a 256 byte table
+	corresponding to the 256 ASCII codes.  A code of 255
+	is used to indicate that the character should be
+	ignored entirely.  Any other value is the sort
+	precedence for the corresponding ASCII character.
+	Make sure that 0 translates to itself so that C will
+	be able to recognize end of string.
+
+2)	If you wish to change the name SSORT.OVL, it is located
+	at (24ff + 8 = 2507).  This is the address of the function
+	collate_name() + 8, see entry COLLATE_ in file SSORT.SYM (in
+	case someone has re-compiled SSORT since I worte this documentation
+	file. This address may be patched to contain
+	a specific drive and/or user reference according to
+	BDS C rules i.e. uu/d:nnnnnnnn.ttt. The file name must
+	be no longer than 19 characters and must be followed by
+	a zero byte to terminate the string.
+
+3)	If you wish to delete/re-arrange/add-to the collating
+	sequences in SSORT.OVL, see the instructions in SORTORDR.AQM
+
+
+HISTORY:
+
+    SSORT.C is a modification to LEXSORT.C.  LEXSORT.C is a
+modification of SORT3.C.  SORT3.C is Leor Zolman's translation of
+Ratfor code, published in "Software Tools", into BDS C.
+
+Both LEXSORT and SSORT modifications were done by Harvey Moran.
+
+   If you have any comments about SSORT (good or bad), I can be
+reached through the BHEC RBBS (Baltimore Heath Electronic Center
+Remote Bulletin Board Service). The phone number is (301)
+661-2175. This system operates at 300 and 1200 baud, 24 hrs a
+day, but 6:00-8:00 am Eastern Time is reserved for system
+maintenance. I am one of the SYSOP's on this system.
+
+				Harvey Moran
+				2/26/84
+be patched to contain
+	a specific drive and/or user referen

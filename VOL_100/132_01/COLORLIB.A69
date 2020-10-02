@@ -1,0 +1,498 @@
+	#ASM
+;+
+;	6809	color computer support library
+;-
+PIA0	EQU	0FF00H	; Base address , PIA0
+PIA1	EQU	0FF20H	; Base address , PIA1
+ADATA	EQU	0	; A side PIA data
+ACNTRL	EQU	1	; A side PIA control
+BDATA	EQU	2	; B side Pia data
+BCNTRL	EQU	3	; B side PIA control
+VDG	EQU	0FF22H	; VDG control reg
+obj1:
+	FDB	obj2	; forward pointer link
+	FDB	1	; object number
+	FDB	2	; max mumber of x bytes
+	FDB	6	; max number of y bytes
+	FCB	0FFH,0,0FFH,0	; object definition, object/mask
+	FCB	0c0H,03FH,003H,0fcH
+	FCB	0c0H,03fH,3,0fcH
+	FCB	0c0H,03fH,3,0fcH
+	FCB	0c0H,03fH,3,0fcH
+	FCB	0ffH,0,0ffH,0
+obj2:
+	FDB	obj3	;forward pointer
+	FDB	2	;object number
+	FDB	2	; max x bytes
+	FDB	8	;y bytes
+	FCB	1,0feH,0,0ffH
+	FCB	3,0fcH,080H,07fH
+	FCB	7,0f8H,0c0H,03fH
+	FCB	0aH,0f5H,0a0H,5fH
+	FCB	8,0f7H,020H,0dfH
+	FCB	4,0fbH,040H,0bfH
+	FCB	3,0fcH,080H,07fH
+	FCB	07fH,080H,0fcH,3
+obj3:		; Small blob
+	FDB	0
+	FDB	3
+	FDB	1
+	FDB	7
+	FCB	01CH,0e3H
+	FCB	03eH,0c1H
+	fcb	07fH,080H,07fH,080H,07fH,080H
+	FCB	03eH,0c1H
+	FCB	01cH,0e3H
+;+
+;	Screen page display set up
+;	This is a 'C' callable function which is passed the
+;	desired address of the the display page.
+;	NOTE: No 1/2 k boundary checking is performed !
+;-
+SCNCTL	EQU	0FFC6H		; Screen control port base addr.
+SETSCRN
+	LDD	2,S		; Get the address
+	STD	SCRADR		; Set up for next clock interrupt
+	RTS			; Exit, request posted
+DOSET
+	LDX	#SCNCTL		; Screen control port
+	LDA	#6		; Number of bits to output
+SETSC1
+	TFR	A,B
+	ASL	3,S		; Shift the page address
+	ROL	2,S
+	ROLB
+	STA	B,X
+	DECA
+	BPL	SETSC1
+	LDD	#0
+	STD	SCRADR
+	RTS
+;+
+;	Clock interrupt handler.
+;-
+;+
+;	CLOCK EQUATES
+;-
+CLKDAT	EQU	0FF02H
+CLKSTAT	EQU	0FF03H
+CLKJMP	EQU	010DH	; Clock jump vector
+OLDCLK	EQU	894CH	; Old extened color basic clock vector
+JOYRTX	EQU	346	; Right joystick temp location
+JOYRTY	EQU	347	; Right joystick y temp location
+;
+CLOCK
+	LDA	CLKSTAT
+	BMI	CLOCK1
+	RTI		; Spurious interrupt
+CLOCK1
+	LDA	CLKDAT	; Clear clock interrupt
+	bsr	joyrx	; right x joystick svce
+	stb	JOYRTX
+	bsr	joyry
+	stb	JOYRTY
+	LDD	SCRADR
+	BEQ	CLOCK2	; Screen page change test
+	PSHS	D	; Page address on stack
+	BSR	DOSET
+	PULS	D	; clean off the stack
+CLOCK2
+	LDD	FLOP
+	beq	CLOCKX
+	SUBD	#1
+	STD	FLOP
+CLOCKX
+	RTI		; Exit clock interrupt
+;+
+;	CLOCK data area
+;-
+FLOP	RMB	2
+SCRADR	RMB	2	; If non-zero, update the screen
+;+
+;	Putclk patches the clock interrupt vector to CLOCK
+;-
+PUTCLK	
+	LDD	#CLOCK
+	STD	CLKJMP
+	RTS
+REMCLK		; remove the clock. Put back the color clock svce
+	LDD	#OLDCLK
+	STD	CLKJMP
+	RTS
+IRQON		; Interrupt on
+	ANDCC	#0EFH
+	RTS
+IRQOFF		; Interrupt off
+	ORCC	#10H
+	RTS
+;+
+;	SPMOD4	Sets the SAM and VDG up for what is known as `pmode 4`
+;	graphics mode : 256 by 192, green border, white pixels on a 
+;	black background.
+;-
+SPMOD4
+	clra
+	sta	0FFC5H
+	sta	0FFC3H	; set up the SAM  control regs for mode 4
+	sta	0FFC0H
+;+
+;	Set the VDG control reg to match mode 4
+;-
+	LDA	VDG
+	ORA	#0F0H
+	STA	VDG
+	RTS
+;+
+;	joystick	calls the read joystick routine. That's it.
+;	Joystick values are left in the locations
+;		Left	up/down	015Ha	right/left  015Hb
+;		Right	up/down 015Hc	right/left  015Hd
+;	no parameters returned.
+;-
+joystick:
+	FCB	0adH,09fH
+	FDB	0a00aH		; jsr [,a00a], joystick read
+	rts
+;+
+;	joyry	reads the right y joystick
+;	Calls:	rysel
+;	Inputs:	None
+;	Outputs: value in B,  A is cleared
+;	Regs used:	A - B
+;-
+joyry:
+	pshs	x,y
+	bsr	rysel
+	bra	joysam		; complete sample and exit 
+;+
+;	joyrx	reads only the left x joystick 
+;	Calls:	rxsel
+;	Inputs:	None
+;	Outputs: returns value in B, A is cleared.
+;	Regs used : A - B
+;-
+joyrx:
+	pshs	x,y
+	bsr	rxsel	; select right-x joystick
+joysam:
+	ldy	#PIA0	; Y is set to PIA0 base address
+	ldx	#PIA1	; X is set to DAC output PIA
+joyrx0:
+	ldb 	#80H
+	stb	,x	; First comparator bit
+	lda	,Y
+	bmi	jrx15	; if too low
+	subb	#40H
+	bra	jrx20
+jrx15:
+	addb	#40H	; add delta
+jrx20:
+	stb	,x	; Output second dac bit 
+	lda	,y	; Test comparator
+	bmi	jrx25	; if too low
+	subb	#20H
+	bra	jrx30
+jrx25:
+	addb	#20H
+jrx30:
+	stb	,x
+	lda	,y
+	bmi	jrx35
+	subb	#10H
+	bra	jrx40
+jrx35:
+	addb	#10H
+jrx40:
+	stb	,x
+	lda	,y
+	bmi	jrx45
+	subb	#8
+	bra	jrx50
+jrx45:
+	addb	#8
+jrx50:
+	stb	,X
+	lda	,Y
+	bmi	jrx55
+	subb	#4
+	bra	jrx60
+jrx55:
+	addb	#4
+jrx60:
+	stb	,x
+	lda	,y
+	bmi	jrx65
+	subb	#2
+	bra	jrx70
+jrx65:
+	addb	#2
+jrx70:
+	lsrb
+	lsrb		; Move down, only six bits of information
+	clra
+	puls	x,y
+	rts		; exit, value in a-b
+;+
+;	rysel sets up for the right y joystick pot sample
+;-
+rysel:
+	lda	(PIA0 + ACNTRL)
+	ora	#8
+	sta	(PIA0 + ACNTRL)
+	lda	(PIA0 + BCNTRL)
+	anda	#0F7H
+	sta	(PIA0 + BCNTRL)
+	rts
+;+
+;	rxsel sets up for the right x joystick pot
+;-
+rxsel:
+	lda	(PIA0 + ACNTRL)
+	anda	#0F7H	; Reset lsb of muxselect
+	sta	(PIA0 + ACNTRL)
+	lda	(PIA0 + BCNTRL)
+	anda	#0F7H	; reset msb of mux
+	sta	(PIA0 + BCNTRL)
+	rts
+;+
+;	keyboard	reads the color computer keyboard.
+;	returns	:	-1 if no character or
+;			ascii character code
+;	calls:		Internal keyboard scan at indirect a000
+;-
+keyboard:
+	FCB	0adH,09fH
+	FDB	0a000H		; jsr [,a000]
+	bne	keybd1		; if a hit
+	FCB	0ccH
+	FDB	-1		; ldd #-1
+	bra	keybdx
+keybd1:
+	FCB	01fH,089H	; tfr a,b  move character to b
+	clra
+keybdx:	rts
+;+
+;	writeobj	is a graphics object writer. On entry, the
+;	stack contains all paramters:
+;		<starting screen address>
+;		<number of bytes/line	>
+;		<x position		>
+;		<y position		>
+;		< pointer to object def	>
+;		< return address	>
+;
+;	All regs used.
+;	Calls none.
+;	Returns no parameters
+;	Outputs object from definition table. Table format:
+;		< Forward link pointer	>
+;		< object number (word)	>
+;		< x size in bytes	>
+;		< y size in bytes	>
+;		< first x byte		> bytes begin here
+;		< corresponding mask byte>
+;			.
+;			.
+;			.
+;		< last xbyte on last y line>
+;		<corresponding mask byte>
+;	Note that all parameters are words (two bytes) execpt the
+;	byte list definition of the object which is in byte pairs.
+;	The first byte is the pixel information,
+;	the second is a mask byte which shows which pixels are part
+;	of the object. This allows 'holes' to be present in the
+;	interior of an object, as an object is always defined by the
+;	largest rectangle which can contain it.
+;-
+writeobj:
+bufsiz	= 66
+	FCB	010H,0aeH,062H	; Ldy 2,s , get object pointer
+	FCB	0a6H,067H	; ld a 7,s  get xpos low byte
+	lsra
+	lsra			; x/8 to get starting byte in line
+	lsra
+	FCB	034H,2	;pshs a xbyte on stack
+	FCB	0a6H,068H	;ld a 8,s get xpos again
+	FCB	084H,7	;anda #7 bit offset
+	FCB	034H,2	;pshs a shift count on stack
+	FCB	0a6H,025H	;lda 5,y  low byte of xmax
+	FCB	034H,2	;pshs a
+	FCB	0a6H,027H	; ld a 7,y
+	FCB	034H,2	;pshs a
+	clra
+	FCB	034H,2	;pshs a  ymw init to zero on stack
+	FCB	031H,028H	;leay 8,y  init y to head of bytelist
+;+
+;	Parameters are set up. The stack looks like
+;	  stack offset		parameter
+;		F		< page addr 	>
+;		D		< nbytes	>
+;		B		< xpos		>
+;		9		< ypos		>
+;		7		< obj def ptr	>
+;		5		< return	>
+;		4		< xbytes/line	>
+;		3		< shift count	>
+;		2		< xmax		>
+;		1		< ymax		>
+;		0		< ymax working	> - top of stack
+;-
+;+
+;	output a line to the screen
+;-
+line:
+	FCB	08eH
+	FDB	cline	; ldx # cline, temp line buffer
+	FCB	0e6H,062H	; ldb 2,s get xmax
+loop0:
+	FCB	0a6H,0a0H	; lda ,y+ get color byte
+	FCB	0a7H,080H	; sta ,x+ store in cline
+	FCB	0a6H,0a0H	; lda ,y+ get mask byte
+	FCB	0a7H,089H	; sta (bufsiz-1),x  store mask byte
+	FDB	bufsiz - 1
+	DECB
+	bne	loop0
+	FCB	06fH,080H	;clr ,x+ blank for receiving shiftsk
+	FCB	06fH,089H	;clr (bufsiz-1),x 
+	FDB	bufsiz - 1
+	FCB	063H,089H	;com (bufsiz-1),x all ones for mask shifts
+	FDB	bufsiz - 1
+	FCB	0a6H,063H	;ld a 3,s get shift count
+	beq	outline		; if all is on byte boundaries
+	FCB	034H,2		; pshs a  working copy of count
+shift:
+	FCB	0e6H,063H	; ld b 3,s  xmax
+	INCB		; one more byte for shifted bits
+	clra		; clr carry
+	FCB	08eH
+	FDB	cline		; ldx #cline
+clup:
+	FCB	066H,080H	; ror ,x+ shift line to right
+	DECB
+	bne	clup
+	FCB	0e6H,063H	; ldb 3,s  xmax
+	INCB
+	FCB	01aH,1		; orcc 1, set carry for mask shifts
+	FCB	08eH
+	FDB	cline + bufsiz	; ldx #cline+bufsiz, mask line 
+mlup:
+	FCB	066H,080H	; ror ,x+
+	DECB
+	bne	mlup
+	FCB	06aH,0e4H	; dec ,s  decrement shift count
+	bne shift
+	FCB	035H,4		; clear stack of count
+;+
+;	A model horizontal color line and mask line exist in cline and
+;	cline + bufsiz buffers respectively. They are shifted to the 
+;	correct pixel positions. Outline is the mask and move to screen
+;	operation.
+;-
+outline:
+	FCB	034H,020H	;pshs y  save byte list pointer
+	FCB	0e6H,0e8H,010H	;ldb 10,s  nbytes
+	FCB	0a6H,062H	;lda 2,s  ymax working
+	FCB	0abH,06cH	;add a c,s add in yposition,low byte
+	FCB	03dH		;mul  a x b computing screen address
+	FCB	0e3H,0e8H,011H	;adda 11,s  add in page address
+	FCB	0ebH,066H	;add b 6,s add in xbyte
+	FCB	089H,0		;adca #0  add in carry
+	FCB	01fH,1		;tfr d,x  move address to index reg
+	FCB	010H,08eH
+	FDB	cline		;ldy #cline
+	FCB	0e6H,064H	;ldb 4,s  xmax
+	INCB		;include shift bits
+outlup:
+	FCB	0a6H,084H	;lda ,x  get screen byte from cline
+	FCB	0a4H,0a9H	;anda bufsiz,Y and with mask byte
+	FDB	bufsiz
+	FCB	0aaH,0a0H	;ora ,y+ or in color byte
+	FCB	0a7H,080H	;sta ,x+ store byte to screen
+	DECB
+	bne 	outlup
+	FCB	035H,020H	;puls y, restore pointer to bytelist
+	FCB	06cH,0e4H	;dec ,s    increment y line
+	FCB	0a6H,0e4H	;lda ,s	 load in yline count
+	FCB	0a1H,061H	;cmpa 1,s compare to ymax
+	bne	line		; if another line to output
+	FCB	032H,065H	; leas 5,s  adjust stack for temps
+	rts			; exit writeobj
+eraseobj:
+	FCB	010H,0aeH,062H	; Ldy 2,s , get object pointer
+	FCB	0a6H,067H	; ld a 7,s  get xpos low byte
+	lsra
+	lsra			; x/8 to get starting byte in line
+	lsra
+	FCB	034H,2	;pshs a xbyte on stack
+	FCB	0a6H,068H	;ld a 8,s get xpos again
+	FCB	084H,7	;anda #7 bit offset
+	FCB	034H,2	;pshs a shift count on stack
+	FCB	0a6H,025H	;lda 5,y  low byte of xmax
+	FCB	034H,2	;pshs a
+	FCB	0a6H,027H	; ld a 7,y
+	FCB	034H,2	;pshs a
+	clra
+	FCB	034H,2	;pshs a  ymw init to zero on stack
+	FCB	031H,029H	;leay 9,y  init y to head of mask bytelist
+eline:
+	FCB	08eH
+	FDB	mline	; ldx # mline, temp line buffer
+	FCB	0e6H,062H	; ldb 2,s get xmax
+eloop0:
+	FCB	0a6H,0a1H	; lda ,y++ get mask byte
+	FCB	0a7H,080H	; sta ,x+  store mask byte
+	DECB
+	bne	eloop0
+	FCB	06fH,084H	;clr ,x blank for receiving shiftsk
+	FCB	063H,084H	;com ,x all ones for mask shifts
+	FCB	0a6H,063H	;ld a 3,s get shift count
+	beq	eoutline		; if all is on byte boundaries
+	FCB	034H,2		; pshs a  working copy of count
+eshift:
+	FCB	0e6H,063H	; ldb 3,s  xmax
+	INCB
+	FCB	01aH,1		; orcc 1, set carry for mask shifts
+	FCB	08eH
+	FDB	mline	; ldx #mline, mask line 
+emlup:
+	FCB	066H,080H	; ror ,x+
+	DECB
+	bne	emlup
+	FCB	06aH,0e4H	; dec ,s  decrement shift count
+	bne eshift
+	FCB	035H,4		; clear stack of count
+eoutline:
+	FCB	034H,020H	;pshs y  save byte list pointer
+	FCB	0e6H,0e8H,010H	;ldb 10,s  nbytes
+	FCB	0a6H,062H	;lda 2,s  ymax working
+	FCB	0abH,06cH	;add a c,s add in yposition,low byte
+	FCB	03dH		;mul  a x b computing screen address
+	FCB	0e3H,0e8H,011H	;adda 11,s  add in page address
+	FCB	0ebH,066H	;add b 6,s add in xbyte
+	FCB	089H,0		;adca #0  add in carry
+	FCB	01fH,1		;tfr d,x  move address to index reg
+	FCB	010H,08eH
+	FDB	mline		;ldy #mline
+	FCB	0e6H,064H	;ldb 4,s  xmax
+	INCB		;include shift bits
+eoutlup:
+	FCB	0a6H,084H	;lda ,x  get screen byte from mline
+	FCB	0a4H,0a0H	;anda ,Y+ and with mask byte
+	FCB	0a7H,080H	;sta ,x+ store byte to screen
+	DECB
+	bne 	eoutlup
+	FCB	035H,020H	;puls y, restore pointer to bytelist
+	FCB	06cH,0e4H	;dec ,s    increment y line
+	FCB	0a6H,0e4H	;lda ,s	 load in yline count
+	FCB	0a1H,061H	;cmpa 1,s compare to ymax
+	bne	eline		; if another line to output
+	FCB	032H,065H	; leas 5,s  adjust stack for temps
+	rts			; exit eraseobj
+;+
+;	cline and mline are two buffers for the storage of color 
+;	and mask bytes.
+;-
+cline:	ORG * + 66
+mline:	ORG * + 66
+	#ENDASM
+\  NEW1  ¨ Ñ\  NEW2  ¨ Û\  FIXMFG¨ ä\  FIXPGF¨ æ\  FIXED ¨ è\  FIXED1¨ ]  ERASEO¨ «`  FIXED2¨ B]  MOVMFG¨ J]  MOVPF

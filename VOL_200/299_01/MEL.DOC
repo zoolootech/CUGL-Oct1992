@@ -1,0 +1,163 @@
+                 MEL - a Universal Metalanguage Data Processor
+
+MEL provides an I/O interface between a program and the user.  It can take 
+input data written in "pseudo-English" and translate it into program 
+variables.  It can also take your program's variables and translate it into 
+pseudo-English.  You may find the MEL interface useful in developing your own 
+programs because: 1) the pseudo-English look of MEL means that I/O will be 
+more readable and comprehensible to the user, 2) MEL is "object oriented" in 
+that it provides a structured and encapsulated I/O interface, 3) MEL output 
+from one program can serve as MEL input to another, and 4) MEL can read and 
+write directly to a file so that a permanent record of a run and its results 
+are available.
+
+MEL originated for use with engineering analysis programs.  It was written in 
+ANSI C, and was developed on an IBM PC using Microsoft C, Version 5.1. 
+
+A unit of pseudo-English I/O in MEL is called a "descriptor."  Its purpose is 
+to describe something, either data or a command, to a program.  The general 
+format for descriptors is much like function calls in typical programming 
+languages.  An I/O unit consists of a descriptor name (somewhat like 
+a function name), followed by a parameter list, followed by an end-of-unit 
+symbol (the semicolon).  For example, consider the following MEL descriptor: 
+
+        pipe, length = 100 (ft), diameter = 6 (in);
+
+This is a "pipe" descriptor whose parameters are "length" and "diameter".  
+The values taken by these parameters are as shown, and in the units specified.  
+An unusual feature of MEL is that, unlike most programming languages, MEL's 
+parameter list is strongly "free-format".  (See List of Features below.) 
+
+In order to incorporate MEL into one of your programs you must first create a 
+"dictionary" for both input and output that defines the proper spelling, 
+number, and types (integer, array, etc.) of data associated with each 
+descriptor and parameter.  This is done by customizing the mel.h header file 
+which you then include in your application source code file.  mel.h contains 
+information and an example of just how this is done.
+
+LIST OF MEL FEATURES:
+
+1.  I/O units, called descriptors, are separated by semicolons and thus may 
+extend more than one line.  For example:
+
+        pipe,                           "first descriptor"
+            length = 100 (ft),
+            diameter = 6 (in);
+        elbow,                          "another descriptor"
+            radius = 9 (in);
+
+2.  Comments are any characters enclosed in "quotes."  They may appear 
+anywhere in the I/O stream and can contain any amount of whitespace (tabs, 
+line-feeds, spaces, etc.).  For example:
+
+        pipe, length "this comment 
+                                   is ignored" = 100 (ft);
+
+3.  A descriptor's name and its parameters are separated by commas.
+
+4.  Whitespace is generally ignored by MEL and cannot serve as a delimiter. 
+An exception is for spaces within array and string data (see 9. below).  For 
+example, the following are equivalent: 
+
+        pipe, type = 'steel';
+        p i p e, t y p e = 'steel' ;  "note that no spaces are allowed
+                                       within single quotes (strings). "
+
+5.  Descriptor and parameter names may be abbreviated (shortened) as long as 
+they can remain unambiguously identifiable to MEL.  For example, if the input 
+dictionary has only one descriptor type that starts with the letter "p", which 
+itself has only one parameter starting with the letter "t", then the following 
+are equivalent: 
+
+        pipe, type = 'steel';
+        p, t = steel;          "if no blanks, single-quotes are optional"
+
+6.  Usually, defining a parameter value consists of giving a parameter name, 
+an equals sign, a value, and units in parentheses.  However, there are lots 
+of exceptions since MEL allows as much flexibility as possible (see the
+following). 
+
+7.  If a descriptor has only one parameter associated with it, the 
+parameter's name may be omitted.  For example: 
+
+        title, 'note that strings containing spaces must be enclosed in 
+single quotes. (for long strings note that line-feeds, or any other 
+whitespace besides blanks, will be purged.)'; 
+
+
+8.  Additionally, if more than one parameter name is missing, a default order 
+is assumed.  (They are assumed to be in the same order as defined in the 
+dictionary created by the program developer using MEL.)  For example, if a 
+"branch" descriptor's parameters are defined in the order: "number", 
+"from_node", and "to_node", then the following would be equivalent: 
+
+        branch, number = 100, from_node = 1, to_node = 2;
+        branch, 100, 1, 2;
+        branch, to_node = 2, from_node = 1, number = 100;
+            "user may override default order."
+
+
+9.  Parameter array values are enclosed in {brackets} and separated by at 
+least one blank.  For example: 
+
+        fluid, temperature = {100 200 300 400 500} (F), 
+               viscosity   = {1.0 0.8 0.5 0.1 .05} (cp);
+
+
+10. If a parameter's value is not known, it may be given the value "unknown".  
+For example: 
+
+        node, pressure = unknown;
+
+11. If a parameter can only be either "true" or "false", giving its name sets 
+it equal to true.  For example, the following are equivalent: 
+                                       
+        analyze, newton_method = true; 
+        analyze, newton_method;        
+                                         
+12. Units for parameter values must be enclosed in parentheses.  It is up to 
+the program using MEL to make any required units conversion to units the 
+program may be using internally.  (Such a program is included with the MEL 
+diskette.)  The following is an example of attaching units to parameter values 
+(where pipe length is in feet, and pipe diameter is in inches): 
+
+        pipe, length = 100 (ft), diameter = 6 (in);
+
+13. MEL is case sensitive.  The following are NOT equivalent:
+
+        pipe, length = 100 (ft), diameter = 6 (in);
+        Pipe, Length = 100 (ft), Diameter = 6 (in);
+
+
+STEPS FOR USING MEL FOR PROGRAM I/O:
+
+1.  Compose input and output data tokens.  For example, consider the following 
+example that does nothing other than (fancily) passes a message from input to 
+output: 
+
+        program_data,                     "input and output identical.   "
+                program = 'sss',          "note: 'sss' is a string.      "
+                date = 'sss',             "      nnn stands for a number."
+                input_filename = 'sss',
+                output_filename = 'sss',
+                errors_filename = 'sss',
+                label = 'sss';
+        program_options,
+                output_format = 'sss';
+        message,
+                code = nnn,
+                text = 'sss';
+        end_of_data;
+
+2.  Modify file mel.h to define dictionaries for composed descriptors.  (The 
+file has been initialized for the above example already.)  Instructions on how 
+to modify the file are contained within the file itself.  Recompile the mel.c 
+file.
+
+3.  Using file mel_test.c as a guide, write functions that translate 
+descriptors into (from) program data and variables.  (mel_test.c has been 
+initialized for the above example already.)  Compile your application source 
+code file.
+
+4.  Link your application program with the mel.obj file.
+

@@ -1,0 +1,2111 @@
+
+
+
+          Zipfile Duplicate Checking System (ZDCS)  Ver. 1.65
+                 Copyright (C) 1991,  Michael W. Cocke
+---------------------------------------------------------------------
+
+
+                      Technical Reference Manual
+
+
+
+
+TABLE OF CONTENTS
+-----------------
+
+
+ABOUT THE DOCS..................................................2
+PURPOSE OF ZDCS.................................................2
+GENERAL TECHNICAL INFORMATION...................................3
+ZDCS OPTIONS....................................................4
+     Deletion of Duplicate Files................................4
+     Allowed Dupicates..........................................4
+     BBS Ads....................................................4
+     Pre-Testing................................................5
+INSTALLATION OVERVIEW...........................................5
+THE ZDCS CONFIGURATION FILE.....................................5
+     Function...................................................5
+     Line 1.....................................................6
+     Line 2.....................................................6
+     Line 3.....................................................6
+     Line 4.....................................................6
+     Line 5.....................................................7
+     Line 6.....................................................7
+     Line 7.....................................................8
+     Line 8.....................................................8
+THE ZDCS DATABASE BUILD.........................................8
+     Purpose....................................................8
+     Creation of the Initial Database...........................9
+     The Screen Display During the Database Build...............9
+     Additions to an Existing ZDCS Database....................10
+     ZDCSDB Without a Separate File Integrity Checker..........11
+     The Database Build Log File ZDCS-DBB.LOG..................11
+THE ZDCS DUPLICATE REPORT GENERATOR............................12
+THE ZDCS DATABASE PURGE........................................12
+BBS ADS........................................................13
+     Function..................................................13
+     Creation of the BBS Ads Database..........................14
+     Updating the BBS Ads Database.............................14
+     Selecting Deletion or Flagging of BBS Ads.................15
+ALLOWED DUPLICATES.............................................16
+THE UPLOAD FILE CHECKER........................................17
+     Purpose...................................................17
+     Function..................................................17
+     Maximum and Actual Percent Dupes in an Upload.............18
+     Updating ZDCS Database(s) After an Upload.................18
+     Calling ZDCS from EXZTEST.................................19
+     Calling ZDCSFC from the PCBTEST.BAT file..................19
+     DOS Error Levels..........................................21
+
+
+
+                                  - 1 -
+
+
+
+
+
+
+PROCESSING LOCAL UPLOADS.......................................21
+PRE-TESTING....................................................22
+ZIPs WITHIN ZIPs...............................................24
+CD-ROMs........................................................24
+AV STAMP INTEGRITY.............................................25
+ACCURACY OF THE CRC32 METHOD...................................26
+MEMORY LIMITS..................................................26
+TROUBLE-SHOOTING GUIDE.........................................26
+     ZDCSDB (the database build) is crashing...................27
+     ZDCS is reporting a device I/O error (in any module)......27
+     ZDCS reports memory corrupt errors (in any module)........27
+     ZDCS reports path/file access errors......................27
+     QEMM exception 13 errors occur when running ZDCS..........28
+REGISTRATION...................................................29
+SUPPORT........................................................30
+FUTURE ENHANCEMENTS............................................31
+ACKNOWLEDGEMENTS...............................................32
+COPYRIGHTS AND LEGAL STUFF.....................................32
+
+
+
+
+ABOUT THE DOCS
+--------------
+
+Welcome to the technical reference manual ZDCS-REF.TXT for ZDCS
+version 1.65.  This manual has been prepared to give you an easy
+reference guide for the various parts, functions, and options in ZDCS.
+It is deliberately arranged to be modular in organization so that you
+can look up whatever interests you without having to read the entire
+manual.
+
+There is a second major piece of documentation in this package, a walk-
+through called ZDCSWALK.TXT.  This is a friendly guide that is meant
+to hold your hand and whisper sweet explanations in your ear as you
+install and first explore ZDCS.  It's arranged to take you through all
+the steps you need to know from beginning to end.
+
+
+
+PURPOSE OF ZDCS
+---------------
+
+ZDCS is a shareware set of utilities intended to help a PCBoard sysop
+deal with the problem of duplicate files, whether those files are
+already on the bbs or are being uploaded by a caller.  It provides
+specific support for looking inside ZIP files (including PKZIP version
+1.93) and self-extracting files made with PKZIP (SFX).  Since both
+ZIPs and SFXs are treated the same by ZDCS, we'll refer to both as
+zipfiles.  ZDCS also provides support for accepting unzipped GIFs.
+
+ZDCS helps to manage the problem of duplicate files in two ways.
+
+1.   It provides a method for weeding out duplicate files from an
+     existing collection of files, like a bbs file system.
+
+2.   It provides a duplicate checking method for any prospective
+     addition to the existing file base, such as uploads.
+
+                                  - 2 -
+
+
+
+
+
+
+ZDCS was written by a sysop and programmer who knew that sysops never
+have enough time to do all the things they would like to do on their
+boards.  Making ZDCS friendly to use for both sysop and caller has
+been important since version 1.0 first debuted.
+
+Although ZDCS is intended for use on PCBoard bbs's, it can also be
+used to look for duplicates on other systems as well, such as a
+shareware CD-ROM or even multiple directories on your hard drive
+system.  However, it's on a bbs that ZDCS really shows its stuff.
+
+ZDCS can be told to decline an upload, to automatically remove
+duplicate files, to delete those pesky little bbs ads from uploads,
+and to recognize "allowed duplicates" - or any combination of the
+above.  There's even a pre-test capability that lets callers find out
+ahead of time whether or not their intended upload duplicates files
+already on your board.  All of these are discussed in this reference
+manual and described in the walk-through guide ZDCSWALK.TXT as well.
+
+
+
+GENERAL TECHNICAL INFORMATION
+-----------------------------
+
+ZDCS handles file archives created with the .ZIP extension by PKZIP
+(including version PKZIP 1.93) and with the .SFX extension (self-
+extracting .EXE files) also created by PKZIP.  ZDCS is able to see
+inside each of these archives to deal with the individual files inside
+them.  Since ZIP files are by far more common that SFX files, and
+since they are both treated the same way by ZDCS, we'll use the term
+"zipfile" to refer to both of them.
+
+ZDCS also handles GIF files.  These are individual graphic files that
+already have their own compression.  GIFs may be uploaded to some
+bbs's as individual files.  They are not archives of multiple
+freestanding files, so ZDCS does not need to look "inside" them.  In
+fact, ZDCS thinks of them rather like poor zipfiles with only a single
+file in them.
+
+Whenever ZDCS encounters a file that is not a ZIP or an SFX, it treats
+that file like a GIF.  Although we will continue to use the term GIF
+to refer to these files, ZDCS could actually handle any "other" type
+of file by treating it as a single file, the same as it does with
+GIFs.
+
+ZDCS does not provide support for other archiving methods.  This means
+that if ZDCS encounters an ARJ or LZH archive, for example, it cannot
+see inside the archive to look at the individual files.  (Support for
+other archive formats is under development.)  Instead, the entire
+archive would be treated as a single GIF-type file.
+
+ZDCS makes use of the 32-bit CRC, often called the CRC32, used
+internally by PKZIP for ZIPs and SFXs.  When ZDCS encounters any other
+file, it considers that file to be a GIF and calculates the CRC32 for
+it.
+
+ZDCS checks files for duplicates by keeping a database of the CRC32
+values.  When new files are added to the system (uploads), ZDCS
+
+
+                                  - 3 -
+
+
+
+
+
+
+compares the CRC32s of the newcomers to those in the database to
+determine if there are any matches, indicating duplicate files.  This
+method uses the identity of the files and is independent of the names
+of those files.
+
+The ZDCS database of CRC32s uses a B-tree index, so there are no sort
+utilities or regular file maintenance requirements of any kind.
+
+ZDCS is compatible with any Netbios compatible lan, such as Lantastic
+or Novell Netware.
+
+
+
+ZDCS OPTIONS
+------------
+
+ZDCS has four sets of options that can be configured independently of
+each other and changed at any time.  You can try out the different
+options and change your mind about which ones you want to use without
+re-installing ZDCS.
+
+For a good guide to choosing the options to fit your system, take a
+look at the walk-through ZDCSWALK.TXT.  As part of the installation
+guide it explains what each option can mean to your bbs and what some
+of the possible consequences are.  Each of these options is also
+covered in greater technical detail in other sections of this
+reference manual.
+
+
+Deletion of Duplicate Files
+---------------------------
+
+ZDCS can be set to either flag or delete duplicate files from uploads
+to your bbs.  Either way, ZDCS will still recognize the files that are
+duplicates of ones already in the bbs file system and leaves you
+messages in a log file.  This deletion feature does not operate on a
+GIF file.
+
+
+Allowed Dupicates
+-----------------
+
+You can designate certain files as allowed duplicates.  Although these
+files may already be present on your bbs, you can tell ZDCS not to
+treat them like duplicates.  This prevents ZDCS from deleting them if
+you have selected the option to delete duplicate files.  It also
+prevents the allowed duplicates from being counted in the calculation
+of the percentage of duplicates in an upload.  This feature does work
+for GIF files.
+
+
+BBS Ads
+-------
+
+You can specify certain files as truly obnoxious.  These are
+collectively referred to as bbs ads after one of our favorites.  ZDCS
+can be told to either flag or delete these files from all uploads.
+
+
+                                  - 4 -
+
+
+
+
+
+
+This option is completely independent of the option to delete
+duplicate files.  A major distinction is that bbs ads are files that
+are known and despised ahead of time.  This option provides a safe way
+to delete them without risking the removal of authors' unchanged files
+from newer shareware versions.  The bbs ads option does not operate on
+a GIF file.
+
+
+Pre-Testing
+-----------
+
+ZDCS offers a simple method for callers to your bbs to pre-test an
+upload before actually sending the full file to the board.  The pre-
+test is quick and gives the same information that callers would see
+after sending the full file.  There are no upload credits granted for
+using just the pre-test feature without sending up the full file.
+
+
+
+INSTALLATION OVERVIEW
+---------------------
+
+There are five basic steps to installing ZDCS to work with the bbs:
+
+1.   Setting up the configuration file.
+2.   Creating the initial database.
+3.   Creating the bbs ads database (optional).
+4.   Creating the list of allowed duplicates (optional).
+5.   Setting up the check for uploaded duplicates.
+
+There is a walk-through called ZDCSWALK.TXT included in this package
+to help you install ZDCS.  It's a friendly guide to understanding the
+functions and installing the programs on your bbs.  It is especially
+good for taking you through the steps slowly and in order so that
+installation goes smoothly on your system.
+
+This technical reference manual has information on all the parts,
+functions and options of ZDCS, but it's arranged with a different
+purpose in mind:  to allow you to find and read only those specific
+sections you want to know more about.  If you want to install ZDCS, we
+highly recommend using the walk-through as your primary guide and all-
+around hand-holder.
+
+
+
+THE ZDCS CONFIGURATION FILE
+---------------------------
+
+Function
+--------
+
+The ZDCS configuration file ZDCS.CFG is central to the entire process.
+All the modules of ZDCS look for and use at least parts of this file.
+It's also the place where you set many of the options and all of the
+parameters of ZDCS.
+
+For such a powerful component, the ZDCS.CFG is surprisingly simple:
+just eight short lines of ASCII that you can create with any text
+
+                                  - 5 -
+
+
+
+
+
+
+editor.  A sample configuration file is included with this package.
+The contents of each line are discussed in excruciating detail further
+on in this section.
+
+Under most circumstances, ZDCS.CFG should be in the same directory as
+the rest of the ZDCS files.  This is always true if you are running
+DOS version 3.x or higher.
+
+The one time that the configuration should be located elsewhere is for
+those poor souls still running DOS 2.x.  In this unusual case,
+ZDCS.CFG belongs in whichever directory will be the current directory
+when the ZDCS program modules are run.
+
+
+Line 1
+------
+
+This line is the complete drive, path and filename of an ASCII text
+file.  This is a file that you create listing all the pathnames, one
+on each line, that contain the zipfiles / GIFs to be included in the
+database.  To process a new collection of files into the ZDCS
+database, like those on a CD-ROM, just change either this line or the
+contents of the file it points to.
+
+There is no upper limit on the number of pathnames that can be
+processed.  But make sure that you've included the trailing backslash
+for each pathname.
+
+If you are not using the index file feature in PCBoard 14.5a, then you
+can use the DLPATH.LST file from PCBoard to point to the complete bbs
+file system if you want to.
+
+
+Line 2
+------
+
+This line is the drive and pathname where you want the finished ZDCS
+database to be located.  It makes no difference if you include the
+trailing backslash here or not.
+
+You can put the ZDCS database in the same directory as the rest of the
+ZDCS files and programs, or you can decide to put it on a different
+drive or even across the network.
+
+
+Line 3
+------
+
+This line is either the letter "Y" or the letter "N".  It controls
+whether you want ZDCS to delete all duplicate files from an upload (Y)
+or just flag them and leave them intact (N).
+
+
+Line 4
+------
+
+This line is an integer - that's a whole number, no decimals - between
+0 and 100.  It sets the maximum percentage of dupes that your bbs will
+accept in an upload.
+                                  - 6 -
+
+
+
+
+
+
+ZDCS will calculate the actual percentage of duplicates in the upload
+and compare it to your maximum percentage.  If the actual percentage
+is lower, the upload is accepted.  If the actual percentage is equal
+to or higher than the maximum you specified, the upload is declined
+and moved to your private upload directory for review.
+
+Setting the percentage to 100 effectively bypasses this filter, since
+it permits a duplicated GIF or a zipfile with nothing but duplicates
+to pass.  At the other extreme, setting the percentage to 0
+effectively requires that the uploaded GIFs and zipfiles have no
+duplicates at all.
+
+If you make a mistake and enter a decimal on line 4, ZDCS will not
+crash.  It will simply truncate your number (lop off everything after
+the decimal point) and use the resulting integer as the maximum
+percentage of dupes.
+
+This works out quite well in actual practice.  Uploads that are a
+fraction of a percent under the maximum percentage of duplicates are
+the only files where this makes any difference, and the use of
+truncating instead of rounding means that they will always be passed.
+IF ZDCS rounded the decimal points instead, there would be some
+uploads that would round up, making their actual percentage of dupes
+the same as the maximum value.  Such files are declined by ZDCS.
+
+For more discussion of maximum and actual percentage of dupes,
+including an example of the above situation, please see the section on
+the upload file checker ZDCSFC in this manual.
+
+
+Line 5
+------
+
+This line is the complete drive, path and filename you want ZDCS to
+use for the log file created by the upload file checker ZDCSFC.  This
+log is an ASCII text file that contains information from the upload
+file checker ZDCSFC for each upload it has processed.  Each message
+about a specific upload includes the following:
+
+     name of the uploaded zipfile or GIF
+     list of all component files inside a zipfile
+     which files are flagged as bbs ads
+     which files are marked as duplicates
+     which files are marked as allowed duplicates
+     actual percentage of dupes in the upload
+     whether the upload was accepted or declined
+
+If PCBOARD.SYS is in the current directory when the upload file
+checker is run, then the name of the currently logged caller is also
+included in the log file.
+
+
+Line 6
+------
+
+This line is either the letter "Y" or the letter "N".  It controls the
+switch to tell ZDCS whether to delete bbs ads (Y) in an uploaded
+
+
+                                  - 7 -
+
+
+
+
+
+
+zipfile or to just flag them (N).  If you've decided not to enable any
+checking for bbs ads at all, just set this to N.
+
+
+Line 7
+------
+
+This line is reserved for a single line of text by the sysop.  The
+contents of this line are appended to the PCBFAIL.TXT file whenever an
+upload is declined.  The caller who has just uploaded the declined
+file sees this line of text as a message on the screen.
+
+This line is where you can express from 1 to 72 characters' worth of
+creativity.  Some callers have become quite fixated on the idea that
+"declined" is the same as "thrown out" - which is of course not true.
+You can use this line to tell the caller what has happened or will
+happpen with the upload.  One possible line to use is (without the
+quotes) "Too many duplicate files - upload must be reviewed by sysop."
+
+If you don't want to display any message to the caller, just place
+something innocuous like a period or even a blank space on this line.
+Just don't leave the line completely blank!  You also shouldn't use
+any quotation marks in this line.  You can make use of the PCBoard
+@codes; they are fully supported here.
+
+
+Line 8
+------
+
+This line consists of the single letter "Y" or "N".  It controls
+whether ZDCS displays the one line "registered to" message after the
+board receives an upload (Y) or turns off the display of this message
+(N).  Either way, the caller still sees the file by file breakdown of
+the upload and the status (duplicate, bbs ads, etc.) of each file.
+
+This line is only recognized by the registered version of ZDCS.  It
+has no effect on the three line message displayed by the unregistered
+version.  It is also the only line of the configuration file that you
+can forget to include without causing major problems.  If the line is
+missing, ZDCS defaults to (Y) and displays the message.
+
+This would probably be a fine time to wax poetical about the
+advantages of registration.  Instead, we'll just direct you to the
+section in this manual on registration for more information about
+that, and to the section on support for some of the reasons why.
+(Actions speak louder than words.)
+
+
+
+THE ZDCS DATABASE BUILD
+-----------------------
+
+Purpose
+-------
+
+In order for ZDCS to process new uploads, it must first have created a
+database for the existing files to serve as a standard of comparison.
+
+
+                                  - 8 -
+
+
+
+
+
+
+This is referred to as the duplicate file database, the ZDCS database,
+or the CRC32 database.  Information stored in this database includes
+the full pathname and file name of every zipfile and GIF examined by
+ZDCS and the names and CRC32 values of every individual file.
+
+There is another purpose to building the ZDCS database besides
+enabling ZDCS to check uploads.  It also serves as a tool to help you
+weed out duplicate files from the existing collection.
+
+
+Creation of the Initial Database
+--------------------------------
+
+THE ZDCS database of duplicate files is created with the database
+build program ZDCSDB.  The finished database consists of three files:
+ZDCS.NDX (the index), ZDCS.DAT (part 1 of the data) and ZDCS.PTH (part
+2 of the data).  A  fourth file is also created during this process:
+ZDCS-DBB.LOG, which is an ASCII text file logging messages from the
+database creation process.
+
+To create the database, you simply run ZDCSDB.  This program looks for
+the ZDCS configuration file to tell it which files you want to
+process.  These can be in multiple directories, on different drives,
+or across a network.  Once you start the build process, there is
+nothing more to do until it is complete.  Everything will run
+automatically with no need for additional input from you.  While the
+program is running, there is a screen display that gives you the
+current status of operations and one very important piece of
+information:  use the F10 key if you wish to abort the process.
+Additional explanation of the screen display is covered in another
+section of this manual.
+
+
+The Screen Display During the Database Build
+--------------------------------------------
+
+The ZDCSDB status summary contains both useful and esoteric
+information.  The most important of these is the notice that the F10
+key is the one to use in order to abort the database build.  Aborting
+the process any other way will almost certainly lead to lost and/or
+cross-linked clusters on your hard disk, not to mention a very unhappy
+sysop.
+
+In general, ZDCS treats an SFX file like a ZIP file, and this
+documentation has reflected that fact by using the term "zipfile" to
+refer to both types.  For the purposes of this section, we will use
+the individual terms SFX and ZIP, since the screen display does
+distinguish between them.
+
+One line in the middle of the screen will change frequently as ZDCSDB
+is processing files.  Besides letting you know that the system is
+working, this line tells you something about the processing steps as
+they take place, just in case you were curious.
+
+
+
+
+
+
+                                  - 9 -
+
+
+
+
+
+
+The possibilities are:
+
+Directory C1.. ZDCS has just begun processing a new directory
+Directory C2.. ZDCS has just retrieved the next ZIP / SFX / GIF file
+               within the same directory
+ZIP Directry.. ZDCS is retrieving information from within an
+               individual zipfile
+SFX........... ZDCS is retrieving information from within an
+               individual SFX file
+ZIZ........... ZDCS is processing a ZIP within a ZIP
+CRC........... ZDCS is calculating the CRC-32 for a GIF file
+Indexing...... ZDCS is writing the index and data to the Btree files
+
+Underneath this changing line is a line that tells you which ZIP, SFX
+or GIF file is currently being processed, with the full pathname
+included.  Below that is the phrase "Member files" followed by the
+number of individual files within the ZIP, SFX or GIF being processed.
+(Remember, a GIF shows up as having only one member file.)
+
+The next line down starts with either "Share" or "NoShare" to indicate
+the type of "file opens" being used.  The presence of the DOS share
+utility in memory is detected by all ZDCS programs to permit automatic
+use of the appropriate type of file access.
+
+The second item on the same line is the word "Files" followed by the
+number of ZIPs, SFXs and GIFs that have been processed so far.
+
+The third item on the same line is "Members" followed by the total of
+all the individual files that have been added to the CRC32 database so
+far.  Since a GIF is thought of as a ZIP with only one file in it,
+each GIF that is processed is counted as just one more individual file
+here.
+
+The fourth item is "PDupes" followed by a number.  This is arcane
+internal status information that will not be explained here.
+(Consider yourself lucky.)  The only time you are likely to need this
+is if there is a probelm with your system during the database build
+and we ask you to read the screen display to us.
+
+The very last line is the time of day when the ZDCSDB program was
+started.  The end time will appear right after the start time on the
+same line.
+
+
+Additions to an Existing ZDCS Database
+--------------------------------------
+Adding new files to the existing ZDCS database is very simple.  If you
+run the database build ZDCSDB when there already is an existing ZDCS
+database, the records for the new files will be added to those already
+in the database.  (If you temporarily rename or move the database
+files mentioned in the database creation section, then ZDCS will not
+recognize them until you restore them.)
+
+This provides a very simple method for adding large or small file
+collections to an existing database.  All you have to do is edit the
+first line of the configuration file to point to the new files, and
+
+
+
+                                 - 10 -
+
+
+
+
+
+
+you're ready to go.  Issue the command ZDCSDB and from here on the
+process will proceed just the same way as it does for creating the
+initial database.
+
+There is a second way to add files to the ZDCS database.  Available
+free on The Hacker Central BBS is a merge utility that lets you
+combine two ZDCS databases into one.  This allows you to create
+smaller databases at a time and then merge them together, which can be
+an advantage if you have a very large collection to process.
+
+The main advantage of the database merge option is that it allows
+sysops to use pre-built ZDCS databases for common file collections,
+like the popular CD-ROMs of shareware programs.  Pre-built databases
+are also available on The Hacker Central and are mentioned in more
+detail in the section in this manual on support.
+
+
+ZDCSDB Without a Separate File Integrity Checker
+------------------------------------------------
+
+ZDCS is not a file integrity checker and does not intend to replace
+the fine checkers that are already available.  Normal operation of
+ZDCS assumes that you have already processed your files with a file
+integrity checker.
+
+Human nature and circumstances being what they are, a special switch
+has been included with the database build module to permit some simple
+file integrity checking to be done.  This method has ZDCS call in
+PKZIP to use the -T switch to test zipfiles.  There is no checking
+performed on GIFs at all.
+
+To use this feature, you issue the database build command as ZDCSDB T
+instead of ZDCSDB.  Because ZDCS now calls PKZIP for the file
+integrity checking in addition to the usual functions of the database
+build, the processing time is greatly increased.  If you are only
+processing a small collection of files, such as a batch of local
+uploads, the difference in time is probably unimportant in practice.
+But if you are processing a large set of files, you'll be better off
+making your first pass with a file integrity checker and then using
+the regular ZDCSDB command to build the database.
+
+If you run ZDCSDB on a collection of files that includes a corrupt
+zipfile, the database build will very likely crash.  While you can
+find out after the fact about the damaged zipfile by reading the log,
+it's still far preferable to avoid the problem entirely by using file
+integrity checking first.
+
+
+The Database Build Log File ZDCS-DBB.LOG
+----------------------------------------
+
+There is a log file called ZDCS-DBB.LOG created by the database build
+operation.  This is an ASCII text file that logs messages from the
+database creation process.
+
+If ZDCSDB encounters damaged zipfiles while trying to build the
+database, there would be messages alerting you to that fact in the log
+
+
+                                 - 11 -
+
+
+
+
+
+
+file.  Another case that would generate messages here is when ZDCSDB
+hits a zipfile with more than 650 component files.  The first 650
+files would be processed, and then ZDCS would leave you a message in
+the log file letting you know about the situation.
+
+If you have any problems while running ZDCSDB, look in this log file
+for help in understanding what happened.
+
+
+
+THE ZDCS DUPLICATE REPORT GENERATOR
+-----------------------------------
+
+The purpose of the duplicate report generator ZDCSDR is to use the
+information in your ZDCS database to give you a report of all
+duplicate files in your file collection.  The usual time to do this is
+after you have created the initial database.
+
+It is entirely likely that when you first create the initial database
+you will already have some duplicate files in your collection of
+zipfiles and GIFs.  To find out about them, run ZDCSDR to generate a
+flat ASCII text file called ZDCS-DUP.LST.  This is a list of all
+duplicate files in the database, including the name and CRC32 of the
+duplicated file and the identity with full drive and pathname of the
+zipfile or GIF containing the dupe.  The format of the ZDCS-DUP.LST
+file is the standard comma-separated variable to make it easy to
+import this file into a database or parse it into a .BAT file.
+
+When you run ZDCSDR, it asks you whether you want the results sorted
+by the CRC32, the individual file name, or the name of the zipfile or
+GIF containing the dupe.  This sort is called the Wichita sort after
+some roundabout and historical reasons.
+
+Once you have the list of duplicates ZDCS-DUP.LST in hand, you are
+ready to clean out your file system.  Use the information to remove
+any duplicate files from the file collection.  On some of the larger
+bbs file systems, this step alone has freed up megabytes of hard drive
+space.
+
+After you are sure you have finished cleaning up the file system, it
+is possible to purge duplicate entries from the CRC32 database in
+order to reduce its size.  This is covered in this manual in the
+section on purging the database.
+
+
+
+THE ZDCS DATABASE PURGE
+-----------------------
+
+Every duplicate file in your initial collection of files on the bbs
+will be reflected by a duplicate entry in the CRC32 database, which
+ZDCS uses as its standard of comparison for checking new uploads.
+Only one entry for each unique file is needed in order to recognize
+future uploads of the same file.  You can reduce the size of this ZDCS
+database by purging duplicate entries from it.  This leaves just one
+single reference to each individual CRC32 in the database.
+
+
+
+                                 - 12 -
+
+
+
+
+
+
+Before you make any changes to the ZDCS database at all, please read
+the section in this manual on the duplicate report generator ZDCSDR.
+The reporting function of this module will supply you with an accurate
+list of all your duplicate files, including the necessary path
+information - but only if you run it *before* you purge the database.
+Without this list, you'll be hard pressed to find and remove the
+duplicate files from your system.  We strongly recommend that you not
+only generate this report but also finish cleaning out the file system
+before you purge anything.
+
+When you feel you are ready to purge the database, start by making a
+backup copy of it first.  This is very important.  *Please* make a
+copy of the database and put it away somewhere safe before you start
+purging info from it.  Once you purge this information, the only way
+to restore it is to rebuild the database.  While it is always possible
+to rebuild the database, this takes a fair bit of time, especially for
+larger systems.  And what sysop has enough time?
+
+By now you are probably really ready to get on with it.  To purge the
+database of duplicates, you use the duplicate report generator module
+ZDCSDR with the P (for Purge) switch.  All you have to do is type
+ZDCSDR P and hit the enter key.  The "P" will redirect the program to
+purging the duplicates instead of creating a report on them.  There is
+nothing else to do until the purge is complete.  This is not a fast
+process, but it will pay you back with a smaller database.
+
+A second way of modifying the ZDCS database is to use the database
+editor, a free utility available on The Hacker Central BBS.  This is
+actually a debugging tool, but it also works to modify the database
+and to delete specific records.  Unlike the database purge with ZDCSDR
+P, you can't let this one run on its own with no input from you.  On
+the other hand, the database editor give you greater flexibility over
+which duplicate entries you delete.
+
+ZDCS doesn't quite have the intelligence to recognize a bbs ad unless
+you tell it which files to look for.  To do this, you have to create
+the bbs ads database.
+
+
+
+BBS ADS
+-------
+
+Function
+--------
+
+ZDCS offers a way to recognize specific annoying files that can be
+targeted for deletion or simply flagged for manual removal,
+independently of whether or not you have configured ZDCS to delete
+duplicate files.  The distinction here is that the files, known
+collectively as bbs ads, are *known* files that you have given ZDCS
+specific orders to deal with.
+
+In order to recognize a file as a bbs ad, you must first tell ZDCS
+about it.  This is done by setting up the bbs ads database.  After
+that, every time ZDCS seems the same file again it knows that it's a
+bbs ad.
+
+                                 - 13 -
+
+
+
+
+
+
+
+This option is completely independent of the option to delete
+duplicate files, so you don't have to take a chance on removing
+authors' unchanged files from newer shareware versions.  The bbs ads
+option does not operate on a GIF file.
+
+
+Creation of the BBS Ads Database
+--------------------------------
+
+All you need to create the bbs ads database is the program ZDCSBA and
+a collection of bbs ads, pyramid schemes, chain letters or other
+obnoxious files.
+
+Once created, the bbs ads database will consist of a single file, ZDCS-
+BBA.NDX, which will be located in the same directory as the rest of
+the ZDCS files.  You can delete this file at any time if you want to
+start over again with a fresh collection of files.
+
+The easiest way to do create the bbs ads database involves collecting
+all those nasty ads together and zipping them up into one zipfile.
+You can use whatever name you like for the ZIP.  Then you run the
+program ZDCSBA from the directory containing all the ZDCS files on
+that zipfile.
+
+This is easy to see with an example.  If your collection of files to
+be added is in a zip called BBS-ADS.ZIP, then the command you issue to
+create the bbs ads database with these files is:
+
+               ZDCSBA BBS-ADS.ZIP
+
+
+You don't have to do anything else.  The program handles everything
+for creation of the bbs ads database.
+
+If you want to create a new bbs ads database in the future, just
+delete the old database file (ZDCS-BBA.NDX) and follow the steps for
+creating a new bbs ads database.  If you don't delete the old
+database, then the new ads will be added to the old ones in the
+database, which is an easy way to add new bbs ads.
+
+
+Updating the BBS Ads Database
+-----------------------------
+
+There are three easy ways to add new bbs ads as they are foisted off
+on the bbs community.
+
+1.   You can run ZDCSBA on a new zipped collection of ads when you
+     already have an existing bbs ads database.  This is good even if
+     the zipped collection only has a single file in it.  ZDCSBA works
+     just the same way here as it does for creating a new database,
+     with one exception:  the files being processed are added to the
+     existing database.  That's all there is to it.
+
+Example.  Let's say that you've collected some bbs ads from your
+          board, your own downloads, and even from friends.  You zip
+
+
+
+                                 - 14 -
+
+
+
+
+
+
+          the entire set together and call it JUNK.ZIP.  To include
+          these files in the bbs ads database, just issue the command:
+
+          ZDCSBA JUNK.ZIP
+
+2.   You can run ZDCSBA on an individual bbs ad without bothering to
+     zip it up first.  This is a quick way to catch a new ad as soon
+     as you are lucky enough to get it.
+
+Example.  You've just come across an obnoxious get-rich-quick scheme
+          called MOOLAH.TXT.  To put this file in the bbs ads
+          database, just issue the command:
+
+          ZDCSBA MOOLAH.TXT
+
+3.   You can even run ZDCSBA to include a file in the bbs ads database
+     when you don't have the original file, as long as you have the
+     CRC32 value for it from PKZIP.  Just run ZDCSBA on the CRC32
+     value immediately preceded by a dollar sign $ instead of on the
+     file itself.
+
+Example.  You don't have the original ad anymore, but you have a
+          record that the CRC32 of a new bbs ad is E1E10999.  To put
+          this file in the bbs ads database, just issue the command:
+
+          ZDCSBA $E1E10999
+
+You can use any or all of these methods to add new records to the bbs
+ads database.  If you have an assortment of zipped collections, a
+couple of unzipped ads, and a few ads known only by CRC32, the data
+can all be entered into the same database without having to use the
+same technique for each individual file.
+
+
+Selecting Deletion or Flagging of BBS Ads
+-----------------------------------------
+
+If you have built the bbs ads database, ZDCS will automatically detect
+its presence and will compare uploads against the records in the bbs
+ads database.  What ZDCS does with any matches it finds depends on how
+you set up the configuration file.
+
+In line 6 of the ZDCS configuration file ZDCS.CFG, you typed one of
+two letters:  Y or N.  The letter Y tells ZDCS to delete the offending
+bbs ad.  The letter N tells ZDCS not to delete it, but to just flag it
+as a bbs ad.
+
+When a bbs ad in an upload is merely flagged, that information is
+still displayed to the caller and recorded in the log for the upload
+file checker.  If you wish, you can go back and manually delete such
+files later on.
+
+You can change your mind about using deletion or flagging to deal with
+bbs ads at any time.  All you have to do is edit that one line in the
+configuration file.  No other changes need to be made to run with the
+new option.
+
+
+
+                                 - 15 -
+
+
+
+
+
+
+ALLOWED DUPLICATES
+------------------
+
+Allowed duplicates are those files that may already be present in your
+file collection, but which you do not want ZDCS to treat as
+duplicates.  You can establish a list of files that are allowed
+duplicates.  When ZDCS evaluates an upload, these allowed duplicates
+will not be flagged as dupes.  They are protected from deletion, even
+if you have configured ZDCS to delete duplicate files.  Furthermore,
+when ZDCS evaluates the actual percentage of duplicates in an upload,
+these files are not counted.
+
+The reason behind the concept of allowed duplicates is that there are
+some files that reappear frequently as critical components of more
+than one major shareware package or upgrade version.  These might be
+order forms, registration guides, general text files, small utilities
+or other files.  Two common examples are the OMBUDSMN.ASP file found
+in all ASP-ware and the VALIDATE.COM program included in every
+revision of McAfee's SCAN package.  Both files turn up unchanged in
+many zipfiles.  It would be misleading to treat these files as
+ordinary duplicates.
+
+There are two functional advantages to using allowed duplicates.
+First, by not counting allowed duplicates in the actual percentage of
+dupes calculation for new uploads, your system does not "penalize" a
+zipfile for having one or more of these files when it comes to
+deciding whether to accept or decline the file.  This is especially
+significant if you have set a pretty high standard for the
+"uniqueness" of uploads that your bbs will accept.
+
+The second advantage is for those systems that configure ZDCS to
+delete duplicate files.  The use of allowed duplicates can protect
+popular shareware packages from being stripped of important files.
+Not only does the deletion of such files alter the content of the
+author's shareware package, but it also destroys any AV stamp the
+author placed on the work.
+
+Whether or not this option is enabled is controlled by the presence or
+absence of an ASCII text file called ZDCS.ADN in the ZDCS directory on
+your system.  This file is one that you create with any text editor to
+list all the files, one per line, that are allowed duplicates.  You
+can designate an allowed duplicate by either its file name or its
+CRC32.
+
+To specify an allowed duplicate by name, just type the dollar sign $
+followed immediately by the name of the file with its extension.  This
+preserves a file with a distinctive name (like OMBUDSMN.ASP) even if
+it undergoes some revisions.
+
+To specify an allowed file by its CRC32 value, type the pound sign #
+followed by the CRC32 for the file.  If you don't know the CRC32
+offhand, you can get this information from PKZIP.  Issuing the PKZIP -
+V command on any zipfile gives you the CRC32 values for each
+individual file inside the zipfile.
+
+The ZDCS.ADN file may be up to 256 lines long, but must contain no
+blank lines and no blank spaces.  You can edit, delete or recreate
+
+
+                                 - 16 -
+
+
+
+
+
+
+this file at any time without having to set any other switches, alter
+the configuration file, or make any other changes to the setup of
+ZDCS.
+
+While the expected application of the allowed duplicate feature is
+with zipfiles, it does work for GIF files too.  If a GIF is included
+among the allowed duplicates, then a repeat upload of the same GIF
+will not be flagged as a duplicate, and the upload will be accepted.
+
+
+
+THE UPLOAD FILE CHECKER
+-----------------------
+
+Purpose
+-------
+
+Once you have created the initial ZDCS duplicate file database, you
+can get the bbs to check all uploaded zipfiles and GIFs against it
+from then on.  This is done by processing the uploaded zipfiles and
+GIFs with the upload file checker ZDCSFC as the files are received.
+The primary purpose is to catch uploaded files that duplicate ones
+already on the bbs.
+
+ZDCSFC can also flag bbs ads, as described in that section of this
+manual.  Depending on whether you have enabled any deletion options in
+the configuration file, ZDCSFC can also perform deletions of duplicate
+files and/or bbs ads.  With the use of a list of allowed duplicates,
+also described in a separate section in this manual, the file checking
+performed by ZDCSFC can be made even more sophisticated.
+
+
+Function
+--------
+
+ZDCSFC works with the CRC32 value for each file in an upload.  If the
+uploaded file is a GIF, it first calculates the CRC32 for that file.
+If the uploaded file is a zipfile, ZDCSFC reads the value of the CRC32
+for each individual file in the zipfile.
+
+Then ZDCSFC compares the CRC32 for each file in the upload against the
+ZDCS database.  If you have created the bbs ads database and left it
+in the ZDCS directory on your system, ZDCSFC also compares the files
+in the upload against the bbs ads database.
+
+The results are displayed file by file for the caller after the upload
+has been received and processed, providing real time feedback.  The
+same information is also available to the sysop as part of the ZDCSFC
+log file.  The complete path and file name for this log were specified
+as line 5 of the configuration file.
+
+ZDCSFC also calculates the actual percentage of duplicates in any
+upload and compares this against the maximum percentage you have set
+for the board.  On the basis of this comparison, an upload may be
+accepted or declined.  Declined uploads are not deleted from the
+system.  PCBoard moves a declined upload to your private directory for
+sysop review.
+
+
+                                 - 17 -
+
+
+
+
+
+
+The calculation of percent duplicates is covered in more detail in a
+separate section of this manual dealing with maximum and actual
+percent duplicates in an upload.
+
+
+Maximum and Actual Percent Dupes in an Upload
+---------------------------------------------
+
+ZDCSFC calculates the actual percentage of duplicate files in the
+upload.  Since a GIF is a single file, it will either be 0% (not a
+dupe) or 100% (a dupe).  For zipfiles, this actual percentage can vary
+anywhere between 0 and 100.  ZDCSFC compares this actual percentage
+against the maximum percentage you set in line 4 of the configuration
+file.
+
+If the actual percentage is lower than the maximum, the upload is
+accepted.   If the actual percentage is equal to or higher than the
+maximum you specified, the upload is declined.  PCBoard moves these
+declined files into your private upload directory, where you can
+review them.  Some callers have become frantic at the idea that a
+"declined" file is thrown out.  This does *not* happen with ZDCS.
+
+If you want to bypass this filter, set the percentage to 100.  This
+permits a duplicated GIF or a zipfile with nothing but duplicates to
+pass the filter and never be declined.  At the other extreme, you can
+set the percentage to 0.  This effectively requires that the uploaded
+GIFs and zipfiles have no duplicates at all, or they will be declined.
+
+The section in this manual that describes the configuration file
+specifies that the maximum percentage of dupes in line 4 must be a
+whole number, not a decimal.  This is because ZDCS deliberately
+truncates any decimal from this value.  ZDCS does not round up or down
+but performs a straightforward truncation on both the actual and the
+maximum percentage of dupes.  This was done for reasons of memory
+management.  An example may make it clearer how this approach works in
+actual practice.
+
+Suppose that the maximum percentage of duplicates is set to 20.  An
+upload with an actual percentage of 19.9 would be truncated down to
+19.  ZDCS would see that 19 is less than 20 and would accept this
+upload.  If the actual percentage were rounded instead of truncated,
+it would be 20 instead of 19.  ZDCS would then decline this upload
+because the actual percentage would not be less than the maximum
+percentage of dupes.
+
+
+Updating ZDCS Database(s) After an Upload
+-----------------------------------------
+
+ZDCSFC automatically updates the duplicate files database with the
+CRC32s of all uploads.  You do not have to do anything special to
+include this information in the database for comparison with future
+uploads.
+
+ZDCSFC does not modify the bbs ads database at all.  It's still not
+smart enough to recognize a bbs ad until you've pointed it out first -
+but it does remember them next time it sees them.  Please see the
+section in this manual on the bbs ads database for more information.
+
+                                 - 18 -
+
+
+
+
+
+
+Calling ZDCS from EXZTEST
+-------------------------
+
+ZDCS should be used in conjunction with a file integrity checker.  If
+you have decided to use EXZTEST, then how you call ZDCSFC to process
+new uploads depends on which version of EXZTEST you are running.
+
+The newer versions of EXZTEST provide a seamless integration with ZDCS
+that takes care of calling the ZDCSFC module, feeding it the
+information it needs, and completing any file deletions that you have
+enabled.  This is available in EXZTEST version 2.0 and higher.
+
+A sample PCBTEST.BAT file that calls the newer (2.x) version of
+EXZTEST is included with this package under the file name PCBTEST.ALT.
+For more information on the ZDCS integration implemented in EXZTEST
+2.x, please see the documentation for EXZTEST.
+
+The older versions of EXZTEST before version 2.0 can still be used in
+conjunction with ZDCSFC to check new uploads.  Instead of relying on
+EXZTEST to call ZDCS, you must call the upload file checker from the
+PCBTEST.BAT file directly.
+
+A sample PCBTEST.BAT file that calls the older (1.x) version of
+EXZTEST and then calls ZDCSFC is included with this package under the
+file name PCBTEST.BAT.  You'll have to modify it a bit to reflect the
+pathnames and other details specific to your system, but it's a good
+general guideline.
+
+More detailed information can be found in this manual in the section
+on calling ZDCSFC from the PCBTEST.BAT file.  This section is more
+general and addresses the use of any file integrity checker.
+
+
+Calling ZDCSFC from the PCBTEST.BAT File
+----------------------------------------
+
+ZDCS should always be used in conjunction with a file integrity
+checker.  When processing new uploads, the file integrity checker
+should be called from the PCBTEST.BAT file before ZDCSFC.  If you are
+using the PCBDescribe feature in PCBoard 14.5a, that command should be
+used first of all.
+
+To use ZDCS with the file integrity checker of your choice (even if
+it's just PKZIP -T), there are six basic pieces you need to include in
+the PCBTEST.BAT file.
+
+1.   Include the following three lines to clean out old copies of
+     these files left over from processing other uploads:
+
+               @IF EXIST PCBFAIL.TXT DEL PCBFAIL.TXT
+               @IF EXIST PCBPASS.TXT DEL PCBPASS.TXT
+               @IF EXIST ZDCS-DEL.LST DEL ZDCS-DEL.LST
+
+     PCBFAIL.TXT contains information displayed to the caller when an
+     upload is declined.  PCBPASS.TXT contains the information
+     displayed when the upload is accepted.
+
+
+
+                                 - 19 -
+
+
+
+
+
+
+     ZDCS-DEL.LST is a list of files targeted by ZDCS for deletion
+     from an upload.  These might be duplicate files, bbs ads, or
+     both.  If you haven't enabled any deletion options in the
+     configuration file, or if there were no files meeting the
+     criteria for deletion, ZDCS would not generate the ZDCS-DEL.LST
+     file for that upload.  By deleting the files here, you make sure
+     that no old deletion instructions are hanging around when a new
+     file is processed.
+
+2.   Call your file integrity checker to process the upload.  The
+     exact command to do this will depend on which integrity checker
+     you are using.  The most basic and simple one of all is to make
+     use of this ability in PKZIP by using the -T switch, but there
+     are other programs to do file integrity checking and more.
+
+3.   Call ZDCSFC to check the upload.  The appropriate command is:
+
+               ZDCSFC %1 %2 %3
+
+     If you are running a version of PCBoard older than the May 22,
+     1991 version 14.5a, PCBoard will provide only two parameters.
+     Since the third one is absolutely necessary for pre-testing, that
+     means you must disable the pre-testing feature.  There is a way
+     to get around this limitation if you absolutely must.  It's not
+     exactly elegant, but it does work.  If you need to know more
+     about it, contact us in one of the conferences mentioned in the
+     support section of this manual.
+     
+     If you are using a newer version of PCBoard but you don't want to
+     use the pre-testing right now, it is still strongly recommended
+     that you leave the third parameter in place.  It does no harm and
+     could save you some grief if you change your mind in the future.
+
+     At the end of processing by ZDCSFC, you might have a new file
+     called ZDCS-DEL.LST.  This depends on whether you have enabled
+     any deletions and on whether there were any files in the upload
+     that met your criteria for deletion.  If no files are to be
+     deleted, this control file won't be created.
+
+4.   Skip to the end if there are no files to be deleted:
+
+               IF NOT EXIST ZDCS-DEL.LST GOTO END
+
+     This line tests for the presence of the ZDCS-DEL.LST file.  If
+     the file is not found, it means that there are no deletions to be
+     performed on the current upload.
+
+5.   Perform the deletion of files specified by ZDCSFC:
+
+               PKZIP -D %1 @ZDCS-DEL.LST
+
+     Note that the actual deletion is done by PKZIP.  ZDCSFC creates
+     the control file ZDCS-DEL.LST to specify the deletions and
+     PCBTEST.BAT passes this file to PKZIP at this point.  This is
+     also the only time an existing AV stamp on an upload is affected
+     by ZDCS.  More information on AV stamp integrity is available in
+     a separate section of this manual.
+
+
+                                 - 20 -
+
+
+
+
+
+
+6.   Mark the end:
+
+               :END
+
+     When there are no files to be deleted, this statement marks the
+     location where control in the PCBTEST.BAT file is passed.
+
+
+DOS Error Levels
+----------------
+
+In addition to creating the required PCBPASS.TXT and PCBFAIL.TXT
+files, ZDCSFC also sets the DOS error level when it exits.  These
+levels are:
+
+
+0  No duplicate files were found within the upload.
+
+1  Some duplicates were found, but the upload passed the percentage
+   test.
+
+2  Too many duplicates were found, and the upload failed the
+   percentage test.
+
+3  Every file within the upload was a duplicate.
+
+4  There is no number 4.  (Reserved for future expansion.)
+
+5  Upload checking by ZDCSFC was aborted.  Please see log for error
+   message.
+
+
+
+PROCESSING LOCAL UPLOADS
+------------------------
+
+There probably isn't a sysop alive who hasn't scavenged new files for
+the board and uploaded them locally.  ZDCS offers two ways of
+processing these local uploads.  The first method is to use the
+database builder ZDCSDB;  the second method is to use the upload file
+checker ZDCSFC that processes all the regular uploads from callers.
+
+In the first case, ZDCSDB can be used to add all the new files to the
+database.  Just like the initial creation of the ZDCS database or
+subsequent database merges, ZDCSDB adds the CRC32's of the new files
+to the database.  The duplicate report generator ZDCSDR can still be
+used to tell you about duplicates in the database.  A disadvantage to
+this method is that it does not give the sysop the same kind of
+immediate feedback for a local upload as the sysop and caller get for
+a regular upload.  It also does not delete bbs ads or duplicate files
+(if you have those options enabled).
+
+To use ZDCSDB to process local uploads, you only have to change the
+first line of the ZDCS configuration file.  This line points to the
+paths of the files to be processed when running the database builder.
+(The line contains the full path / name of the text file that lists
+all the directories whose files are to be processed.)  Change this to
+
+
+                                 - 21 -
+
+
+
+
+
+
+point to the uploads directory, a holding directory, or whatever
+directory will hold the local uploads to be processed.  Now just run
+ZDCSDB and the files will be added to the existing database.
+
+This method does not interfere with the realtime upload checking
+performed by ZDCSFC on regular uploads, because the path information
+in line 1 of the configuration file is not used by ZDCSFC.  If you've
+decided on a permanent holding directory, you won't even have to touch
+the configuration file again to process any future uploads.  Just
+remember to run ZDCSDB before posting new files on the board.
+
+This is a good time to repeat one note of caution:  ZDCS does not do
+any integrity testing.  ZDCS is intended to work with your choice of
+integrity tester, not to replace it.  If you have not used an
+integrity checker on the local upload files (why not?), then you need
+to use the T (for Test) switch.  Instead of using the command ZDCSDB
+to run the database build, use the ZDCSDB T command.
+
+This calls PKZIP to do an integrity check on the zipfiles.  Any file
+that fails this test is not processed by the database builder.  There
+will be a message in the database building log file ZDCS-DBB.LOG for
+each such damaged file.
+
+Don't use the T switch without reason - it adds another step and that
+slows the processing down tremendously.  But if you have a collection
+of files that haven't passed through an integrity checker, like
+prospective local uploads, ZDCSDB T is the way to deal with them.  If
+ZDCSDB has to skip a file because it's flagged as damaged, that
+information will show up in ZDCS-DBB.LOG.
+
+The second method mimics regular uploading to get the local uploads
+processed by the upload file checker ZDCSFC.  This is handled via a
+small utility and batch file combination available free on The Hacker
+Central BBS as LOCALUP.ZIP.  You'll have to modify the batch file for
+your own system, of course.
+
+The result is that the local uploads will see the same processing that
+a regular caller's upload does on your board - including your usual
+file integrity checker, bbs ad deletion (if enabled), duplicate file
+deletion (if enabled), and all the rest.  This has the additional
+advantage of giving you the ZDCSFC log file entries for the local
+uploads, which gives the status of the files inside the zipfiles:
+duplicates, bbs ads, allowed duplicates, etc.
+
+Local upload processing is an area targeted for future enhancement in
+ZDCS.
+
+
+PRE-TESTING
+-----------
+
+Callers can pre-test an upload to find out how it compares to files
+already on the bbs in terms of duplicates and bbs ads.  The idea is to
+see how the prospective upload compares to existing files in terms of
+duplicates, bbs ads, etc. before actually uploading the full file to
+the bbs.  It can save both caller and sysop a certain amount of
+frustration.
+
+
+                                 - 22 -
+
+
+
+
+
+
+The procedure is wonderfully simple from a caller's point of view and
+requires nothing that might tax a relatively novice uploader's skills.
+There are no special files to download, no complicated operations to
+get right, no arcane rituals to perform.  This makes it more likely
+that callers will take advantage of the pre-test feature.
+
+Included in this release of ZDCS is a sample bulletin that can be
+posted by the sysop on the bbs to explain to callers the ZDCS pre-
+testing feature for zipfiles.  The bulletin holds the caller's hands,
+figuratively speaking, through the whole process.  If your bbs permits
+the uploading of SFX or GIF files, you might want to add those
+initials where you see ZIP in the bulletin.  A ZIP-only bbs can use
+the canned bulletin right from the package.
+
+To pre-test an upload called GOODSTUF.ZIP, the caller simply issues
+the DOS command:
+
+          PKZIP -V GOODSTUF.ZIP > ZDCSTEST.CHK
+
+This command is not case sensitive, so it's pretty hard to make a
+mistake with it.
+
+The caller then uploads the file ZDCSTEST.CHK directly to the bbs.
+ZDCS will read the information in it and will give the caller a
+breakdown of the zipfile's contents, noting which individual files are
+duplicates or bbs ads.  This output looks just like the response a
+caller gets after actually uploading the zipfile, with one exception:
+instead of telling the caller whether the file is accepted or
+declined, ZDCS tells the caller what percentage of files in the upload
+are duplicates, and also gives the maximum percent duplicates which
+the sysop has allowed for the board.  Now it's up to the caller to
+decide whether to upload or not.
+
+Enabling the pre-test capability is not tough on the sysop, either.
+The key to whether or not pre-testing is permitted on your bbs lies in
+the UPSEC file.  If you want to prevent callers from using pre-
+testing, just disallow uploads that have the .CHK extension.  On the
+other hand, if you want callers to have the option to pre-test, make
+sure that .CHK files may be uploaded to
+the system.
+
+There's one more thing to check before letting your callers use the
+pre-testing feature.  If you are not using EXZTEST version 2.0 or
+higher, remember to make sure that the PCBTEST.BAT file contains the
+following line:
+
+     ZDCSFC %1 %2 %3
+
+This is already discussed elsewhere in this manual as part of the ZDCS
+installation.  That third parameter is necessary to let the pre-
+testing work for more than just the first caller.  If you leave it
+out, the first ZDCSTEST.CHK file uploaded to your system will work
+just fine, but all subsequent attempts to pre-test will be told that
+the ZDCSTEST.CHK file is a duplicate!  And that means they won't be
+recognized as attempts at pre-testing.
+
+If you are using EXZTEST version 2.0 and up as your file integrity
+checker, you won't have a ZDCS line in the PCBTEST.BAT file.  That's
+
+                                 - 23 -
+
+
+
+
+
+
+because EXZTEST has a seamless interface to ZDCS and calls it
+directly.
+
+Since this third parameter is critical to the proper functioning of
+the pre-test option, you must have a recent enough version of PCBoard
+that supports the third parameter.  The earliest version of the board
+code that satisfies this requirement is PCBoard 14.5a from May 22,
+1991.  This version and anything after it can handle ZDCS pre-testing.
+
+If you track your callers' uploads and downloads, you might like to
+know that the ZDCSTEST.CHK will not count as an upload.  According to
+ZDCS and PCBoard, the ZDCSTEST.CHK file always "fails" validation and
+is not credited to the caller as an upload.  The bulletin does mention
+that pre-testing doesn't count as an upload, just in case some of your
+callers are too enthusiastic about getting upload credits.
+
+
+
+ZIPs WITHIN ZIPs
+----------------
+
+Processing of zipfiles contained within zipfiles is accomplished with
+some caveats.  Zipfiles within a zipfile are only checked one level
+deep.  The simplest explanation is to look at an example.
+
+ZIP A contains assorted files and ZIP B.  In turn, ZIP B contains more
+files and another ZIP, C.  ZIP C contains still more files.  How does
+the whole melange get processed?
+
+All the files in ZIP A and in ZIP B have their CRC32 signatures
+entered into the duplicate files database.  If you have configured
+ZDCS to delete any files (dupes or bbs ads), then those deletions are
+done automatically only for the individual (non-zipped) files inside
+ZIP A.  No files are deleted from inside ZIP B.  Of course, all the
+duplicates in ZIP B are still listed in the log, so you do know about
+them and you can decide whether to remove them manually from your file
+system.
+
+What about ZIP C?  That's easy:  any zipfile embedded more than one
+level deep in the uploaded zipfile (and C is two levels deep) is not
+processed as a zipfile at all.  No file deletions, no CRCs, nothing.
+
+In fact, *any* file that has the .ZIP extension will not be treated as
+an individual file in the database or the log file.  The reason is
+simple:  it's the individual files inside the zipfiles and not the
+zipfile itself that are important when looking at duplicates.
+(Besides, it plays havoc with the percentages.)
+
+
+
+CD-ROMs
+-------
+
+CD-ROMs have been growing in popularity among bbs's because they
+enable a large, static collection of files (such as shareware
+programs) to be available for downloading.  ZDCS works just fine with
+CD-ROM drives, but the sheer size of these disks means that it can
+take quite a while to build the ZDCS database for a CD-ROM.
+
+                                 - 24 -
+
+
+
+
+
+
+To make life easier, a new ZDCS database merge utility is now
+available on The Hacker Central.  By merging databases, it is possible
+to take advantage of the existence of prebuilt ZDCS databases for the
+more popular CD-ROMS.  This lets you merge a prebuilt database into
+your own bbs's database in a fraction of the time it would take to add
+all the CD-ROM information from scratch.
+
+Prebuilt ZDCS databases for some CD-ROMs are available free on The
+Hacker Central BBS.  If you have a CD-ROM that doesn't already have a
+prebuilt ZDCS database, please consider creating a ZDCS database for
+the individual CD-ROM and sharing it with other ZDCS users by
+uploading it to The Hacker Central.  During 1992, we are offering a
+free ZDCS registration as a thank you to anyone who uploads such a
+database.
+
+
+
+AV STAMP INTEGRITY
+------------------
+
+Registered versions of PKZIP can "brand" a zipfile with the unique AV
+(authenticity verification) number of the registered owner.  The AV
+stamp is used by some shareware authors for their official
+distribution packages.  It is also abused by some people, including a
+few bbs sysops, sad to say.  Whether ZDCS will always leave that AV
+stamp intact is determined by the configuration of ZDCS.
+
+The first possibility is that ZDCS is configured never to delete any
+files, whether duplicate files or bbs ads.  In this case, the original
+AV stamp is always retained.
+
+The second possibility is that ZDCS is configured to delete files, but
+no files need to be deleted from a particular zipfile.  In that case,
+any AV on the original zipfile is left intact.
+
+The third possibility is that ZDCS deletes one or more bbs ads.
+Whether the AV stamp is left intact depends on whether the bbs ad was
+included in the zipfile inside or outside the AV branding.  If the
+offending bbs just added their advertising to the outside of an AV
+stamped zipfile and left the original author's AV stamp in place, ZDCS
+will do the same.  If that bbs added their overhead file and then
+rezipped the entire package with their own AV stamp (don't laugh,
+there's at least one large bbs that's done this), then they have
+destroyed any original AV stamp.  ZDCS does not preserve the AV stamp
+in this case.
+
+The fourth possibility is that ZDCS deletes one or more duplicate
+files.  If any deleted file was included in the AV branding, then the
+AV stamp is not preserved.  If all deleted files were outside the
+original AV stamp, then the AV stamp is intact.  (This could happen
+with some advertising file that you've already been hit with but which
+doesn't appear in your bbs ads database.)
+
+This last possibility deserves a little thought from the shareware
+author's point of view.  It is not uncommon for a new version to
+contain some files that are unchanged from the previous version.  If
+
+
+
+                                 - 25 -
+
+
+
+
+
+
+these files haven't been flagged as allowed duplicates, it is possible
+to choose to configure ZDCS so that these files are removed.  If that
+happens, the AV stamp is also removed.  This is in keeping with the
+ideal that the stamp should represent an authenticity verification
+from the original author.
+
+ZDCS is quite capable of handling and retaining all AV stamps.  This
+is a matter of choice on the part of the sysop and is the direct
+result of the simple configuration options.
+
+
+
+ACCURACY OF THE CRC32 METHOD
+----------------------------
+
+In order to detect duplicates, some unique signature is needed for
+each file.  While the only truly unique signature is as long and
+cumbersome as the file itself, there are more manageable alternatives.
+Any algorithm is a trade-off between these two factors:  manageability
+and accuracy.  The more unique signatures a method can generate, the
+smaller the possibility that two different files might generate the
+same signature.
+
+ZDCS makes use of the CRC32 used by PKZIP.  This signature has a total
+of eight "places", each filled by independent assortment with one of
+sixteen different values.  That makes for a total of
+16*16*16*16*16*16*16*16 (16 to the 8th power) unique signatures.  With
+over four and a quarter billion possible signatures, this method has
+good accuracy.
+
+It is possible to use other methods to permit an even greater number
+of unique signatures.  The longer signatures and different calculation
+methods carry a corresponding cost in complexity, disk space and
+processing speed.
+
+
+
+MEMORY LIMITS
+-------------
+
+The ZDCS upload file checker ZDCSFC.EXE requires a minimum of 384K of
+free memory (RAM).
+
+There is an internal limit of 650 files within a zipfile for
+processing by both the upload file checker ZDCSFC.EXE and the database
+creator ZDCSDB.EXE.  If there are more files inside the zipfile, ZDCS
+will handle the first 650 it encounters and will leave a message in
+the log.  There is nothing to reset and no effect on processing the
+next file ZDCS encounters.  These limits are imposed by the DOS 640K
+Limit.
+
+
+TROUBLE-SHOOTING GUIDE
+----------------------
+
+There is no better help for solving problems than experience,
+especially someone else's experience with the same problems.
+
+
+                                 - 26 -
+
+
+
+
+
+
+ZDCSDB (the database build) is crashing.
+---------------------------------------
+
+There is a log file ZDCS-BBA.LOG that collects messages when ZDCSDB is
+used to create a new duplicate file database or add to an existing
+one.  Read the messages in the log file to find out why the database
+build program is crashing.
+
+Most of the time, the culprit is a damaged zipfile.  ZDCS normally
+depends on the fact that most sysops use a separate integrity file
+checker on their boards.  If a corrupted zipfile gets into the
+collection of files being processed into the database, it can bring
+things to a sudden halt.
+
+The recommended solution is to process all files with a file integrity
+checker first.  However, there is a second alternative using just
+ZDCS.  You can use the T (for Test) switch to tell ZDCSDB to call
+PKZIP and perform a file check first.  Only those files passed by this
+check are processed by the database builder.  The syntax is simple:
+ZDCSDB T instead of ZDCSDB.  The penalty in speed for doing it this
+way is very significant, which is why it is not the usually preferred
+solution.
+
+
+ZDCS is reporting a device I/O error (in any module).
+----------------------------------------------------
+
+So far, we have seen this happen twice.  Each time, ZDCS was running
+on a LAN.  In both cases, the problem was traced back to bad spots on
+the hard drives.
+
+The best medicine for this error message is to run Norton Disk Doctor,
+Spinrite, or something similar on your hard drive system.
+
+
+ZDCS reports memory corrupt errors (in any module).
+--------------------------------------------------
+
+This sounds like an earlier version of ZDCS, probably version 1.62 or
+earlier.  Those versions required more free RAM and sometimes ran out
+of memory, which resulted in the misleading "memory corrupt" messages.
+Time to stop reading the docs and get this newer release (version
+1.65) installed!  The improved memory management in ZDCS 1.65 should
+solve your problems.
+
+
+ZDCS reports path/file access errors.
+------------------------------------
+
+One possibility is that you are using an earlier version of ZDCS on a
+LAN *and* you are not loading SHARE before running ZDCS.  This is most
+likely to happen on a Novell Netware LAN.  You can solve this one by
+loading SHARE before you run any of the ZDCS modules on a network.
+Better still, you can upgrade to this version 1.65 of ZDCS.
+
+If you have loaded SHARE high under DOS 5.0, you might still be
+experiencing the same symptoms.  There seems to be a problem with
+
+
+                                 - 27 -
+
+
+
+
+
+
+loading SHARE high;  it's not anything specifically to do with ZDCS.
+Try loading SHARE low instead.
+
+Another possibility is that you haven't specified enough files in your
+CONFIG.SYS file.  Because ZDCS makes such heavy use of disk I/O, you
+should make sure that at least 30 files are specified in CONFIG.SYS
+(FILES=30).
+
+Of course, if you are trying to use the upload file checker ZDCSFC
+before you've built the duplicate file database with ZDCSDB, you
+shouldn't be surprised if ZDCS acts a little weird.  Try building the
+database first and then comparing new files against it.  Things work
+much better that way.
+
+
+QEMM exception 13 errors occur when running ZDCS.
+------------------------------------------------
+
+There are five possible reasons for this error message.
+
+1. You're running an earlier version of ZDCS, probably version 1.62
+   or even earlier.  Those versions required more free RAM and
+   sometimes ran out of memory, which could result in the QEMM error
+   messages.  Upgrade to the current version 1.65 of ZDCS, which has
+   improved memory management.
+
+2. Your QEMM command line is incorrect.  The problem isn't with ZDCS
+   itself, but ZDCS is likely to be the first program to notice this
+   QEMM error because of the amount of data ZDCS needs to juggle.
+   The result is that ZDCS is able to write its data someplace it
+   shouldn't.  To solve this problem, check that all areas of memory
+   that should be excluded from QEMM are being properly excluded.  Be
+   especially careful if your system has super VGA, SCSI devices or a
+   LAN:  all of these devices usually require specific areas of
+   memory to be excluded from remapping by QEMM.
+
+3. You have one or more "mis-behaved" device drivers.  You can check
+   out this possibility by removing all drivers from your CONFIG.SYS
+   file, rebooting the system, and trying ZDCS again.  One example of
+   this type of problem was with an older version of the Hyperdisk
+   cache.
+
+4. You believed the QEMM optimize program when it told you to get rid
+   of DOS stack space.  Put it back!  QEMM is egocentric enough to
+   believe it can handle all types of stack requirement for any
+   application properly.  Let's just say that putting back the DOS
+   stack space solves this problem nicely.
+
+5. You are trying to use the "stealth technology" feature of QEMM
+   6.x.  There have been persistent reports of problems traced to
+   interactions between stealth and various applications from other
+   vendors.  It wouldn't be at all surprising if ZDCS experienced the
+   same trouble with stealth.  This is not a bug in ZDCS.  Contact
+   Quarterdeck tech support.  In the meantime, disable stealth by
+   removing the ST:F or ST:M from the DEVICE=QEMM.SYS line in the
+   CONFIG.SYS file.
+
+
+
+                                 - 28 -
+
+
+
+
+
+
+REGISTRATION
+------------
+
+ZDCS is a fully functional shareware package.  There are no critical
+limits, crippled features or "drop dead" dates.  The only difference
+in the unregistered version is a brief message to sysop and caller
+that the version is unregistered.
+
+A customized ZDCS.KEY file is available to registered users to change
+the "unregistered" message to show registration in the name of <BBS
+Name> or to eliminate the display of any message at all.  Registration
+entitles the user to a license for use of the Zipfile Duplicate
+Checking System on one bbs, no matter how many nodes it has.  This
+includes all future versions of ZDCS.  No additional fees will be
+charged for registration of future versions of this product.
+
+If you try ZDCS out on your system and decide that you want to
+continue using it, please register your copy by sending a check for
+$25.00 (US).  Include the name of your bbs (up to 25 characters) as
+you want it to appear to your callers.  An order form (ORDER.FRM) is
+included in this release for your convenience.  We will prepare a key
+file for your copy of ZDCS with this information in it to replace the
+"unregistered version" line in the display.  This keyfile will be
+available for download from The Hacker Central BBS.
+
+If your bbs is located in the continental United States or Canada, you
+may take advantage of the keyfile delivery service any time during
+1992.  For an additional $5.00 (US), we will prepare your keyfile and
+upload it to your bbs.  Just set up an account in the name of ZDCS
+SUPPORT with the password KEYFILE and with sufficient security to
+upload a private file for the sysop.  When you send in your
+registration of $25.00 plus $5.00, remember to include the name and
+number of the bbs.
+
+As of 1991, ZDCS can now be registered online at The Hacker Central
+BBS with a valid Visa or Mastercard.  Look for the ZDCS script
+questionnaire in order to register.  The keyfile delivery service is
+also available as part of the online registration.  Processing usually
+takes from one to three days.
+
+If you prefer to register by check or money order, please make your
+registration check payable to Michael W. Cocke and mail it along with
+the necessary information (like a completed order form) to:
+               Michael W. Cocke
+               11 Cedar Road
+               Montville  NJ  07045-9582
+
+Please be assured that ZDCS will continue to receive support through
+future revisions.  For over a year now it has been in use on its home
+board, The Hacker Central BBS.  When the programmer is also a sysop
+and has to live with the results of that programming work every day,
+you can be sure that the support will be there!
+
+
+
+
+
+
+
+                                 - 29 -
+
+
+
+
+
+
+SUPPORT
+-------
+
+ZDCS product support will be handled on the ZDCS home board and via
+echoed conferences.  Questions, comments and discussion of ZDCS are
+welcome in the following conferences:
+
+     SHAREWARE (ILink)
+     ZDCS      (Intelec)
+     ZDCS      (Hacker Central, also echoed by many ILink bbs's)
+
+Additional product support in the form of downloadable files
+(including registration keys) is available on the ZDCS home board, The
+Hacker Central BBS.
+
+First time access to The Hacker Central BBS must be done via the
+public node.  After completing the new user and visiting sysop
+scripts, all sysops and ZDCS users (whether or not they have
+registered ZDCS yet) are granted access to the two private nodes,
+including the high speed line.  The Hacker Central phone numbers are:
+
+     Node 1    201-334-2555   Public    2400
+     Node 2    201-316-8840   Private   2400 MNP
+     Node 3    201-335-9343   Private   USR HST/DS
+
+Please leave a comment to sysop on your first call indicating your
+interest in ZDCS in order to get access to the ZDCS support
+conference.  Requests are usually handled in a day or two.
+
+Another aspect of ZDCS product support is the collection of utilities
+and pre-built CD-ROM databases available for download from The Hacker
+Central BBS for all ZDCS users.  This collection is constantly growing
+in response to suggestions, requests and cries for help.  A few of the
+special utilities are described below.
+
+The database merge module enables you to combine more than one ZDCS
+duplicate file database into a single database.  This has the
+tremendous advantage of permitting pre-built ZDCS databases to be
+created for the more popular CD-ROMS.  Once accomplished, a single CD-
+ROM database can be merged into any number of bbs databases in a
+fraction of the time it would take to create the CD-ROM database from
+scratch.
+
+Pre-built CD-ROM databases are available on The Hacker Central.  We
+encourage anyone who has a CD-ROM without a prebuilt database to
+create the ZDCS database for the CD-ROM alone and to upload it to The
+Hacker Central to share with other sysops.  To encourage this, we are
+offering a free ZDCS registration to anyone who uploads a new CD-ROM
+ZDCS database to The Hacker Central BBS during 1992.
+
+The FWK to ZDCS converter will take the data from an FWKCS(tm)
+database and convert it to a ZDCS database without requiring the
+original source files to be available.  If you have tried FWKCS(tm)
+and want to evaluate or switch over to ZDCS, this makes the process
+easier and faster.
+
+If you have used an earlier version of ZDCS (1.5x) and haven't
+upgraded to the smaller and faster version 1.6, there is a free
+
+                                 - 30 -
+
+
+
+
+
+
+upgrade kit available on The Hacker Central to help you do that
+without starting over again from the beginning.
+
+The database editor permits you to modify or delete records in a ZDCS
+database.  It is intended primarily as a debugging tool.  It is
+strongly recommended that a backup copy of the database be made before
+embarking on any editing.
+
+A small local uploads package has been put together to make procesing
+local uploads easier for the sysop who also scavenges files for the
+board.  Additional work is also in progess for improving the handling
+of local uploads.
+
+Development on other utilities continues.  One module in progress is
+geared toward ferreting out instances of bbs ads that might have crept
+into the database.  With some bbs's changing their ads frequently,
+this can happen before the sysop realizes it and flags the offending
+ads.  Suggestions for other new utilities are always welcome.
+
+All ZDCS utilities to date are free but are only available on The
+Hacker Central BBS.  Please do not upload these modules to other bbs's
+or distribute them as part of the shareware ZDCS package.
+
+A final note about ZDCS support concerns documentation.  We feel that
+clear and helpful documentation is an important part of a sysop
+utility package like ZDCS.  In addition to the plain text files
+included in this package, we also have the documentation available in
+WinWord 2.0 with full use of styles, headers, outline processing and
+other features.  If you are interested in obtaining a more
+presentation-quality copy of the documentation or in discussing
+conversion to other formats such as WordPerfect, please contact us on
+The Hacker Central BBS.  If you have any questions, comments or
+suggestions concerning the documentation, we would like to hear from
+you, too.
+
+
+
+FUTURE ENHANCEMENTS
+-------------------
+
+ZDCS is a dynamic product.  In response to suggestions, comments and
+the changing bbs scene, ZDCS continues to be upgraded.  Future
+enhancements under consideration or in progress include support for
+other archive formats besides PKZIP, improved local upload handling,
+and database path updating.
+
+Path updating would keep the file location information in the ZDCS
+database current even after files are moved around in the file system.
+Right now, the essential identification information (the CRC32
+signature) remains fine, but the path pointing to the file becomes out
+of date when the file is moved.  This is usually the case with uploads
+that are moved from a recent uploads directory to another destination.
+Path updating would allow the sysop to locate these and any other
+moved files more quickly by keeping the path information current as
+well.
+
+
+
+
+                                 - 31 -
+
+
+
+
+
+ACKNOWLEDGEMENTS
+----------------
+
+Thanks to all the beta testers who have helped to make ZDCS a better
+and smoother program.  Their patience and input are definitely
+reflected in the final product.
+
+Thanks to Tom Hughes for his prowess as a bug hunter extraordinaire,
+and for wanting a database merge utility.  That module was a great
+idea, Tom!
+
+Thanks to David Terry for several clever ideas on better ways to do
+things.  That kind of help is always appreciated.
+
+Thanks to Bob Jacobson for his thoroughness in finding a particularly
+persistent and recalcitrant bug during the recent long beta cycle.  It
+(the bug, not Bob) has been sighted and squashed.
+
+Special thanks to Andy Keeves for pointing out a better hammer in the
+toolbox.  It was by making use of his suggestion for a different
+sorting routine that the duplicate report generator was made
+significantly faster.
+
+Finally, thanks to everyone who had the patience to wait while version
+1.65 went through six months of intense beta bashing.
+
+
+
+COPYRIGHTS AND LEGAL STUFF
+--------------------------
+
+ZDCS (Zipfile Duplicate Checking System) is copyright (C) 1991 by
+Michael W. Cocke.  ZDCS 1.65 is fully functional shareware.  It may be
+freely copied and distributed, provided that no files in this package
+are removed or altered in any way.
+
+The individual documentation files ZDCS-REF.TXT, ZDCS.BLT and
+ZDCSWALK.TXT are copyright (C) 1991 by Evelyne Stalzer.  Permission is
+granted to distribute these files as part of the complete ZDCS
+shareware package.  Permission is also granted to bbs sysops to modify
+ZDCS.BLT for use as needed, including as a bulletin, message or
+downloadable help file.
+
+ZDCS.KEY is the individual registration key file and may not be
+copied, distributed or otherwise shared with individuals beyond the
+registered user.
+
+Neither Michael W. Cocke, Evelyne Stalzer nor MWC Enterprises will
+accept responsibility for the function, failure to function, or side
+effects of any function of the Zipfile Duplicate Checking System
+(ZDCS).  ZDCS is provided in good faith, but its use is solely at the
+risk of the operator.
+
+EXZTEST and EXZIP are copyright Andy Keeves.
+FWKCS is trademark and copyright Fred Kantor.
+Lantastic is trademark of ArtiSoft Inc.
+MS-DOS is copyright and trademark of Microsoft Corp.
+Netware is trademark of Novell Inc.
+PCBoard is copyright and trademark of Clark Development Company.
+PKZIP and PKUNZIP are copyright and trademark of PKWARE, Inc.
+ZDCS is copyright (C) 1991, Michael W. Cocke.
+
+

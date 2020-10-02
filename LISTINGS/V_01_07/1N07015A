@@ -1,0 +1,283 @@
+
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <dos.h>
+
+#include "vesa.h"
+
+#ifndef MAKEFD
+#include "vesa.fd"
+#endif
+
+short GetSVGAInfo(temp_info)      /* VESA subfunction 00h */
+VgaInfoBlock *temp_info;
+{
+   union REGS vregs_in, vregs_out;
+   struct SREGS vseg_regs;
+   VgaInfoBlock far *far_vesa_info = (VgaInfoBlock far *) temp_info;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_INFO;
+
+   /* Fetch 32-bit address regardless of memory model... */
+   vregs_in.x.di = FP_OFF(far_vesa_info);
+   vseg_regs.es  = FP_SEG(far_vesa_info);
+
+   int86x(VIDEO_INT, &vregs_in, &vregs_out, &vseg_regs);
+   if (vregs_out.h.al != SVGA_SUPPORT)
+      return ERROR_VESA_NOT_SUPPORTED;
+
+   if (memcmp(temp_info->VESASignature, VESA_SIGNATURE,
+       strlen(VESA_SIGNATURE)) != 0)
+      return ERROR_VESA_NO_SIGNATURE;
+
+   return VESA_OK;
+}
+
+
+
+short GetSVGAModeInfo(svga_mode, temp_mode_info)      /* VESA subfunction 01h */
+short svga_mode;
+ModeInfoBlock *temp_mode_info;
+{
+   union REGS vregs_in, vregs_out;
+   struct SREGS vseg_regs;
+   ModeInfoBlock far *far_mode_info = (ModeInfoBlock far *) temp_mode_info;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_MODE_INFO;
+   vregs_in.x.cx = svga_mode;
+
+   /* Fetch 32-bit address regardless of memory model... */
+   vregs_in.x.di = FP_OFF(far_mode_info);
+   vseg_regs.es  = FP_SEG(far_mode_info);
+
+   int86x(VIDEO_INT, &vregs_in, &vregs_out, &vseg_regs);
+   return vregs_out.x.ax;
+}
+
+
+/* VESA subfunction 02h */
+short SetSVGAMode(svga_mode, dont_clear_video)
+short svga_mode;
+short dont_clear_video;
+{
+   union REGS vregs_in, vregs_out;
+
+   svga_mode |= dont_clear_video;
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_SET_MODE;
+   vregs_in.x.bx = svga_mode;
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   return vregs_out.x.ax;
+}
+
+
+
+short GetSVGAModeNo(svga_mode_no)      /* VESA subfunction 03h */
+short *svga_mode_no;
+{
+   union REGS vregs_in, vregs_out;
+
+   *svga_mode_no = 0;
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_GET_MODE;
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   *svga_mode_no = vregs_out.x.bx;
+   return vregs_out.x.ax;
+}
+
+
+
+/* VESA subfunction 04h, sub-subfunction 00h */
+short GetSVGAStateBufferSize(svga_state_flags, num_blocks)
+short svga_state_flags;
+short *num_blocks;
+{
+   union REGS vregs_in, vregs_out;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_SAVE_RESTORE;
+   vregs_in.h.dl = SVGA_SR_GET_BUFFER_SIZE;
+   vregs_in.x.cx = svga_state_flags;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   *num_blocks = vregs_out.x.bx;
+   return vregs_out.x.ax;
+}
+
+
+
+/* VESA subfunction 04h, sub-subfunction 01h */
+short SaveSVGAState(svga_state_flags, state_buffer)
+short svga_state_flags;
+void *state_buffer;
+{
+   return SVGAStateBufferFunc(svga_state_flags, state_buffer,
+      SVGA_SR_SAVE_VIDEO_STATE);
+}
+
+
+
+/* VESA subfunction 04h, sub-subfunction 02h */
+short RestoreSVGAState(svga_state_flags, state_buffer)
+short svga_state_flags;
+void *state_buffer;
+{
+   return SVGAStateBufferFunc(svga_state_flags, state_buffer,
+      SVGA_SR_RESTORE_VIDEO_STATE);
+}
+
+
+
+short SVGAStateBufferFunc(svga_state_flags, state_buffer, sub_func)
+short svga_state_flags;
+void *state_buffer;
+short sub_func;
+{
+   union REGS vregs_in, vregs_out;
+   struct SREGS vseg_regs;
+   void far *far_state_buffer = (void far *) state_buffer;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_SAVE_RESTORE;
+   vregs_in.h.dl = (unsigned char) sub_func;
+   vregs_in.x.cx = svga_state_flags;
+
+   /* Fetch 32-bit address regardless of memory model... */
+   vregs_in.x.bx = FP_OFF(far_state_buffer);
+   vseg_regs.es  = FP_SEG(far_state_buffer);
+
+   int86x(VIDEO_INT, &vregs_in, &vregs_out, &vseg_regs);
+   return vregs_out.x.ax;
+}
+
+
+
+short SelectSVGAMemoryWindow(window_no, window_pos)
+short window_no;
+short window_pos;
+{
+   union REGS vregs_in, vregs_out;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_CPU_VID_WIN;
+   vregs_in.h.bh = SVGA_VID_WIN_SELECT;
+   vregs_in.h.bl = (unsigned char) window_no;
+   vregs_in.x.dx = window_pos;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   return vregs_out.x.ax;
+}
+
+
+
+short GetSVGAMemoryWindow(window_no, window_pos)
+short window_no;
+short *window_pos;
+{
+   union REGS vregs_in, vregs_out;
+
+   *window_pos = 0;
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_CPU_VID_WIN;
+   vregs_in.h.bh = SVGA_VID_WIN_GET;
+   vregs_in.h.bl = (unsigned char) window_no;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   *window_pos = vregs_out.x.dx;
+   return vregs_out.x.ax;
+}
+
+
+
+short SetSVGALogicalLineLen(pixel_width, scan_line_bytes,
+                            scan_line_pixels, max_scan_lines)
+short pixel_width;
+short *scan_line_bytes;
+short *scan_line_pixels;
+short *max_scan_lines;
+{
+   return SVGALogicalLineLenFunc(pixel_width, scan_line_bytes,
+          scan_line_pixels, max_scan_lines, SVGA_LOG_LINE_SELECT);
+}
+
+
+
+short GetSVGALogicalLineLen(pixel_width, scan_line_bytes,
+                            scan_line_pixels, max_scan_lines)
+short pixel_width;
+short *scan_line_bytes;
+short *scan_line_pixels;
+short *max_scan_lines;
+{
+   return SVGALogicalLineLenFunc(pixel_width, scan_line_bytes,
+          scan_line_pixels, max_scan_lines, SVGA_LOG_LINE_GET);
+}
+
+
+
+short SVGALogicalLineLenFunc(pixel_width, scan_line_bytes,
+                            scan_line_pixels, max_scan_lines,
+                            sub_func)
+short pixel_width;
+short *scan_line_bytes;
+short *scan_line_pixels;
+short *max_scan_lines;
+short sub_func;
+{
+   union REGS vregs_in, vregs_out;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_LOG_LINE_LEN;
+   vregs_in.h.bl = (unsigned char) sub_func;
+   vregs_in.x.cx = pixel_width;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   *scan_line_bytes = vregs_out.x.bx;
+   *scan_line_pixels = vregs_out.x.cx;
+   *max_scan_lines = vregs_out.x.dx;
+   return vregs_out.x.ax;
+}
+
+
+
+short SetSVGADisplayStart(first_pixel, first_scan_line)
+short first_pixel;
+short first_scan_line;
+{
+   union REGS vregs_in, vregs_out;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_DISP_START;
+   vregs_in.h.bl = SVGA_DISP_START_SET;
+   vregs_in.h.bh = 0;
+   vregs_in.x.cx = first_pixel;
+   vregs_in.x.dx = first_scan_line;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   return vregs_out.x.ax;
+}
+
+
+
+short GetSVGADisplayStart(first_pixel, first_scan_line)
+short *first_pixel;
+short *first_scan_line;
+{
+   union REGS vregs_in, vregs_out;
+
+   vregs_in.h.ah = SVGA_SUPPORT;
+   vregs_in.h.al = SVGA_DISP_START;
+   vregs_in.h.bl = SVGA_DISP_START_GET;
+   vregs_in.h.bh = 0;
+
+   int86(VIDEO_INT, &vregs_in, &vregs_out);
+   *first_pixel = vregs_out.x.cx;
+   *first_scan_line = vregs_out.x.dx;
+   return vregs_out.x.ax;
+}
+
+

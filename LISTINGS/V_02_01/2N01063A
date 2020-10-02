@@ -1,0 +1,88 @@
+;
+;  Requires MASM 5.1 or later
+;
+
+%       .MODEL  memodel,lang            ;Add model and language support via
+                                        ;command line macros,
+                                        ;e.g. MASM /Dmemodel=LARGE /Dlang=C
+
+EOI     equ     20h
+PIC     equ     20h
+T0      equ     40h
+TCMD    equ     43h
+
+        .DATA
+
+        public  I8Ctr
+
+I8Ctr   dw      0
+
+        .CODE
+
+OldI8   dd      ?
+ChainCt dw      32
+
+;
+; This is our actual ISR
+;
+myint08:
+        push    ax                      ;Save the only register used
+        inc     I8Ctr                   ;Bump the counter
+        dec     ChainCt                 ;Time to chain?
+        jnz     skip                    ;No
+        mov     ax,32                   ;Yes, reload chain counter
+        mov     ChainCt,ax
+        pop     ax
+        jmp     dword PTR CS:OldI8      ;Let BIOS do its thing
+skip:
+        mov     ax,EOI                  ;Send end-of-interrupt code
+        out     PIC,al
+        pop     ax
+        iret                            ;All done
+
+;
+;  Call this to install  our ISR
+;
+ins08   PROC    USES AX BX DS ES
+        mov     ax,3508h                ;get old timer ISR vector...
+        int     21h
+        mov     word PTR CS:OldI8,bx
+        mov     word PTR CS:OldI8+2,es ;...and save it
+
+        cli                             ;no interrupts!
+        push    cs                      ;get myint08 segment in DS
+        pop     ds
+        mov     dx, OFFSET myint08      ;install myint08 in int 08h
+        mov     ax,2508h
+        int     21h
+
+        mov     al,36h                  ;reset PIT channel 0
+        out     TCMD,al
+        mov     ax,800h                 ;set 800h = 10000h/32
+        out     T0,al
+        mov     al,ah
+        out     T0,al
+        sti
+        ret
+ins08   ENDP
+
+;
+;  Call this to uninstall our ISR
+;
+undo08  PROC    USES DX DS AX
+        cli                             ;no interrupts!
+        mov     dx, word PTR CS:OldI8   ;restore original vector
+        mov     ds, word PTR CS:OldI8+2
+        mov     ax,2508h
+        int     21h
+
+        mov     al,36h                  ;reset PIT channel 0
+        out     TCMD,al
+        mov     al,0                    ;set 0 = 10000h
+        out     T0,al
+        out     T0,al
+        sti
+        ret
+undo08  ENDP
+
+        end

@@ -1,0 +1,76 @@
+;***	AllocateSpinLock - Allocate Spin (short term) Lock Object.
+;
+;	This macro is used to allocate a spin lock and store its
+;	handle in a specified location.  In the actual implementation,
+;	this macro doesn't even call a package, but resets a spinlock
+;	to a known state.  The place where we store the handle IS the
+;	spinlock.
+;
+;	Usage:		AllocateSpinLock lock
+
+AllocateSpinLock MACRO lck
+	mov	lck, 0			; initialize the lock.
+	ENDM
+
+;***	DeallocateSpinLock - Deallocate Spin (short term) Lock Object.
+;
+;	This macro is used to deallocate a spin lock and return
+;	it to the system.  In this implementation, since the user's
+;	handle storage actually serves as the lock itself, we don't
+;	do anything here at all.  If we change the implementation, then
+;	the source can just be recompiled and the DeallocateSpinLock
+;	calls will do something meaningful, like deallocating pool.
+;
+;	Usage:		DeallocateSpinLock lock
+
+DeallocateSpinLock MACRO lck
+	mov	lck, 0			; reset the lock.
+	ENDM
+
+;***	AcquireSpinLock - Acquire Spin (short term) Lock.
+;
+;	This macro is used to acquire a spin lock in a multiprocessor
+;	system so that access to a mutually-exclusive object can be
+;	controlled in an MP-safe way.  To setup a spinlock, initialize
+;	it with the AllocateSpinLock macro.  Then to acquire the lock,
+;	use this macro.  To free up the lock when you're done, use the
+;	ReleaseSpinLock macro.
+;
+;	Usage:		AcquireSpinLock lock [, scratch-reg]
+
+AcquireSpinLock MACRO lck, scr
+	IF	MULTIPROCESSOR
+	IFIDN	<scr>,<>
+	push	ax
+	mov	ax, 1
+@@:	xchg	lck, ax
+	or	ax, ax
+	jnz	@b
+	pop	ax
+	ELSE
+	mov	scr, 1
+@@:	xchg	lck, scr
+	or	scr, scr
+	jnz	@b
+	ENDIF
+	ENDIF
+	ENDM
+
+;***	ReleaseSpinLock - Release Spin (short term) Lock.
+;
+;	This macro is used to release a spin lock in a multiprocessor
+;	system so that access to a mutually-exclusive object can be
+;	controlled in an MP-safe way.  To setup a spinlock, initialize
+;	it with the AllocateSpinLock macro.  To acquire the lock, use
+;	AcquireSpinLock.  To free up the lock when you're done, use
+;	the ReleaseSpinLock macro.
+;
+;	Usage:		ReleaseSpinLock lock
+
+ReleaseSpinLock MACRO lck
+	IF	MULTIPROCESSOR
+	mov	lck, 0
+	ENDIF
+	ENDM
+
+Figure 1.  Multiprocessor-Safe Spinlock Macros for 80x86 Assembly Language.

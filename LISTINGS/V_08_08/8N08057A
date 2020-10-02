@@ -1,0 +1,93 @@
+
+Listing 1
+
+/* a few defines that make this more readable */
+#define VRES config.mode.disp_vres
+#define HRES config.mode.disp_hres
+#define CHAR_WIDE font.charwide
+#define CHAR_HIGH font.charhigh
+
+integer opengraphics()
+{
+  integer ret_code;
+  integer status = 1;
+  integer screens;
+  
+  screens = scrnparams[0];
+  
+  /* init the TIGA interface */
+  if (!set_videomode(TIGA, INIT_GLOBALS | CLR_SCREEN))
+    {
+      /* tell them we just couldn't init the card */
+      cputs("failed in set_videomode()\n\r");
+      status = 13;
+    }
+  else
+    if ((ret_code = install_primitives()) < 0)
+      {
+        cputs("failed in install_primitives()\n\r");
+        status = 12;
+      }
+  
+  if (status == 1)
+    {
+      /* init global variables */
+      get_config(&config);
+      get_fontinfo(0, &font);
+      dispcolors = (integer)config.mode.palet_size - 1;
+      xdots = HRES - 1;
+      ydots = VRES - 1;
+      maxgrrow = VRES / CHAR_HIGH;
+      maxgrcol = HRES / CHAR_WIDE;
+      gdrawmode = REPLACE;
+      
+      set_textattr( "%1a", 0, 0 );
+
+      /* set up the viewport struct so VCAD knows how big
+         this card is... */
+      if (screens == 1)
+        {
+          sharedscreen = TRUE;
+          /*  Setup viewport related parameters  */
+          viewport.vpxl = 10 * CHAR_WIDE;
+          viewport.vpxr = xdots;
+          viewport.vpyb = 4 * CHAR_HIGH;
+          viewport.vpyt = ydots;
+          /*  Viewport extremes in character (row,col)
+              coordinates  */
+          viewport.vtxl = 10;
+          viewport.vtxr = maxgrcol;
+          viewport.vtyb = maxgrrow - 4;
+          viewport.vtyt = 0;
+        }
+      else
+        { /* 2 screen */
+          sharedscreen = FALSE;
+          /*  Setup viewport related parameters  */
+          viewport.vpxl = 0;
+          viewport.vpxr = xdots;
+          viewport.vpyb = 0;
+          viewport.vpyt = ydots;
+          /*  Viewport extremes in character (row,col)
+              coordinates  */
+          viewport.vtxl = 0;
+          viewport.vtxr = maxgrcol;
+          viewport.vtyb = maxgrrow;
+          viewport.vtyt = 0;
+        }
+      
+      /* set up the clipping rect */
+      set_clip_rect(
+                    viewport.vpxr - viewport.vpxl,
+                    viewport.vpyt - viewport.vpyb,
+                    viewport.vpxl,
+                    ydots-viewport.vpyt);
+      
+      clear_screen(0);
+      if (sharedscreen) dispstate = GRAPHICS;
+      else dispstate = TEXT;
+      
+      graphwasinit = TRUE;
+    }
+  return((integer) (status));
+} /* opengraphics */

@@ -1,0 +1,335 @@
+#include <stdio.h>
+#include <ctype.h>
+
+#define NBR_OF_BYTES 52
+
+#define PRTSTK(fp) {\
+  printf("%04.4lx ", (long)fp);\
+  printf("%02x ", (unsigned char)*(fp));\
+  printf("%c\n", isprint((unsigned char)*(fp))\
+	? (unsigned char)*(fp) : ' ');\
+}
+
+fcn1b()
+{
+	unsigned char stk_top;
+	static unsigned char *s;
+	stk_top = 0xff;
+	for (s = &stk_top + NBR_OF_BYTES; s >= &stk_top; --s)
+		PRTSTK(s);
+}
+
+fcn1(a, b, c)
+int a, b, c;
+{
+	int j;
+	char s[7];
+	j = 5;
+	strcpy(s, "123456");
+	fcn1b();
+}
+
+main()
+{
+	int i;
+	i = 1;
+	fcn1(2, 3, 4);
+}
+7ffffeef 00  
+7ffffeee 00  
+7ffffeed 00  
+7ffffeec f6  
+7ffffeeb 7f  
+7ffffeea ff  
+7ffffee9 fe  
+7ffffee8 fc  
+7ffffee7 00  
+7ffffee6 00  
+7ffffee5 00  
+7ffffee4 01  
+7ffffee3 00  
+7ffffee2 00  
+7ffffee1 00  
+7ffffee0 04  
+7ffffedf 00  
+7ffffede 00  
+7ffffedd 00  
+7ffffedc 03  
+7ffffedb 00  
+7ffffeda 00  
+7ffffed9 00  
+7ffffed8 02  
+7ffffed7 00  
+7ffffed6 00  
+7ffffed5 01  
+7ffffed4 f3  
+7ffffed3 7f  
+7ffffed2 ff  
+7ffffed1 fe  
+7ffffed0 e8  
+7ffffecf 00  
+7ffffece 00  
+7ffffecd 00  
+7ffffecc 05  
+7ffffecb 00  
+7ffffeca 36 6
+7ffffec9 35 5
+7ffffec8 34 4
+7ffffec7 33 3
+7ffffec6 32 2
+7ffffec5 31 1
+7ffffec4 00  
+7ffffec3 00  
+7ffffec2 00  
+7ffffec1 01  
+7ffffec0 ce  
+7ffffebf 7f      
+7ffffebe ff  
+7ffffebd fe  
+7ffffebc d0  
+7ffffebb ff     
+/* badstk.c - writes data incorrectly into an automatic
+   variable */
+
+fcn2()
+{
+	char s[3];
+	/* about to write over frame pointer and return address */
+	strcpy(s, "1234567");
+}
+
+fcn()
+{
+	int x;
+	x = 1;
+	fcn2();
+}
+
+main()
+{
+	char a;
+	a = '~';
+	fcn();
+	exit(0);
+}
+/* badstk.c - writes data incorrectly into an automatic
+   variable */
+#include "chkstk.h"
+
+fcn2()
+{
+	char s[3];
+	CHKSTK;
+	/* about to write over frame pointer and return address */
+	strcpy(s, "1234567");
+	CHKSTK;
+}
+
+fcn()
+{
+	int x;
+	CHKSTK;
+	x = 1;
+	fcn2();
+	CHKSTK;
+}
+
+main()
+{
+	char a;
+	CHKSTKINIT;
+	a = '~';
+	fcn();
+	CHKSTK;
+	exit(0);
+}
+Error: Stack is corrupted (badstk.c, 11)
+7ffffecf 37 7 
+7ffffece 36 6 
+7ffffecd 35 5 
+7ffffecc 34 4 <= Corrupted frame pointer
+7ffffecb 33 3 
+7ffffeca 32 2 
+7ffffec9 31 1 
+7ffffec8 f8   
+7ffffec7 00   
+7ffffec6 00   
+7ffffec5 00   
+7ffffec4 0b   
+7ffffec3 00   
+7ffffec2 40 @ 
+7ffffec1 03   
+7ffffec0 a5   
+7ffffebf 00   
+7ffffebe 00   
+7ffffebd 01   
+7ffffebc 41 A 
+7ffffebb 7f   
+7ffffeba ff   
+7ffffeb9 fe   
+7ffffeb8 cc   
+7ffffeb7 ff   
+7ffffeb6 ff   
+7ffffeb5 fe   
+7ffffeb4 c9   
+7ffffeb3 7f   
+7ffffeb2 ff   
+7ffffeb1 fe   
+7ffffeb0 cc   
+7ffffeaf 00   
+7ffffeae 00   
+7ffffead 02   
+7ffffeac ec   
+7ffffeab 7f   
+7ffffeaa ff   
+7ffffea9 fe   
+7ffffea8 b8   
+7ffffea7 ff   <= stack top
+/* interface to the chkstk module */
+
+/*
+Instructions:
+-   Put CHKSTKINIT immediatly after declaring local variables
+	in main()
+-   Put CHKSTK anywhere you wish to have the integrity of
+	the stack checked
+*/
+
+#define CHKSTKINIT \
+	unsigned char no_conflict; \
+	no_conflict = 0xaa; \
+	chkstkinit();
+/*
+	For these functions to work with Microsoft compilers,
+	main() must have at least one automatic variable,
+	so we need the variable no_conflict in the macro 
+	definition.
+*/
+#define CHKSTK chkstk(__FILE__, __LINE__);
+
+void chkstkinit();
+void chkstk();
+#include <stdio.h>
+#include <ctype.h>
+#include "chkstk.h"
+
+/* NCR UNIX on NCR tower */
+#if defined(tower)
+#define OFFSET 4
+#define NEXTFP(nextfp, fp) \
+  nextfp = *fp * 0x1000000 + *(fp + 1) * 0x10000 + \
+  *(fp + 2) * 0x100 + *(fp + 3);
+#endif
+
+/* XENIX and UNIX 80386 */
+#if defined(M_I386) | defined(i386)
+#define OFFSET 1
+#define NEXTFP(nextfp, fp) \
+  nextfp = *fp + *(fp + 1) * 0x100 + \
+  *(fp + 2) * 0x10000 + *(fp + 3) * 0x1000000;
+#endif
+
+/* Microsoft C 5.10, Quick C, SCO Xenix */
+/* Huge, Large or Code models */
+#if defined(M_I86LM) | defined(M_I86HM) | defined(M_I86CM)
+#define OFFSET 2
+#define NEXTFP(nextfp, fp) \
+  nextfp = (long)fp & 0xffff0000;\
+  nextfp = nextfp + *fp + *(fp + 1) * 0x100;
+#endif
+
+/* Microsoft C 5.10, Quick C, SCO Xenix */
+/* Middle or Small models */
+#if defined(M_I86MM) | defined(M_I86SM)
+#define OFFSET 2
+#define NEXTFP(nextfp, fp) \
+  nextfp = *fp + *(fp + 1) * 0x100;
+#endif
+
+#define PRTSTK(fp, q) {\
+  trace("%04.4lx ", (long)fp);\
+  trace("%02x ", (unsigned char)*(fp));\
+  trace("%c", isprint((unsigned char)*(fp))\
+	 ? (unsigned char)*(fp) : ' ');\
+  trace(" %s\n", q);\
+}
+
+static unsigned char *stk_bottom;
+static long first_fp;
+static void dumpstk();
+static void trace();
+
+void chkstkinit()
+{
+	unsigned char stk_top;
+	static long nextfp;
+	static unsigned char *fp;
+	stk_top = 0xaa;
+	fp = &stk_top + OFFSET;
+	NEXTFP(nextfp, fp);
+	stk_bottom = (unsigned char *)nextfp;
+	first_fp = *stk_bottom + *(stk_bottom + 1) * 0x100;
+}
+
+void chkstk(file, line)
+char *file;
+int line;
+{
+	unsigned char stk_top;
+	static unsigned char *fp;
+	static long nextfp;
+	stk_top = 0xff;
+	fp = &stk_top + OFFSET;
+	while (fp != stk_bottom) {
+		NEXTFP(nextfp, fp);
+		if ((unsigned char *)nextfp < fp ||
+			 (unsigned char *)nextfp > stk_bottom) {
+			trace("Error: Stack is corrupted (%s, %d)\n",
+			  file, line);
+			fprintf(stderr, "Error: Stack is corrupted (%s, %d)\n",
+			  file, line);
+			dumpstk(fp);
+			exit(1);
+		}
+		fp = (unsigned char *)nextfp;
+	}
+	if ((*fp + *(fp + 1) * 0x100) != first_fp) {
+		trace("Error: stack corrupted (%s, %d)\n",
+		  file, line);
+		fprintf(stderr, "Error: Stack is corrupted (%s, %d)\n",
+		  file, line);
+		dumpstk(fp);
+		exit(1);
+	}
+}
+
+static void dumpstk(bfp)
+unsigned char *bfp;
+{
+	unsigned char stk_top;
+	static unsigned char *fp, *x;
+	static long nextfp;
+	stk_top = 0xff;
+	PRTSTK(bfp + 3, "");
+	PRTSTK(bfp + 2, "");
+	PRTSTK(bfp + 1, "");
+	PRTSTK(bfp, "<= Corrupted frame pointer");
+	fp = bfp - 1;
+	while (fp != &stk_top) {
+		PRTSTK(fp, "");
+		--fp;
+	}
+	PRTSTK(fp, "<= stack top");
+}
+
+static void trace(f, a1, a2, a3, a4, a5, a6, a7, a8, a9)
+char *f, *a1, *a2, *a3, *a4, *a5, *a6, *a7, *a8, *a9;
+{
+	static FILE *out = NULL;
+	if (out == NULL) {
+		unlink("chkstk");
+		out = fopen("chkstk", "w");
+		setbuf(out, NULL);
+	}
+	fprintf(out, f, a1, a2, a3, a4, a5, a6, a7, a8, a9);
+}

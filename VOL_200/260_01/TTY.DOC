@@ -1,0 +1,224 @@
+TTY: General Serial Port Management Library rev 1.0
+     (c) Francois Bergeon 1987
+
+This set of function allow MS-C programmers to manage serial ports
+thru a buffered input/IRQ method. The header tty.h has to be included
+in the program source code. Two 2048 bytes buffers are reserved for
+COM1 and COM2.
+        
+NOTE: The <fd> value (return value from a tty_open call) is an
+      internal index. It cannot be used as an argument to standard
+      library functions such as lseek(), fstat(), etc...
+
+
+                        GENERAL FUNCTIONS
+                        -----------------
+
+int tty_open(comport, param)
+int tty_write(fd, buffer, lenght)
+int tty_read(fd, buffer, lenght)
+int tty_eof(fd)
+int tty_close(fd)
+
+                        LOW LEVEL FUNCTIONS
+                        -------------------
+void _combrk(fd)
+void _comflush(fd)
+
+
+
+
+
+        TTY_OPEN
+
+SYNOPSYS:
+
+#include <tty.h>
+int tty_open(comport, param)
+char *comport;
+int param;
+
+
+DESCRIPTION:
+
+Open <comport> an initializes it with <param>. Return port descriptor,
+or -1 if <comport> is not valid (errno is set to EBADF).
+
+
+ARGUMENTS:
+
+<comport> is either "COM1" or "COM2". <param> is the initialization
+parameter:
+
+        B0              Hang-up the line by resetting DTR
+        B110              110 bauds
+        B150              150 bauds
+        B300              300 bauds
+        B600              600 bauds
+        B1200            1200 bauds
+        B2400            2400 bauds
+        B4800            4800 bauds
+        B9600            9600 bauds
+        B19200          19200 bauds
+              ORed with
+        CS7             7 bits
+        CS8             8 bits
+         eventually ORed with
+        CSTOPB          2 stop bits (default is 1)
+         eventually ORed with
+        PARENB          EVEN parity
+        PARODD          ODD  parity (default is NONE)
+
+
+EXAMPLE:
+
+        if ((fd = tty_open("COM1", B1200 | CS7 | PARENB)) < 0)
+           fprintf(stderr, "Error on COM1");
+
+NOTE:
+
+to hang-up line and close COMx port you can use:
+
+        tty_close(tty_open("COMx", B0));
+
+
+
+
+        TTY_WRITE
+
+SYNOPSYS:
+
+int tty_write(fd, buffer, lenght)
+int fd;
+char *buffer;
+int lenght;
+
+
+DESCRIPTION:
+
+Write <lenght> bytes from <buffer> to <fd>. <fd> is the return value
+of a previously issued tty_open call. Return the number of bytes sent,
+or -1 if <fd> is not valid (errno is set to EBADF).
+
+EXAMPLE:
+         tty_write(fd, &c, 1);
+
+
+
+
+        TTY_EOF
+
+SYNOPSYS:
+
+int tty_eof(fd)
+int fd;
+
+
+DESCRIPTION:
+
+<fd> is the return value of a previously issued tty_open call. Return
+-1 if <fd> is not valid (errno is set to EBADF), 1 if no characters
+are available, otherwise 0.
+
+EXAMPLE:
+        if (tty_eof(fd))
+           tty_read(fd, &c, 1);
+
+
+
+
+        TTY_READ
+
+SYNOPSYS:
+
+int tty_read(fd, buffer, lenght)
+int fd;
+char *buffer;
+int lenght;
+
+
+DESCRIPTION:
+
+Read <lenght> bytes from <fd> to <buffer>. <fd> is the  return value
+of a previously issued tty_open call. Return the number of bytes received,
+or -1 if <fd> is not valid (errno is set to EBADF), 0 if no characters
+are available.
+
+
+EXAMPLE:
+        #include <time.h>
+                .
+                .
+                .
+        time_t start;
+                .
+                .
+                .
+        time(start);
+        while ((bytes_received = tty_write(fd, buffer, lenght)) == 0 &&
+               (int)difftime(time(NULL), start) < timeout)
+           {;}
+
+
+
+
+        TTY_CLOSE
+
+SYNOPSYS:
+
+int tty_close(fd)
+int fd;
+
+
+DESCRIPTION:
+
+Close <fd>. <fd> is the return value of a previously issued tty_open
+call. When exiting the program, all COM ports must be closed. Return
+-1 if <fd> is not valid (errno is set to EBADF)
+
+EXAMPLE:
+        tty_close(fd);
+
+
+
+
+        _COMBRK
+
+SYNOPSYS:
+
+_combrk(fd)
+int fd;
+
+
+DESCRIPTION:
+
+Send a BREAK to <fd>. <fd> is the  return value of a previously
+issued tty_open call. No checks are made on the integrity of <fd>.
+
+
+EXAMPLE:
+        _combrk(fd);
+
+
+
+        _COMFLUSH
+
+SYNOPSYS:
+
+_comflush(fd)
+int fd;
+
+
+DESCRIPTION:
+
+Flush <fd> input buffer. <fd> is the  return value of a previously
+issued tty_open call. No checks are made on the integrity of <fd>.
+
+
+EXAMPLE:
+        _comflush(fd);
+
+
+
+
+

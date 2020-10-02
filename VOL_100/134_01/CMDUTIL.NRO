@@ -1,0 +1,375 @@
+.so AN.NRO
+.TH abbrev 3 "Test for valid abbreviation"
+.SH NAME
+abbrev - Test for valid abbreviation
+.SH SYNOPSIS
+.nf
+.nj
+.in +4
+.ti -4
+int abbrev (text, pattern)
+char *text;
+char *pattern;
+.in -4
+.fi
+.ju
+.br
+.SH DESCRIPTION
+Abbrev tests whether or not the input string, "text", is a valid
+abbreviation of the pattern string, "pattern".  The pattern is a string
+giving the input expected, with mandatory characters in uppercase and
+optional ones in lowercase.  The function returns TRUE if the text
+string contains all of the required characters, and no other characters
+except for any optional ones.
+.SH EXAMPLES
+.nf
+.nj
+abbrev ("EXACT", "EXACT") == TRUE;
+abbrev ("exact", "EXACT") == TRUE;
+abbrev ("e", "EXACT") == FALSE;
+abbrev ("e", "Exact") == TRUE;
+abbrev ("x", "eXact") == TRUE;
+abbrev ("ext", "eXact") == TRUE;
+abbrev ("xray", "eXact") == FALSE;
+.fi
+.ju
+.SH "RETURN VALUE"
+The function returns TRUE if the "text" input is a valid abbreviation
+of the "pattern" input, and FALSE otherwise.
+.SH "SEE ALSO"
+procarg(7)
+.SH NOTES
+Abbrev is particularly useful in allowing abbreviations for arguments on a
+user command line.  For instance, if there is a PAGENUMBER option, with
+any abbreviation containing PN acceptable, then the call:
+.sp
+abbrev (argv [k], "PageNumber");
+.sp
+would return TRUE if the k'th argument specifies the PAGENUMBER option and
+FALSE otherwise.
+.bp
+.TH initv 3 "Initialize a vector of integers"
+.SH NAME
+initv - Initialize a vector of integers
+.SH SYNOPSIS
+.nf
+.nj
+.br
+initv (vector, endflag, value0, value1, ... , endflag)
+.in +5
+int * vector;
+int endflag;
+int value0, value1, ... ;
+.in -4
+.fi
+.ju
+.SH DESCRIPTION
+.PP
+Initv provides an alternative to Zolman's "initw" function for initializing
+a list of integers (actually, of any 16-bit quantities).  In addition
+to allowing the vector content to be specified numerically, it will allow
+initializing with symbolic constants, arithmetic expressions, or even strings.
+.PP
+To use initv, perform a call of the form above.  "Vector" is the vector to
+be initialized; value0 through valuen are arguments to be stored in locations
+0 through n of the vector.
+Endflag is a special value that marks the end of the list.  It must not be the
+same as any of the values value0, ..., valuen.  It is supplied once at the
+beginning of the list, to indicate its value; its occurrence at the end of
+the list stops that movement of data.
+.ul 1
+NOTE: Endflag is stored in vector [n+1].
+.SH CAVEATS
+.PP
+Vector must be large enough to hold all the values supplied,
+.ul 1
+plus the value of endflag.
+If vector is too small, the excess values will overwrite memory locations
+following the end of the array, with unpredictable results.
+.PP
+The "endflag" value must not appear in the list of values.  If it does,
+the movement of the data will terminate prematurely when the occurrence
+of "endflag" is reached.
+.SH EXAMPLES
+.nf
+.nj
+struct {
+.in +5
+char * name;
+int number;
+} numnames [11];
+.in -5
+initv (numnames, EOF,
+.in +5
+"zero", 0, "one", 1, "two", 2, "three", 3,
+"four", 4, "five", 5, "six", 6, "seven", 7,
+"eight", 8, "nine", 9, "ten", 10, EOF);
+.in -5
+.fi
+.ju
+.SH "RETURN VALUE"
+The return value is unspecified.
+.SH NOTES
+This function would be TOTALLY unnecessary if BDS C had initializers.
+.bp
+.TH patmat 3 "Name pattern matcher"
+.SH NAME
+patmat - Name pattern matcher
+.SH SYNOPSIS
+.nf
+.nj
+int patmat (name, pattern, equiv, newname)
+.in +4
+char * name;      /* Name to be matched with the pattern */
+char * pattern;   /* Pattern to match it with */
+char * equiv;     /* Pattern for output name or 0 */
+char * newname;   /* Output name */
+.in -4
+.fi
+.ju
+.SH DESCRIPTION
+.PP
+Patmat is a generalized procedure for working with "wild card" names
+using the '*' and '?' conventions.  It is superior to the wild card
+matcher provided in the CP/M BDOS in that it will allow operating on
+named objects other than files.  It also will allow (and process correctly)
+asterisks anywhere in the pattern; the pattern "*1.ASM" will find any
+".ASM" files whose names end in 1, no matter how long the names are.
+.PP
+There are two calling sequences for patmat.  In the first, one is interested
+merely in whether or not a name matches a pattern.  In this calling sequence,
+the name is passed as the first argument, and the pattern (possibly
+containing question marks and asterisks) is given as the second.  The
+third argument ("equiv") is zero, and the fourth ("newname") need not be
+supplied.
+.PP
+In the second calling sequence, the user also wishes to make an output
+file name from the input name, in order to process requests like
+.cu 1
+PIP *.BAK=*.C
+In this case, the first two arguments are as above.  The third argument
+"equiv" is the pattern to be used for the output name ("*.BAK" in the
+example) and the fourth is a pointer to a character vector which will
+receive the name.
+.PP
+Question marks are not permitted in the "equiv" argument, but asterisks
+are.  Each asterisk in the "equiv" string matches either (1) a single
+asterisk in the input string, or (2) any number of consecutive question
+marks in the input string.  
+.SH EXAMPLES
+.nf
+.nj
+if (patmat (filename, "*.COM", 0))
+.in +4
+do_file (filename);
+.in -4
+.sp
+if (patmat (filename, "*.*", "*.BAK", outname))
+.in +4
+copy_file (filename, outname);
+.in -4
+.fi
+.ju
+.SH "RETURN VALUE"
+.PP
+In both calling sequences, the returned value is TRUE if the
+name matched the pattern, and FALSE otherwise.
+.SH "SEE ALSO"
+unscaf (3)
+.SH NOTES
+.PP
+The "patmat" procedure, since it is intended for more things than just
+file names, does not make any BDOS calls.  If it is being used as a file
+name matcher,  it should be called once for each file in the directory,
+using the file name as formatted for printing.  The "unscaf" procedure,
+which converts a file name back to printable format, may be used to
+accomplish this, in conjunction with calls to BDOS functions 17 and 18
+(search for first/next).
+.bp
+.TH procarg 3 "Command argument processor"
+.SH NAME
+procarg - command line argument processor
+.SH SYNOPSIS
+.bo 5
+.nf
+.nj
+.in +5
+.br
+int procarg (argcp, argvp, optable, infop)
+int *argcp;             /* Pointer to the "argc"
+                           word of main program */
+char ***argvp;          /* Pointer to the "argv"
+                           word of main program */
+struct option * optable;
+                        /* Option table (see text) */
+char ***infop;          /* Pointer to a return 
+                           value (see text)        */
+.in -5
+.fi
+.ju
+.br
+.SH DESCRIPTION
+.PP
+The "procarg" function provides a common means for all command
+processors to obtain command-line arguments.  A standard abbreviation
+discipline is supported, and the procedure is compatible with the
+"showsyntax" function (q.v.), which displays command syntax to the user.
+.PP
+The first two arguments are pointers to the "argc" and "argv" words of the
+main function. The third argument is a pointer to an option table.  The
+option table is a vector of two-word quantities; the first word is 
+a string pointer designating the
+name of an option, and the second is the type of the option.  
+The table is terminated by a pointer containing the symbolic constant EOF.
+The fourth argument to "procarg" is a pointer to a word which will receive
+a return value, which depends on the option type.
+.PP
+Option names are a mix of lowercase and uppercase characters.  Any
+uppercase characters in the name are mandatory; lowercase characters
+are optional.  Thus, an entry of "eXtract" in the option table would
+match "-x", "-ext", "-xtr", or anything similar, but would not match
+"-etrct", "-xray" or "foobar".  
+.PP
+Option types are specified as symbolic constants (available in the
+include file "cmdutil.h").  The constants, and their effects, are as follows:
+.sp
+NAKED_KWD
+.sp
+.br
+.in +5
+Specifies that the option is a keyword option ("-foo") with no associated
+value.  If a NAKED_KWD option is detected, the "info" word in the calling
+sequence will be set to 0.
+.in -5
+.br
+.sp
+SVAL_KWD
+.sp
+.br
+.in +5
+Specifies that the option is a keyword option accepting a string value
+("-foo bar").  If a SVAL_KWD option is detected, the "info" word in the
+calling sequence will designate the string that was supplied.
+.in -5
+.br
+.sp
+NVAL_KWD
+.sp
+.br
+.in +5
+Specifies that the option is a keyword option accepting a numeric value
+("-foo 17").  If an NVAL_KWD option is detected, the "info" word in the
+calling sequence will contain the binary value of the number.
+.in -5
+.br
+.sp
+MSVL_KWD
+.sp
+.br
+.in +5
+Specifies that the option accepts several string values ("-foo bar zot baz").
+If an MSVL_KWD is detected, the "info" word designates a vector of 16-bit
+quantities.  The first of these is the number of strings that were found;
+it is followed by pointers to each of the strings.
+.in -5
+.br 
+.sp
+MNVL_KWD
+.sp
+.br
+.in +5
+Specifies that the option accepts several numeric values ("-foo 17 39 -8").
+If an MNVL_KWD option is detected, the "info" word designates a vector of
+16-bit integers.  The first of these is the number of values that were
+found; it is followed by the binary representations of the values themselves.
+.in -5
+.br
+.PP
+If no option is found to match a particular command line argument, the
+"info" word will be a string pointer designating the argument itself.
+.SH CAVEATS
+.PP
+If "dio" or "wildexp" are used as part of command line processing,
+they should be called *before* beginning to handle the command's
+arguments with "procarg".
+.SH EXAMPLES
+.PP
+Any example of "procarg" is of necessity rather lengthy.  The file, DIFF.C,
+on the same disc as CMDUTIL.C, is a non-trivial example of a command
+processor using "procarg".
+.SH FILES
+.PP
+The %include file CMDUTIL.H contains definitions of the "option" structure
+and of the symbolic values for the option types.
+.SH "RETURN VALUE"
+.PP
+The return value is the index into "optable" (which is assumed to be
+an array of "struct option") of a table entry which matched a command
+line argument, or one of the following special values:
+.PP
+-1 indicates that the argument did not appear to be an option.  Either
+it did not begin with a hyphen, or it began with a hyphen followed by
+a non-alphabetic character.  The "info" word is a string pointer designating
+the argument.
+.PP
+-2 indicates that the argument appeared to be an option, but was not
+recognizable.  Either it did not appear in "optable", or it was specified
+with SVAL_KWD or NVAL_KWD but no value followed it.
+.PP
+Upon return from "procarg", the "argc" and "argv" words have been adjusted
+to designate the next command line argument.  "argv" will have been
+advanced around the option and any values following it; "argc" will have
+been decreased accordingly.
+.SH "SEE ALSO"
+.nf
+.nj
+abbrev (3) for the abbreviation algorithm.
+cmdutil.h (7)
+initv (3)  for an easy way to set up the "optable" array.
+showsyntax (3) for a way to report the command syntax.
+.fi
+.ju
+.SH "WARNINGS"
+.PP
+The following messages can be printed on the user's console at run time:
+.sp
+"xxx: unknown option."  -- An argument of the form "-bar" was supplied,
+but "bar" did not match any of the entries in optable.
+.sp
+"xxx option requires a value." -- An argument of the form "-bar" was
+supplied with no value after it, but optable called it n SVAL_KWD or
+MVAL_KWD.
+.SH "DIAGNOSTICS"
+.PP
+It is recommended that any command with incorrect syntax include a call
+to "showsyntax" to indicate to the user what the correct syntax is.
+.SH BUGS
+.PP
+Non-numeric characters in options specified with NVAL_KWD and MNVL_KWD are
+not detected; results will be unpredictable.
+.bp
+.TH showsyntax 3 "Display command syntax"
+.SH NAME
+showsyntax -- Display command syntax.
+.SH SYNOPSIS
+.nf
+.nj
+showsyntax (command, optable)
+char * command;
+struct option * optable;
+.fi
+.ju
+.SH DESCRIPTION
+.PP
+Showsyntax displays the correct syntax for a command on the user's console.
+The "command" string gives the command name and any non-keyword arguments;
+the "optable" argument is the same as for "procarg" (q.v.).
+.SH EXAMPLES
+showsyntax ("diff <file1> <file2>", optable);
+.SH "RETURN VALUE"
+The return value is unspecified.
+.SH "SEE ALSO"
+cmdutil.h (7),
+procarg (3)
+- An argument of the form "-bar" was
+supplied with no value after it, but optable cal

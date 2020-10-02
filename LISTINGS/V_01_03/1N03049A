@@ -1,0 +1,143 @@
+
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <dos.h>
+
+#if !defined(__ZTC__) && !defined(__TURBOC__)
+ #define MK_FP(seg,offset) \
+        ((void far *)(((unsigned long)(seg)<<16) | (unsigned)(offset)))
+ #define peek(s,o) (*(MK_FP(s,o)))
+ #define poke(s,o,w) (*(MK_FP(s,o)))=(w)
+#endif
+
+#define SUCCESS 0
+#define ERROR -1
+
+static unsigned head, tail;
+static int idx = 0;
+static unsigned keystack[16][2];
+
+/****************************************************************/
+/*                                                              */
+/*  ungetkey()                                                  */
+/*                                                              */
+/*  Stuffs characters into the keyboard buffer.                 */
+/*                                                              */
+/*  Parameters: 1 - Extended character to stuff                 */
+/*                                                              */
+/*  Returns: SUCCESS or EOF                                     */
+/*                                                              */
+/*  Note: This function assumes that the keyboard buffer is in  */
+/*        the normal (for IBM) location of 40:1E.               */
+/*                                                              */
+/****************************************************************/
+
+int ungetkey(unsigned key)
+{
+        int count;
+
+#ifdef __ZTC__
+        peek(0x40, 0x1a, &head, sizeof(unsigned));
+        peek(0x40, 0x1c, &tail, sizeof(unsigned));
+#else
+        head = peek(0x40, 0x1a);
+        tail = peek(0x40, 0x1c);
+#endif
+        count = tail - head;
+        if (0 > count)
+                count += (16 * sizeof(unsigned));
+        count >>= 1;
+
+        if (15 > count)
+        {
+#ifdef __ZTC__
+                peek(0x40, tail, &keystack[idx][0], sizeof(unsigned));
+#else
+                keystack[idx][0] = peek(0x40, tail);
+#endif
+                keystack[idx][1] = tail;
+#ifdef __ZTC__
+                poke(0x40, tail, &key, sizeof(unsigned));
+#else
+                poke(0x40, tail, key);
+#endif
+                tail += sizeof(unsigned);
+                if (0x3e <= tail)
+                        tail = 0x1e;
+#ifdef __ZTC__
+                poke(0x40, 0x1c, &tail, sizeof(unsigned));
+#else
+                poke(0x40, 0x1c, tail);
+#endif
+                return key;
+        }
+        return EOF;
+}
+
+/****************************************************************/
+/*                                                              */
+/*  KB_stuff()                                                  */
+/*                                                              */
+/*  Stuffs strings into the keyboard buffer.                    */
+/*                                                              */
+/*  Parameters: 1 - String to stuff                             */
+/*                                                              */
+/*  Returns: SUCCESS if successful                              */
+/*           ERROR   in case of error, plus beyboard buffer is  */
+/*                   restored                                   */
+/*                                                              */
+/*  Note: This function assumes that the keyboard buffer is in  */
+/*        the normal (for IBM) location of 40:1E.               */
+/*                                                              */
+/****************************************************************/
+
+int KB_stuff(char *str)
+{
+        int ercode = SUCCESS;
+
+        idx = 0;
+        while (*str)
+        {
+                if (EOF == ungetkey((unsigned)(*str++)))
+                {
+                        while (0 <= --idx)
+                        {
+                                tail = keystack[idx][1];
+#ifdef __ZTC__
+                                poke(0x40, tail, &keystack[idx][0],
+                                        sizeof(unsigned));
+#else
+                                poke(0x40, tail, keystack[idx][0]);
+#endif
+                        }
+#ifdef __ZTC__
+                        poke(0x40, 0x1c, &tail, sizeof(unsigned));
+#else
+                        poke(0x40, 0x1c, tail);
+#endif
+                        ercode = ERROR;
+                        break;
+                }
+                else    ++idx;
+        }
+        idx = 0;
+        return ercode;
+}
+
+main(int argc, char *argv[])
+{
+        FILE *bfile;
+
+        if (3 > argc)
+        {
+                puts("\aUsage: SETENVAR envar datum");
+                abort();
+        }
+        bfile = fopen("$TMP$.BAT", "w");
+        fprintf(bfile, "SET %s=%s\ndel $tmp$.bat\n", argv[1], argv[2]);
+        fclose(bfile);
+        while (kbhit())
+                ;
+        KB_stuff("$tmp$\r");
+}

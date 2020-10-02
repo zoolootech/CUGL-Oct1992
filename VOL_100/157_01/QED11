@@ -1,0 +1,388 @@
+/*  VERSION 0007  (DATE: 04/04/87)  (TIME: 17:58)  */
+/*
+	e (qe) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	Modified: Aug-Dec 	1984:  BDS-C 'e' to 'qe' 			(J.W.Haefner)
+			  March		1985:  BDS-C 'qe' to DeSmet-C 'qed' (J.W.Haefner)
+
+	FILE: qed11
+
+	FUNCTIONS: putvrsn,comntsym,inc_v_num,usstr,has_vrsn,
+			   makvrsn,now,vrsntail,putdate,puttime,formatnow,
+			   index
+
+	PURPOSE: put version num and date/time on top of file
+
+*/
+
+#include "qed.h"
+
+#if VRSNNUM
+/* putvrsn -- find and replace version number at top of file */
+putvrsn()
+{
+	int vline,oldcline;
+	char *vpos,*numpos,vtext[80];
+
+	if (version) {  /*global flag set in ^QK*/
+		altered=YES;		/*force save*/
+		puttext();
+		oldcline=cline;
+		if (has_vrsn(&vline,&vpos) == FAIL) {
+			if(makvrsn(vtext)==FAIL)  {
+				gettext(oldcline); 	/*25.III.87*/
+				return FAIL;	/*28.I.87*/
+			}
+			else oldcline++;
+		}
+		else  {
+ 			numpos=comntsym(text,vpos);
+			inc_v_num(text,numpos);
+#if VRSNDATE
+			if(now()==FAIL) return FAIL;	/*28.I.87*/
+#else
+			strcpy(date,"00/00/00");
+			strcpy(time,"00:00");
+#endif
+			vrsntail(text);
+			altered=YES;
+			puttext();
+		}
+		gettext(oldcline);		/* recover old cline text */
+	}
+}
+
+/*comntsym -- get comment symbols, truncate version line after number*/
+/*			  return address of beginning of version number */
+char *comntsym(v,vpos)
+char *v,*vpos;
+{
+	char *tp,*numpos;
+	int len;
+
+	comnt[0]=v[0];
+	comnt[1]=v[1];
+	comnt[3]=v[(len=(strlen(v)-1))];
+	comnt[2]=v[(--len)];
+	comnt[4]='\0';
+	for (tp=vpos;(*tp) && (*tp!=' ');tp++);	 /*tp==>1st blnk after "version"*/
+	while ((*tp) && ((*tp++) == ' ') );
+		/*found nonblank after "VERSION"*/
+	numpos=tp-1;
+	while((*tp) && ((*tp++) != ' ') );  /*break at next blank*/
+	*(--tp)='\0';		/*truncate old version line after numerals*/
+	return (numpos);
+}
+	
+/* inc_v_num -- increment the version number */
+inc_v_num(v,npos)
+char *v,*npos;
+{
+	char numstr[6];
+	int version;
+
+	/*movmem(npos,numstr,4);*/
+	_move(4,npos,numstr);
+	numstr[4]='\0';
+	version=qatoi(numstr);
+	version++;
+	usstr(version,numstr,4);
+	numstr[4]='\0';
+	/*movmem(numstr,npos,4);*/
+	_move(4,numstr,npos);
+}
+
+/* usstr -- unsigned int to string conversion */
+usstr(val,buf,len)
+int val;
+char *buf;
+int len;
+{
+	int temp,i,bufsz;
+
+	/*bufsz=sizeof buf;*/
+	bufsz=len;
+	  /*use memfill()*/
+	for (i=0;i<bufsz; buf[i++]='0');		/*fill with leading zeroes*/
+	i=bufsz-1;
+	while (val>0 && i>=0) {
+		buf[i--] = (val%10)+0x30;
+		val=val/10;
+	}
+/*
+	do {
+		buf[i--] = (val%10)+0x30;
+		val=val/10;
+	} while (i>=0);
+*/
+	buf[bufsz]='\0';
+}
+
+/* has_vrsn -- check for existing version number comment */
+/*             return FAIL if none, line number and address if found */
+int has_vrsn(vline,vpos)
+int *vline;
+char **vpos;
+{
+	int pos,line;
+
+	line=1;
+	pos=-1;
+	do {
+		gettext(line);
+		if (text[0] != '\0')
+			pos=index(text,"VERSION");  /*not the DeSmet func*/
+		line++;
+	} while (text[0]=='\0' && line<=lastl);
+	*vline=line-1;
+	if (pos!=FAIL) {
+		*vpos=&(text[pos]);
+		/*error("VERSION found");*/
+		return YES;
+	}
+	return FAIL;
+}
+
+/* makvrsn -- create a version line where none was */
+makvrsn(v)
+char *v;
+{
+	char ans[6];
+	
+	ans[0]='\0';
+	if (expert) xprtmess("Left sym (2): ");
+	else putmess("Enter left comment symbol (2 digits): ");
+	scans(ans,4);
+	if(ans[0]=='~') return FAIL;	/*bail out: no version*/
+	if (!(*ans)) {
+ 		comnt[0]='/';  /*guess this guy is using C*/
+		comnt[1]='*';
+	}
+	else {
+		comnt[0]=ans[0];
+		comnt[1]=ans[1];
+	}
+	ans[0]='\0';
+	if (expert) xprtmess("Right sym (2): ");
+	else putmess("Enter right comment symbol (2 digits): ");
+	scans(ans,4);
+	if (!(*ans)) {
+		comnt[2]='*';
+		comnt[3]='/';
+	}
+	else {
+		comnt[2]=ans[0];
+		comnt[3]=ans[1];
+	}
+	comnt[4]='\0';
+#if VRSNDATE
+	now();
+#else
+	strcpy(date,"00/00/00");
+	strcpy(time,"00:00");
+#endif
+	v[0]=comnt[0];
+	v[1]=comnt[1];
+	v[2]='\0';
+	strcat(v,"  VERSION 0000");
+	vrsntail(v);
+	  /* put v as first line in editing text */
+	inject(0,v);
+}
+
+/* vrsntail -- put tail on version line */
+vrsntail(v)
+char *v;
+{
+	int i;
+
+	strcat(v,"  (DATE: ");
+	strcat(v,date);
+	strcat(v,")  (TIME: ");
+	strcat(v,time);
+	strcat(v,")");
+	for (i=(strlen(v));i<(VRSNLEN-5);i++) v[i]=' ';
+	v[(i++)]=comnt[2];
+	v[(i++)]=comnt[3];
+	v[(i)]='\0';
+}
+#endif  /*VRSNNUM*/
+
+
+#if VRSNDATE
+
+/* now -- get time and date from system or user */
+now()
+{
+#if NOCLOCK
+	char temp[10];
+#else
+	int yr,mon,day;
+	int hr,min;
+	char nstr[3];		/*hold number string*/
+#endif
+
+#if NOCLOCK		/* no clock, get date and time from user */
+	if (date[0]=='\0') formatnow(date,time);   /*get from CP/M page 0 and format*/
+	if (expert) xprtmess("Date(da/mn/yr): ");
+	else
+		putmess("Enter today's date as da/mn/yr (2 digit): ");
+	strcpy(temp,date);
+	/*puts(temp);*/
+	if (*date) {
+		inbuf[0]=RETRIEVE;			/*play back current date*/
+		if (!inbufp)inbufp=1;
+	}
+	scans(temp,10);
+	  /*parse and convert to int*/
+	if (temp[8]=='~')return FAIL;	/*bail out w/o versionizing*/
+	if (strcmp(temp,date)!=0) {		/*date has been changed*/
+		strcpy(date,temp);
+		putdate();
+	}
+	if (expert) xprtmess("Time(24hr:mn): ");
+	else
+		putmess("Enter current time as hr:mn (24 hour): ");
+	strcpy(temp,time);
+	/*puts(temp);*/
+	if (*time) {
+		inbuf[0]=RETRIEVE;
+		if (!inbufp)inbufp=1;
+	}
+	scans(temp,7);
+		/*parse and convert to int*/
+	if (strcmp(temp,time)!=0) {		/*time has been changed*/
+		strcpy(time,temp);
+		puttime();
+	}
+#else			/* access system clock */
+	/*put code to read and decode system clock here*/
+	  /*get date func = 2a*/
+	_rax=(0x2a << 8);
+	_rdx=0;
+	_doint(DOSINT);
+	yr=_rcx;
+	mon=(_rdx >> 8);
+	day=(_rdx & 0x00ff);
+	  /*get time func = 2c*/
+	_rax=(0x2c << 8);
+	_rdx=0;
+	_rcx=0;
+	_doint(DOSINT);
+	hr=(_rcx >> 8);
+	min=(_rcx & 0x00ff);
+	  /*convert and store in globals "date" and "time" */
+		/*unsigned short int (char) to string conversion*/
+		/*return next address*/
+	usstr(day,nstr,2);		/*date first*/
+	strcpy(date,nstr);
+	strcat(date,"/");
+	usstr(mon,nstr,2);
+	strcat(date,nstr);
+	strcat(date,"/");
+	usstr(yr,nstr,2);
+	strcat(date,nstr);
+		/*now do time*/
+	usstr(hr,nstr,2);
+	strcpy(time,nstr);
+	strcat(time,":");
+	usstr(min,nstr,2);
+	strcat(time,nstr);
+#endif
+}
+
+#if NOCLOCK
+/* putdate -- parse date string and store as chars in CP/M page 0*/
+putdate()
+{
+	char temp[4],*nptr;
+
+	nptr=NOWLOC;
+	temp[0]=date[0];	/*day*/
+	temp[1]=date[1];
+	temp[2]='\0';
+	*nptr++=qatoi(temp);
+	temp[0]=date[3];	/*month*/
+	temp[1]=date[4];
+	temp[2]='\0';
+	*nptr++=qatoi(temp);
+	temp[0]=date[6];	/*year*/
+	temp[1]=date[7];
+	temp[2]='\0';
+	*nptr=qatoi(temp);
+}
+
+/* puttime -- parse time string and store as chars in CP/M page 0*/
+puttime()
+{
+	char temp[5],*nptr;
+
+	nptr=NOWLOC+3;
+	temp[0]=time[0];	/*hour*/
+	temp[1]=time[1];
+	temp[2]='\0';
+	*nptr++=qatoi(temp);
+	temp[0]=time[3];	/*minute*/
+	temp[1]=time[4];
+	temp[2]='\0';
+	*nptr=qatoi(temp);
+}
+
+/* formatnow -- get date and time integers from CP/M page 0, format */
+formatnow(d,t)
+char *d,*t;
+{
+	  /* read 5 bytes from NOWLOC corresponding to day, month, year,
+	  	 hour, minute */
+	char *nptr;
+	char nstr[3];	/*hold number string */
+	char day,month,year,hour,minute;
+
+	nptr=NOWLOC;
+	day=*nptr++;
+	month=*nptr++;
+	year=*nptr++;
+	hour=*nptr++;
+	minute=*nptr;
+		/*unsigned short int (char) to string conversion*/
+		/*return next address*/
+	usstr(day,nstr,2);		/*date first*/
+	strcat(d,nstr);
+	strcat(d,"/");
+	usstr(month,nstr,2);
+	strcat(d,nstr);
+	strcat(d,"/");
+	usstr(year,nstr,2);
+	strcat(d,nstr);
+		/*now do time*/
+	usstr(hour,nstr,2);
+	strcat(t,nstr);
+	strcat(t,":");
+	usstr(minute,nstr,2);
+	strcat(t,nstr);
+}
+#endif  /*noclock*/
+
+/* index -- find pattern in target */
+/*			return index in array at beginning patt in targ*/
+/*			Note: replaces DeSmet's version */
+index(targ,patt)
+char *targ,*patt;
+{
+	char pc;
+	char *tp1,*tp2,*pp;
+
+	if (*targ=='\0' || *patt=='\0') return -1;
+	for (tp1=targ;*tp1;tp1++) {
+		for(tp2=tp1,pp=patt;( (pc=(*pp++)) && (pc==(*tp2++)) ););
+	 	if (pc=='\0') return ( (int *)(tp1-targ) );
+	}
+	return -1;
+}
+
+#endif  /*VRSNDATE*/
+

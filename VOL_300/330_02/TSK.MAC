@@ -1,0 +1,907 @@
+;
+;	--- Version 2.2 90-10-12 10:46 ---
+;
+;	CTask - Definitions for assembler routines
+;
+;	Public Domain Software written by
+;		Thomas Wagner
+;		Ferrari electronic Gmbh
+;		Beusselstrasse 27
+;		D-1000 Berlin 21
+;		Germany
+;
+;	The configuration definitions were moved to the combined
+;	C/Assembler include file "tskconf.h" in version 2.1.
+;
+	include	tskconf.h
+;
+;-------------------------------------------------------------------
+;
+TIMEOUT		=	-1
+WAKE		=	-2
+WATCH		=	-3
+;
+; Task states
+;
+ST_KILLED	=	0
+ST_STOPPED	=	1
+ST_DELAYED	=	2
+ST_WAITING	=	3
+ST_ELIGIBLE	=	4
+ST_RUNNING	=	5
+;
+; Task flags
+;
+F_TEMP 		=	80h	; Task is temporary
+F_STTEMP	=	40h	; Task stack is temporary, free on kill
+F_PERM 		=	20h	; Task is a permanent system task
+F_USES_NDP	=	02h	; Task uses NDP
+F_CRIT		=	01h	; Task is critical, may not be preempted
+;
+FL_SYSM		=	0f0h	; Mask for system flags
+FL_USRM		=	00fh	; Mask for user flags
+;
+; Timer queue element action kinds (upper nibble of elkind)
+;
+TELEM_TIMER	=	10h	; Timeout element
+TELEM_MEM	=	20h	; Memory watch element
+TELEM_PORT	=	30h	; Port watch element
+TELEM_HOTKEY	=	40h	; Hotkey element
+;
+; Timer watch element comparison kinds (lower nibble of elkind)
+;
+TCMP_EQ		=	1	; Equal 
+TCMP_NE		=	2	; Not Equal 
+TCMP_GE		=	3	; Greater or Equal (unsigned) 
+TCMP_LE		=	4	; Less or Equal (unsigned) 
+TCMP_GES	=	5	; Greater or Equal (signed) 
+TCMP_LES	=	6	; Less or Equal (signed) 
+TCMP_CHG	=	7	; Change in value 
+;
+; Timer queue element control structure pointer kinds 
+;
+TKIND_TASK	=	1	; tcbptr, Wakeup associated task 
+TKIND_WAKE	=	2	; tcbptr, but not same task 
+TKIND_PROC	=	3	; call function 
+TKIND_FLAG	=	4	; flagptr, set flag 
+TKIND_COUNTER	=	5	; counterptr, increment counter 
+TKIND_COUNTDEC	=	6	; counterptr, decrement counter 
+;
+; Timer queue element flags
+;
+TFLAG_BUSY	=	01h	; Timer task is busy processing element 
+TFLAG_ENQUEUE	=	02h	; Enqueue after processing 
+TFLAG_UNQUEUE	=	04h	; Don't enqueue after processing 
+TFLAG_REMOVE	=	08h	; Free element after processing 
+TFLAG_REPEAT	=	40h	; Bit set signals repeat processing 
+TFLAG_TEMP      =	80h	; Bit set means temporary element
+;
+; Name link and queue head structure types 
+;
+Q_HEAD		=	80h	; Queue head flag 
+;
+TYP_GROUP	=	0
+TYP_TCB		=	1
+TYP_FLAG	=	2
+TYP_RESOURCE	=	3
+TYP_COUNTER	=	4
+TYP_MAILBOX	=	5
+TYP_PIPE	=	6
+TYP_WPIPE	=	7
+TYP_BUFFER	=	8
+TYP_TIMER	=	9
+TYP_WATCH	=	10
+TYP_HOTKEY	=	11
+;
+NAMELENGTH	=	9
+;
+; Installation flags 
+;
+IFL_VIDEO	=	0001h	; Install INT 10 access resource 
+IFL_DISK	=	0002h	; Install INT 13 access resource 
+IFL_INT8_DIR	=	0004h	; Call original INT 8 directly 
+IFL_PRINTER	=	0008h	; Install INT 17 handler 
+IFL_INT15	=	0010h	; Install IBM-AT INT 15 handler 
+IFL_NODOSVARS	=	0020h	; Don't swap DOS variables 
+IFL_NOEXITCHECK	=	0040h	; Don't check for premature exit 
+;
+IFL_STD   	=	(IFL_DISK OR IFL_PRINTER OR IFL_INT15)
+;
+; Size of the DOS variable swap area plus 8 bytes.
+;
+DOSSWAPSIZE	=	30h
+;
+ndp_rec		struc
+control87	dw	?
+status87	dw	?
+tag87		dw	?
+iplo87		dw	?
+iphi87_opcode87	dw	?
+opaddrlo87	dw	?
+opaddrhi87_null	dw	?
+ndp_st0		dt	?
+ndp_st1		dt	?
+ndp_st2		dt	?
+ndp_st3		dt	?
+ndp_st4		dt	?
+ndp_st5		dt	?
+ndp_st6		dt	?
+ndp_st7		dt	?
+ndp_rec		ends
+;
+callchain	struc
+cc_next		dd	?
+cc_func		dd	?
+cc_user_ptr	dd	?
+cc_flags	db	?
+callchain	ends
+;
+qelem_pri	struc
+q_prior		dw	?
+q_ini_prior	dw	?
+qelem_pri	ends
+;
+qelem_ticks	struc
+q_ticks		dd	?
+qelem_ticks	ends
+;
+queue_rec	struc
+q_next		dd	?
+q_prev		dd	?
+q_kind		db	?
+q_el		db	TYPE qelem_pri dup(?)
+queue_rec	ends
+;
+queue_head	struc
+q_first		dd	?
+q_last		dd	?
+		db	?
+queue_head	ends
+;
+;
+namerec	struc
+;
+nlist		db	TYPE queue_head dup(?)
+nstrucp		dd	?
+nname		db	NAMELENGTH dup(?)
+;
+namerec	ends
+;
+;
+tlink_rec	struc
+;
+tlink		db	TYPE queue_rec dup(?)
+tlnext		dd	?	; timer task temp chain
+strucp		dd	?	; structure pointer
+tuserp		dd	?	; user parameter
+		IF	GROUPS
+tchain		db	TYPE queue_head dup(?)	; timer element chain
+		ENDIF
+telem		db	8 dup(?) ; timeout element (union)
+elkind		db	?	; element kind
+struckind	db	?	; structure kind
+tflags		db	?	; timer flags
+;
+tlink_rec	ends
+;
+;
+tcb	struc
+;
+cqueue		db	TYPE queue_rec dup(?)
+qhead		dd	?
+stkbot		dd	?	; stack bottom
+state		db	?	; task state
+flags		db	?	; task flags
+;
+t_sp	dw	?
+t_ss	dw	?
+t_ax	dw	?
+t_cx	dw	?
+t_dx	dw	?
+t_si	dw	?
+t_di	dw	?
+t_bp	dw	?
+t_es	dw	?
+t_ds	dw	?
+;
+timerq	db	TYPE tlink_rec dup(?)
+retptr	dd	?	; return value pointer
+retsize	dw	?	; return value size
+;
+save_func	dd	?
+rest_func	dd	?
+user_ptr	dd	?
+;
+	IF	GROUPS
+tgroup		dd	?	; group control block pointer
+homegroup	dd	?	; group control block pointer
+	ENDIF
+	IF	DOS
+sched_ent_func	dd	?
+t_indos		db	?	; in-dos flags
+t_new		db	?	; new task flag
+;
+;	caution: don't change the order of the following 3 items!
+base_psp	dw	?	; base PSP segment address
+psp_sssp	dd	?	; PSP ss:sp save area
+t_swap_area	db	DOSSWAPSIZE dup(?)	; save area for DOS-vars & Int23/24
+	ENDIF
+;
+	IF	TSK_NAMED
+tname	db	TYPE namerec dup(?)
+	ENDIF
+	IF	EMS
+t_ems_map	db	EMS_SAVE_SIZE dup(?)
+	ENDIF
+	IF	NDP
+ndpsave		db	TYPE ndp_rec dup(?)
+	ENDIF
+;
+tcb	ends
+;
+;
+gcb	struc
+;
+ghome		dd	?
+glevel		dd	?
+gbranch		dd	?
+gcreator	dd	?
+grp_exit_addr	dd	?
+gcreate_psp	dw	?
+gsave_psp	dw	?
+gsave_sssp	dd	?
+gnamelist	db	TYPE namerec dup(?)
+gmain_ptr	dd	?
+gremove		dd	?
+		IF	GROUPS
+gtelem_list	db	TYPE queue_head dup(?)
+gticker_list	db	TYPE queue_head dup(?)
+		ENDIF
+;
+		IF	TSK_DYNAMIC
+gpalloc		dd	?
+gpfree		dd	?
+		ENDIF
+gcb	ends
+;
+;
+flag		struc
+;
+fwait_set	db	TYPE queue_head dup(?)
+fwait_clear	db	TYPE queue_head dup(?)
+fstate		dw	?
+
+	IF	TSK_DYNAMIC
+flflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+fname	db	TYPE namerec dup(?)
+	ENDIF
+;
+flag		ends
+;
+;
+counter		struc
+;
+cwait_set	db	TYPE queue_head dup(?)
+cwait_clear	db	TYPE queue_head dup(?)
+cstate		dd	?
+;
+	IF	TSK_DYNAMIC
+ctflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+ctname	db	TYPE namerec dup(?)
+	ENDIF
+counter		ends
+;
+;
+resource	struc
+;
+rwaiting	db	TYPE queue_head dup(?)
+rowner		dd	?
+rcount		dw	?
+;
+	IF	TSK_DYNAMIC
+rsflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+rsname	db	TYPE namerec dup(?)
+	ENDIF
+
+resource	ends
+;
+;
+mailbox		struc
+;
+mwaiting	db	TYPE queue_head dup(?)
+mail_first	dd	?
+mail_last	dd	?
+;
+	IF	TSK_DYNAMIC
+mbflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+mbname	db	TYPE namerec dup(?)
+	ENDIF
+mailbox		ends
+;
+;
+pipe		struc
+;
+pwait_read	db	TYPE queue_head dup(?)
+pwait_write	db	TYPE queue_head dup(?)
+pwait_clear	db	TYPE queue_head dup(?)
+pbufsize	dw	?
+pfilled		dw	?
+pinptr		dw	?
+poutptr		dw	?
+pcontents	dd	?
+;
+	IF	TSK_DYNAMIC
+ppflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+ppname	db	TYPE namerec dup(?)
+	ENDIF
+pipe		ends
+;
+;
+wpipe		struc
+;
+wwait_read	db	TYPE queue_head dup(?)
+wwait_write	db	TYPE queue_head dup(?)
+wwait_clear	db	TYPE queue_head dup(?)
+wbufsize	dw	?
+wfilled		dw	?
+winptr		dw	?
+woutptr		dw	?
+wcontents	dd	?
+;
+	IF	TSK_DYNAMIC
+wpflags	db	?
+	ENDIF
+	IF	TSK_NAMED
+wpname	db	TYPE namerec dup(?)
+	ENDIF
+wpipe		ends
+;
+;
+glob_rec	struc
+;
+glb_id		db	8 dup(?)
+
+current_task	dd	?
+eligible_queue	db	TYPE queue_head dup(?)
+
+timer_queue	db	TYPE queue_head dup(?)
+watch_queue	db	TYPE queue_head dup(?)
+
+preempt		db	?
+pretick		db	?
+var_prior	db	?
+
+in_sched	db	?
+
+tick_factor	dw	?
+ticks_per_sec	dw	?
+ticker_chain	dd	?
+;
+stub_table	dd	?
+;
+	IF	TSK_DYNAMIC
+pkill_queue	db	TYPE queue_head dup(?)
+pkill_task	dd	?
+	ENDIF
+	IF	IBM
+hotkey_scan	db	TYPE queue_head dup(?)
+hotkey_noscan	db	TYPE queue_head dup(?)
+	ENDIF
+	IF	EMS
+ems_save	dd	?
+ems_rest	dd	?
+ems_savetsk	dd	?
+	ENDIF
+	IF	DOS
+emergency_exit	dd	?
+l_swap		dw	?
+dos_vars	dd	?
+dos_in_use	dd	?		; Adress of DOS in-use-flag
+	ENDIF
+	IF	GROUPS
+ggroup		db	TYPE gcb dup(?)
+	ELSE
+main_ptr	dd	?
+glb_remove	dd	?
+	IF	TSK_NAMED
+name_list	db	TYPE namerec dup(?)
+	ENDIF
+	ENDIF
+	IF	NDP
+ndp_present	db	?
+	ENDIF
+;
+glob_rec	ends
+;
+;
+tick_rec	struc
+;
+ticknext	dd	?
+ticklo		dw	?
+tickhi		dw	?
+	IF	TSK_DYNAMIC
+tickflags	db	?
+	ENDIF
+;
+tick_rec	ends
+;
+;
+hotflags_rec	struc
+hf_mask		db	?
+hf_value	db	?
+hotflags_rec	ends
+;
+hotkey_rec	struc
+kbflags1	db	TYPE hotflags_rec dup(?)
+kbflags2	db	TYPE hotflags_rec dup(?)
+kbflags3	db	TYPE hotflags_rec dup(?)
+scancode	db	?
+hotkey_rec	ends
+;
+;
+;	Stack setup relative to BP after switch_stack has been called
+;
+saved_regs	struc
+;
+		dd	?	; special return addr
+entry_flags	dw	?	; flags on entry to switch_stack
+caller_ip	dw	?	; IP from INT stack
+caller_cs	dw	?	; CS from INT stack
+caller_flags	dw	?	; flags from INT stack
+save_es		dw	?
+save_ds		dw	?
+save_bp		dw	?
+save_di		dw	?
+save_si		dw	?
+save_dx		dw	?
+save_ax		dw	?
+slot_sp		dw	?	; stack slot sp
+slot_idx	dw	?	; stack slot index
+save_cx		dw	?
+save_bx		dw	?
+;
+saved_regs	ends
+;
+;
+stc_saved	macro
+		or	byte ptr caller_flags[bp],1
+		endm
+;
+clc_saved	macro
+		and	byte ptr caller_flags[bp],0feh
+		endm
+;
+;	Flags for the T_INDOS field in the TCB
+;
+OWN_LOWER       =       1
+OWN_UPPER       =       2
+DOS_ENTERED	=	4
+;
+;---------------------------------------------------------------------
+;
+global_ext	macro
+		IF	SINGLE_DATA
+		extrn	tsk_glob_rec: byte
+		ELSE
+		extrn	tsk_global: dword
+		ENDIF
+		endm
+;
+		IFDEF	TC_HUGE
+;
+.tsk_data	macro
+CTASK_DATA	segment byte public 'DATA'
+		assume	ds:CTASK_DATA,es:CTASK_DATA
+@CTASK_DATA	equ	<CTASK_DATA>
+@data		equ	<CTASK_DATA>
+		endm
+;
+		ELSE
+;
+.tsk_data	macro
+		.data
+@CTASK_DATA	equ	<DGROUP>
+		assume	ds:@data,es:@data
+		endm
+;
+		ENDIF
+;
+		IF	NEAR_CODE
+;
+.tsk_code	macro
+		.code
+		endm
+;
+Globext		macro	lab
+		IF	CALL_PASCAL
+		extrn	pascal lab: near
+		ELSE
+		extrn	C lab: near
+		ENDIF
+		endm
+;
+CGlbext		macro	lab
+		extrn	C lab: near
+		endm
+;
+		ELSE
+;
+.tsk_code	macro
+CTASK_TEXT	segment word public 'CODE'
+@code		equ	<CTASK_TEXT>
+		assume	cs:CTASK_TEXT
+		endm
+;
+Globext		macro	lab
+		IF	CALL_PASCAL
+		extrn	pascal lab: far
+		ELSE
+		extrn	C lab: far
+		ENDIF
+		endm
+;
+CGlbext		macro	lab
+		extrn	C lab: far
+		endm
+;
+		ENDIF
+;
+		IF	LOCALS_FAR
+;
+Locext		macro	lab
+		IF	CALL_PASCAL
+		extrn	pascal lab: far
+		ELSE
+		extrn	C lab: far
+		ENDIF
+		endm
+;
+CLocext		macro	lab
+		extrn	C lab: far
+		endm
+;
+		ELSE
+;
+Locext		macro	lab
+		IF	CALL_PASCAL
+		extrn	pascal lab: near
+		ELSE
+		extrn	C lab: near
+		ENDIF
+		endm
+;
+CLocext		macro	lab
+		extrn	C lab: near
+		endm
+;
+		ENDIF
+;
+.tsk_ecode	macro
+	IFDEF	@CurSeg
+@CurSeg		ends
+	ELSE
+@curseg		ends
+	ENDIF
+		endm
+;
+.tsk_edata	macro
+	IFDEF	@CurSeg
+@CurSeg		ends
+	ELSE
+@curseg		ends
+	ENDIF
+		endm
+;
+.tsk_model	macro
+		.model	small,c
+		endm
+;
+Globalfunc	macro	name,pars
+		IF	NEAR_CODE
+		IF	CALL_PASCAL
+name		proc	near pascal pars
+		ELSE
+name		proc	near C pars
+		ENDIF
+		ELSE
+		IF	CALL_PASCAL
+name		proc	far pascal pars
+		ELSE
+name		proc	far C pars
+		ENDIF
+		ENDIF
+		endm
+;	
+CGlobalfunc	macro	name,pars
+		IF	NEAR_CODE
+name		proc	near C pars
+		ELSE
+name		proc	far C pars
+		ENDIF
+		endm
+;
+Localfunc	macro	name,pars
+		IF	LOCALS_FAR
+		IF	CALL_PASCAL
+name		proc	far pascal pars
+		ELSE
+name		proc	far C pars
+		ENDIF
+		ELSE
+		IF	CALL_PASCAL
+name		proc	near pascal pars
+		ELSE
+name		proc	near C pars
+		ENDIF
+		ENDIF
+		endm
+;	
+CLocalfunc	macro	name,pars
+		IF	LOCALS_FAR
+name		proc	far C pars
+		ELSE
+name		proc	near C pars
+		ENDIF
+		endm
+;
+Pubfunc		macro	name
+		IF	CALL_PASCAL
+		public	pascal name
+		ELSE
+		public	C name
+		ENDIF
+		endm
+;
+CPubfnc		macro	name
+		public	C name
+		endm
+;
+;-------------------------------------------------------------------
+;
+;	The following is a set of macros that allow calling an
+;	external routine without caring about the calling sequence
+;	(C or Pascal) in use. Usage is
+;
+;		callp	procname,<parameter list>
+;	as in
+;		callp	request_resource,<<ds,offset dosupper>,0,0>
+;
+;	Doubleword and Segment/Offset pairs must be grouped with an
+;	additional level of brackets.
+;
+;	The parameter list may contain the special character '#'
+;	as a prefix to a label to identify an offset, so the above
+;	example could be abbreviated to
+;
+;		callp	request_resource,<<ds,#dosupper>,0,0>
+;
+;	Also, the prefix '/' denotes an effective address, i.e. the
+;	LEA instruction is used to load the parameter value.
+;
+;
+;	The 'vpush' macro pushes a single value or a doubleword pair.
+;	It checks the type of parameter (constant or variable), and
+;	handles the offset shortcut '#'. Note that AX is destroyed
+;	when constants are pushed and the CPU is an 8086/88.
+;
+vpush	macro	val,val2
+	local	vrest,hash,slash
+cc_parcnt	=	cc_parcnt + 2
+hash	instr	1,<val>,<#>
+slash	instr	1,<val>,</>
+	IF	hash EQ 1		;; If hashmark prefix
+vrest	substr	<val>,2			;; Get real parameter
+	IF	@Cpu AND 2
+	push	offset vrest
+	ELSE
+	mov	ax,offset vrest
+	push	ax
+ax_is_zero	=	0
+	ENDIF
+	ELSEIF	slash EQ 1
+vrest	substr	<val>,2			;; Get real parameter
+	lea	ax,vrest
+	push	ax
+ax_is_zero	=	0
+	ELSEIF	(.TYPE val) AND 4	;; If it's a constant
+	IF	@Cpu AND 2
+	push	val
+	ELSE
+	IF	val
+	mov	ax,val
+ax_is_zero	=	0
+	ELSEIFE	ax_is_zero		;; Push 0 is handled special
+	xor	ax,ax
+ax_is_zero	=	TRUE
+	ENDIF
+	push	ax
+	ENDIF
+	ELSEIF	(.TYPE val) AND 10h	;; If it's a register
+	push	val			;; Push normal if register
+	ELSE
+	push	word ptr (val)		;; Push word if variable
+	ENDIF
+	IFNB	<val2>
+	vpush	val2			;; Do it again if second parameter
+	ENDIF
+	endm
+;
+;	The 'pushp' macro reverses the parameter list for the C calling
+;	sequence by calling itself recursively.
+;
+pushp	macro	p1,p2,p3,p4,p5,p6,p7,p8,p9,p10
+	IFNB	<p2>
+	pushp	<p2>,<p3>,<p4>,<p5>,<p6>,<p7>,<p8>,<p9>,<p10>
+	ENDIF
+	IFNB	<p1>
+	vpush	p1
+	ENDIF
+	endm
+;
+;	The 'callp' macro calls pushp or vpush depending on the 
+;	calling sequence, and re-adjusts the stack after the call
+;	for C.
+;
+callp	macro	name,pars
+cc_parcnt	=	0
+ax_is_zero	=	FALSE
+	IF	CALL_PASCAL
+	IRP	p,<pars>
+	vpush	p
+	ENDM
+	ELSE
+	pushp	pars
+	ENDIF
+	call	name
+	IF	NOT CALL_PASCAL AND cc_parcnt
+	add	sp,cc_parcnt
+	ENDIF
+	ENDM
+;
+;--------------------------------------------------------------------------
+;
+;	Checking mode support macros
+;
+CHECK_PTR_R	macro	sreg,reg,txt
+	local	ok,nok,str
+	IF	CHECKING
+	push	ax
+	mov	ax,sreg
+	or	ax,reg
+	jnz	ok
+	jmp	short nok
+str	db	txt,' - Invalid pointer: %FP',0ah,0
+nok:
+	callp	tsk_fatal_pmd,<<cs,#str>,<sreg,reg>>
+ok:
+	pop	ax
+	ENDIF
+	ENDM
+;
+;
+CHECK_PTR	macro	pntr,txt
+	local	ok,nok,str
+	IF	CHECKING
+	push	ax
+	mov	ax,word ptr (pntr)
+	or	ax,word ptr (pntr+2)
+	jnz	ok
+	jmp	short nok
+str	db	txt,' - Invalid pointer: %FP',0ah,0
+nok:
+	callp	tsk_fatal_pmd,<<cs,#str>,<pntr+2,pntr>>
+ok:
+	pop	ax
+	ENDIF
+	ENDM
+;
+;
+CHECK_TCBPTR_R	macro	sreg,reg,txt
+	local	ok,nok,str
+	IF	CHECKING
+	push	ax
+	mov	ax,sreg
+	or	ax,reg
+	jz	nok
+	cmp	sreg:cqueue.q_kind[reg],TYP_TCB
+	jne	nok
+	IF	TSK_NAMED
+	cmp	sreg:tname.nlist.q_kind[reg],TYP_TCB
+	je	ok
+	ENDIF
+	jmp	short nok
+str	db	txt,' - Invalid pointer: %FP',0ah,0
+nok:
+	callp	tsk_fatal_pmd,<<cs,#str>,<sreg,reg>>
+ok:
+	pop	ax
+	ENDIF
+	ENDM
+;
+;
+CHECK_TCBPTR	macro	pntr,txt
+	IF	CHECKING
+	push	ds
+	push	si
+	lds	si,pntr
+	CHECK_TCBPTR_R	ds,si,txt
+	pop	si
+	pop	ds
+	ENDIF
+	ENDM
+;
+;
+CHECK_EVTPTR_R	macro	sreg,reg,kind,txt
+	local	ok,nok,str
+	IF	CHECKING
+	push	ax
+	mov	ax,sreg
+	or	ax,reg
+	jz	nok
+	mov	al,kind
+	or	al,Q_HEAD
+	cmp	al,sreg:cqueue.q_kind[reg]
+	je	ok
+	jmp	short nok
+str	db	txt,' - Invalid pointer: %FP',0ah,0
+nok:
+	callp	tsk_fatal_pmd,<<cs,#str>,<sreg,reg>>
+ok:
+	pop	ax
+	ENDIF
+	ENDM
+;
+;
+CHECK_EVTPTR	macro	pntr,kind,txt
+	IF	CHECKING
+	push	ds
+	push	si
+	lds	si,pntr
+	CHECK_EVTPTR_R	ds,si,kind,txt
+	pop	si
+	pop	ds
+	ENDIF
+	ENDM
+;
+;
+CHECK_QHEAD_R	macro	sreg,reg,txt
+	local	ok,nok,str
+	IF	CHECKING
+	push	ax
+	mov	ax,sreg
+	or	ax,reg
+	jz	nok
+	test	sreg:cqueue.q_kind[reg],Q_HEAD
+	jnz	ok
+	jmp	short nok
+str	db	txt,' - Invalid pointer: %FP',0ah,0
+nok:
+	callp	tsk_fatal_pmd,<<cs,#str>,<sreg,reg>>
+ok:
+	pop	ax
+	ENDIF
+	ENDM
+;
+;
+CHECK_QHEAD	macro	pntr,txt
+	IF	CHECKING
+	push	ds
+	push	si
+	lds	si,pntr
+	CHECK_QHEAD_R	ds,si,txt
+	pop	si
+	pop	ds
+	ENDIF
+	ENDM
+;
+

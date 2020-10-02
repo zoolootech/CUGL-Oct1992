@@ -1,0 +1,62 @@
+#include <stdlib.h>
+#include <limits.h>
+#include <string.h>
+
+#include <windows.h>
+
+#include "extstr.h"
+
+char    **StringPointers;
+
+int LoadExternalStrings_(HANDLE ResourceFile);
+
+int LoadExternalStrings(HANDLE ResourceFile)
+    {
+    char    Message[256];
+
+    if(!LoadExternalStrings_(ResourceFile))
+        {
+        if(!LoadString(ResourceFile, 0, Message, 255))
+            strcpy(Message, "Can't load language strings!");
+        MessageBox(NULL, Message, NULL, MB_ICONSTOP);
+        return 0;
+        }
+    else
+        return 1;
+    }
+
+int LoadExternalStrings_(HANDLE ResourceFile)
+    {
+    char    *StringBuffer;
+    size_t  Offset, Length, SpaceLeft, BufferSize;
+    char    *LoadPoint;
+
+    StringPointers  = (char **)malloc(
+            sizeof(char*)*(1+WINEXT_LINES));
+    BufferSize      = WINEXT_CHARS;
+    StringBuffer    = (char *)malloc(
+            sizeof(char)*BufferSize);
+    LoadPoint   = StringBuffer;
+    SpaceLeft   = BufferSize-1;
+    for(Offset = 1; Offset < WINEXT_LINES; ++Offset)
+        {
+        if(SpaceLeft < 255)
+            {
+            if((UINT_MAX - 512) > BufferSize)
+                {
+                BufferSize  += 512;
+                StringBuffer    = (char *)realloc(
+                            StringBuffer, BufferSize);
+                if(StringBuffer == NULL)
+                    return 0;   /* FAILURE! */
+                }
+            else
+                return 0;   /* FAILURE! */
+ 
+            }
+        Length = LoadString(ResourceFile, Offset, LoadPoint, SpaceLeft);
+        StringPointers[Offset]  = LoadPoint;
+        LoadPoint   += Length+1;
+        }
+    return 1;   /* SUCCESS! */
+    }

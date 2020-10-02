@@ -1,0 +1,232 @@
+/*  VERSION 0002  (DATE: 28/04/87)  (TIME: 22:57)  */
+/*
+	e (qed) screen editor
+
+	(C) G. Nigel Gilbert, MICROLOGY, 1981
+
+	August-December 1981
+
+	Modified: Aug-Dec	1984:	BDS-C 'e'(vers 4.6a) to 'qe' (J.W. Haefner)
+			  March		1985:	BDS-C 'qe' to DeSmet-C 'qed' (J.W. Haefner)
+
+	FILE: qed5
+
+	FUNCTIONS: readfile, writefile, exists, scans, retag, format
+
+	PURPOSE: read and write files
+
+*/
+
+#include "qed.h"
+#define	GS	0x1d
+#define ESC	0x1b
+
+readfile(name)	/* read file 'name' and insert it after cursor*/
+char *name;
+{
+	int c, i, j, k, line, first, res;
+	char textb[LLIM];
+
+	if (fopen(name,fbuf) == FAIL) {
+		if (fopen(strcat(name,defext),fbuf) == FAIL) {
+			error("Can't find file");
+			name[0]='\0';
+			return(FAIL);
+			}
+		}
+	first=YES;
+	i=charn; 
+	line=cline;
+	for (j=charn, k=0; (textb[k]=text[j]); j++, k++);
+	do {
+		while (i < LLIM && ((c=egetc(fbuf)) != DFAIL) && (c != '\n')
+		&& (c != ENDFILE))
+ 		text[i++]=c;
+		if (text[i-1] == '\r') i--;
+		text[i]='\0';
+		if (c == ENDFILE) for (k=0; (text[i]=textb[k]) && i < LLIM; i++, k++);
+		if (first) {
+			altered=YES;
+			puttext();
+			first=NO;
+			res=YES;
+			}
+		else {
+			res=inject(line,text);
+			line++;
+			}
+		i=0;
+		} while (c != DFAIL && res != FAIL && c != ENDFILE);
+	fclose(fbuf);
+	gettext(cline);
+}
+
+writefile(from,to,name,nametoprint,exiting)
+int from, to, exiting;
+char *name, *nametoprint;
+{
+	int l, copying, copysecstart,copybytestart;
+	char c, *t, *getline();
+
+	puttext();
+	if (name[0] <= ' ') {
+		error("Bad name");
+		return FAIL;
+		}
+	if (fcreat(name,fbuf) == FAIL) {
+		error("Can't write file - directory full?");
+		return(FAIL);
+		}
+	if (expert) xprtmess("Saving ");
+	else putmess("Saving ");
+	putstr(nametoprint);
+	copying=NO;
+	if (exiting) to=lastread;
+	else if (to == lastl) to=loc(lastl,0);
+	for (l=from; l <= to; ) {
+		t=getline(l++);
+		while (*t) if(eputc(*t++,fbuf) == FAIL) goto diskfull;
+		if (l <= to ) {
+			if (eputc('\r',fbuf) == FAIL) goto diskfull;
+			if (eputc('\n',fbuf) == FAIL) goto diskfull;
+			}
+		}
+	if (exiting && ((lastl == UNKNOWN) || !goteof) ) {
+		copybytestart=SECSIZ-(textbuf->_nleft + SECSIZ)%SECSIZ;
+		if (eputc('\r',fbuf) == FAIL) goto diskfull;
+		if (eputc('\n',fbuf) == FAIL) goto diskfull;
+		copying=YES;
+		while ( (c=egetc(textbuf)) != ENDFILE && c != DFAIL)
+			if (eputc(c,fbuf) == FAIL) goto diskfull;
+		}
+#if CPM
+	if (eputc(ENDFILE,fbuf) == FAIL)goto diskfull;  /*CP/M only*/
+#endif
+	if (fflush(fbuf) == FAIL) goto diskfull;
+	if (fclose(fbuf) == FAIL) {
+		error("Can't close file");
+		goto reposition;
+		}
+	if (copying) fclose(textbuf);
+	return YES;
+diskfull:
+	error("Disk full");
+reposition:
+	if (copying) {
+		fclose(fbuf);
+		funlink(name);
+		textbuf->_nleft=0;
+		while (copybytestart--) egetc(textbuf);
+		}
+	return FAIL;
+}
+
+exists(name)
+char *name;
+{
+	char c;
+
+	c='y';
+	if (checkexists(name)) {
+		if (expert) xprtmess("OK to replace ");
+		else putmess("OK to replace ");
+		putstr(name); 
+		putstr(" ? ");
+		putch((c=getlow()));
+		putret(); 
+		}
+	return c == 'y';
+}
+
+checkexists(name)	/*return YES if file 'name' exists, else NO */
+char *name;
+{
+	int fd;
+	
+/*if (dskcheck(setjmp(dskerr)) != 0 || (fd=open(name,0)) == FAIL) return NO;*/
+	/* no setjmp just yet */ 
+	if ((fd=open(name,0)) == FAIL) return NO;
+	close(fd);
+	return YES;
+}
+
+scans(answer,maxlen)
+char *answer;
+int maxlen;
+{
+	char c;
+	int n, i;
+
+	maxlen--;
+	n=0;
+	while (n < maxlen) {
+		switch((c=getscankey())) {
+ 		case BACKSP		:
+		case DELLEFT_P	:
+			if (n) {
+				putch(BACKSP); 
+				putch(' ');
+				putch(BACKSP);
+				n--; 
+				answer--;
+				}
+			break;
+		case CR_P		:
+		case ESCKEY_P	:
+			n=maxlen; 
+			break;
+		case LEFTKEY_P	: 	/* pass this key code thru */
+			c = tran[LEFTKEY];
+			goto passthru;
+		case RETRIEVE_P	:
+			/*if (n == 0) {*/
+			if (*answer) {
+				while (*answer) {
+					dispch(*answer++);
+					n++;
+					}
+				break;
+				}
+			else {
+				c = tran[RETRIEVE];	/*if no answer, display the key code*/
+				goto passthru;
+				}
+		case GS		:			/* kludge to permit ESC in find/alter */
+			c=ESC;
+		default		:   
+passthru:	dispch(c);
+			*answer++=c; 
+			n++;
+			break;
+			}
+		}
+	*answer='\0';
+	putret();					/* set PARBIT of c back to 0 to */
+	return (c & ~PARBIT);		/* maintain compatibility with other calls*/
+}
+
+retag(name,tag)	/*puts a new suffix on a file name*/
+char *name, *tag;
+{
+	for (; *name && *name != '.'; name++);
+	if (!*name)*name='.';
+	for (++name; (*name=*tag); name++, tag++);
+}
+
+format(name)
+char *name;
+{
+	char tempname[FILELEN], *n, *tn;
+
+	if (!*name) return;
+	if (*(name+1) == ':') strcpy(tempname,name);
+	else {
+		tempname[0]=curdsk+'A';
+		tempname[1]=':';
+		name[FILELEN]='\0';
+		strcpy(&tempname[2],name);
+		}
+	for (n=name,tn=tempname; (*n=toupper(*tn++)); n++) if (*n == '.') break;
+	while (*n++) *n=tolower(*tn++);
+}
+

@@ -1,0 +1,190 @@
+/**********************************************************
+ * SAMPLE.C
+ * Profile Functions Demonstration 
+ * (c) Stuart Browning,1990
+ */
+
+#define LINT_ARGS
+#define NOMINMAX
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <windows.h>
+#include "sample.h"
+
+HANDLE    hInst;             
+
+long FAR PASCAL MainWindowProc(HWND,unsigned,WORD,LONG);
+BOOL FAR PASCAL About(HWND,unsigned,WORD,LONG);
+
+short xScreen,yScreen;
+int   xPos,yPos,xSize,ySize;
+
+/***********************************************************
+ * WinMain()
+ */
+int PASCAL WinMain(hInstance,hPrevInstance,lpCmdLine,nCmdShow)
+    HANDLE hInstance;
+    HANDLE hPrevInstance;
+    LPSTR  lpCmdLine;
+    int nCmdShow;
+    {
+    WNDCLASS WndClass;
+    HWND hWnd;
+    MSG msg;
+
+    hInst=hInstance;                            
+    /*
+     * Register Main Window Class
+     */
+    if (!hPrevInstance){
+       WNDCLASS WndClass;
+       WndClass.lpszClassName = (LPSTR)"MainWindow";
+       WndClass.hInstance     = hInstance;
+       WndClass.lpfnWndProc   = MainWindowProc;
+       WndClass.style         = CS_HREDRAW|CS_VREDRAW;
+       WndClass.hbrBackground = GetStockObject(LTGRAY_BRUSH); 
+       WndClass.hIcon         = NULL;
+       WndClass.lpszMenuName  = (LPSTR)"MainMenu";
+       WndClass.hCursor       = LoadCursor(NULL,IDC_ARROW);
+       WndClass.cbClsExtra    = NULL;
+       WndClass.cbWndExtra    = NULL;
+       if (!RegisterClass(&WndClass))
+          return(NULL);
+       }
+    /*
+     * Get System Metrics information
+     */
+    xScreen = GetSystemMetrics(SM_CXSCREEN);
+    yScreen = GetSystemMetrics(SM_CYSCREEN);
+    /*
+     * Get main form window position from WIN.INI  
+     */
+    xPos=GetProfileInt("SAMPLE","xPos",3);
+    yPos=GetProfileInt("SAMPLE","yPos",3);
+    xSize=GetProfileInt("SAMPLE","xSize",CW_USEDEFAULT);
+    ySize=GetProfileInt("SAMPLE","ySize",0);
+    /*
+     * Check for crazy settings in WIN.INI
+     */
+    if (xSize<(xScreen/5))
+        xSize=CW_USEDEFAULT;
+    if (ySize<(yScreen/5))
+        ySize=CW_USEDEFAULT;
+    /*
+     * Create Main Window
+     */
+    hWnd=CreateWindow("MainWindow",            
+                      "Profile Functions Demonstration",    
+                      WS_OVERLAPPEDWINDOW, 
+                      xPos,  
+                      yPos,  
+                      xSize, 
+                      ySize, 
+                      NULL,                
+                      NULL,                
+                      hInstance,           
+                      NULL);               
+    if (!hWnd)
+      return(NULL);
+    /*
+     * Message Loop
+     */
+    while (GetMessage(&msg,NULL,0,0)){   
+       TranslateMessage(&msg);
+       DispatchMessage(&msg);
+       }
+    return (msg.wParam);
+    }
+/**********************************************************
+ * MainWindowProc()
+ */
+long FAR PASCAL MainWindowProc(hWnd,message,wParam,lParam)
+    HWND hWnd;
+    unsigned message;
+    WORD wParam;
+    LONG lParam;
+    {
+    switch (message){
+       case WM_CREATE:
+            ShowWindow(hWnd,SW_SHOWNORMAL);
+            UpdateWindow(hWnd);
+            break;
+       case WM_COMMAND:
+            switch(wParam){
+                case IDM_ABOUT:
+                     {
+                     FARPROC lpfn;
+                     lpfn=MakeProcInstance(About,hInst);
+                     DialogBox(hInst,"ABOUT",hWnd,lpfn);
+                     FreeProcInstance(lpfn);
+                     }
+                     break;
+                case IDM_EXIT:
+                     SendMessage(hWnd,WM_CLOSE,0,0L);
+                     break;
+                default:break;
+                }
+            break;
+       case WM_ENDSESSION:
+       case WM_CLOSE:
+            SetCursor(LoadCursor(NULL,IDC_WAIT));
+            /*
+             * Save Window Position & Size 
+             */
+            if(!IsIconic(hWnd)){
+               char buf[10];
+               RECT Rect;
+               GetWindowRect(hWnd,&Rect);
+               itoa(Rect.left,buf,10);
+               WriteProfileString("SAMPLE","xPos",buf);
+               itoa(Rect.top,buf,10);
+               WriteProfileString("SAMPLE","yPos",buf);
+               xSize=Rect.right-Rect.left;
+               itoa(xSize,buf,10);
+               WriteProfileString("SAMPLE","xSize",buf);
+               ySize=Rect.bottom-Rect.top;
+               itoa(ySize,buf,10);
+               WriteProfileString("SAMPLE","ySize",buf);
+               }
+            DestroyWindow(hWnd);
+            break;
+       case WM_DESTROY:
+            PostQuitMessage(0);
+            break;
+       default:return(DefWindowProc(hWnd,
+                                    message,
+                                    wParam,
+                                    lParam));
+       }
+    return(NULL);
+    }
+/**********************************************************
+ * About()
+ */
+BOOL FAR PASCAL About(hDlg,message,wParam,lParam)
+   HWND hDlg;
+   unsigned message;
+   WORD wParam;
+   LONG lParam;
+   {
+   switch (message){
+        case WM_CLOSE:
+             SendMessage(hDlg,WM_COMMAND,ID_OK,0L); 
+             break;
+        case WM_COMMAND:
+             switch(wParam){
+                case ID_OK:
+                     EndDialog(hDlg,TRUE);
+                     break;
+                default:return(FALSE);
+                }
+             break;
+        default:return(FALSE);
+        }
+    return(TRUE);
+    }
+
+
+
+

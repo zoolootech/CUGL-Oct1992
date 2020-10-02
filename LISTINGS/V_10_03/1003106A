@@ -1,0 +1,216 @@
+
+ /************************************************************
+  *  Program: CMENU Menu Compiler
+  *  Module: cmenu3.c
+  *      Menu Compiler:
+  *      Token Processing Functions
+  *  Written by: Leor Zolman, 7/91
+  ************************************************************/
+ 
+ #include "cmenu.h"
+ #include "ccmenu.h"
+ 
+ #include <ctype.h>
+ 
+ static int unget_flag = FALSE;
+ static int unget_token;
+ static char unget_tparam[MAX_CMD];
+ static int unget_vparam;
+ 
+ static int quoted_text;
+ 
+ #if __STDC__
+ char *getword(void);
+ int matchkey(char *);
+ #else
+ char *getword();
+ int matchkey();
+ #endif
+ 
+ /************************************************************
+  * ungettok():
+  *  Push a token back into the input stream, to
+  *  be returned by the following call to gettok().
+  *  Only one level of push-back is supported; any attempt to
+  *  push back a token when there is already one pushed back
+  *  draws an "internal error" diagnostic.
+  ************************************************************/
+ 
+ Void ungettok(tok)
+ int tok;
+ {
+     if (unget_flag)                 /* can't "unget" more than 1 item! */
+         fatalerr("internal error: ungettok() overflow");
+     
+     unget_flag = TRUE;
+     unget_token = tok;
+     unget_vparam = vparam;
+     strcpy(unget_tparam, tparam);
+     return;
+ }
+ 
+ 
+ /************************************************************
+  * gettok():
+  *  Read a token from the source input stream.
+  *  If the token is a reserved word, the appropriate token
+  *      value is returned.
+  *  If the token is a string, the global "tparam" is set
+  *      to the text of the string. White space within the
+  *      string is only recognized if double quote ("...")
+  *      characters are used to delimit the string.
+  *      T_STRING is returned.
+  *  If the token is a numeric value, the global "vparam"
+  *      is set to the integer value specified, and
+  *      T_VALUE is returned.
+  *  Returns T_EOF on end-of-file.
+  ************************************************************/
+ 
+ int gettok()
+ {
+     register c;
+     char nexttok[MAX_CMD];
+     char *wordp;
+     
+     if (unget_flag)                    /* was a token "pushed back"?   */
+     {                          /* yes. set the pushed-back values and  */
+         vparam = unget_vparam;                         /* attributes   */
+         strcpy(tparam, unget_tparam);                  /* clear the    */
+         unget_flag = FALSE;                            /* flag         */
+         return unget_token;                    /* return pushed token  */
+     }
+     
+     *tparam = '\0';                                /* clear parameter  */
+     vparam = 0;                                    /* value registers  */
+ 
+     if (!*(wordp = getword()))                     /* get a token.     */
+         return token = T_EOF;                      /* End of file      */
+     
+     if (quoted_text)                               /* string enclosed  */
+     {                                              /* in quotes?       */
+         strcpy(tparam, wordp);
+         return T_STRING;
+     }
+ 
+     if (!strcmp(wordp, ":"))                       /* colon is special */
+         return T_COLON;                            /* (non-alphabetic) */
+ 
+     if (c = matchkey(wordp))                       /* reserved word?   */
+         return c;                                  /* yes, just return */
+ 
+     if (isdigit(*wordp))                       /* handle numeric value */
+     {
+         vparam = atoi(wordp);
+         return T_VALUE;
+     }
+     else
+     {
+         strcpy(tparam, wordp);
+         return T_STRING;
+     }
+ }
+ 
+ 
+ /************************************************************
+  * getword():
+  *  Read the next syntactic object from the input stream,
+  *  and return a pointer to it.
+  *  Return pointer to a null string on EOF.
+  *  If object is a quoted string, drop the quotes and
+  *      set the quoted_text flag (preserve whitespace).
+  *  Otherwise strip all whitespace, commas and comments,
+  *      return pointer to next word/number.
+  *  Track current line number by incrementing lineno
+  *      on each newline encountered.
+  ************************************************************/
+ 
+ char *getword()
+ {
+     static char tok[MAX_CMD];
+     char quote_char;
+     register c,i;
+     
+     quoted_text = FALSE;
+     *tok = '\0';
+ 
+     while ((c = getc(fp)) != EOF)
+     {
+         if (c == '\n')                         /* bump line number if  */
+             lineno++;                          /* newline encountered  */
+         
+         if (isspace(c))                        /* skip all whitespace  */
+             continue;
+ 
+         if (c == ',' || c == ';')              /* legal separators: ,; */
+             continue;
+                 
+         if (c == ':')                          /* special case: colon  */
+             return ":";
+         
+         if (c == '#')                          /* process comment      */
+         {                                  /* wait for newline or EOF  */
+             while(c = getc(fp))
+             {
+                 if (c == EOF)
+                     break;
+                 if (c == '\n')
+                 {
+                     lineno++;
+                     break;
+                 }
+             }
+             continue;                          /* then get next token  */
+         }
+         
+         if (c == '"' || c == '\'')             /* quoted string?       */
+         {
+             quoted_text = TRUE;
+             quote_char = c;
+             for (i = 0; ;i++)
+             {
+                 switch (c = getc(fp))
+                 {
+                     case '\n':
+                         fatalerr("Unterminated string");
+                         return NULL;
+                         
+                     case EOF:
+                         fatalerr("Unterminated string (line %d)",
+                                 lineno);
+                         return NULL;
+                     
+                     case '"':
+                     case '\'':
+                         if (c == quote_char)
+                         {
+                             tok[i] = '\0';
+                             return tok;
+                         }
+ 
+                     default:
+                         if (i == MAX_CMD)
+                         {
+                             tok[i - 1] = '\0';
+                             fatalerr("String too long (max %d chars)",
+                                 MAX_CMD);
+                             return NULL;
+                         }
+                         tok[i] = c;
+                 }
+             }
+         }
+         
+         tok[0] = c;
+         for (i = 1; (c = getc(fp)) != EOF; i++)
+             if (isspace(c) || c == ';' || c == ','
+                     || c == ':')
+                 break;
+             else
+                 tok[i] = tolower(c);
+         tok[i] = '\0';
+         ungetc(c, fp);
+         break;
+     }
+     return tok;
+ }
+ 

@@ -1,0 +1,103 @@
+/*  chckstck.c
+ *
+ *  Jerzy Tomasik, 09-Jun-1991
+ *
+ *  Utility functions for determining unused stack space.
+ *  Supports Microsoft and Turbo C
+ */
+
+#include <stdlib.h>
+#include <stdio.h>
+
+
+#if defined( _MSC_VER )
+
+#include <malloc.h>
+
+extern char end;            /* bottom of Microsoft stack */
+static char marker = 'J';   /* "signature" byte */
+
+
+/*  determine unused stack space, normally this function
+ *  is called at program termination, but it can be
+ *  called at other times.
+ *  Microsoft version
+ */
+unsigned short unused_stack(void)
+    {
+    unsigned short unused = 0;
+    char *ptr;
+
+    ptr = &end;
+
+    while(*ptr++ == marker)
+        unused++;
+
+    return(unused);
+    }
+
+
+/*  "paint" the stack with the signature byte */
+void spray_stack(void)
+    {
+    char *ptr, *stack_top;
+
+    stack_top = &end + stackavail();
+    ptr = &end;
+
+    do
+        {
+        *ptr++ = marker;
+        } while( ptr < stack_top);
+
+    }
+
+#elif defined( __TURBOC__ )
+
+#include <dos.h>
+
+static char marker = 'J';   /* "signature" byte */
+static char far *bottom;
+
+/*  determine unused stack space, normally this function
+ *  is called at program termination, but it can be
+ *  called at other times.
+ *  Turbo C version
+ */
+void spray_stack(void)
+    {
+    char far *ptr;
+
+#if defined( __SMALL__ ) || defined( __MEDIUM__ )
+
+    extern unsigned int _stklen;
+
+    ptr = (char *) MK_FP( _DS, (_SP - 0x100));
+    bottom  = (char *) MK_FP( _DS, (0xFFFF - _stklen));
+
+#elif defined( __COMPACT__ ) || defined( __LARGE__ )
+
+    ptr = (char *) MK_FP( _SS, (_SP - 0x100));
+    bottom  = (char *) MK_FP( _SS, 0x00 );
+
+#endif
+
+    for( ; ptr > bottom; *ptr--  = marker )
+        ;
+
+    }
+
+unsigned short unused_stack(void)
+    {
+    unsigned short unused = 0;
+    char far *ptr;
+
+    ptr = bottom + 1;
+
+    while(*ptr++ == marker)
+        unused++;
+
+    return(unused);
+    }
+
+#endif

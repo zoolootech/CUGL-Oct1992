@@ -1,0 +1,207 @@
+LISTING TWO
+
+'  ษอออออออออออออออออออออออออออออออออออออออออออออออออออป
+'  บ  Background task algorithm:                       บ
+'  บ                                                   บ
+'  บ  Entry:                                           บ
+'  บ     Using a histogram, display the array          บ
+'  บ                                                   บ
+'  บ     If a key has been pressed,                    บ
+'  บ        Process key press using line input routine บ
+'  บ                                                   บ
+'  บ  Return to Foreground task                        บ
+'  บ                                                   บ
+'  ศอออออออออออออออออออออออออออออออออออออออออออออออออออผ
+
+
+
+
+    '--- Constants
+    CONST FALSE = 0, TRUE = NOT FALSE
+    CONST MaxInt = 32767
+
+    CONST ArrayLow = 0, ArrayHigh = 9
+
+    CONST BarChar$ = "Ü"' character code 220
+
+  
+
+    '--- The default data type will be integers
+    DEFINT A-Z
+    '$DYNAMIC
+
+
+
+    '--- Procedures and Function declarations
+    DECLARE FUNCTION ScreenLoc (i AS INTEGER)
+    DECLARE SUB CheckForOverflow ()
+    DECLARE SUB ProcessKey (InputLine AS STRING, Ready AS INTEGER)
+    DECLARE SUB UpdateScreen ()
+  
+    DECLARE FUNCTION RandomNumber ()
+
+
+
+  
+    COMMON SHARED Array() AS INTEGER
+    COMMON SHARED Quit
+    COMMON SHARED ScreenConst
+
+REM $STATIC
+'$Page
+'
+'
+SUB BackgroundTask
+    '  This is the background task.
+
+
+    '--- update the screen
+    UpdateScreen
+
+
+    '--- check input to see if we need to change
+    '---    the screen scale or quit the program
+    ProcessKey InputLine$, Ready
+    IF Ready THEN
+        IF INT(VAL(InputLine$)) = 0 THEN
+            Quit = LEFT$(LCASE$(InputLine$), 1) = "q"
+        ELSE
+            ScreenConst = VAL(InputLine$)
+        END IF
+    END IF
+
+      
+    '--- see if the bar is about to run off the
+    '---    right side of the screen
+    CheckForOverflow
+
+
+END SUB' BackgroundTask
+
+'$Page
+'
+'
+SUB CheckForOverflow
+    '  Checks for screen overflow on the right side of
+    '  the screen.  Overflow is where the bar chart
+    '  reaches the 70th column.  NOTE: This procedure
+    '  affects the variable "Quit"
+
+
+    FOR i = ArrayLow TO ArrayHigh
+        Quit = Quit OR (ScreenLoc(i) > 70)
+    NEXT i
+
+                        
+END SUB' CheckForOverflow
+
+'$Page
+'
+'
+SUB ProcessKey (InputLine AS STRING, Ready AS INTEGER) STATIC
+    ' Processes any keyboard inputs; simulates the
+    ' LINE INPUT function.  NOTE: The only control key
+    ' it processes is [Enter].
+    ' STATIC definition is required to maintain the
+    ' values of the variables in this procedure.
+
+
+    '--- must save cursor position to prevent side
+    '       effects of the dual tasks from messing up
+    '       the display
+    OldX = POS(0)
+    OldY = CSRLIN
+
+
+    '--- see if a key is ready
+    InputChar$ = INKEY$
+
+    '--- if not, toggle cursor
+    IF InputChar$ = "" THEN
+        CursorOn = NOT CursorOn
+      
+        LOCATE 6, 53 + LEN(TempInput$)
+        IF CursorOn THEN
+            PRINT "_";
+        ELSE
+            PRINT " ";
+        END IF
+
+    '--- otherwise, process the key
+    ELSE
+        DO
+            IF ASC(InputChar$) = 13 THEN
+                InputLine = TempInput$
+                Ready = TRUE
+                TempInput$ = ""
+                LOCATE 6, 53
+                PRINT SPACE$(LEN(InputLine) + 1);
+            ELSE
+                LOCATE 6, 53 + LEN(TempInput$)
+                PRINT InputChar$
+                Ready = FALSE
+                TempInput$ = TempInput$ + InputChar$
+            END IF
+
+            InputChar$ = INKEY$
+
+        LOOP UNTIL InputChar$ = ""
+      
+       
+        '--- print the character and move the cursor
+        LOCATE 6, 53 + LEN(TempInput$)
+        PRINT InputChar$; "_";
+
+    END IF
+
+
+    '--- restore old cursor position 
+    LOCATE OldY, OldX
+
+
+END SUB' ProcessKey
+
+DEFSNG A-Z
+DEFINT A-Z
+'$Page
+'
+FUNCTION ScreenLoc (i AS INTEGER)
+
+
+    ScreenLoc = Array(i) / MaxInt * 80 * ScreenConst
+
+
+END FUNCTION' ScreenLoc
+
+'$Page
+'
+'
+SUB UpdateScreen
+
+    '--- must save cursor position to prevent side
+    '       effects of the dual tasks from messing up
+    '       the display
+    OldX = POS(0)
+    OldY = CSRLIN
+
+
+    LOCATE 6, 15
+    PRINT ScreenConst
+
+
+    '--- make a bar for each element in the array
+    FOR i = ArrayLow TO ArrayHigh
+
+        LOCATE 10 + i, 5
+        PRINT STRING$(ScreenLoc(i), BarChar$); Array(i)
+
+    NEXT i
+
+
+    '--- restore old cursor position
+    LOCATE OldY, OldX
+
+
+END SUB' UpdateScreen
+
+

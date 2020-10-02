@@ -1,0 +1,107 @@
+
+
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-Begin Listing 1-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+/*****************************************************/
+/* combo.c                                           */
+/* -- DLL to patch ListBox of ComboBox.              */
+/*****************************************************/
+
+#define NOCOMM
+#include <windows.h>
+#include "combo.h"
+
+FARPROC lpfnCombo;
+HANDLE  hmemUser;
+
+typedef struct
+    {
+    WORD    rgw[31];
+    HWND *  phwnd;
+    } LBW;  /* List Box Window handle. */
+
+#define szComboListClass    "ComboLBox"
+
+LONG    FAR PASCAL  ComboFilter(WORD, WORD, WORD,
+                      DWORD);
+int     FAR PASCAL  LibMain(HANDLE, WORD, WORD, LPSTR);
+int     FAR PASCAL  WEP(short);
+
+int FAR PASCAL
+LibMain(HANDLE hins, WORD ds, WORD cbHeap, LPSTR lsz)
+/*****************************************************/
+/* -- hins      : This library's instance.           */
+/* -- ds        : The library's default data segment */
+/* -- cbHeap    : Size of out local heap.            */
+/* -- lsz       : Command line invoked with.         */
+/*****************************************************/
+    {
+    WORD        wVersion    = GetVersion();
+    WNDCLASS    wcs;
+
+    /* Only need patch for version 3.0. */
+    if (LOBYTE(wVersion) != 3 || HIBYTE(wVersion) != 0)
+        return FALSE;
+
+    /* Get USER's default data segment. */
+    if ((hmemUser = LoadLibrary("user.exe")) == 0)
+        return FALSE;
+
+    /* Superclass the ComboBox ListBox class. */
+    GetClassInfo(NULL, szComboListClass, &wcs);
+    lpfnCombo = (FARPROC)wcs.lpfnWndProc;
+    UnregisterClass(szComboListClass, NULL);
+    wcs.lpfnWndProc = ComboFilter;
+    RegisterClass(&wcs);
+
+    return TRUE;
+    }
+
+int FAR PASCAL
+WEP(short wCode)
+/*****************************************************/
+/* -- The usual do-nothing stub.                     */
+/*****************************************************/
+    {
+    return FALSE;
+    }
+
+LONG FAR PASCAL
+ComboFilter(WORD hwnd, WORD wm, WORD wmp, DWORD lwmp)
+/*****************************************************/
+/* -- Superclasser for ComboBox ListBoxes.           */
+/* -- hwnd      : Main window.                       */
+/* -- wm        : Message type.                      */
+/* -- wmp, lwmp : Message parameters.                */
+/*****************************************************/
+    {
+    if (wm == WM_SHOWWINDOW && wmp == 0)
+        {
+        WORD    dsUser  = HIWORD(GlobalLock(hmemUser));
+        WORD    dsLocal;
+        HWND    hwndCombo;
+        HWND    hwndParent;
+
+        _asm    mov dsLocal, ds;    /* Save ds. */
+        _asm    mov ds, dsUser;     /* Get USER ds. */
+
+        /* Get main combo window. so we can extract */
+        /* the control id used to notify our owner. */
+        hwndCombo = *((LBW *)hwnd)->phwnd;
+
+        _asm    mov ds, dsLocal;    /* Restore ds. */
+
+        /* In case of REAL mode. */
+        GlobalUnlock(hmemUser);
+        hwndParent =
+          GetWindowWord(hwndCombo, GWW_HWNDPARENT);
+        if (hwndCombo != NULL &&
+          IsWindowVisible(hwndParent))
+            SendMessage(hwndParent, WM_COMMAND,
+              GetWindowWord(hwndCombo, GWW_ID),
+              MAKELONG(hwndCombo, CBN_COLLAPSE));
+        }
+    return CallWindowProc(lpfnCombo, hwnd, wm, wmp,
+        lwmp);
+    }
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-End   Listing 1-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=
+

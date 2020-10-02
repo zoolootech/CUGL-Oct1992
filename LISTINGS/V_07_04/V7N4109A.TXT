@@ -1,0 +1,188 @@
+Listing 1
+
+
+create database task;
+
+    database created.
+
+create table tasks
+(
+    item_nosmallint,
+    description     char(56),
+    due_date        date,
+    start_date      date,
+    hours  smallint,
+    status char(8),
+    who    char(10)
+);
+
+    table created.
+
+create unique index taskind on tasks (item_no);
+
+    index created.
+
+delete from tasks;
+
+    1 row(s) deleted.
+
+insert into tasks
+    (item_no,description,due_date,start_date,hours,status,who) 
+values
+    (1,"baseline","01/01/90","01/01/89",1000,"on time","all");
+
+    1 row(s) inserted.
+
+select * from tasks;
+
+    item_no      1
+    description  baseline
+    due_date     01/01/1990
+    start_date   01/01/1989
+    hours        1000
+    status       on time
+    who all
+
+    1 row(s) retrieved.
+
+insert into tasks
+    (item_no,description,due_date,start_date,hours,status,who) 
+values
+    (2,"cleanup","12/31/89","12/01/89",100,"scheduled","all");
+
+    1 row(s) inserted.
+
+select * from tasks;
+
+    item_no      1
+    description  baseline
+    due_date     01/01/1990
+    start_date   01/01/1989
+    hours        1000
+    status       on time
+    who all
+
+    item_no      2
+    description  cleanup
+    due_date     12/31/1989
+    start_date   12/01/1989
+    hours        100
+    status       schedule
+    who all
+
+    2 row(s) retrieved.
+
+update tasks set status = <169>late<170> where item_no = 1;
+
+    1 row(s) updated.
+
+select * from tasks;
+
+    item_no      1
+    description  baseline
+    due_date     01/01/1990
+    start_date   01/01/1989
+    hours        1000
+    status       late
+    who all
+
+    item_no      2
+    description  cleanup
+    due_date     12/31/1989
+    start_date   12/01/1989
+    hours        100
+    status       schedule
+    who all
+
+    2 row(s) retrieved.
+
+delete from tasks where item_no = 2;
+
+    1 row(s) deleted.
+
+select * from tasks;
+
+    item_no      1
+    description  baseline
+    due_date     01/01/1990
+    start_date   01/01/1989
+    hours        1000
+    status       late
+    who all
+
+    1 row(s) retrieved.
+
+
+
+Listing 2
+
+struct sqlca_s 
+{
+    long sqlcode; /* error message number */
+    char sqlerrm[72]; /* error message info */
+    char sqlerrp[8];
+    long sqlerrd[6];
+        /* 0 - reserved */
+        /* 1 - serial value after insert */
+        /* 2 - number of rows processed */
+        /* 3 - reserved */
+        /* 4 - offset into string with error */
+        /* 5 - rowid after insert */
+    struct sqlcaw_s
+    {
+        char sqlwarn0; /* = W if any sqlwarn[1-7] = W */
+        char sqlwarn1; /* = W on truncation occurred  */
+        char sqlwarn2; /* = W for null value returned */
+        char sqlwarn3; /* = W if select list != into list */
+        char sqlwarn4; /* = W if no where clause */
+        char sqlwarn5; /* reserved */
+        char sqlwarn6; /* reserved */
+        char sqlwarn7; /* reserved */
+    };
+    struct sqlcaw_s sqlwarn;
+};
+extern struct sqlca_s sqlca;
+
+
+
+
+
+
+#include <stdio.h>
+
+$include sqlca; 
+$include sqlda;
+
+$char *ptr; 
+$char *who; 
+$char itemno[8]; 
+$char status[12];
+
+main(argc, argv) 
+int argc; 
+char *argv[]; 
+{
+    ptr = "select status, item_no from customer where who matches ?";
+    who = argv[1];
+    $database task;
+    if (!sqlca.sqlcode)
+        $prepare s_name from $ptr;
+    if (!sqlca.sqlcode)
+        $declare kursor cursor for s_name;
+    if (!sqlca.sqlcode)
+        $open kursor using $who;
+    if (!sqlca.sqlcode)
+    {
+        for ( ; ; )
+        {
+   $fetch kursor into $status, $itemno;
+   if (sqlca.sqlcode)
+       break;
+   printf("%s %s\n", status, itemno);
+        }
+        $close kursor;
+    }
+    else
+        printf("ESQL command error %ld\n", sqlca.sqlcode);
+ }
+

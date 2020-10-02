@@ -1,0 +1,124 @@
+#include <dos.h>
+#include "windows.h"
+/*
+******************************************************************
+Title:      TSRWIN.C - Windows Component of TSR Interface
+Author:     Thomas W. Olsen
+Version:    3.0
+Compiler:   Microsoft C 6.0
+            cl /c /AL /Gsw /W3 /Oas /Zpe /Zi tsrwin.c
+            link /CO /NOD tsrwin,,, libw llibcew kernel, tsrwin.def
+            rc tsrwin.exe
+******************************************************************
+*/
+long FAR    PASCAL WindowProc(HWND hWnd, unsigned message, WORD wParam, LONG lParam);
+int         PASCAL SetSelectorBase(int, DWORD);
+int         PASCAL SetSelectorLimit(int, DWORD);
+HANDLE      PASCAL AllocateSelector(unsigned segment, unsigned offset, DWORD length);
+
+int PASCAL WinMain(HANDLE hInst, HANDLE hPrevInst, LPSTR lpCmdLine, int numCmdShow )
+{
+    MSG       msg;
+    HWND      hWnd;
+    HDC       hContext;
+    HANDLE    selector = 0;
+    LPSTR     lpBuffer = NULL;
+    WNDCLASS  wc;
+    union     REGS regs;
+
+    /************************* Setup Window ************************/
+
+    wc.style         = NULL;
+    wc.lpfnWndProc   = WindowProc;
+    wc.cbClsExtra    = 0;
+    wc.cbWndExtra    = 0;
+    wc.hInstance     = hInst;
+    wc.hIcon         = LoadIcon(NULL, IDI_APPLICATION);
+    wc.hCursor       = LoadCursor(NULL, IDC_ARROW);
+    wc.hbrBackground = GetStockObject(WHITE_BRUSH); 
+    wc.lpszMenuName  = NULL;
+    wc.lpszClassName = "TsrWinClass";
+
+    if (!RegisterClass(&wc))
+        return(FALSE);
+
+    hWnd = CreateWindow( "TsrWinClass", "Windows & TSR Example",
+                          WS_OVERLAPPEDWINDOW, CW_USEDEFAULT,
+                          CW_USEDEFAULT, CW_USEDEFAULT,
+                          CW_USEDEFAULT, NULL, NULL, hInst, NULL );
+    if (!hWnd)
+        return (FALSE);
+
+    ShowWindow( hWnd, numCmdShow );
+    hContext = GetDC( hWnd );                   /* Need Display Context */
+
+    /*************************** Call TSR **************************/
+
+    regs.x.ax = 0xBEEF;                         /* AX = Multiplex Handle */
+    regs.x.bx = 0;
+    int86(0x2F, &regs, &regs);                  /* Call DOS App via INT 2FH */
+
+    /************************ Display Buffer ***********************/
+
+    if (regs.x.ax != 0xBEEF)                    /* Where's the Beef? */
+    {
+        if (GetWinFlags() & WF_PMODE)           /* Running in Protected Mode? */
+        {
+            selector = AllocateSelector(regs.x.dx, regs.x.ax, (DWORD) regs.x.cx);
+            lpBuffer = (LPSTR) MAKELONG(0, selector);
+        }
+        else                                    /* No ... Must Be Real Mode */
+            lpBuffer = (LPSTR) MAKELONG(regs.x.ax, regs.x.dx);
+
+        if (lpBuffer)
+            TextOut( hContext, 0, 0, lpBuffer, regs.x.cx ); /* Print Buffer */
+
+        if (selector)                           /* If Selector Allocated, */
+            FreeSelector(selector);             /* Free it ... Demo's Over */
+    }
+    else
+    {
+        lpBuffer = "TSR Not Loaded.";
+        TextOut( hContext, 0, 0, lpBuffer, lstrlen(lpBuffer) );
+    }
+
+    ReleaseDC( hWnd, hContext );                /* Free Display Context */
+    UpdateWindow( hWnd );
+
+    while (GetMessage(&msg, NULL, NULL, NULL))  /* Typical Message Loop */
+    {
+        TranslateMessage(&msg);
+        DispatchMessage(&msg);
+    }
+    return (msg.wParam);
+}
+
+long FAR PASCAL WindowProc(HWND hWnd, unsigned message, WORD wParam, LONG lParam)
+{
+    switch (message)
+    {
+        case WM_DESTROY:
+            PostQuitMessage( NULL );
+            break;
+        default:
+            return (DefWindowProc(hWnd, message, wParam, lParam));
+    }
+}
+
+HANDLE PASCAL AllocateSelector(unsigned segment, unsigned offset, DWORD length)
+{                                               
+    DWORD physicalAddress, linearAddress;       /* This function allocs & maps */
+    HANDLE selector;                            /* a protected mode selector */
+    struct SREGS sregs;                         /* for a real mode address */
+
+    segread(&sregs);                            /* Copy DS selector */
+
+    if ((selector = AllocSelector(sregs.ds)))   /* Successful Allocate? */
+    {                                           /* Phys = Lin In 1st Megabyte */
+        linearAddress = physicalAddress = ((DWORD) segment << 4L) + offset;
+        SetSelectorBase(selector, linearAddress);  /* Set New Base Address */
+        SetSelectorLimit(selector, length);     /* Set New Segment Range */
+    }
+    return(selector);
+}
+

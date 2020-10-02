@@ -1,0 +1,100 @@
+LISTING 3
+
+#include <stdio.h>
+#include <string.h>
+#include <Mrm/MrmAppl.h>
+
+void	s_error();
+void	set_window_title();
+void	GPcallback();
+
+extern	void	new_buffer();
+extern	void	load_file();
+extern	void	save_file();
+extern	void	saveas_file();
+extern	void	exit_editor();
+extern	void	create_text_widget();
+
+MrmHierarchy	s_MrmHierarchy;
+char		*vec[] = {"editor.uid"};
+
+MRMRegisterArg	regvec[] = {
+			{"GPcallback", (caddr_t)GPcallback},
+			{"new_buffer", (caddr_t)new_buffer},
+			{"load_file", (caddr_t)load_file},
+			{"save_file", (caddr_t)save_file},
+			{"saveas_file", (caddr_t)saveas_file},
+			{"exit_editor", (caddr_t)exit_editor},
+			{"create_text_widget", (caddr_t)create_text_widget},
+		};
+MrmCount	regnum = sizeof(regvec) / sizeof(MRMRegisterArg);
+
+#define	MAX_TITLE_LEN	128
+char	wintitle[MAX_TITLE_LEN];
+
+Widget	toplevel;
+
+void
+main(argc, argv)
+	int	argc;
+	char	*argv[];
+{
+	Widget	editormain;
+	char	*charptr;
+	MrmCode	class;
+
+	MrmInitialize();
+	toplevel = XtInitialize("editor", "Editor", NULL, 0, &argc, argv);
+
+	if (MrmOpenHierarchy(1, vec, NULL, &s_MrmHierarchy) != MrmSUCCESS)
+		s_error("can't open hierarchy");
+	if (MrmRegisterNames(regvec, regnum) != MrmSUCCESS)
+		s_error("can't register names");
+	if (MrmFetchWidget(s_MrmHierarchy, "editor_main",
+	    		   toplevel, &editormain, &class) != MrmSUCCESS)
+		s_error("can't fetch widget");
+
+	XtManageChild(editormain);
+	XtRealizeWidget(toplevel);
+
+	XFetchName(XtDisplay(toplevel), XtWindow(toplevel), &charptr);
+	strcpy(wintitle, charptr);
+	set_window_title("Untitled");
+
+	XtMainLoop();
+}
+
+void
+GPcallback(w, client_data, call_data)
+	Widget	w;
+	char *	client_data;
+	caddr_t	call_data;
+{
+	Widget dialogs;
+	MrmCode	class;
+
+	if (MrmFetchWidget(s_MrmHierarchy, client_data, toplevel,
+			   &dialogs, &class) != MrmSUCCESS)
+		s_error("can't fetch widget in GPcallback\n");
+	XtManageChild(dialogs);
+}
+
+void
+set_window_title(s)
+	char *s;
+{
+	char	newtitle[MAX_TITLE_LEN];
+
+	strcpy(newtitle, wintitle);
+	strcat(newtitle, " - ");
+	strcat(newtitle, s);
+	XStoreName(XtDisplay(toplevel), XtWindow(toplevel), newtitle);
+}
+
+void
+s_error(s)
+	char *s;
+{
+	printf("%s\n", s);
+	exit(1);
+}

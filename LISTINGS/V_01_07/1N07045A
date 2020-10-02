@@ -1,0 +1,129 @@
+
+
+/*****************************************************
+* NETACTIV.C -- Check for an active network
+*
+* #define NO_MSC if _osmajor and _osminor are invalid
+* compiler variables
+*
+*     Copyright 1990 Tom Jensen
+*****************************************************/
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <dos.h>
+#include "netbios.h"
+
+/* function prototypes */
+unsigned DosVersion (void);
+int	 NetActive (void);
+int	 LocalName (char *name);
+
+/*******************************************************
+* NetActive() -- Display results of network presence
+*		 test (NbNetActive).
+*
+* Exit: Returns same value returned by NbNetActive.
+*******************************************************/
+
+int NetActive (void)
+{
+  int	    active;
+  unsigned  ver;
+  char	    name [16];
+
+  ver = DosVersion();
+  printf ("MS-DOS version is %d.%d", ver/100, ver % 100);
+
+  active = NbNetActive();
+  switch (active)
+  {
+    case 2:
+      printf (" ... must be 3.10 or greater\n");
+      break;
+    case 1:
+      printf ("\nNetwork is not active\n");
+      break;
+    default:
+      printf ("\nNetwork is active\n");
+      if (LocalName (name))
+	printf ("Local network name is \"%s\"\n", name);
+      else
+	printf ("No local network name defined\n");
+  }
+  return active;
+}
+
+/*******************************************************
+* NbNetActive() -- Determine if DOS compatible network
+*		   is active.
+*
+* Exit: If return value == 0, possible NETBIOS network
+*	  is active
+*	else
+*	  if == 1, network not active.
+*	  if == 2 if DOS < 3.10.
+*******************************************************/
+
+int NbNetActive (void)
+{
+  int	retval = 0;
+  char	loc_dev[16], net_nam[128];
+  union REGS  cpuregs;
+
+  if (DosVersion() < 310)
+    retval = 2;
+  else
+  {
+    cpuregs.x.ax = 0x5f02;
+    cpuregs.x.bx = 0;
+    cpuregs.x.di = (unsigned)net_nam;
+    cpuregs.x.si = (unsigned)loc_dev;
+    intdos (&cpuregs, &cpuregs);
+    if (cpuregs.x.cflag && (cpuregs.x.ax == 1))
+      retval = 1;
+  }
+  return retval;
+}
+
+/***************************************************
+* LocalName() -- Get local network name from MS-DOS
+*
+*     Entry: name points to a 16 character buffer
+*
+*     Exit:  Returns 0 (false) if no local network
+*	     name is defined. Otherwise the name
+*	     buffer will contain the network name.
+***************************************************/
+
+int LocalName (char *name)
+{
+  union REGS  cpuregs;
+
+  cpuregs.x.ax = 0x5e00;
+  cpuregs.x.dx = (unsigned)name;
+  intdos (&cpuregs, &cpuregs);
+
+  return (cpuregs.h.ch);
+}
+
+/***************************************************
+* DosVersion() -- Get MS-DOS version number
+*
+*     Exit: return value == version number * 100
+***************************************************/
+
+unsigned DosVersion (void)
+{
+#ifdef NO_MSC
+  unsigned    ver;
+  union REGS  cpuregs;
+
+  cpuregs.h.ah = 0x30;
+  ver = intdos (&cpuregs, &cpuregs);
+  return (((ver & 0xff) * 100) + (ver >> 8));
+#else
+  return (_osmajor * 100 + _osminor);
+#endif
+}
+

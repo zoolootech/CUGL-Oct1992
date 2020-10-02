@@ -1,0 +1,101 @@
+(*
+        Int16 Unit  --  Provides Bios Int $16 
+                        keyboard functions $0 and $1
+                        and constants for use with them
+
+        **************************************************
+        NOTE:   All compilations should have the boolean
+                evaluation option set to "short-circuit"
+        **************************************************
+
+        June 26, 1990       Michael Kelly	Version 1.01	*)
+
+Unit Int16;
+
+Interface
+Uses Dos;
+
+ Const              { byte values of key scan codes or ascii codes }
+     InsKey = 82;
+     DelKey = 83;
+     F1Key = 59;
+     F2Key = 60;
+     F3Key = 61;
+     BkSpaceKey = 8;
+     SpaceKey = 32;
+     ControlC = 3;
+     ControlLeft = 115;
+     ControlRight = 116;
+     ControlEnd = 117;
+     ControlHome = 119;
+     CReturn = 13;
+     EscapeKey = 27;
+     TabKey = 9;
+     HomeKey = 71;
+     EndKey = 79;
+     UpKey = 72;
+     DownKey = 80;
+     LeftKey = 75;
+     RightKey = 77;
+     PageUpKey = 73;
+     PageDownKey = 81;
+
+
+(*
+ *  if keystroke waiting in keyboard buffer, stores ascii and
+ *  scan codes in parameters
+ *
+ *  notes:  1) does not wait for a keystroke
+ *          2) non-destructive input, does not remove keystroke from buffer
+ *          3) uses Bios interrupt $16 function 0
+ *
+ *  returns:
+ *              True if keystroke in keyboard buffer
+ *
+ *              False if no keystroke ready to be read
+ *)
+Function key_ready(Var ascii, scan : Byte) : Boolean;
+
+(*
+ *  stores ascii and scan codes of keystroke in parameters
+ *
+ *  notes:  1) waits for a keystroke
+ *          2) destructive input, removes keystroke from buffer
+ *          3) uses Bios interrupt $16 function 1
+ *)
+Procedure get_key(Var ascii, scan : Byte);
+
+Implementation
+
+Function key_ready(Var ascii, scan : Byte) : Boolean;
+    Var
+        regs : registers;
+
+Begin
+  regs.ax := $0100;
+  intr($16, regs);
+  If((regs.flags and FZero) <> 0) then  { if zero flag set, no key ready }
+    key_ready := False
+  Else
+  Begin
+    ascii := regs.al;
+    scan := regs.ah;
+    key_ready := True;
+  End;
+End;
+(* key_ready *)
+
+Procedure get_key(Var ascii, scan : Byte);
+    Var
+        regs : registers;
+
+Begin
+  regs.ax := $0000;
+  intr($16, regs);
+  ascii := regs.al;
+  scan := regs.ah;
+End;
+(* get_key *)
+
+End.
+

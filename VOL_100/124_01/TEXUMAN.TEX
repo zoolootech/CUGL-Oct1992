@@ -1,0 +1,976 @@
+% defines to make life easier for the macro package writer
+\def\macros#1{\def\macname{#1}\def\fetchman{\input b:m#1}}
+
+\macros{Basic}			% Which macro package are we documenting?
+\input a:basic			% set up the environment
+\ff{+nf +hl "tex USERS MANUAL\rDecember 1982"
++fl "Mike Meyer\rPage \s#"}
+\f:9=ff12			% the fancy font fonts
+\def\FF{\f:9}
+\def\heading#1{\vskip 20pt{\bf #1}\vskip 10pt\par}
+\def\subhead#1{\vskip 20pt{\it #1}\vskip 10pt\par}
+\def\tex{{\rm T\FF E\rm X}}	% define some usefull strings
+\def\metafont{{\ss METAFONT}}
+\def\tm{{\FF TM}}
+\def\cr{{\FF R}}
+\def\pfont{{\ss pfont}}
+\def\describe{\lftmarg +60\indent 0\indent -60}
+\def\bold#1{{\bf #1 }}
+
+\vskip 72 pt			% set up the title page
+\ctrline{\bf SMALL tex USERS MANUAL}
+\ctrline{\bf For the \macname\ Macro Package}
+\vskip 24 pt
+\ctrline{Mike Meyer}
+\vskip 72 pt
+
+This users manual for the small tex text formatting system is
+intended for people familiar with some text formatter (not
+necessarily \tex) and computers in general. The reader is assumed
+to have used and to be familiar with the {\FF Fancy Font}
+typesetting system.
+
+\vskip 200 pt
+\ctrline{copyright $\copyright$ 1982, Mike Meyer}
+\eject
+% now start the paper
+\heading{Introduction}
+
+Small tex (`tex' is never capitalized) is a micro-computer text
+formatter based on Donald Knuth's \tex\tm\ computerized
+typesetting system. tex (see?) shares with \tex\ user-definable
+commands, multiple typefaces of various sizes and shapes, support
+for typesetting mathematics,  and the ability to group text.
+Unlike \tex, tex does not work with a character-definition
+system, like \metafont, for output. Instead, tex uses {\FF Fancy
+Font}\tm\ from SoftCraft for output. This package is not as
+powerful as \metafont, and the missing abilities are reflected in
+tex as missing features. Likewise, a z80 CP/M\tm\ system isn't a
+DEC\tm\ 10, so many nice features of \tex\ that I considered
+dispensable were dispensed with.
+
+I wish to emphasize that tex is not meant for {\bf
+all} micro-computer text formatting purposes. It is intended
+specifically for formatting small documents that require more
+abilities than most printers supply. Specifically, it was
+designed to let me typeset papers for my courses in graduate
+mathematics - which called for characters not generally available
+on my printer. tex is also suitable for setting letters, etc.
+However, for anything longer than about 20 pages, I don't recommend
+it. I don't consider this an unreasonable restraint, as it takes
+about 4 hours to print a 20 page document in {\ss +rd 0} mode.
+
+\heading{What Does tex Do?}
+
+tex provides a {\it mapping} from its input to input for \pfont\ 
+that hopefully reflects the user's intent for the resulting
+document's appearence. Unfortunately, tex is {\bf dumb.}
+
+tex only knows about {\it words} and {\it lines.}
+A {\it word} is anything that has whitespace on both sides {\bf in
+the output.} Most especially, anything printed in math mode is
+considered to be a single word. A {\it line} is a single line of
+text in the output document.
+
+As tex maps input to output, it reads in words, one
+at a time, until the words won't fit on the output line it is
+preparing. Then tex outputs the words that will fit on
+the line, and starts the next line with whatever word wouldn't
+fit on the current line.  This is insufficent since {\it
+pages} are also important. Since tex ignores them, it can't do
+anything about widowed lines - it doesn't know that they're
+widowed. Likewise, you may occasionally tell tex to go to the
+top of a page (with the {\ss eject} command) and tex, not
+realizing that it is already at the top of a page, will leave a
+blank page behind when it obeys your command.
+
+This behavior can be modified by magic characters in the input
+stream. tex considers the same characters magic that \tex\ 
+considers magic in its {\ss basic} package: `\\', `\%', `$\$$',
+`\{', and `\}'. These have the same meanings as the do in \tex,
+but cannot be changed as they can in \tex. They can be added to
+the output stream in the same manner as they are in \tex: by
+preceding them with a `\\' character, which effectively makes
+them commands.
+
+The `\\' character is used to indicate to tex that a command
+follows. Commands are {\it action} words - they tell tex to do
+something, usually immediately.
+
+The `\%' character signals a comment. When tex sees a `\%' in the
+input stream, it ignores any preceeding whitespace, all
+characters to the end of the line, and any whitespace following
+the end of the line. {\it Whitespace,} if you were wondering,
+consists of blanks, tabs, and new line characters - things that
+don't leave ink on the paper.
+
+The $`\$'$ character indicates a change of mode - to or from one
+of the two math modes. $`\$''$s are used in pairs, either as:
+\ctrline{\ss$\$$text for math mode$\$$} or:
+\ctrline{\ss$\$\$$text for display mode$\$\$$} In math mode and
+display mode above, tex recognizes extra commands, and ignores
+spaces (except as needed to separate out commands).
+
+Finally, the `\{' and `\}' characters group text and arguments to
+commands. When freestanding, they indicate that commands that
+alter global properties of the text should apply {\bf only} to
+the text contained in them. These commands will be noted as we
+encounter them. For commands that require textual arguments, `\{'
+and `\}' set off arguments that are longer than one character.
+
+The following sections will discuss tex input syntax, the builtin
+commands for tex, and the \macname\ macro package in particular.
+Examples will be drawn from the input used for the manual. In
+particular, references to "line <number> of the input" refer to
+the appropriate line number in the file {\ss texuman.tex.} Also,
+there are occasional references to things done nearby in the
+text. These also indicate that you should check the appropriate
+input file. Therefore, if you have not printed off copies of the
+tex source for this manual (both {\ss texuman.tex} and
+{\ss\macname.tex}) you should do so now. I recommend {\ss pip
+prn:=} to get numbered listings.
+
+\heading{What the Magic Characters Do}
+
+As previously mentioned, there are several magic characters that
+change the way tex behaves. These are `\\', `\%', `$\$$', and the
+curly braces `\{' and `\}'. This section discusses their
+behavior and use in some detail.
+
+\subhead{The Command Character and Command Formats}
+
+The magic character `\\' introduces a tex command. Commands to
+tex have several formats. The basic format for all commands is a
+`\\' character, followed by the name of the command, possibly
+followed by arguments. In any of the formats, any following
+whitespace is ignored by tex. Therefore, if you want the output
+from a command followed by a space, you should probably issue a
+`hard space' command. This is usually {\ss`\\\ '.} If you are not
+sure, you can always force tex to output a space by using the
+string {\ss \{\}} followed by a space.
+
+Command names come in two forms. The first consists of a single
+nonalphabetic character. Examples would be the commands used to
+get magic characters into the text. Around line 190 in the input
+is a good example of this type of thing. The second form consists
+of a string of alphabetic characters terminated by some
+nonalphabetic character. Usually, this nonalphabetic character is
+a blank. In this form, the case of the first character is
+significant, but the case of any following characters is ignored.
+For example, {\ss \\sigma, \\sIGMA,} and {\ss \\sIGma,} are all
+the same command, and all different from {\ss \\Sigma.}
+
+Commands usually have either one or zero arguments. Examples of
+the first case include commands to insert character strings into
+the text stream, as in the {\ss tex} command used on line 26 of
+the manual, in the abstract. The other use for commands without
+arguments is to change some global parameter of tex, say the
+typeface being used to print characters. The {\ss FF} command on
+line 12 of the input is a good example of that.
+
+If a command has a single argument, this command is known as a
+{\it token.} Tokens come in two forms. The general case is that
+they are a sequence of text between `\{' and `\}.' In such cases,
+{\bf the argument is limited to 1024 characters.} An example of
+this form is the {\ss macros} command on line 4 of the document.
+The argument to this command is the string {\ss \macname.} The
+other form for a token is a single, non-whitespace character.
+Generally, these are used after the non-alphabetic commands, as
+in {\ss \\+x,} which would be the command named {\ss +} with an
+argument of {\ss x.}
+
+Finally, there are the commands which have a strange argument
+syntax. These either require more information, or are done in
+some specific manner to be compatible with \tex. These commands
+are {\ss def, vskip, hskip, f:, input} and {\ss math:.}
+
+\subhead{Comments}
+
+Comments in tex are introduced by the character `\%', and
+continue from the \%\ to the end of input text line. When a bare
+\%\ is seen, tex will ignore any white space preceding the \%,
+any text between the \%\ and the end of the line, and any
+whitespace following the comment. For examples of comments, see
+the first 20 or so lines of the input for this document. To get a
+\%\ into the output text, use the {\ss \\\%} command.
+
+\subhead{The Math Modes}
+
+\tex\ was originally designed for typesetting text with a high
+content of mathematics. tex has the same intent, and uses the
+\tex\ techniques for specifying equations. Specifically, an
+equation is introduced by either `$\$$' or `$\$\$$'. A single
+$\$$ introduces an inline equation, like $a=3x+b.$ The
+double $\$$, $\$\$$, introduces an equation centered on
+a line by itself, as: $$a=3x+b$$
+
+While in math mode, tex changes to an italic-like font for normal
+characters. Any whitespace in an equation in math mode is
+ignored, except for the space command `\\\ '. The advantage of
+math mode is that a {\bf large} number of commands become
+available to output symbols not normally available.  A complete
+list of these commands can be found in the appendix. Those of
+general interest are printed here, as pairs of {\it name, graphic
+representation}:{\fill 0\ss{}
+
+\lft{$\$$, $\$$}	\ctr{$\#$, $\#$}	\rt{dag, $\dag$}
+\lft{ddag, $\ddag$}	\ctr{ldots, $\ldots$}	\rt{ldotss, $\ldotss$}
+\lft{circ, $\circ$}	\ctr{bullet, $\bullet$}	\rt{copyright, $\copyright$}
+\lft{section, $\section$}}
+
+In addition, the two math mode commands {\ss +, -} generate
+superscripts and subscripts, and are occasionally useful outside
+of equations.
+
+As in \tex, there are lots of techniques for making the equations
+from tex look better than just typing commands in math mode.
+These will be discused in the next version of this manual.
+
+\subhead{Nesting Text and Tokens}
+
+The characters `\{' and `\}' are used in tex to group arguments
+to commands, and to indicate {\it environment nesting.} Before I
+can discuss the brace characters, I need to discuss environments,
+and the nesting of environments.
+
+It must be understand that the text formatting done by tex does
+not take place in a vacuum. The output of tex is governed by
+several knobs of tex that the user can set. These knobs comprise
+such things as the current typeface, the margins, etc. The
+current {\it environment} is the current setting of all of tex's
+knobs.
+
+The {\it nesting} of one environment inside of another implies
+that the environment is changed temporarily for a piece of text,
+and after the text is processed, the environment is restored to
+its previous state. This concept will be familiar to anyone wh
+has worked with an ALGOL-like language, and indeed works in a
+similar manner. You can nest an environment inside of an
+environment that is already nested. In fact, you can nest
+environments in this manner arbitrarily deep (until you run out
+of stack space, anyway). This facility is very powerful, and
+makes many things easy that would be difficult in a text
+formatter such as roff.
+
+In tex, environments are nested with the pair of characters `\{'
+and `\}.'  When not used to delimit arguments, the character `\{'
+indicates that a new level of environment nesting is being
+entered. Commands that change the current formatting environment
+may be issued, and will affect only the text enclosed between the
+open and close braces. To see how this nesting works, consider the
+subheadings in the next section. These nest an environment using
+an italic typeface for the main text of the subheading, and nest
+another environment inside of that one to use a sans serif
+typeface for the command names.
+
+{\lftmarg +20\indent 0\indent -20\sc The true value of this
+technique may be seen in this paragraph, which change the margin
+and indentation to become an outdented paragraph, and changes the
+typeface to script. Then, when the paragraph is finished, the
+environment closed, and things will return to normal, regardless
+of what `normal' was before.}
+
+Likewise, environment nesting can be used in letters. For
+example, a typical heading might look something like:
+
+{\fill 0{\lftmarg 450{}
+P.O. Box 1749
+Norman, OK 73070
+Jan. 20, 1982}
+
+Hank Harlison
+Dr. Mobs Urinal
+Somewhere, CA xyzzy
+}
+
+
+Find the commands in the source file that were used to produce
+this text to see how easy this is for tex, and then compare it to
+what would have to be done in a roff-like formatter.
+
+The other use for the brace characters is to delimit an argument
+to a command. This is discussed fully in the subsection on
+command characters and formats. The important thing to note at
+this point is that the braces used to delimit an argument {\bf do
+not cause environment nesting}. In some cases, the command can be
+built to cause this to happen.  None of tex's builtin commands do
+this.
+
+\heading{The Builtin Commands to tex}
+
+Following is a list of the commands that tex will always know
+about, no matter what macro package you are using. This list is
+not a complete list of all the commands a normal tex user will use,
+but merely covers those that are useful for setting
+up a document. There are other builtin commands that will
+probably be useful if you are building or modifying a macro
+package. See the Appendices for a complete list of builtin
+commands. The majority of the commands normally used will
+probably be defined in a macro package. See the following
+section for a list of these commands.
+
+\subhead{The {\ss def} Command}
+
+The single most useful builtin command is {\ss def.} It allows
+the user to define new commands that look, and act, just like
+builtin tex commands. Defined commands can have either alphabetic
+or non-alphabetic names, and can have either of the two standard
+argument forms - none, or a single token.
+
+Examples of the {\ss def} command can be found on lines 9 through
+15. Only lines 10 and 11 define commands with arguments. The
+other lines all demonstrate the standard, non-argument {\ss def}
+command format:
+\ctrline{\ss \\def\\name\{text of define\}}
+
+This string in the input text causes the command {\ss name} to be
+defined, such that every time the string {\ss \\name} appears in
+the input stream, {\ss text of define} will appear in the output
+stream. For example, the defintion for {\ss tex}  appears on
+line 13. This line defines the {\ss tex} command such that
+every time the string {\ss \\tex} appears in the input, the
+string {\ss \{\\rm T\\FF E\\rm X\}} will be fed to tex, causing
+the symbol \tex\ to be printed on the page.
+
+The second form of the {\ss def} command is shown on lines 10 and
+11 - a {\ss def} command with an argument. The general form of
+this is:
+\ctrline{\\def\\name#1\{text with possible #1 expansion\}}
+
+This form of the {\ss def} command works the same as the
+argumentless form of {\ss def,} except that, when the text for
+the definition is being used by tex, any occurence of the string
+{\ss #1} will be replaced by the argument. For example the {\ss
+heading} command, which is defined on line 10, when used on line
+33 will expand to the string {\ss\{\\vskip 20pt\{\\bf
+Introduction\}\\vskip 10pt\\par\}.}
+
+A particularly good example of the power of the {\ss def} with a
+single argument can be found on line 2 of the input. This line
+defines the {\ss macros} command, which has one argument.
+Immediately below this, on line 4, the {\ss macros} command is
+used, with the argument of {\ss \macname.} This causes the text
+of the {\ss macros} command to be read by tex, which defines two
+more commands - the {\ss macname} command, and the {\ss fetchman}
+command. The {\ss macname} command just puts the argument to the
+{\ss macros} command in the input stream. The {\ss macname}
+command is used in the preceding sentence to get the argument of
+the {\ss macros} command on line 4 into the text, and on line 19
+to get the name of the macro package this manual documents into
+the subtitle. The {\ss fetchman} command tells tex to input the
+parts of the manual that are specific to some macro package, and
+is used to do so later on in this document. Note that the {\ss
+macros} command demonstrates that you can use the {\ss #1}
+sequence in a definition expansion as often as needed. It is left
+as an exercise to the reader to determine if a definition can
+define commands with arguments, and how this would be done if it
+can be done.
+
+\subhead{Positioning Commands - {\ss vskip, hskip, ctr, rt, lft, eject}}
+
+There are five commands built in to tex for positioning text on
+the page. These are {\ss hskip, vskip, ctr, rt, lft} and {\ss
+eject.} The only two that will generally be used are {\ss vskip}
+and {\ss hskip.} These both have the same format: \ctrline{\ss
+\\hskip xx pt} or \ctrline{\ss \\vskip yy pt}
+
+{\ss hskip} causes a {\bf h}orizontal {\bf skip} in the output
+text of xx {\it pts.} A {\it pt} (for hskip) is one 120$\+{th}$ of
+an inch. For example, the following text is produced by the
+input sequence {\ss |\\hskip 50 pt|}:|\hskip 50 pt|
+
+{\ss vksip} causes a {\bf v}ertical {\bf skip} in the output text
+of yy pts. For {\ss vskip,} a pt is {\bf one 72$\+{nd}$} of an
+inch. {\bf NOTE THE \underline{DIFFERENCE}} between the unit for
+{\ss vskip} and {\ss hskip.} This is unfortunate, but it is also
+unavoidable, being imposed by {\FF Fancy Font}. An example of the
+use of {\ss vskip} is in the definition for {\ss heading} and
+{\ss subheading,} where {\ss vskip} is used to get appropriate
+amounts of vertical spacing around the headings.
+
+In both {\ss vskip} and {\ss hskip,} the string {\ss pt} is {\bf
+required.} If it is left off, tex will complain, and eat the
+character following the {\ss v[h]skip} command.
+
+The {\ss eject} command is used to get to a new page. An example
+of this is seen on line 31, where it is used to get to a new page
+to start the manual after the title page has been printed. As has
+been pointed out before, tex does not know about pages, so {\ss
+eject} issued at the top of a page will cause a clean sheet of
+paper to be printed. For this reason, it is inadvisable to use
+lots of ejects or, if you do use lots of ejects, to number
+your pages.
+
+The three commands {\ss lft, rt} and {\ss ctr} are relatively
+dangerous, and should only be used by experienced tex users:
+those who know what the commands actually do. In general, the only
+place they will be used is in producing `tables,' or the closest
+approximation that tex can make to tables. For an example of this,
+see the section around line 200 in the input document on math
+mode.
+
+The only really useful feature any of these offer is centering
+lines of text. Check the definitions provided by the macro
+package you are using for a specific centering command.
+
+\subhead{Fill and Nofill}
+
+One of the nonstandard form commands is the {\ss fill} command.
+Fill affects the behavior of tex in a major way. The general form
+is {\ss \\fill x,} where x is either zero or one. If x is one,
+then tex behaves as previously described, treating newline
+characters as spaces, and packing as many words per line as
+possible. If x is zero, then tex {\bf stops doing word filling.}
+This means that every newline character in the input causes one
+newline in the output. Of course, if a line would be to long to
+fit on the page, tex will break it if you are not in fill mode.
+Additionally, tex does not justify the right margin when in it is
+not in fill mode.
+
+{\fill 0
+For example, this text is not
+filled in. You can see the difference
+it makes in the output.}
+
+{\ss fill} is useful for such things as addresses on letters,
+tables, etc. Note that fill is one of the global formatting
+parameters for tex, so it is restored to its old value when
+leaving a nested environment. The tables in the discussion of
+math mode demonstrate this.
+
+\subhead{Paragraph Commands - {\ss par, indent, lftmarg}}
+
+In general, tex does not know about paragraphs. However, the
+three commands {\ss indent, lftmarg} and {\ss par} affect the shape
+of the document by affecting the way paragraphs are laid out on
+the page.\par The simplest of these is {\ss par.} {\ss par} is
+causes tex to start a new paragraph {\bf immediately.} For
+example, this paragraph was started with a {\ss par} command in
+the input stream. Note that if you are in fill mode, two
+consecutive newline characters are synonymous with the {\ss par}
+command. This is usually preferable, since most text editors that
+know about paragraphs will recognize that sequence for a
+paragraph. Additionally, it visually breaks out paragraphs in the
+input.
+
+{\ss lftmarg} and {\ss indent} are used to change the shape of a
+paragraph. {\ss lftmarg} is used to set the left margin of the page,
+and {\indent} is used to set the amount of paragraph indentation.
+The form for both {\ss lftmarg} and {\ss indent} is the same:
+\ctrline{\ss \\lftmarg sxx} or \ctrline{\ss \\indent sxx} In these
+forms, the {\ss xx} is some number of pts as defined for {\ss hskip},
+one 120$\+{th}$ of an inch. The {\ss s} in the argument is used to
+allow finer control. If it is a blank, the value of {\ss lftmarg} or
+{\indent} is set to the numeric value of xx. If s is a `+' (or
+`-'), then the value of xx is added (or subtracted) from the
+current value of {\ss lftmarg} or {\ss indent.}
+
+Since both {\ss lftmarg} and {\ss indent} are part of texs
+formatting environment, these values will nest with curly braces,
+so some rather nice effects can be achieved. For example, a
+quotation can be done by setting up a block of text in curly
+braces that start with {\ss \\lftmarg +20.} This will indent the
+paragraph(s) in the quotation by 1/6$\+{th}$ of an inch.
+Similarly, outdented paragraphs can be set up by changing the
+left margin to an appropriate value, then setting indent to 0,
+and finally subtracting whatever you deem appropriate from
+indent. See the appendices for examples of this.
+
+\subhead{Miscellaneous Commands}
+
+Finally, there are four commands varying in usefulness from
+considerable to nearly none. These don't fit in any of the above
+sections, as each is unique.
+
+The most useful of these three commands by far is the {\ss input}
+command. You will use it in almost every document you use tex on,
+generally to fetch the macro package you need for that document.
+The syntax of the {\ss input} command is: \ctrline{\\input filename}
+
+This causes tex to go look for the file {\ss filename.tex}, and
+start reading input from that file. This input is inserted
+directly into the stream, in the middle of the word if that's where
+the {\ss input} command occurred. Inputting text via the input
+command is {\bf not} like nesting text inside a pair of curly
+braces - any changes made to the global environment in the input
+file will affect text following the {\ss input} command. For
+examples, see lines 2 and 5 in the input text.
+
+The second command is the {\ss underline} command. This command
+has a single token as an argument, as in {\ss
+\\underline\{text\}.} This will cause {\ss text} to be
+underscored. {\ss underline} obeys all the constraints placed on
+normal, one-argument commands.
+
+The third command is the {\ss ff} command. This command passes a
+single argument to \pfont\ when it is invoked by tex. Lines 6 and
+7 in the input show how I used this to put headers and footers on
+the manual. Note that only the last occurrence of this command in
+the text is actually used.
+
+Finally, there is the {\ss f:} command. This command is used to
+declare a {\FF Fancy Font} font file to be associated with a font
+number, and to change to that font during the input stream.
+Normally, there are only two font numbers you can use, 8 and 9.
+The syntax to associate a font file with font number 8 is: {\ss
+\\f:8=file}. To cause a change to font number 8, the command {\ss
+\\f:8} is issued. Normally, you won't use this version of the
+command, as you (or whoever wrote the macro package you are
+using) will have defined a command to change fonts for you. Lines
+8 and 9 in the input file show font 9 being associated with the
+file ff12.fon, and the the command {\ss FF} being defined to
+change to that font. From then on, when I want to use that font
+(like I did in this paragraph), I issue the {\ss FF} command.
+
+\heading{Making use of the \macname\ Macro Package}
+
+\fetchman
+
+\heading{Caveats}
+
+This manual is not the last word on using tex. It is meant to be
+enough of an introduction to let new users start with tex, and
+get some work done. It does not document all the features and
+behavior of tex: the source code does that. If you don't have the
+source, somebody is distributing copies of tex in violation of
+the release agreement. Get in contact with me in that case.
+
+If you have problems, or need help with tex, get in contact with
+me. The appropriate addresses are currently:
+
+{\fill 0
+U.S. Post Offal:{\lftmarg +50
+Mike Meyer
+P.O. Box 1749
+Norman, OK 73070}
+
+Bell Telephone:{\lftmarg +50
+405/360-2508}
+
+ARPANet:{\lftmarg +50
+mwm@okc-unix}
+
+UUCPNet:{\lftmarg +50
+decvax!duke!uok!mwm}
+
+CNet:{\lftmarg +50
+The Oklahoma Cnode - Ishtar: 405/329-1373}}
+
+
+\heading{Appendix A}
+
+This appendix is the most important single part of tex users
+manual.  It lists all the error messages that tex issues. The
+format of an error message is {\ss tex: text of error message.}
+The following list contains the text of the error message,
+followed by comments about the probable cause and possible fixes.
+
+{\describe
+
+\bold{Invalid file name:} You told tex to format a file with a
+name that is longer than is valid for the operating system. File
+names used with the {\ss input} command cannot contain `.'
+character. If you used a `.' in such a file name, the {\ss
+Invalid file name} error message can be issued. In either case,
+check the filename on the command line, or in the appropriate
+{\ss input} command.
+
+\bold{Can't open file:} tex couldn't find the input file. Check
+the spelling of the filename on the command line or in the
+appropriate {\ss input} command.
+
+\bold{Can't create file:} tex couldn't create the output file.
+Possibly your disk is full.
+
+\bold{Missing right brace in file:} There is a missing right
+brace in the named file. Verify that every open brace has a
+matching close brace.
+
+\bold{Document completed in math mode} tex found the end of the
+file while it was in math mode. You undoubtedly forgot to put the
+final $\$$'s on math mode or display mode text. Use the {\FF Fancy
+Font} {\ss +sd} mode to find where tex stops outputting spaces.
+This is probably where the missing $\$$ belongs.
+
+\bold{Negative left margin, left margin set to 0} You tried to
+change the left margin to a negative value. It was set to zero.
+You probably tried a {\ss lftmarg} command with a decrement
+argument that was larger than the current left margin.
+
+\bold{Indent to small, set to:} You tried to change the indent to
+a value that, when added to the left margin, created a negative
+offset. tex set the indent to the negative of the left margin,
+which is probably close to what you wanted (pray, pray). Look for
+sequences like {\ss \\indent 0\\indent -x} where x is larger than
+the value of the left margin.
+
+\bold{Can't create temp file} tex couldn't create the file it
+uses for passing parameters to \pfont. Possibly your disk is
+full.
+
+\bold{Write error on file:} The write to the file tex uses for
+passing parameters to \pfont\ failed. Possibly your disk is
+full.
+
+\bold{Can't execute pfont} tex couldn't find the \pfont\ command.
+Check to see that it is on the correct disk.
+
+\bold{Out of buffer space} tex ran out of buffer space for
+input. This is highly unlikely. The only thing I can think of
+that would cause it is having the margins set to allow a large
+number of characters per line (either wide margins or small
+characters, or both), and being in math mode.
+
+\bold{Internal error in mathmode: inchar =} tex found itself in
+display mode while not in math mode. Write down the entire output
+line and get a hacker to look at your input and the version of
+tex you are running.
+
+\bold{Leaving display mode with $`\$'$} You closed display mode
+text with a single `$\$$.' Either you closed display mode
+incorrectly, or you forgot to close some math mode text. In the
+latter case, you should also get {\ss Math only command$\ldotss$}
+messages.
+
+\bold{Leaving math mode with a $`\$\$'$} This is the converse of
+the previous error message. The reasons and fixes are the same.
+
+\bold{Domath compiler error!} Something that shouldn't be
+possible happened. Write down the error message, and get a hacker
+to look at the your tex input, the source for the version of tex
+you are running, {\bf and} the version of the compiler that was
+used to compile it.
+
+\bold{Illegal command:} tex found a command that it didn't
+recognize. You probably made a typo in the command name. Check
+your spelling.
+
+\bold{Illegal font command:} There is a command that looks like
+a font command ({\ss \\f} followed by a non-alphabetic character)
+that is not a valid font command. Normally, font commands are set
+up in the macro package, so this shouldn't occur for the normal
+user. If it does, check the macro package you are using.
+
+\bold{Illegal font character:} A font or math command occured
+in the text that changed to an illegal font. See the previous
+error meesage for discussion.
+
+\bold{Can't open font file:} Somebody is trying to use a font
+file that doesn't exist. Once more, check the macro package you
+are using. Also verify that all the font files it uses are where
+it expects them.
+
+\bold{Bad font file:} The named font file contains data that tex
+doesn't understand. Possibly it or tex is corrupt. Get a fresh
+copy of the files. If that fails, verify that the version of tex
+you are using is compatible with the \pfont\ you are using.
+
+\bold{Invalid character:} You tried to use the builtin {\ss
+char} to print a non-ascii character. If you don't use the {\ss
+char} command, check the macro package you are using.
+
+\bold{Math only command issued outside math mode} The math mode
+commands complain about this if they are used outside of math
+mode. In most cases, the command will do what you wanted, but not
+fixing the cause of the problem is bad form. If you get many of
+these, you probably forgot to close some math mode text properly.
+
+\bold{Bad define character.} A {\ss def} command was encountered
+that didn't end in a `\\'. Find the appropriate define, and fix it.
+
+\bold{Define too long:} You tried to define a command whose name
+was longer than tex can accept. Change the name of the defined
+command.
+
+\bold{Command too long:} You issued a command that was too long.
+This is an illegal command, as you couldn't have defined it in
+the first place. Find the occurence of the substring that tex
+printed, and change it to a legal command.
+
+\bold{Bad define:} The name of a defined command was not
+followed by either a `\{' or a `$\#.$' Find the appropriate {\ss
+def} command and fix it.
+
+\bold{bad define parameter.} You tried to use a parameter number
+other than 1 in a define. Currently, tex only allows one
+parameter on a command. Change the appropriate define.
+
+\bold{Too many defines:} The number of allowable defines in tex
+has been exceeded. The named command was not defined. The fix is
+either to use fewer defines, or reconfigure tex to allow more
+defines.
+
+\bold{Out of string space} You have run out of memory. Either
+get more memory, decrease the size of defined commands, or
+reconfigure tex.
+
+\bold{Illegal command \\math} The builtin command {\ss math} has
+been misused. Change the usage to correspond to {\ss \\math=x,}
+where {\ss x} is an appropriate font number.
+
+\bold{Need `pt' to follow hskip number} You left off the {\ss
+pt} from an hskip command. tex will eat the charcter following
+the misformed hskip command. Fix the offending hskip.
+
+\bold{Need `pt' to follow vksip number} Identical to the
+previous error, except that it applies to vskip instead of hskip.
+
+\bold{Input token too long} An argument to a command exceeded the
+maximaum length. Check commands with long arguments, and break
+the offending command up into two separate commands.
+
+}		% end of the appendix A
+
+\heading{Appendix B}
+
+This appendix describes the builtin commands of tex. For each
+command, its form and usage is is discussed, as well as its
+exact behavior in terms of the \pfont\ commands that it issues.
+This appendix will probably be of use only to those building
+macro packages. Everybody should be aware of the names of the all
+the builtin commands, as you cannot use these names for defined
+commands.
+
+{\describe
+
+\bold{f} The {\ss f} command is used to change fonts, or to
+associate a font file with a font number. The font numbers
+currently valid are 0 through 9, and attempts to use any others
+will (hopefully) result in error messages. The form used to
+associate a font file with a font number is {\ss \\f:x=name,}
+which associates font number {\ss x} with font file {\ss
+name.fon.} This causes no \pfont\ commands to be issued, but does
+cause tex to load the named font file. The form used to change to
+a font number is {\ss \\f:x}, which changes to font {\ss x.} This
+causes the \pfont\ command {\ss \\fx} to be issued.
+
+\bold{math} The {\ss math} command is used to tell tex which font
+is to be use for math mode. The format is {\ss \\math:x,}  which
+causes font number {\ss x} to be used for math mode text.
+
+\bold{def} This defines a command, and its use is discussed in
+the main body of the manual. It causes no \pfont\ commands to be
+issued.
+
+\bold{fill} The {\ss fill} is used to turn fill mode on and off.
+Its use is discussed in the main body of the text. The current
+fill mode is part of the tex environment. If used to turn fill
+and justification on, a {\ss \\j} command is issued to \pfont.
+Otherwise, a {\ss \\k} command is issued to \pfont.
+
+\bold{lftmarg} This command is used to change the left margin. Its
+use is discussed in the main body of the text. The left margin is
+part of the tex environment. This command causes no \pfont\ commands to be
+issued.
+
+\bold{indent} The {\ss indent} command is used to change the
+paragraph indentation tex is using. This indentation is part of
+the tex environment. The use of the {\ss indent} command is
+discussed in the main body of the manual. It causes no \pfont\ 
+commands to be issued.
+
+\bold{rtmarg} The {\ss right} command is analogous to the {\ss
+lftmarg} command. It is currently disabled.
+
+\bold{mathonly} This command checks to see that tex is currently
+in math mode, and issues an error message if not. The correct
+usage is merely {\ss \\mathmode.} This command should be used by
+builders of macro packages to flag commands that should only be
+issued in math mode. No \pfont\ commands are issued.
+
+\bold{par} The {\ss par} command forces a paragraph output. It
+could probably be made a define, but I don't see any point in it
+yet. Its usage is discussed in the main body of the manual. No
+\pfont\ commands are issued.
+
+\bold{eject} The {\ss eject} command is used to force a new page.
+The string  {\ss \\b<newline>\\p} is issued to pfont. Therefore,
+the trailing line will not be justified, and the next line will
+start on a new page.
+
+\bold{ctr} This command is used to center text. The form is {\ss
+\\ctr\{text\}.} The \pfont\ command {\ss \\c} is issued, followed
+by the text of the argument. Note that \pfont\ will center any
+text that follows the {\ss ctr} command, unless other commands
+are issued.
+
+\bold{rt} The {\ss rt} command is used to force text to the right
+side of the line. Usage is {\ss \\rt\{text\}.} The pfont command
+{\ss \\r} is isued, followed by the text of the argument,
+followed by a newline character.
+
+\bold{lft} The {\ss lft} command is used to force text to the
+left side of the line. Usage is {\ss \\lft\{text\}.} The pfont
+command {\ss \\b} is issued, followed by the text of the
+argument. Hence, the total effect of the {\ss lft} command is to
+turn off justification for the line it's issued on.
+
+\bold{vskip} This command is used to force a vertical skip down
+the page. Usage is discussed in the main body of the manual. The
+\pfont\ command {\ss \\b} is issued, followed by a {\ss \\v}
+command to cause the skip. Thus, the line the {\ss vskip} is
+issued on will not be justified, and the next line will occur the
+appropriate number of points down the page.
+
+\bold{hskip} The {\ss hskip command} is used to skip horizontally
+across the page. Usage is discussed in the main body of the
+manual. The \pfont\ command {\ss \\i} is issued to cause the skip.
+
+\bold{char} This command is used to force some non-printable
+ascii character into the output stream. Usage is {\ss \\char
+xxx}. The ascii character corresponding to the decimal value of
+{\ss xxx} will be inserted into the output stream. Normally, the
+appropriate ascii character is output. However, there are a
+couple of cases where the \pfont\ command {\ss \\d} is used.
+
+\bold{underline} The {\ss underline} command is used to underline
+text in the output document. Usage is {\ss \\underline\{text\}.}
+The output to pfont is {\ss \\utext of argument\\u.}
+
+\bold{input} The input command is used to fetch text from another
+file. Usage is discussed in the main body of the manual. No
+\pfont\ commands are generated.
+
+\bold{ff} This command is used to pass page formatting
+information to \pfont. Usage is discussed in the main body of the
+manual. No pfont commands are generated, but its argument is
+passed to pfont on the command line.
+
+}		% end of Appendix B
+
+\heading{Appendix C}
+
+This appendix  describes the commands available in math mode.
+These commands should be independent of the macro package you are
+using. The command set is broken up into pieces. The description
+of each piece of the command set consists of a brief discussion
+of that particular piece, followed by a table that has each
+command listed beside the resulting graphics character.
+
+The first piece of the command set is the Greek alphabet. The
+upper case Greek characters that are not also part of the English
+alphabet are included, as:{\fill 0\ss{}
+
+\lft{Gamma, $\Gamma$}	\ctr{Delta, $\Delta$}	\rt{Xi, $\Xi$}
+\lft{Theta, $\Theta$}	\ctr{Lambda, $\Lambda$}	\rt{Pi, $\Pi$}
+\lft{Phi, $\Phi$}	\ctr{Sigma, $\Sigma$}	\rt{Upsilon, $\Upsilon$}
+\lft{Omega, $\Omega$}	\ctr{Psi, $\Psi$}}
+
+The entire lower case Greek alphabet is available, including both
+forms of theta and and phi. Note that the {\bf case of the first
+character} in the command is significant, and that the case of
+the first character is the only thing that differentiates the
+{\ss gamma ($\gamma$)} from the {\ss Gamma ($\Gamma$)} command.
+The commands for the lower case Greek characters are:{\fill 0
+\ss{}
+
+\lft{alpha, $\alpha$}	\ctr{beta, $\beta$}	\rt{gamma, $\gamma$}
+\lft{delta, $\delta$}	\ctr{epsilon, $\epsilon$}\rt{xi, $\xi$}
+\lft{theta, $\theta$}	\ctr{eta, $\eta$}	\rt{iota, $\iota$}
+\lft{kappa, $\kappa$}	\ctr{lambda, $\lambda$}	\rt{mu, $\mu$}
+\lft{nu, $\nu$}		\ctr{pi, $\pi$}		\rt{phi, $\phi$}
+\lft{rho, $\rho$}	\ctr{sigma, $\sigma$}	\rt{tau, $\tau$}
+\lft{upsilon, $\upsilon$}\ctr{omega, $\omega$}	\rt{chi, $\chi$}
+\lft{psi, $\psi$}	\ctr{zeta, $\zeta$}	\rt{vartheta, $\vartheta$}
+\lft{varphi, $\varphi$}}
+
+The upper case script characters are also available in math mode.
+These characters are from the standard {\FF Fancy Font} script
+character set, which is probably available with the macro package
+you are using. They are provided in math mode as a convenience
+for the user. They are:{\fill 0\ss{}
+
+\lft{Ascr, $\Ascr$}	\ctr{Bscr, $\Bscr$}	\rt{Cscr, $\Cscr$}
+\lft{Dscr, $\Dscr$}	\ctr{Escr, $\Escr$}	\rt{Fscr, $\Fscr$}
+\lft{Gscr, $\Gscr$}	\ctr{Hscr, $\Hscr$}	\rt{Iscr, $\Iscr$}
+\lft{Jscr, $\Jscr$}	\ctr{Kscr, $\Kscr$}	\rt{Lscr, $\Lscr$}
+\lft{Mscr, $\Mscr$}	\ctr{Nscr, $\Nscr$}	\rt{Oscr, $\Oscr$}
+\lft{Pscr, $\Pscr$}	\ctr{Qscr, $\Qscr$}	\rt{Rscr, $\Rscr$}
+\lft{Sscr, $\Sscr$}	\ctr{Tscr, $\Tscr$}	\rt{Uscr, $\Uscr$}
+\lft{Vscr, $\Vscr$}	\ctr{Wscr, $\Wscr$}	\rt{Xscr, $\Xscr$}
+\lft{Yscr, $\Yscr$}	\ctr{Zscr, $\Zscr$}}
+
+There is a large selection of binary relations. These are:{\fill 0\ss{}
+
+\lft{normal, $\normal$}	\ctr{noteq, $\noteq$}	\rt{eqv, $\eqv$}
+\lft{supset, $\supset$}	\ctr{subset, $\subset$}	\rt{in, $\in$}
+\lft{notin, $\notin$}	\ctr{perp, $\perp$}	\rt{le, $\le$}
+\lft{ge, $\ge$}		\ctr{onlyif, $\onlyif$}	\rt{implies, $\implies$}
+\lft{if, $\if$}		\ctr{iff, $\iff$}	\rt{mapsto, $\mapsto$}
+\lft{lsls, $\lsls$}	\ctr{grgr, $\grgr$}	\rt{simeq, $\simeq$}
+\lft{approx, $\approx$}	\ctr{doteq, $\doteq$}}
+
+There is also a variety of binary operators available in tex. These
+are:{\fill 0\ss{}
+
+\lft{pm, $\pm$}		\ctr{mp, $\mp$}		\rt{times, $\times$}
+\lft{div, $\div$}	\ctr{odot, $\odot$}	\rt{oplus, $\oplus$}
+\lft{odiv, $\odiv$}	\ctr{ominus, $\ominus$}	\rt{otimes, $\otimes$}
+\lft{cdot, $\cdot$}	\ctr{union, $\union$}	\rt{inter, $\inter$}
+\lft{and, $\and$}	\ctr{or, $\or$}}
+
+In addition to the binary operators, the following unary
+operators are avialable:{\fill 0\ss{}
+
+\lft{partial, $\partial$}\ctr{surd, $\surd$}	\rt{int, $\int$}
+\lft{oint, $\oint$}	\ctr{sum, $\sum$}	\rt{prod, $\prod$}
+\lft{prime, $\prime$}}
+
+There are also a several different flavors of arrows. Note that
+there is no right arrow as such. The arrows that are there
+are:{\fill 0\ss{}
+
+\lft{up, $\up$}		\rt{bigup, $\bigup$}
+\lft{down, $\down$}	\rt{bigdown, $\bigdown$}
+\lft{left, $\left$}	\rt{bigleft, $\bigleft$}
+\lft{right,$\right$}	\rt{bigright, $\bigright$}}
+
+The following miscellaneous math symbols can also be used:{\fill 0\ss{}
+
+\lft{thereis, $\thereis$}\ctr{forall, $\forall$}\rt{therfor, $\therfor$}
+\lft{cdots, $\cdots$}	\ctr{cdotss, $\cdotss$}	\rt{nabla, $\nabla$}
+\lft{imag, $\imag$}	\ctr{natural, $\natural$}\rt{rat, $\rat$}
+\lft{real, $\real$}	\ctr{integer, $\integer$}\rt{complex, $\complex$}
+\lft{top, $\top$}	\ctr{bot, $\bot$}	\rt{aleph, $\aleph$}
+\lft{iit, $\iit$}	\ctr{jit, $\jit$}	\rt{angle, $\angle$}
+\lft{infty, $\infty$}	\ctr{emptyset, $\emptyset$}}
+
+The following commands are useful as paired delimiters:{\fill 0\ss{}
+
+\lft{lfloor, $\lfloor$}		\rt{rfloor, $\rfloor$}
+\lft{lceil, $\lceil$}		\rt{rceil, $\rceil$}
+\lft{langle, $\langle$}		\rt{rangle, $\rangle$}
+\lft{dleft, $\dleft$}		\rt{dright, $\dright$}}
+
+There are many operators that appear in formulas that {\it should
+not} be set in the same face as the surrounding formula. These
+are usually set in the face of the surrounding text. tex provides
+the following such operators:{\fill 0\ss{}
+
+\lft{cos, $\cos$}	\ctr{cot, $\cot$}	\rt{csc, $\csc$}
+\lft{sin, $\sin$}	\ctr{sec, $\sec$}	\rt{tan, $\tan$}
+\lft{exp, $\exp$}	\ctr{ln, $\ln$}		\rt{log, $\log$}
+\lft{lim, $\lim$}	\ctr{liminf, $\liminf$}	\rt{limsup, $\limsup$}
+\lft{min, $\min$}	\ctr{max, $\max$}	\rt{Pr, $\Pr$}
+\lft{sup, $\sup$}	\ctr{inf, $\inf$}	\rt{lg, $\lg$}
+\lft{det, $\det$}	\ctr{gcd, $\gcd$}	\rt{modop, $\modop$}}
+
+There are three math mode commands that use arguments. These are
+the super and sub script command, and the modulo operator. The
+following table is similar to the preceding tables, except that
+the string used to generate the glyph is {\ss A\\?\{exg\},} where
+the {\ss ?} is the command entered in the table. {\fill 0\ss{}
+
+\lft{mod, $A\mod{exg}$}	\ctr{+, $A\+{exg}$}	\rt{-, $A\-{exg}$}}
+
+Finally, there is a collection of math mode commands to generate
+miscellaneous characters that are not associated with
+mathematics, but are generally useful. These are listed in the
+section on math mode, and repeated here for completeness.{\fill 0\ss{}
+
+\lft{$\$$, $\$$}	\ctr{$\#$, $\#$}	\rt{dag, $\dag$}
+\lft{ddag, $\ddag$}	\ctr{ldots, $\ldots$}	\rt{ldotss, $\ldotss$}
+\lft{circ, $\circ$}	\ctr{bullet, $\bullet$}	\rt{copyright, $\copyright$}
+\lft{section, $\section$}}
+
+\ctr{max, $\max$}

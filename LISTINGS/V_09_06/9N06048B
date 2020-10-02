@@ -1,0 +1,122 @@
+
+/* -------------------------------------------------------------------- */
+/* Listing 2 - parse source and call the user function */
+
+ /* user function table */
+ /* this static data structure is compiled into the report writer */
+   struct func_list ufunc_tab[] = {
+        {"myfunc", myfunc},
+        {0, 0} };
+
+/* define array to hold parameters to be passed to the user function */
+#define MAX_PARAMS 10
+ struct param uparams[MAX_PARAMS];
+ /* define structure to hold return value from user function */
+ struct param return_param;
+
+main()
+{
+  int ier = 0;
+  struct param *retp;            /* return value from user function */
+
+/* set values for example */
+/* as if parsing report source line:
+  Call myfunc("hello world")
+*/
+ char *ufunc_name = "myfunc";
+ int num_params = 1;
+ uparams[0].datatype = STRING;
+ uparams[0].value.sparam = "hello world";
+
+ /* call user function */
+ retp = call_ufunc(ufunc_name, uparams, num_params);
+
+ /* test return */
+ if (retp) {
+   fputs("(main)", stdout);
+   switch (retp->datatype) {
+     case CHAR:
+       printf(" return(%d)=%c\n", retp->datatype, retp->value.cparam);
+       break;
+     case STRING:
+       printf(" return(%d)=%s\n", retp->datatype, retp->value.sparam);
+       break;
+     case INTEGER:
+       printf(" return(%d)=%d\n", retp->datatype, retp->value.iparam);
+       break;
+	 /* etc., for each data type */
+     default:
+       printf(" unknown return type=%d\n", retp->datatype);
+       ier = 1;
+       break;
+     } /* end switch */
+   }
+ else {
+   fputs("(main) NULL return\n", stdout);
+   ier = 2;           /* NULL return from call_ufunc */
+   }
+
+ return (ier);
+} /* end main */
+
+
+/* This function sets up for and calls the user function */
+struct param * call_ufunc(
+    char *ufuncname,        /* name of user function */
+    struct param uparams[], /* array of parameters for user function */
+    int num_params)         /* number of parameters */
+{
+  struct param *(*ufunc)();           /* pointer to user function */
+  struct param *retp;                 /* return value from user function */
+
+  /* find user function in table */
+  if ((ufunc = lookup(ufuncname, ufunc_tab)) == NULL) {
+    fprintf(stderr, " ERROR - function not in table: \"%s\"\n", ufuncname);
+    return (NULL);
+    }
+
+  /* call user function via function pointer (dummy call) */
+  switch (num_params) {
+    case 0:
+      retp = (*ufunc)();
+      break;
+    case 1:
+      retp = (*ufunc)(&uparams[0]);
+      break;
+    /* etc., 1 case for each number of parameters */
+    }; /* end switch */
+/*
+  alternative call to user function, see Note 3 
+  retp = ufunc(uparams[0], uparams[1], uparams[2], ...);
+*/
+
+  return (retp);      /* return pointer to parameter struct */
+}
+
+/* function to search the function table */
+/* returns pointer to function */
+struct param *(*lookup(
+    char *ufunc_name,              /* name of function */
+	struct func_list ufunc_tab[]   /* function table */
+	))()
+{
+  /* search function table for name of the CALLed function */
+  for (;ufunc_tab->funcname;++ufunc_tab) {
+    if (! strcmp(ufunc_name, ufunc_tab->funcname))
+      return (ufunc_tab->func);
+    }
+
+  return (NULL); /* user function not found in table */
+} /* end lookup */
+
+/* user functions */
+struct param *myfunc(struct param *sparm)
+{
+  printf("function %s\n %s\n", "myfunc", sparm->value.sparam);
+
+  /* set up return value */
+  return_param.datatype = INTEGER;
+  return_param.value.iparam = 0;
+  return (&return_param);
+} /* end myfunc */
+

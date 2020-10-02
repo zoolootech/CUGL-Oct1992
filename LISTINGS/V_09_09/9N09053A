@@ -1,0 +1,130 @@
+Listing 4. Datagram sockets example. Client Program.
+
+
+/* getservice -- a datagram transmission example. client program. Works with 
+ * the server program 'services'. The program asks the server 'services', which
+ * is running on the same machine or in a remote host, for the presence of a 
+ * specified service on the server machine. The server looks up the "/etc/services"
+ * file and sends an answer to the client. If the service exists, the answer gives
+ * its name, the port number and the protocol used.
+ *
+ *    Usage:   getservice  <server host name>
+ */
+
+#include   <sys/types.h>
+#include   <sys/socket.h>
+#include   <netinet/in.h>
+#include   <netdb.h>
+#include   <signal.h>
+#include   <sys/errno.h>
+
+#define    FAIL   1             
+#define    SUCC   0             
+ 
+#define    PORT_NUMBER   2228   /* arbitrarily chosen free port number
+                                 * for client-server communication. Must
+                                 * be the same in both client and server
+                                 */
+
+#define    MAXTRIES   3         /* maximum number of retransmissions before giving up */
+#define    PROMPT     printf("Service Sought (ctrl-d to exit) : ")
+
+/* ------------------------------------------------------------------- */
+
+main(ac, av)
+    int ac;   char **av ;
+{
+    int sock ;                       /* socket descriptor */
+    struct sockaddr_in sock_addr ;   /* local socket address structure */
+    char *progr_name = av[0] ;       /* the present program name */
+    char *server_name = av[1] ;      /* server name given on command line */ 
+    char service_name[30] ;          /* service name to be asked for */
+    char return_message[256] ;       /* buffer for response from the server */
+    struct hostent *host_struct, *gethostbyname() ;
+    void error() ;                   /* the same as in listing 1 */
+    int num_tries ;                  /* the current number of transmission retries */
+    int alarm_handler() ;            /* the new alarm signal handler routine */
+    extern int errno ;               /* system call error number */
+    
+
+    if (ac != 2)  {
+        fprintf(stderr, "error -- usage: %s <server name>\n", progr_name) ;
+        exit(FAIL) ;
+    }
+
+    /* get server address */
+    if ((host_struct = gethostbyname(server_name)) == NULL)  {
+        fprintf(stderr, "%s: unknown server %s\n", progr_name, server_name) ;
+        exit(FAIL) ;
+    }
+    
+    /* allocate a datagram socket descriptor */
+    if ((sock = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
+	error(progr_name, ": error opening socket") ;
+
+    /* copy server address and type to socket structure */
+    bcopy(host_struct->h_addr, (char *)&sock_addr.sin_addr.s_addr,
+          host_struct->h_length) ; 
+    sock_addr.sin_port = PORT_NUMBER ;
+    sock_addr.sin_family = AF_INET ;
+
+    /* redirect alarm signal to new signal handler */
+    (void)signal(SIGALRM, alarm_handler) ;
+
+    /* send messages to remote host */
+
+    while (PROMPT, gets(service_name) != NULL)  {
+        num_tries = 0 ;
+        for ( ; ; )  {
+            int nread ;
+            if (sendto(sock, service_name, sizeof service_name, 0, 
+                   (struct sockaddr *)&sock_addr, sizeof sock_addr ) == -1)
+                error(progr_name, ": error sending datagram to remote host") ;
+
+            /* the "recv" blocks until an answer from the server arrives. Since we
+             * are in a connectionless environment, reliable transmission isn't
+             * guaranteed. For this reason, and although lost packets are very
+             * unlikely, we set up a timeout with the call to alarm. If the timeout
+             * expires, we retransmit the nessage a maximum of MAX_TRIES times.
+             * We also assume that messages can come only from the 'service' server,
+             * otherwise "recvfrom should be used.
+             */ 
+
+            (void)alarm(5) ;
+            if ((nread = recv(sock, return_message, sizeof return_message, 0)) <= 0)  {
+                if (nread < 0 && errno != EINTR)  
+                    error(progr_name, ": receive failed") ;
+                if (num_tries++ < MAXTRIES)  
+                    continue ;
+                else  {
+                    fprintf(stderr, "timeout: no response from %s\n", 
+                            server_name) ;
+                    exit(FAIL) ;
+                }
+            }
+            else          /* got an answer from the server */
+                break ;
+        }
+        (void)alarm(0) ;   /* turn off alarm clock */
+        /* print out the server response */
+        printf("%s\n", return_message) ;
+    }
+    putchar('\n') ;
+    if (close(sock) == -1)
+	error(progr_name, ": error closing socket") ;
+    exit(SUCC) ;
+}
+
+/* --------------------------------------------------------------------- */
+
+/* alarm_handler -- new handler for the alarm signal. The default action
+ * associated with a signal is reset once caugth, so it must be reset
+ * to the intended action each time.
+ */
+
+int alarm_handler()     
+{
+    (void)signal(SIGALRM, alarm_handler) ;
+}
+
+/* --------------------------------------------------------------------- */

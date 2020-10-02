@@ -1,0 +1,185 @@
+
+/*** Listing #1
+*/
+#define TRUE  1
+#define FALSE 2
+
+typedef unsigned char BOOL;
+typedef unsigned char DBC;
+
+#include <dos.h>
+#define    MAXRANGES    10
+#define    GETDBCRANGES 0x6300
+#define    KANJIFLAG    0
+#define    NUMKRANGES   1
+#define    STARTRANGES  2
+
+#define VIDEO         0x10
+#define GETSCREENMODE 0x0f
+#define GETSCRNMODE   0x50    /* Screen country code */
+#define SETSCREENMODE 0x00    /* Screen mode         */
+#define AXJGRAPHICS   0x53
+#define AXJTEXT       0x03
+
+#define KEYBOARD      0x16
+#define CHECKKB       0x11
+#define GETKEY        0x10
+
+#define JAPAN         0x51
+
+/*  Kanji System Information Array
+*
+*     iKanjiInfo[0] -> BOOL indicating kanji system or not.
+*               [1] -> iNumRanges Number of Kanji code ranges.
+*               [2] -> Range #1's low value for lead byte of DBC.
+*               [3] -> Range #1's high value for lead byte of DBC.
+*                .
+*                .
+*               [iNumRanges*2]   -> Range #n's low value for lead byte of DBC.
+*               [iNumRanges*2+1] -> Range #n's high value for lead byte of DBC.
+*/
+int far piKanjiInfo[(MAXRANGES*2)+2];
+
+BOOL bInitKanji  (void);
+BOOL bIsDBC      (DBC *);
+
+/*** bIsDBC - Determines if character is a DBC.
+*
+*   written by: John G. Nelson, Pacific Software Publishing Inc.
+*   copyright:  Pacific Software Publishing Inc.
+*   date:       4/91
+*   description:Determines if a DBC pointer is pointing to a DBC.
+*   inputs:     Pointer to a DBC or a SBC.
+*   outputs:    TRUE if the pointer points to a DBC.
+*               FALSE otherwise.
+*/
+BOOL bIsDBC(
+    DBC *pdbcChar)    /* pointer to DBC   */
+    {
+    int i;
+    int iValue;
+    static   BOOL bNotInit = TRUE;
+    if (bNotInit)  {
+        bNotInit = FALSE;
+        if (FALSE == bInitKanji())  {
+            return(FALSE);
+        }
+    }
+    iValue = pdbcChar[0];
+    i = STARTRANGES;
+    /* Is kanji system installed                       */
+    if (0 == *piKanjiInfo)  {
+        return(FALSE);
+    }
+    while (TRUE)  {
+        if (piKanjiInfo[NUMKRANGES] == (i-2)/2)  {
+            return(FALSE);
+        }
+        if ((piKanjiInfo[i] <= iValue) && (piKanjiInfo[i+1] >= iValue))  {
+            return(TRUE);
+        }
+        i += 2;
+    }
+} /* bIsDBC /
+
+/* bInitKanji
+*
+*   written by:  John G. Nelson, Pacific Software Publishing Inc.
+*   copyright:   Pacific Software Publishing Inc.
+*   date:        9/91
+*   description: Checks if AX Kanji system or not.
+*   functions:   Calls DOS subfunction 0x63 to retrieve
+*                kanji lead byte ranges.
+*   inputs:      none
+*   outputs:     FALSE - The Kanji system is not being used.
+*                TRUE that Kanji system is available and initialized.
+*   globals mod: iKanjiInfo character array.
+*/
+BOOL bInitKanji(
+    void)
+    {
+    union    REGS  regReg;
+    struct   SREGS sregSreg;
+    unsigned char far *fpRanges;
+    int      iNumRanges = 0;
+    int      i;
+    char     cOrigMode;
+
+    /* Get original screen mode                        */
+    regReg.h.ah = GETSCREENMODE;
+    int86 (VIDEO, &regReg, &regReg);
+    cOrigMode = regReg.h.al;
+
+    /* Determine if AX system                          */
+    /* by attempting to set screen mode to AXJGRAPHICS */
+    regReg.h.ah = SETSCREENMODE;
+    regReg.h.al = AXJGRAPHICS;
+    int86 (VIDEO, &regReg, &regReg);
+
+    /* Check if set mode was successful                */
+    regReg.h.ah = GETSCREENMODE;
+    regReg.h.al = 0;
+    int86 (VIDEO, &regReg, &regReg);
+    if (AXJGRAPHICS == regReg.h.al)  {
+
+        /* AX system proved                            */
+        /* Set screen mode back to original before test*/
+        regReg.h.ah = SETSCREENMODE;
+        regReg.h.al = cOrigMode;
+        int86 (VIDEO, &regReg, &regReg);
+
+        /* Get Mode of AX Screen                       */
+        regReg.h.ah = GETSCRNMODE;
+        regReg.h.al = 1;
+        int86 (VIDEO, &regReg, &regReg);
+        if (JAPAN != regReg.x.bx)  {
+            return(FALSE);
+        }
+
+    } else  {
+
+        /* Set screen mode to original before AX test  */
+        regReg.h.ah = SETSCREENMODE;
+        regReg.h.al = cOrigMode;
+        int86 (VIDEO, &regReg, &regReg);
+        piKanjiInfo[KANJIFLAG] = FALSE;
+        return(FALSE);
+
+    }
+    piKanjiInfo[KANJIFLAG] = TRUE;
+
+    /* Gets address of DBC ranges                      */
+    regReg.x.ax = GETDBCRANGES;
+    intdosx (&regReg, &regReg, &sregSreg);
+    fpRanges = MK_FP (sregSreg.ds, regReg.x.si);
+
+    /* Copy ranges to cKanjiInfo array                 */
+    i = STARTRANGES;
+    while (TRUE)  {
+        if (0 == (piKanjiInfo[i++] = *fpRanges++))  {
+            break;
+        }
+        if (0 == i%2)  {
+            iNumRanges++;
+        }
+        if (MAXRANGES == iNumRanges)  {
+            return(FALSE);
+        }
+    }
+
+    piKanjiInfo[NUMKRANGES] = iNumRanges;
+
+    if (0 == iNumRanges)  {
+        /* Default Ranges                              */
+        i = STARTRANGES;
+        piKanjiInfo[NUMKRANGES] = 2;
+        piKanjiInfo[i++] = 0x81;
+        piKanjiInfo[i++] = 0x9f;
+        piKanjiInfo[i++] = 0xe0;
+        piKanjiInfo[i++] = 0xfc;
+    }
+
+    return (piKanjiInfo[KANJIFLAG]);
+
+} /* bInitKanji  */
+ 

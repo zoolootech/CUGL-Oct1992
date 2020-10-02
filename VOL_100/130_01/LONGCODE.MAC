@@ -1,0 +1,436 @@
+;                        LONG
+;
+;     LONG is a facility to allow long integers to be
+;   handled in BDS C.  A long integer is a four byte
+;   array with the least significant part of the integer
+;   stored in bytearray[0].  The integer is stored as a
+;   2's complement number with 31 bits of precision.
+;
+;     Operations supported by LONG include addition,
+;   subtraction, multiplication (least significant 31
+;   bits returned), division, and modulus.  Other
+;   operations, such as ascii to long, long to ascii,
+;   etc., can be programmed efficiently in C.
+;
+;     Calls to LONG are normally "wrapped up" in various
+;   C functions which, in turn, call the function
+;
+;        char *li(CODE,arg1,arg2,arg3)
+;        char CODE, *arg1, *arg2, *arg3;
+;
+;   which returns a pointer to the result.  Arg1, arg2,
+;   and arg3 must be pointers to four byte representations
+;   of long integers in the format defined above.  In
+;   general the operation performed is as if BDS C had
+;   a data type long and
+;
+;        long *arg1, *arg2, *arg3;
+;        *arg1 = *arg2 op *arg3;
+;
+;   where op is defined by the following table:
+;
+;         CODE     op      comment
+;
+;           0       +      signed 31 bit result
+;           1       -      signed 31 bit result
+;           2       *      signed low order 31 bit result
+;           3       /      signed 31 bit quotient
+;           4       %      positive 31 bit remainder
+;
+;   and, in each case, any overflow is both lost and not
+;   noted.
+;
+	TITLE	LONG
+;
+	PAGE	60
+;
+;   BDS C is copyright (c) 1980 by Leor Zolman.
+;   LONG is copyright (c) 1981 by Paul J. Gans.
+;
+;   A notable strangeness in the listing below is that
+;   my version of this assembler REQUIRES that the op
+;   code ex af,af' be CAPITOLIZED or it will not be
+;   recognized...-pjg.
+;
+	.z80
+;
+;     Note that the coding technique used here is basically
+;   that of William C. Colley, III as reported in the BDS C
+;   User's Guide Addenda, v1.32, dated May, 1980.  Note
+;   that Colley's technique is simplified by using the
+;   MACRO-80 pseudo-op DC to set the high order bit of
+;   the last character of a string.
+;
+	aseg
+;
+	org	0000h
+;
+	dc	'LI'	; first directory entry
+	dw	long
+;
+	db	80h	; end of directory
+	dw	f.free	; next free file location
+;
+	org	0200h
+;
+	db	0,0,0,0,0	; always zero if no main
+;
+long:	db	0	; no fn's called by LONG
+;
+	dw	f.1rel-f.1beg	; length of LONG
+;
+	.phase	0
+;
+;   At the start of this function the stack looks like:
+;       arg3, arg2, arg1, CODE, return address
+;   with the return address at the top of the stack.
+;
+f.1beg:	pop	de	; DE=returnaddress
+	pop	hl	; CODE
+	ld	a,l	; A=CODE
+	pop	hl	; HL=arg1 (result address)
+	pop	ix	; IX=arg2
+	pop	iy	; IY=arg3
+	push	hl	; now restore the stack length
+	push	hl
+	push	hl
+	push	hl
+	push	de	; restore return address
+	push	bc	; save BC for caller
+	push	hl	; and a copy of arg1 for later
+;
+	exx		; goto prime register space
+	ld	c,(iy+0)	; low order of args
+	ld	b,(iy+1)
+	ld	e,(ix+0)
+	ld	d,(ix+1)
+	ld	hl,0	; clear result
+;
+	exx		; goto normal register space
+	ld	c,(iy+2)	; high order of args
+	ld	b,(iy+3)
+	ld	e,(ix+2)
+	ld	d,(ix+3)
+	ld	hl,0	; clear result
+;
+	cp	0	; check code
+f.1001:	jp	z,add
+	cp	1
+f.1002:	jp	z,sub
+	cp	2
+f.1003:	jp	z,mul
+;
+;   The division routine returns two possible values:
+;   the quotient, if CODE was 3, or the modulus, if
+;   CODE was 4.  As a sloppy error exit, CODEs higher
+;   than 4 or lower than 0 default to 4.  I SAID it
+;   was sloppy.
+;
+;   This routine expects a 64 bit dividend in registers
+;   HLH'L'DED'E' and a 32 bit divisor in registers BCB'C'.
+;   A 32 bit quotient is generated in DED'E' and a 32 bit
+;   remainder is generated in HLH'L'.  For the present
+;   application the high order 32 bits of the dividend
+;   (registers HLH'L') are zeroed.
+;
+;
+div:	EX	AF,AF'	; save CODE for later
+;
+;   Because signed divisions are a giant pain, the sign
+;   of the result is computed and saved on the stack.
+;   Then any negative operands are made positive via
+;   calls to the proper routine.
+;
+f.1004:	call	sign
+;
+	ld	a,32	; number of iterations
+div1:	or	a	; reset carry flag
+;
+	exx		; enter prime register space
+	sbc	hl,bc	; can we subtract?
+;
+	exx		; enter normal register space
+	sbc	hl,bc
+	jr	nc,div2	; a carry means no
+;
+	exx		; enter prime register space
+	add	hl,bc	; restore dividend
+;
+	exx		; enter normal register space
+	adc	hl,bc
+div2:	ccf		; quotient bit
+;
+	exx		; enter prime register space
+	rl	e	; left shift dividend, shifting
+	rl	d	;   in new quotient bit as we go
+;
+	exx		; enter normal register space
+	rl	e
+	rl	d
+;
+	exx		; prime register space
+	adc	hl,hl	; it's a 64 bit shift, guys
+;
+	exx		; normal register space
+	adc	hl,hl
+	dec	a	; done?
+f.1005:	jp	p,div1	; no
+;
+;   CODE must now be tested so that HL can be set up
+;   properly.
+;
+	EX	AF,AF'	; regain CODE
+	cp	3
+	jr	nz,modu	; it's a modulus by default
+;
+	exx		; prime space
+	ex	de,hl	; return quotient
+;
+	exx		; normal space
+	ex	de,hl
+	pop	af	; regain sign of result
+	or	a	; to flags
+f.1006:	call	m,neg1	; if negative
+f.1007:	jp	fin	; to clean up and go home
+;
+modu:	srl	h	; adjust remainder for 1 bit
+	rr	l	;   overshift
+;
+	exx		; prime space
+	rr	h
+	rr	l
+;
+	exx		; normal space
+	pop	de	; dump saved sign, mod is pos
+f.1008:	jp	fin	; to clean up and go home
+;
+;
+;   The multiplication routine multiplies the contents
+;   of registers BCB'C' by the contents of registers DED'E'
+;   and returns the low order 31 bits of the result in
+;   registers HLH'L'.
+;
+;   Multiplication is also best done on positive numbers,
+;   so we go to the routine again.
+;
+mul:	call	sign
+;
+	ld	a,32
+;
+mul1:	exx		; enter prime space
+	sla	c	; left shift plier 1 place
+	rl	b
+;
+	exx		; enter normal space
+	rl	c
+	rl	b
+	jr	nc,mul2	; if high bit was 0
+;
+	exx		; prime space
+	add	hl,de	; add in multiplicand
+;
+	exx		; normal space
+	adc	hl,de
+mul2:	dec	a	; done?
+	jr	z,mul3	; yes, clean up and go home
+;
+	exx		; hyperspace
+	add	hl,hl	; left shift product
+;
+	exx		; real space
+	adc	hl,hl
+	jr	mul1	; and repeat
+;
+mul3:	pop	af	; regain sign of result
+	or	a	; sign to flags
+f.1009:	call	m,neg1	; if negative
+f.100a:	jp	fin	; and so to rest at last...
+;
+;   The contents of BCB'C' are added to the contents of
+;   DED'E' and the results returned in HLH'L'.
+;
+add:	exx		; to prime
+	ex	de,hl
+	add	hl,bc
+;
+	exx		; to normal
+	ex	de,hl
+	adc	hl,bc
+	jr	fin	; to quit
+;
+;   The contents of BCB'C' are subtracted from the contents
+;   of DED'E' and the results returned in HLH'L'
+;
+sub:	exx		; to prime
+	or	a	; reset carry flag
+	ex	de,hl
+	sbc	hl,bc
+;
+	exx		; to normal
+	ex	de,hl
+	sbc	hl,bc	
+	jr	fin	; to quit
+;
+;   This is the terminal section of code.  It stores the
+;   result from HLH'L' into the locations specified by
+;   arg1, restores BC and SP, and exits with HL containing
+;   arg1.
+;
+fin:	pop	ix	; IX=arg1 (result address)
+	pop	bc	; restore BC while we are at it
+;
+	exx		; to momentum space
+	ld	(ix+0),l
+	ld	(ix+1),h
+;
+	exx		; to cartesian space
+	ld	(ix+2),l
+	ld	(ix+3),h
+	push	ix	; get result address
+	pop	hl	;   into HL
+;
+	ret		; to real world
+;
+;   This subroutine computes the sign of the result in
+;   multiplication and division and saves it as bit 7 of
+;   the A register on the stack.  It also makes any
+;   negative operands positive.  Note that it assumes
+;   that HLH'L' are zeroed on entry.
+;
+sign:	ld	a,d	; contains sign of arg2
+	xor	b	; generate result sign
+	pop	ix	; save subs return address
+	push	af	; save result sign
+;
+	ld	a,d	; sign of arg2 again
+	or	a	; to flags
+f.100b:	jp	p,sign1	; if non-negative
+;
+;   Form the 2's complement of the second argument
+;   (DED'E').
+;
+	exx		; far out space
+	xor	a	; reset A and carry bit
+	sbc	hl,de
+	ex	de,hl	; restore answer
+	ld	l,a	; clean things up
+	ld	h,a
+;
+	exx		; home space
+	sbc	hl,de
+	ex	de,hl	; more restore
+	ld	l,a	; clean here too
+	ld	h,a
+;
+sign1:	ld	a,b	; sign of arg3
+	or 	a	; to flags
+f.100c:	jp	p,sign2	; if non-negative
+;
+;   The two's complement of the third argument is formed
+;   in place (BCB'C').
+;
+	exx		; prime
+	xor	a	; reset A and carry
+	sbc	hl,bc
+	ld	c,l
+	ld	b,h
+	ld	l,a	; rezero things
+	ld	h,a
+;
+	exx		; normal
+	sbc	hl,bc
+	ld	c,l
+	ld	b,h
+	ld	l,a
+	ld	h,a
+;
+sign2:	jp	(ix)	; that's all, folks!
+;
+;   This routine forms the 2's complement of the result
+;   in HLH'L'.
+;
+neg1:	exx		; enter prime space
+	xor	a	; zero A and carry flag
+	ex	de,hl
+	ld	l,a	; zero HL register
+	ld	h,a
+	sbc	hl,de
+;
+	exx		; enter normal space
+	ex	de,hl
+	ld	l,a	; zero HL register
+	ld	h,a
+	sbc	hl,de
+;
+	ret
+;
+f.1rel:	dw	(f.1end-$)/2	; num of reloc params
+	dw	f.1001+1	; relocation addresses
+	dw	f.1002+1
+	dw	f.1003+1
+	dw	f.1004+1
+	dw	f.1005+1
+	dw	f.1006+1
+	dw	f.1007+1
+	dw	f.1008+1
+	dw	mul+1
+	dw	f.1009+1
+	dw	f.100a+1
+	dw	f.100b+1
+f.1end:	dw	f.100c+1
+;
+	.dephase
+;
+f.free:			; next free location
+;
+	end
+
+	end
+	end
+
+	end
+cation
+;
+	end
+
+s routine forms the 2's complement of the third
+;   argument (BCB'C').
+;
+neg3:	exx		; prime
+	xor	a	; reset A and carry flag
+	sbc	hl,bc
+	ld	c,l
+	ld	b,h
+	ld	l,a	; rezero things
+	ld	h,a
+;
+	exx		; normal
+	sbc	hl,bc
+	ld	c,l
+	ld	b,h
+	ld	l,a	; clean up
+	ld	h,a
+;
+	ret
+;
+f.1rel:	dw	(f.1end-$)/2	; num of reloc params
+	dw	f.1001+1	; relocation addresses
+	dw	f.1002+1
+	dw	f.1003+1
+	dw	f.1004+1
+	dw	f.1005+1
+	dw	f.1006+1
+	dw	f.1007+1
+	dw	f.1008+1
+	dw	mul+1
+	dw	f.1009+1
+	dw	f.100a+1
+	dw	f.100b+1
+f.1end:	dw	f.100c+1
+;
+	.dephase
+;
+f.free:			; next free location
+;
+	end
+Í€ÊÅ…þ(Ê°…ÕÍæÑöÀ_z‚³Ã•‚z·ÂÏ‹Í²þÊÀ…Í >éÃôOz·>ÃÊ¤‚>ÍÃ¤‚!öŒÍú€Âð…ÍŒŽþÊë…ÍÒöÀÃô>ÉÃô!¦ŒÍü€ÂE†ÍVÊ†ÊÏ‹Í½€GÍÉ>ÓÃ

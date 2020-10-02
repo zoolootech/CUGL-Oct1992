@@ -1,0 +1,401 @@
+
+/********************************************************************
+* BEZDIS.C -- Interactive Bezier Curve Display.
+*
+* Author : Bob Zigon
+* Date   : July 26, 1989
+********************************************************************/
+#include "stdio.h"
+#include "stdlib.h"
+#include "string.h"
+#include "bios.h"
+#include "graphics.h"
+
+#include "keys.h"
+
+/*******************************************************************
+*                       Global Defines
+********************************************************************/
+#define OFF           0
+#define ON           (!OFF)
+
+#define MAXTDivisions 150
+#define MINTDivisions 30
+#define MAXCP         10
+#define CPDx          0.05
+#define CPDy          0.05
+
+/*******************************************************************
+*                      Variable Declarations
+********************************************************************/
+double XCp[MAXCP+1],        /* X Control Points */
+       YCp[MAXCP+1];        /* Y Control Points */
+
+short int XCpScr[MAXCP+1],
+          YCpScr[MAXCP+1];
+
+double XCurve[MAXTDivisions+1],   /* X Curve Points */
+       YCurve[MAXTDivisions+1];   /* Y Curve Points */
+
+short int Xv[MAXTDivisions+1],
+          Yv[MAXTDivisions+1];
+
+short int XvpMin,                 /* Viewport dimensions */
+          XvpMax,
+          YvpMin,
+          YvpMax,
+          XsMax,                  /* Screen Dimensions in pixels */
+          YsMax;
+
+short int TDivisions = MINTDivisions,
+          NumCP,
+          CurCP = 0,
+          Refresh = ON;
+
+short int CurveColor,
+          LineColor,
+          CrossColor,
+          BgdColor;
+
+double XCpMin = 0.0,
+       XCpMax = 5.0,
+       YCpMin = 0.0,
+       YCpMax = 5.0;
+
+char *HelpMsg[] =
+{
+   " F1    - Help",
+   " F2    - Toggle refresh of CP line segments",
+   " ",
+   " Left  - Move current CP left 1 unit",
+   " Right - Move current CP right 1 unit",
+   " Up    - Move current CP up 1 unit",
+   " Down  - Move current CP down 1 unit",
+   " ",
+   " PgUp  - Next CP",
+   " PgDn  - Prev CP",
+   " Ins   - Insert CP",
+   " Del   - Delete CP",
+   " ",
+   " Home  - Add 5 to number of parametric divisions",
+   " End   - Sub 5 from number of parametric divisions ",
+   " ",
+   " ESC   - QUIT"
+};
+
+#define NUMHELP  (sizeof(HelpMsg)/sizeof(char *))
+
+/*******************************************************************
+*                       Function Prototypes
+********************************************************************/
+void Binomial(short int NumControl), UpdateStatus(void);
+void BezierToScreen(short int, short int, short int *, short int *);
+short int GetInput(void), Check8087(void);
+void Initialize(void), DrawCurve(short int), DrawCross(short int);
+void WToVConst(void), GetHelp(void);
+
+void main()
+{
+   short int i, cc;
+
+   Initialize();
+
+   WToVConst();
+   Binomial(NumCP);
+   BezierToScreen(TDivisions, NumCP, Xv, Yv);
+   DrawCurve(ON);
+   UpdateStatus();
+
+   while ((cc = GetInput()) != ESC)
+      switch (cc)
+      {
+         case F1    : GetHelp();
+                      break;
+
+         case F2    : DrawCurve(OFF);
+                      Refresh = !Refresh;
+                      DrawCurve(ON);
+                      UpdateStatus();
+                      break;
+
+         case LEFT  : if (XCp[CurCP]-CPDx > XCpMin)
+                      {
+                         DrawCurve(OFF);
+                         XCp[CurCP] -= CPDx;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                      }
+                      break;
+
+         case RIGHT : if (XCp[CurCP]+CPDx < XCpMax)
+                      {
+                         DrawCurve(OFF);
+                         XCp[CurCP] += CPDx;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                      }
+                      break;
+
+         case DOWN  : if (YCp[CurCP]-CPDy > YCpMin)
+                      {
+                         DrawCurve(OFF);
+                         YCp[CurCP] -= CPDy;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                      }
+                      break;
+
+         case UP    : if (YCp[CurCP]+CPDy < YCpMax)
+                      {
+                         DrawCurve(OFF);
+                         YCp[CurCP] += CPDy;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                      }
+                      break;
+
+         case PGUP  : if (CurCP+1 < NumCP)
+                      {
+                         DrawCross(BgdColor);
+                         CurCP++;
+                         DrawCurve(ON);
+                         DrawCross(CrossColor);
+                         UpdateStatus();
+                      }
+                      break;
+
+         case PGDN  : if (CurCP-1 > -1)
+                      {
+                         DrawCross(BgdColor);
+                         CurCP--;
+                         DrawCurve(ON);
+                         DrawCross(CrossColor);
+                         UpdateStatus();
+                      }
+                      break;
+
+         case HOME  : if (TDivisions+5 < MAXTDivisions)
+                      {
+                         DrawCurve(OFF);
+                         TDivisions += 5;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                         UpdateStatus();
+                      }
+                      break;
+
+         case END   : if (TDivisions-5 >= MINTDivisions)
+                      {
+                         DrawCurve(OFF);
+                         TDivisions -= 5;
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                         UpdateStatus();
+                      }
+                      break;
+
+         case INS   : if (NumCP+1 < MAXCP && CurCP+1 != NumCP)
+                      {
+                         DrawCurve(OFF);
+                         for (i = NumCP++; i > CurCP; i--)
+                         {
+                            XCp[i] = XCp[i-1];
+                            YCp[i] = YCp[i-1];
+                         }
+
+                         Binomial(NumCP);
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                         UpdateStatus();
+                      }
+                      break;
+
+         case DEL   : if (NumCP > 2)
+                      {
+                         DrawCurve(OFF);
+                         for (i = CurCP, NumCP--; i < NumCP; i++)
+                         {
+                            XCp[i] = XCp[i+1];
+                            YCp[i] = YCp[i+1];
+                         }
+                         if (CurCP == NumCP)
+                            CurCP--;
+                         Binomial(NumCP);
+                         BezierToScreen(TDivisions, NumCP, Xv, Yv);
+                         DrawCurve(ON);
+                         UpdateStatus();
+                      }
+                      break;
+      }
+
+   closegraph();
+}
+
+void Initialize()
+{
+   int Gdriver, Gmode;
+
+   if (Check8087() == 0)
+   {
+      printf("\nNo Arithmetic Coprocessor Present.");
+      exit(1);
+   }
+
+   detectgraph(&Gdriver, &Gmode);
+
+   if (Gdriver < 0)
+   {
+      printf("\nError : No graphics hardware detected.");
+      exit(1);
+   }
+
+   if (Gmode == CGAHI)
+      Gmode = CGAC0;
+
+   initgraph(&Gdriver, &Gmode, "");
+
+   XvpMin = 5;
+   YvpMin = 5;
+   XvpMax = getmaxx()-5;
+   YvpMax = getmaxy()-3-textheight("A");
+   XsMax  = getmaxx();
+   YsMax  = getmaxy();
+
+   if (Gdriver == CGA)
+   {
+      BgdColor   = 0;
+      CurveColor = CGA_GREEN;
+      LineColor  = CGA_BROWN;
+      CrossColor = CGA_RED;
+   }
+   else
+   {
+      BgdColor   = BLACK;
+      CurveColor = WHITE;
+      LineColor  = YELLOW;
+      CrossColor = RED;
+   }
+
+   NumCP  = 4;
+   XCp[0] = 1.0; YCp[0] = 1.0;
+   XCp[1] = 2.0; YCp[1] = 3.0;
+   XCp[2] = 4.0; YCp[2] = 3.0;
+   XCp[3] = 3.0; YCp[3] = 1.0;
+}
+
+void DrawCurve(OnOff)
+short int OnOff;
+{
+   register short int i;
+
+      if (OnOff == OFF)
+      {
+         DrawCross(BgdColor);
+
+         if (Refresh == ON)
+         {
+            moveto(XCpScr[0], YCpScr[0]);
+            for (i = 1; i < NumCP; i++)
+               lineto(XCpScr[i], YCpScr[i]);
+         }
+
+         moveto(Xv[0], Yv[0]);
+         for (i = 1; i < TDivisions+1; i++)
+            lineto(Xv[i], Yv[i]);
+      }
+      else
+      {
+         setcolor(LineColor);
+         if (Refresh == ON)
+         {
+            moveto(XCpScr[0], YCpScr[0]);
+            for (i = 1; i < NumCP; i++)
+               lineto(XCpScr[i], YCpScr[i]);
+         }
+
+         setcolor(CurveColor);
+         moveto(Xv[0], Yv[0]);
+         for (i = 1; i < TDivisions+1; i++)
+            lineto(Xv[i], Yv[i]);
+
+         DrawCross(CrossColor);
+      }
+}
+
+void DrawCross(color)
+short int color;
+{
+   setcolor(color);
+   line(XCpScr[CurCP]-3, YCpScr[CurCP], XCpScr[CurCP]+3, YCpScr[CurCP]);
+   line(XCpScr[CurCP], YCpScr[CurCP]-3, XCpScr[CurCP], YCpScr[CurCP]+3);
+}
+
+void UpdateStatus()
+{
+   char buf[80];
+
+   setviewport(0, YvpMax+1, XsMax,  YsMax, 0);
+   clearviewport();
+   setcolor(LineColor);
+   sprintf(buf, "  CP %2d of %2d  Div: %3d ", CurCP+1, NumCP, TDivisions);
+   outtextxy(0, 0, buf);
+   setviewport(0, 0, XsMax, YsMax, 0);
+}
+
+void GetHelp()
+{
+   short int HelpL, HelpR, HelpT, HelpB;
+   short int i, THgt, MaxLen, HSize, MaxHgt;
+   char *Buf;
+
+   for (i = 0, MaxLen = 0; i < NUMHELP; i++)
+     if (strlen(HelpMsg[i]) > MaxLen)
+        MaxLen = strlen(HelpMsg[i]);
+
+   MaxLen *= textwidth("A");
+   THgt   = textheight("A");
+   MaxHgt = THgt*NUMHELP;
+
+   HelpL = (XsMax-MaxLen)/2;
+   HelpR = HelpL+MaxLen+5;
+   HelpT = (YsMax-MaxHgt)/2;
+   HelpB = HelpT+MaxHgt+5;
+
+   HSize = imagesize(HelpL, HelpT, HelpR, HelpB);
+   if ((Buf=malloc(HSize)) == NULL)
+      return;
+
+   getimage(HelpL, HelpT, HelpR, HelpB, Buf);
+   setviewport(HelpL, HelpT, HelpR, HelpB, 1);
+   clearviewport();
+   setcolor(LineColor);
+
+   line(0, 0, MaxLen+4, 0);
+   line(MaxLen+4, 0, MaxLen+4, MaxHgt+4);
+   line(MaxLen+4, MaxHgt+4, 0, MaxHgt+4);
+   line(0, MaxHgt+4, 0, 0);
+
+   for (i = 0; i < NUMHELP; i++)
+      outtextxy(2, i*THgt+2, HelpMsg[i]);
+
+   while (GetInput() != ESC)
+      ;
+
+   setviewport(0, 0, XsMax, YsMax, 0);
+   putimage(HelpL, HelpT, Buf, COPY_PUT);
+   free(Buf);
+}
+
+short int GetInput(void)
+{
+   short int key;
+
+   /*
+    * If it is not an extended key, then return the ascii value.
+   */
+   if ((key = bioskey(0)) & 0xFF)
+      return (key & 0xFF);
+
+   return (0x200 + ((key & 0xFF00) >> 8));
+}
+

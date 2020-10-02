@@ -1,0 +1,168 @@
+
+/******************************************
+*       PHRASE.H v1.0
+*       phrase package header
+*       Richard Rathe 8/90
+*/
+
+#ifndef PHRASE_H
+
+#define PHRASE_H
+
+#define EOS             '\0'    /* end of string character */
+
+#define MAXCHAR         64      /* length of largest string     */
+#define MINCHAR         2       /* length of smallest string    */
+#define MAXWORD         3       /* length of largest phrase     */
+#define LISTMARK        "\r"    /* delimiter for phrase list */
+
+extern void phrase(char *in,char *out,char *stop);
+extern char *getword(char *str,char *word,char *delim);
+extern void addword(char *str,char *word,char *stop,char delim);
+extern int      skipword(char *str,char *stop);
+extern char *getstopword(char *str,char *stopword);
+extern void strlwr(char *str);
+
+#endif
+
+/************************************************
+*       phrase.c v1.0
+*       chunk words into phrases
+*       THINK C v4.0
+*       Richard Rathe 8/90
+*/
+
+#include <string.h>             /* standard headers */
+#include <ctype.h>
+
+#include "phrase.h"             /* for #defines and prototypes */
+
+void phrase(char *in,char *out,char *stop)
+{
+        char flag;
+        char buf[MAXCHAR];
+        
+        *out = EOS;             /* just to be sure */
+
+        while(*(in = getword(in,buf,&flag)) != EOS)     /* get a word */
+                addword(out,buf,stop,flag);             /* add it */
+
+        addword(out,buf,stop,flag);                     /* last word */
+}
+
+char *getword(char *str,char *word,char *delim)
+{
+        while(isalnum(*str) || *str == '-' && *str != EOS)
+        {
+                *word = *str;   /* load chars into word */
+                word++;         /* advance pointers */
+                str++;
+        }
+
+        *delim = *str;          /* save first delimiter */
+
+        while(!isalnum(*str) && *str != EOS)    /* eat extra chars */
+        {
+                if(!isspace(*str))      /* if not white space */
+                        *delim = *str;  /* remember delimiter */
+                str++;
+        }
+        
+        *word = EOS;            /* add EOS to word */
+        return str;             /* return current position */
+}
+
+void addword(char *str,char *word,char *stop,char delim)
+{
+        int i,j;
+        static char word_array[MAXWORD][MAXCHAR];
+        
+        for(i = 0;i < MAXWORD - 1;i++)                  /* age array */
+                strcpy(word_array[i],word_array[i + 1]);
+
+        strlwr(word);                                   /* strip caps */
+
+        strcpy(word_array[MAXWORD - 1],word);           /* add word */
+
+        for(i = 0;i < MAXWORD;i++)              /* for each array position */
+        {
+                if(!word_array[i][0])           /* empty position */
+                        continue;               /* continue */
+                        
+                if(skipword(word_array[i],stop))        /* stopword first */
+                        continue;                       /* continue */
+
+                if(skipword(word_array[MAXWORD - 1],stop)) /* stopword last */
+                        continue;                               /* continue */
+
+                strcat(str,word_array[i]);      /* add array position */
+
+                for(j = i + 1;j < MAXWORD;j++)  /* add subsequent positions */
+                {
+                        strcat(str," ");
+                        strcat(str,word_array[j]);
+                }
+
+                strcat(str,LISTMARK);           /* add list delimiter */
+        }
+                
+        if(!isspace(delim))                     /* if delimiter not space */
+        {
+                for(i = 0;i < MAXWORD;i++)      /* clear array */
+                {
+                        word_array[i][0] = EOS;
+                }
+        }
+}
+
+int skipword(char *word,char *stoplist)
+{
+        int i,j,x;
+        char stopword[MAXCHAR];
+
+        if(strlen(word) < MINCHAR)      /* if short word */
+                        return 1;       /* skip (true) */
+
+        if(isdigit(*word))              /* if leading digit */
+                        return 1;       /* skip (true) */
+
+                                        /* get a stopword */
+        while(*(stoplist = getstopword(stoplist,stopword)) != EOS)
+        {
+                if((x = strcmp(word,stopword)) == 0)    /* word in stoplist */
+                        return 1;                       /* skip (true) */
+        
+                if(x < 0)               /* if str > list */
+                        break;          /* we're done */
+        }
+
+                                        /* last stop word */
+        if(*stoplist == EOS && strcmp(word,stopword) == 0)
+                return 1;               /* skip (true) */
+        
+        return 0;                       /* otherwise add (false) */
+}
+
+char *getstopword(char *str,char *stopword)
+{
+                                        /* step over commas and spaces */
+        while(isspace(*str) || *str == ',' && *str != EOS)
+                str++;                                                                  
+
+        while(*str != ',' && *str != EOS)
+        {
+                *stopword = *str;       /* load chars into stopword */
+                stopword++;             /* advance pointers */
+                str++;
+        }
+
+        *stopword = EOS;                /* add EOS to word */
+        return str;                     /* return current position */
+}
+
+void strlwr(char *str)
+{
+        for(;*str != EOS;str++)         /* convert string to lower case */
+                *str = tolower(*str);
+}
+

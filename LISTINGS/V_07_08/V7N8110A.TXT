@@ -1,0 +1,129 @@
+
+
+*** Listing 4 ***
+
+/*
+ * hn_port.c - UNIX version of port-level i/o for the HNL
+ *
+ * Copyright(c) 1988 by Hobart Corporation.
+ * Used with permission.
+ */
+
+#include <stdio.h>
+#include <termio.h>
+#include <hn.h>
+#include <hn_errno.h>
+
+
+hn_port *hn_popen(char *dev, hn_bps bps, hn_parity par,
+        unsigned data_bits, unsigned stop_bits)
+    {
+    static struct termio t =
+        {
+        IGNBRK | INPCK | ISTRIP, 0, CREAD | CLOCAL, 0, 0,
+        0, 0, 0, 0, 0, 0, 0, 0
+        };
+    static unsigned actual_bps[] = {1200, 2400, 4800, 9600};
+    static unsigned unix_bps[] = {B1200, B2400, B4800, B9600};
+    static unsigned unix_parity[] = {0, PARENB & PARODD, PARENB};
+    hn_port *p = NULL;
+    FILE *in = NULL, *out = NULL;
+    int err = HN_ENONE;
+
+    if ((in = fopen(dev, "r")) == NULL)
+        err = HN_EDEVNAME;
+    else if ((out = fopen(dev, "w")) == NULL)
+        err = HN_EDEVNAME;
+    else if (bps >= DIM(unix_bps))
+        err = HN_EBPS;
+    else if (par >= DIM(unix_parity))
+        err = HN_EPARITY;
+    else if (data_bits != 7 && data_bits != 8)
+        err = HN_EDATABITS;
+    else if (stop_bits != 1 && stop_bits != 2)
+        err = HN_ESTOPBITS;
+    if (err == HN_ENONE)
+        {
+        t.c_cflag |= unix_bps[bps];
+        t.c_cflag |= unix_par[parity];
+        t.c_cflag |= (data_bits == 7) ? CS7 : CS8;
+        if (stop_bits == 2)
+            t.c_cflag |= CSTOPB;
+        if (ioctl(fileno(in), TCSETA, &t) == -1)
+            err = HN_ENOTSETUP;
+        else
+            {
+            setbuf(in, NULL);
+            if ((p = malloc(sizeof(hn_port))) == NULL)
+                err = HN_ENOPORTS;
+            }
+        }
+    if (err != HN_ENONE)
+        {
+        if (in != NULL)
+            fclose(in);
+        if (out != NULL)
+            fclose(out);
+        if (p != NULL)
+            free(p);
+        hn_errno = err;
+        return NULL;
+        }
+    p->in = in;
+    p->out = out;
+    p->errno = HN_ENONE;
+    return p;
+    }
+
+int hn_pclose(hn_port *p)
+    {
+    if (p != NULL)
+        {
+        if (fclose(p->in) == EOF | fclose(p->out) == EOF)
+            {
+            hn_errno = HN_ECANTCLOSE;
+            return EOF;
+            }
+        free(p);
+        }
+    return 0;
+    }
+
+int hn_penable(hn_port *p)
+    {
+    return 0;
+    }
+
+int hn_pdisable(hn_port *p)
+    {
+    return 0;
+    }
+
+int hn_pgetc(hn_port *p)
+    {
+    int c;
+
+    if ((c = fgetc(p->in)) != EOF)
+        return c;
+    if (ferror(p->in))
+        hn_errno = p->errno = HN_ECANTGET;
+    return EOF;
+    }
+
+int hn_pputc(int c, hn_port *p)
+    {
+    if (fputc(c, p->out) != EOF)
+        return c;
+    if (ferror(p->out))
+        hn_errno = p->errno = HN_ECANTPUT;
+    return EOF;
+    }
+
+int hn_pflush(hn_port *p)
+    {
+    if (fflush(p->out) == 0)
+        return 0;
+    hn_errno = p->errno = HN_ECANTFLUSH;
+    return EOF;
+    }
+

@@ -1,0 +1,239 @@
+/*------------------------------------------------------*/
+/* 	   Hsearch: Hash Table Manager 			*/
+/*							*/
+/*							*/
+/*  Usage:  call hcreate with the desired hash table    */ 
+/*	     size					*/
+/*	    call hsearch to enter and find items in the */
+/*           table					*/
+/*	    call hdestroy when done (optional)		*/
+/*	    call hcount for number items in table	*/
+/*	    call hsize for size (# elements) of hash 	*/
+/*	     table					*/
+/*	    call hwrite to save hash table to disk	*/
+/*	    call hread to restore hash table from disk	*/
+/*							*/
+/*  Restrictions:  Allows only one hash table to be 	*/
+/*                 open at the same time.		*/
+/*  /Notes		  				*/
+/*	   Uses fIND instead of FIND in subroutine	*/
+/*	   hashtable to avoid conflict with label FIND	*/
+/*	   in DOS.H.					*/
+/*							*/
+/*							*/
+/*  Programmer: T. Provenzano  				*/
+/*		09/14/88  	Original Version (in C)	*/
+/*		10/07/88  	Converted to C++	*/
+/*							*/
+/*------------------------------------------------------*/
+
+#include <string.h>
+#include <stdio.h>
+#include <dos.h>
+#include <io.h>
+#include <sys\stat.h>
+#include "search.hpp"
+
+#define DEBUG
+
+/*
+   The following macro allows debug statements without 
+   ifdef/endif obscuring the source code indentation
+*/
+#ifdef DEBUG
+#define D(x) x
+#else
+#define D(x)
+#endif
+
+/*--------------------------------------------------------*/
+/* Subroutine Prime calculates the greatest prime number 
+   less than or equal to the table size supplied by the 
+   caller.					          */
+
+unsigned hashtable::prime(unsigned size)
+{
+  unsigned divisor;
+
+  for (;; size--)
+  {
+    for (divisor=2; size % divisor != 0; divisor++)
+      ;
+    if (divisor == size) break;
+  }
+  D( printf("\nPrime number = %u\n", size); )
+  return size;
+}
+/*--------------------------------------------------------*/
+/* Subroutine hash implements the "division" technique
+   where the string characters are first summed and then 
+   divided (modulo) by the hash table size.	
+      f(X) = X mod M
+   X = identifier to hash; M = hash table size.	          */
+
+int hashtable::hash(char *str)
+{
+  int i=1, hash_val=0;
+
+  for (; i <= strlen(str); i++)
+    hash_val += *str;
+  return (hash_val%num_elem);
+}
+/*--------------------------------------------------------*/
+/* fIND or ENTER an item in the hash table.  If a 
+   "collision" occurs sequential entries are searched in 
+   the table to find the next free slot.  The overflow item 
+   is ENTERed there or searches are made sequentially when 
+   FINDing a collided item.			          */
+
+ENTRY* hashtable::hsearch(ENTRY item, ACTION action)
+{
+  int i, j;			// index into hash table
+  ENTRY *p;
+
+  switch (action)
+  {
+    case ENTER:
+       i = j = hash(item.key);
+       D( printf("\nhash value = %d\n", i); )
+       p = (hash_table+i);
+       while (p->key != item.key && p->key != (char *)0 
+             && p->key != (char *)-1)
+       {
+	 j++;
+	 j %= num_elem;	   // treat the table as circular
+	 p = hash_table+j; // point to next slot in table
+         if (j == i)	   // no room left in table!
+	   return NULL;
+       }
+       /* insert info  */
+       p->key  = item.key;
+       p->data = item.data;
+       count++;			// one more in table 
+       D( printf("\nItem inserted at index %u\n", j); )
+       return p;
+    case fIND:
+       i = j = hash(item.key);
+       p = (hash_table+i);
+       while (strcmp(p->key, item.key) != 0)
+       {
+	 j++;
+	 j %= num_elem;	// treat the table as circular
+	 p = hash_table+j; // point to next slot in table
+	 // not in table
+         if (j == i || p->key == NULL) return NULL;	   
+	 if (p->key == (char *) -1) // skip DELETED entry 
+	 {
+	   j++;
+	   j %= num_elem;	// treat table as circular 	 
+           p = hash_table+j;
+	 }
+       }
+       return p;		// found item in table
+    case DELETE:
+       i = j = hash(item.key);
+       p = (hash_table+i);
+       while (strcmp(p->key, item.key) != 0)
+       {
+	 j++;
+	 j %= num_elem;		// treat table as circular
+	 p = hash_table+j;	// next slot in table 
+	 if (p->key == NULL) return NULL; // not in table
+       }
+       p->key  = p->data = (char *)-1;	// delete entry
+       count--;				// one less in table
+       D( printf("\nItem deleted at index %u\n", j); )
+       return p;
+    default:
+       D( printf("\nInvalid table operation\n"); )
+       return NULL;
+  }
+}
+/*--------------------------------------------------------*/
+/* Create a hash table.  Each entry in table consists of two
+   pointers: one to the ASCII key, the other to the data
+   associated with the key.  The hash table structure is
+   defined in the file "search.hpp".  If the memory for the
+   hash table is successfully allocated, the number of table
+   elements is returned; otherwise 0 is returned.
+   	      
+   Requested hash table size must be >= min_size.  	  */
+
+int hashtable::hcreate(unsigned nel)
+{
+  const unsigned min_size = 25;
+  count = 0;			// init current table count 
+  if (nel < min_size) return 0;	// too small of a table!
+  // allocate memory for table
+  hash_table = new ENTRY[num_elem=prime(nel)];	
+  ENTRY *p = hash_table;
+  for (int i=0; i < num_elem; i++)	// zero hash table
+  {
+    p->key = p->data = (char *) 0;
+    p++;
+  }  
+  return ((hash_table==NULL) ? 0 : num_elem);
+}
+/*--------------------------------------------------------*/
+/* Destroy the hash table.  Must be done before another 
+   table can be created.			          */
+
+void hashtable::hdestroy(void)
+{
+  delete hash_table;		// return the memory
+  return;
+}
+/*--------------------------------------------------------*/
+/* Return number of items currently in hash table         */
+
+unsigned hashtable::hcount(void)
+{
+  return count;
+}
+/*--------------------------------------------------------*/
+/* Return hash table size				  */
+
+unsigned hashtable::hsize(void)
+{
+  return num_elem;
+}
+/*--------------------------------------------------------*/
+/* Write hash table to disk.  Saves hash table in file 
+   "HASH.TBL" in current directory.  Returns success/fail 
+   status to caller.
+						          */
+int hashtable::hwrite(void)
+{
+  unsigned int s, fd;
+  
+  fd = creat("HASH.TBL", S_IWRITE | S_IREAD);
+  if (fd == -1) return NULL;
+  s = write(fd, hash_table, sizeof(ENTRY)*num_elem);
+  close(fd);
+  return 1;
+}  
+/*--------------------------------------------------------*/
+/* Read hash table from disk.  Restores hash table in file 
+   "HASH.TBL" in current directory.  Returns success/fail 
+   status to caller.
+						          */
+int hashtable::hread(void)
+{
+  unsigned int s, fd;
+  ENTRY *p=hash_table;
+  
+  count = 0;
+  fd = open("HASH.TBL", O_RDONLY);
+  if (fd == -1) return NULL;
+  s = read(fd, hash_table, sizeof(ENTRY)*num_elem);
+  for (int i=0; i < num_elem; i++)
+  {
+    if (p->key != (char *) -1 && p->key != (char *) 0) 
+      count++;
+    p++;
+  }  
+  D( printf("\nnumber of items read = %u\n", count); )    
+  close(fd);
+  return 1;
+}  
+

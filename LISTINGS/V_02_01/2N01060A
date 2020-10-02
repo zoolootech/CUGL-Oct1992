@@ -1,0 +1,45 @@
+#include   <io.h>
+#include   <errno.h>
+#include   <dos.h>
+#include   "redirector.h"
+
+/*******************************************************************
+*     lock_read() - read shared data from a network file
+*
+*     Parameters:
+*          handle (in) - file handle to read from
+*          buffer (in) - buffer to place data in
+*          length (in) - number of bytes to read
+*
+*     Returns:
+*          Return code is identical to read()
+*
+*     Notes:
+*          1.   If the desired record is locked, this routine will
+*               retry at 1 second intervals for RETRY attempts.
+*
+*     History:
+*          Original code by William H. Roetzheim, 1989
+**********************************************************************/
+
+#define    RETRY      5
+
+int lock_read(int fh, char *buffer, unsigned int length)
+{
+                int        timeout = RETRY;
+      unsigned  int        count = EACCES; /* DOS error code */
+
+      while ((lock(fh, lseek(fh, 0, SEEK_CUR), length) != 0) && (timeout > 0))
+      {
+           timeout--;
+           sleep(1);  /* wait one second */
+      }
+
+      if (timeout > 0)/* record is successfully locked */
+      {
+           count = read(fh, buffer, length);
+      }
+
+      return count;
+}
+

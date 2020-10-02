@@ -1,0 +1,236 @@
+Reprinted from: Micro/Systems Journal, Volume 1. No. 3. July/August 1985
+-----------------------------------------------------------------
+Copy of back issue may be obtained for $4.50 (foreign $6) from:
+Subscriptions are $20/yr, $35/2yrs domestic (published bimonthly)
+Micro/Systems Journal
+Box 1192
+Mountainside NJ 07092
+-----------------------------------------------------------------
+Copyright 1986
+Micro/Systems Journal, Box 1192, Mountainside NJ 07092
+This software is released into the public domain for
+ non-commercial use only.
+-----------------------------------------------------------------
+
+C FORUM  
+
+IMPLEMENTING SETS WITH BIT OPERATIONS
+
+     Sets with a small number of elements are easily implemented 
+by bit operations in most languages.  Some C compilers have a 
+declaration enum that allows the programmer to use sets 
+directly without worrying about the implementation.  
+Unfortunately, most C compilers don't have have the enum 
+construct.  In any case, the implementations I will discuss allow 
+more general uses then enums do, anyway.
+     Using bit operations we can implement sets, which in turn, 
+specify such operations as: union, intersection, difference, 
+assignment, membership, equal and size.  The ordering relation 
+can also be implemented, although, strictly speaking this is not 
+a set operation.
+
+SMALL SETS
+     A simple example of the use and implementation of a set is 
+in the (BSD 4.2) UNIX select system call.  select() takes 
+parameters which represent sets of file descriptors.  Since the 
+number of files a process may have open is typically limited to 
+20, the set of file descriptors is easily represented by a 32-bit 
+integer.  Each bit then, designates a file descriptor. 
+     For example, if the set has an integer value of 25 decimal 
+(or 11001 boolean), the file descriptors referred to are 4, 3 and 
+0 since the bits in the 4, 3 and 0 positions are on.  In this 
+example, the index of the bit is exactly the value of the file 
+descriptor.  However this need not be the case.  What is 
+important is the small number of elements.
+     For sets like the one above, which have no more elements 
+than the number of bits in a single datum like an int, then we 
+can use the following constructs for set operations: 
+
+  int set1, set2, set3;
+
+  set3 = set1 | set2;    /* union */
+  set3 = set1 & set2;    /* intersection */
+  set3 = set1 & ~set2;   /* difference */
+
+     To declare a set, define it as an int (or whatever type you 
+choose). I highly recommend using a typedef to make things more 
+readable.  Macros can also be used for the set operations 
+themselves.  For example: 
+
+  #define UNION |
+  set3 = set1 UNION set2;
+
+     To define a one-element set, use the macro #elt with a small 
+index representing the index of the element. 
+
+  #define elt(x)        (1<<x)
+
+#member returns 1 or 0 if an element is in the set or not.
+
+  #define member(s,x)   (0 != \
+                    (s INTERSECTION elt(x)))
+
+min_elt() returns the smallest index in a set (or -1 if the set 
+is empty). These examples should be enough for you to write any 
+other set operations you need using this representation. 
+
+int min_elt(x)
+int x;
+{
+    int i;
+
+    /* first check if set is empty */
+    if (x == 0) return(-1);
+    for (i=0;~(x&(1<<i));i++) ;
+    return(i);
+}
+
+
+BIG SETS
+     This is fine for sets with a small number of elements, but 
+what about larger sized universes?  For example, if we are 
+writing a device driver for a disk, we must maintain the sets of 
+disk cylinders that are queued to be read and written.
+     A list of cylinders is a prime candidate for representation 
+by a bit vector.  The only real difference is that such a set is 
+probably bigger than the number of bits in any data type on your 
+machine. 
+     For example, suppose we have 100 cylinders and our largest 
+data type is a 32-bit long.  Then we would need 4 longs to get at 
+least 100 bits for the cylinders (3*32 < 100 <= 4*32).  To get 
+those 100 bits, we can declare an array of longs.  #bigset is a 
+macro that does exactly that (listing 1).
+
+                         LISTING 1
+ 
+#define bigset(name,bits)   struct {\
+int number;/* of subsets */\
+SUBSET data[1 + bits/BITS_PER_SUBSET];\
+    } name = {1 + bits/BITS_PER_SUBSET};
+
+     This macro expands to a structure declaration!  The 
+structure defines an array of "SUBSET"s large enough to hold the 
+set.  We also define the number of SUBSETs in "number", so that 
+we won't have to pass lengths as extra arguments into our set 
+routines.  SUBSET can be defined to be whatever is convenient for 
+you.  I always use "unsigned long" because the longer the 
+datatype, the faster the routines will execute.  For folks who 
+watch every bit, though, shorter datatypes will waste less space 
+(by leaving less unused bits at the end of the set array).
+     Finishing off #bigset, here are the macros needed.
+
+  #define BITS_PER_BYTE   8
+  #define SUBSET          unsigned long
+  #define BITS_PER_SUBSET (BITS_PER_BYTE\
+                           * sizeof(SUBSET))
+
+     Now we can declare sets for 100 cylinders to be read and 
+written as:
+
+  bigset(readcyls,100);
+  bigset(writecyls,100);
+
+     In order to pass these sets as parameters, we'll have to 
+define a type for that.  (Unfortunately, we can't use #bigset for 
+this because it defines a class of structures.)  We do this as 
+follows: 
+
+struct bigset_param {
+    int number;
+    SUBSET data[1];
+};
+
+     Most of the standard set operations (union, intersection, 
+assignment, etc.) look very much the same.  A single loop 
+performs its respective operation on an entire SUBSET at a time.  
+Here is the code for union.
+
+bigset_union(s1,s2,s3)/* s1 = s2 U s3 */
+struct bigset_param *s1, *s2, *s3;
+{
+    int i;
+    for (i=0;i<s1->number;i++)
+        s1->data[i] = s2->data[i] UNION
+                      s3->data[i];
+}
+
+     To use this routine, of course, you must pass the address of 
+the set.
+
+bigset_print() requires an extra inner loop to print out each bit.
+
+bigset_print(s)
+struct bigset_param *s;
+{
+    int i, j;
+    for (i=0;i<s->number;i++) {
+for (j=0;j<BITS_PER_SUBSET;j++) {
+    putchar(s->data[i]&(1<<j)?'1':'0');
+}
+    }
+    putchar('\n');
+}
+
+     Finally, here is some code for turning on an individual bit 
+by its index. I chose to write it as a function only so that the 
+parameter passing conventions in all the bigset routines would 
+remain consistent.  You should be able to produce its inverse, 
+with a small change to the original version of min().
+
+bigset_set(s,i)/* turn on element i in set s */
+struct bigset_param *s;
+int i;
+{
+    s->data[i/BITS_PER_SUBSET] |=
+                         1<<(i%BITS_PER_SUBSET);
+}
+
+Finally, here is some code using these routines.
+
+bigset(readcyls,100);
+bigset(readcyls,100);
+
+main()
+{
+    /* request cylinders 1 and 10 to be read */
+    bigset_set(&readcyls,1);
+    bigset_set(&readcyls,10);
+    printf("cylinders to read: ");
+    bigset_print(&readcyls);
+
+    /* request cylinder 4 to be written */
+    bigset_set(&writecyls,4);
+    printf("cylinders to write: ");
+    bigset_print(&writecyls);
+
+    /* find out cylinders requiring action */
+    bigset_union(&activecyls,&readcyls,
+                                 &writecyls);
+    printf("cylinders requiring I/O: ");
+    bigset_print(&activecyls);
+}
+
+OPTIMIZATIONS
+     You should now be able to finish the rest of the set 
+routines.  There are some obvious ways of improving the code that 
+you should consider if you use these routines in production code.
+     1) Convert bigset_set() to a macro.
+     2) Use pointers instead of array references in the loops.
+     3) Convert divisions to shifts.  Convert mods to bitwise 
+ands.  (This can be done only because we are working with powers 
+of two.)  For example, x/BITS_PER_SUBSET for BITS_PER_SUBSET == 
+32 can be written x>>5 (since 5 is log of 32 base 2).
+
+C NEWS TIDBITS
+     In case you are wondering what I use as a reference book on 
+C, it is C - A Reference Manual by Harbison and Steele.  
+Published by Prentice-Hall.  I encourage all C programmers to 
+live by this book!
+     The C Users' Group publishes a newsletter for C news.  The 
+address is Box 97, 415 E. Euclid, McPherson, KS 67460.  CUG also 
+keeps a library of public-domain C software.  CUG146 is a Small 
+C for 6800's running FLEX.
+     Lattice is attempting to woo Microsoft C users by offering a 
+package of the latest Lattice C compiler and symbolic debugger 
+for $175.  Phone (312) 858-7950 for more info. nbs-amrf3% 
+

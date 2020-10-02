@@ -1,0 +1,629 @@
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=Begin Listing4-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
+/*****************************************************/
+/* listmenu.c                                        */
+/* -- Implements a popup menu with a scrollable      */
+/*    ListBox.                                       */
+/*****************************************************/
+
+/*****************************************************/
+/* Header files.                                     */
+/*****************************************************/
+#include <windows.h>
+#include "listmenu.h"
+
+/*****************************************************/
+/* Constants.                                        */
+/*****************************************************/
+#define imdsNil     -1  /* Undefined menu index. */
+#define cbMenuMax   256 /* Max. length of MenuItem. */
+#define szMenuClass "#32768"    /* Menu classname. */
+#define szListClass "ListBox"   /* LBox classname. */
+#define szFilter    "LFilter"   /* Filter classname. */
+
+/*****************************************************/
+/* Types.                                            */
+/*****************************************************/
+typedef struct
+    {
+    int     cidm;           /* # items in menu. */
+    int     dx, dy;         /* Size of menu. */
+    int     idm;            /* Index in MenuBar. */
+    HMENU   hmnu;           /* Original popup menu. */
+    HWND    hwnd;           /* ListBox window. */
+    WORD    rgidm[1];       /* MenuItem id array */
+    } MDS;                  /* Menu DeScriptor. */
+typedef MDS FAR *   LPMDS;
+typedef HANDLE      HMDS;
+typedef HMDS FAR *  LRGHMDS;
+ 
+/*****************************************************/
+/* Globals.                                          */
+/*****************************************************/
+
+HANDLE  hrghmds;        /* Handle to array of menus. */
+int     cmds;           /* Number of menus. */
+int     imdsDown;       /* Dropped popup menu. */
+HWND    hwndMenu;       /* Popup menu window. */
+HWND    hwndMain;       /* App's main window. */
+HMENU   hmnuTop;        /* App's MenuBar. */
+FARPROC lpfnMenuFilter; /* Popup menu subclasser. */
+FARPROC lpfnMenu;       /* Popup menu window proc. */
+FARPROC lpfnMain;       /* App's main window proc. */
+FARPROC lpfnMainFilter; /* Subclasser for above. */
+FARPROC lpfnListFilter; /* Subclasser for ListBox. */
+FARPROC lpfnList;
+BOOL    fButtonDown;    /* Buttoned down in list? */
+
+/*****************************************************/
+/* Private Prototypes.                               */
+/*****************************************************/
+void                CloseListMenu(void);
+void                DestroyMenuImds(int);
+BOOL FAR  PASCAL    FEnumWnd(HWND, LONG);
+void                GetMdsImds(MDS *, int);
+WORD                IdmFromIidmImds(int, int);
+int                 ImdsFromIdm(WORD);
+LONG FAR  PASCAL    ListFilter(HWND, WORD, WORD, LONG);
+LONG FAR  PASCAL    MainFilter(HWND, WORD, WORD, LONG);
+LONG FAR  PASCAL    MenuFilter(HWND, WORD, WORD, LONG);
+void                RemoveListMenu(BOOL);
+
+/*****************************************************/
+/* Routines.                                         */
+/*****************************************************/
+
+BOOL
+FInitListMenu(BOOL fFirst, HWND hwnd)
+/*****************************************************/
+/* -- Initialize the list menu module.               */
+/* -- hwnd       : Window containing MenuBar.        */
+/* -- szMenuList : Name of menu list of popups.      */
+/*****************************************************/
+    {
+    FARPROC     lpfn;   /* EnumWindows() callback. */
+    HANDLE      hins;   /* App's instance. */
+    WNDCLASS    wcs;    /* Our own ListBox class. */
+
+    hwndMain = hwnd;
+    if ((hmnuTop = GetMenu(hwnd)) == NULL)
+        return FALSE;
+
+    /* Get the popup menu handle so we can subclass */
+    /* it at will. */
+    hins = GetWindowWord(hwnd, GWW_HINSTANCE);
+    if ((lpfn = MakeProcInstance(FEnumWnd, hins)) ==
+      NULL)
+        return FALSE;
+
+    EnumWindows(lpfn, 0L);
+    FreeProcInstance(lpfn);
+    if (hwndMenu == NULL)
+        return FALSE;
+
+    lpfnMenu =
+      (FARPROC)GetWindowLong(hwndMenu, GWL_WNDPROC);
+    if ((lpfnMenuFilter = MakeProcInstance(
+      (FARPROC)MenuFilter, hins)) == NULL)
+        return FALSE;
+
+    /* Subclass the app's main window. */
+    lpfnMain =
+      (FARPROC)GetWindowLong(hwndMain, GWL_WNDPROC);
+    if ((lpfnMainFilter = MakeProcInstance(
+      (FARPROC)MainFilter, hins)) == NULL)
+        return FALSE;
+    SetWindowLong(hwndMain, GWL_WNDPROC,
+      (LONG)lpfnMainFilter);
+
+    /* Create a our version of the ListBox class. */
+    if (!GetClassInfo(NULL, szListClass, &wcs))
+        return FALSE;
+    lpfnList = (FARPROC)wcs.lpfnWndProc;
+
+    if (fFirst)
+        {
+        wcs.lpfnWndProc = ListFilter;
+        wcs.hInstance = hins;
+        wcs.lpszClassName = szFilter;
+        if (!RegisterClass(&wcs))
+            return FALSE;
+        }
+
+    imdsDown = imdsNil;
+    return TRUE;
+    }
+
+BOOL FAR PASCAL
+FEnumWnd(HWND hwnd, LONG lwp)
+/*****************************************************/
+/* -- EnumWindows() callback to get popup menu       */
+/*    window handle.                                 */
+/*****************************************************/
+    {
+    char    szBuf[40];
+
+    GetClassName(hwnd, szBuf, sizeof szBuf);
+    if (!lstrcmp(szBuf, szMenuClass))
+        {
+        hwndMenu = hwnd;
+        return FALSE;
+        }
+    return TRUE;
+    }
+
+void
+CloseListMenu(void)
+/*****************************************************/
+/* -- Close the list menu module.                    */
+/*****************************************************/
+    {
+    int     imds;
+
+    if (cmds == 0)
+        return; /* Nothing to do. */
+
+    /* Destroy all list menus. */
+    for (imds = 0; imds < cmds; imds++)
+        DestroyMenuImds(imds);
+
+    /* Remove filters. */
+    if (lpfnMenu != NULL)
+        {
+        if (IsWindow(hwndMenu))
+            SetWindowLong(hwndMenu, GWL_WNDPROC,
+              (LONG)lpfnMenu);
+        lpfnMenu = NULL;
+        }
+    if (lpfnMenuFilter != NULL)
+        {
+        FreeProcInstance(lpfnMenuFilter);
+        lpfnMenuFilter = NULL;
+        }
+
+    if (lpfnMain != NULL && IsWindow(hwndMain))
+        SetWindowLong(hwndMain, GWL_WNDPROC,
+          (LONG)lpfnMain);
+    if (lpfnMainFilter != NULL)
+        {
+        FreeProcInstance(lpfnMainFilter);
+        lpfnMainFilter = NULL;
+        }
+
+    /* Restore state and free menu table array. */
+    hmnuTop = NULL;
+    hwndMenu = hwndMain = NULL;
+    GlobalFree(hrghmds);
+    hrghmds = NULL;
+    cmds = 0;
+    }
+
+BOOL
+FAssignMenu(WORD idm, int dy)
+/*****************************************************/
+/* -- Assign a list menu to the given MenuItem.      */
+/* -- The strings and command values for the list    */
+/*    menu are extracted from the given popup menu.  */
+/* -- Return TRUE for success, FALSE for failure.    */
+/* -- idm       : MenuItem id.                       */
+/* -- dy        : Height of the menu.                */
+/*****************************************************/
+    {
+    int     imds;
+    HMENU   hmnu;
+    HMDS    hmds    = NULL;
+    LPMDS   lpmds   = NULL;
+    HDC     hdc     = NULL;
+    int     iidm, cidm;
+    BOOL    fVal    = FALSE;
+    HANDLE  hins;
+
+    /* See if a list menu for this popup already */
+    /* exists.  If not, grow (or allocate if for the */
+    /* first time) the list menu table array.  If */
+    /* a list menu already exists, destroy it, but */
+    /* reuse its slot in the array. */
+    if ((imds = ImdsFromIdm(idm)) == imdsNil)
+        {
+        /* Grow menu array. */
+        if (cmds == 0)
+            {
+            if ((hrghmds = GlobalAlloc(
+              GMEM_MOVEABLE | GMEM_ZEROINIT,
+              sizeof(HMDS))) == NULL)
+                goto FAssignMenuError;
+
+            cmds = 1;
+            imds = 0;
+            }
+        else
+            {
+            HANDLE  hrghmdsNew;
+
+            imds = cmds++;
+            if ((hrghmdsNew = GlobalReAlloc(hrghmds, 
+                cmds * sizeof(HMDS),
+                GMEM_MOVEABLE | GMEM_ZEROINIT))
+              == NULL)
+                goto FAssignMenuError;
+
+            hrghmds = hrghmdsNew;
+            }
+        }
+    else
+        {
+        DestroyMenuImds(imds);
+        }
+
+    /* Create a new menu.  Clone a ListBox with the */
+    /* same MenuItems. */
+    hins = GetWindowWord(hwndMain, GWW_HINSTANCE);
+    if ((hmnu = GetSubMenu(hmnuTop, idm)) == NULL)
+        goto FAssignMenuError;
+
+    if ((cidm = GetMenuItemCount(hmnu)) < 0)
+        goto FAssignMenuError;
+
+    if ((hmds = GlobalAlloc(GMEM_MOVEABLE,
+        sizeof(MDS) + (cidm - 1) * sizeof(WORD))) ==
+      NULL)
+        goto FAssignMenuError;
+
+    lpmds = (LPMDS)GlobalLock(hmds);
+    lpmds->cidm = cidm;
+    lpmds->hmnu = hmnu;
+    lpmds->idm = idm;
+    if ((lpmds->hwnd = CreateWindow(szFilter, NULL,
+      WS_CHILD | WS_BORDER | WS_VSCROLL | WS_VISIBLE,
+      0, 0, 0, 0, hwndMain, idm, hins, NULL)) == NULL)
+        goto FAssignMenuError;
+
+    /* Fill the ListBox with MenuItems.  Get width */
+    /* of widest item. */
+    lpmds->dx = -1;
+    if ((hdc = GetDC(lpmds->hwnd)) == NULL)
+        goto FAssignMenuError;
+
+    for (iidm = 0; iidm < cidm; iidm++)
+        {
+        char    sz[cbMenuMax];
+        int     dx;
+
+        if ((lpmds->rgidm[iidm] =
+          GetMenuItemID(hmnu, iidm)) == -1)
+            goto FAssignMenuError;
+
+        if (GetMenuString(hmnu, iidm, sz, sizeof sz,
+          MF_BYPOSITION) <= 0)
+            goto FAssignMenuError;
+        if (SendMessage(lpmds->hwnd, LB_ADDSTRING, 0,
+          (LONG)(LPSTR)sz) == LB_ERR)
+            goto FAssignMenuError;
+        dx = LOWORD(GetTextExtent(hdc, sz,
+          lstrlen(sz)));
+        if (dx > lpmds->dx)
+            lpmds->dx = dx;
+        }
+
+    /* Allow for scroll bar and extra whitespace. */
+    lpmds->dx += 2 * GetSystemMetrics(SM_CXVSCROLL);
+    lpmds->dy = dy;
+    ((LRGHMDS)GlobalLock(hrghmds))[imds] = hmds;
+    GlobalUnlock(hrghmds);
+
+    fVal = TRUE;
+    goto FAssignMenuExit;
+
+FAssignMenuError:   /* Clean up in case of error. */
+    if (lpmds != NULL && lpmds->hwnd != NULL)
+        DestroyWindow(lpmds->hwnd);
+    if (hmds != NULL)
+        GlobalFree(hmds);
+
+FAssignMenuExit:    /* Normal cleanup. */
+    if (hdc != NULL)
+        ReleaseDC(lpmds->hwnd, hdc);
+    if (lpmds != NULL)
+        GlobalUnlock(hmds);
+
+    return fVal;
+    }
+
+int
+ImdsFromIdm(WORD idm)
+/*****************************************************/
+/* -- Given a top-level MenuItem id, return the      */
+/*    associated list menu.                          */
+/* -- Return -1 if no such menu.                     */
+/*****************************************************/
+    {
+    int imds;
+    MDS mds;
+
+    if (cmds == 0)
+        return imdsNil;
+
+    for (imds = 0; imds < cmds; imds++)
+        {
+        GetMdsImds(&mds, imds);
+        if (mds.hwnd != NULL &&
+          GetWindowWord(mds.hwnd, GWW_ID) == idm)
+            break;
+        }
+
+    return imds == cmds ? imdsNil : imds;
+    }
+
+void
+DestroyMenuImds(int imds)
+/*****************************************************/
+/* -- Destroy the given list menu.                   */
+/* -- imds  : Index of menu.                         */
+/*****************************************************/
+    {
+    LRGHMDS lrghmds = (LRGHMDS)GlobalLock(hrghmds);
+    HMDS    hmds    = lrghmds[imds];
+    LPMDS   lpmds   = (LPMDS)GlobalLock(hmds);
+
+    if (IsWindow(lpmds->hwnd))
+        DestroyWindow(lpmds->hwnd);
+
+    GlobalUnlock(hmds);
+    GlobalFree(hmds);
+    lrghmds[imds] = NULL;
+    GlobalUnlock(hrghmds);
+    }
+
+LONG FAR PASCAL
+MenuFilter(HWND hwnd, WORD wm, WORD wp, LONG lwp)
+/*****************************************************/
+/* -- Subclasser for menu popup window.              */
+/*****************************************************/
+    {
+    switch (wm)
+        {
+    default:
+        break;
+
+    case WM_PAINT:
+        {
+        PAINTSTRUCT wps;
+        RECT        rect;
+        MDS         mds;
+
+        /* Eat the paint message and remove the */
+        /* popup menu and subclasser. */
+        BeginPaint(hwnd, &wps);
+        EndPaint(hwnd, &wps);
+        ShowWindow(hwnd, SW_HIDE);
+        SetWindowLong(hwndMenu, GWL_WNDPROC,
+          (LONG)lpfnMenu);
+
+        /* Position and display the list menu. */
+        GetMdsImds(&mds, imdsDown);
+        GetWindowRect(hwnd, &rect);
+        ScreenToClient(hwndMain, (LPPOINT)&rect);
+        MoveWindow(mds.hwnd,
+          rect.left, rect.top, mds.dx, mds.dy, TRUE);
+        SendMessage(mds.hwnd, LB_SETCURSEL, 0, 0L);
+        SetFocus(mds.hwnd);
+
+        /* Get out of menu mode. */
+        PostMessage(hwnd, WM_KEYDOWN, VK_ESCAPE, 0L);
+        PostMessage(hwndMain, WM_KEYDOWN, VK_ESCAPE,
+          0L);
+
+        /* But highlight the top-level MenuItem to */
+        /* look like we are still in it.  Have to do */
+        /* this after the menu manager has removed */
+        /* it, though!.  So post a message to */
+        /* ourself that will arrive after. */
+        PostMessage(hwndMain, WM_USER, 0, 0L);
+        }
+        return 0L;
+
+    case WM_ERASEBKGND:
+        return 1L;  /* Eat this message too. */
+        }   /* End switch wm. */
+
+    return CallWindowProc(lpfnMenu, hwnd, wm, wp, lwp);
+    }
+
+LONG FAR PASCAL
+MainFilter(HWND hwnd, WORD wm, WORD wp, LONG lwp)
+/*****************************************************/
+/* -- Subclasser for app's main window.              */
+/*****************************************************/
+    {
+    switch (wm)
+        {
+    default:
+        break;
+
+    case WM_INITMENUPOPUP:
+        /* Get rid of any list menu already visible. */
+        RemoveListMenu(FALSE);
+
+        /* Install the menu filter to start the ball */
+        /* rolling. */
+        if (HIWORD(lwp) == 0 &&
+            (imdsDown = ImdsFromIdm(LOWORD(lwp))) !=
+          imdsNil)
+            SetWindowLong(hwndMenu, GWL_WNDPROC,
+              (LONG)lpfnMenuFilter);
+        break;
+
+    case WM_COMMAND:
+        /* Eat notifications from the menu */
+        /* ListBoxes. */
+        if (ImdsFromIdm(wp) != imdsNil)
+            return 0L;
+
+    case WM_ACTIVATE:
+    case WM_LBUTTONDOWN:
+    case WM_NCLBUTTONDOWN:
+        /* If the user button's down elsewhere in */
+        /* the app, or activates another app, remove */
+        /* any visisble list menu. */
+        RemoveListMenu(FALSE);
+        break;
+
+    case WM_USER:
+        if (imdsDown != imdsNil)
+            {
+            MDS mds;
+
+            GetMdsImds(&mds, imdsDown);
+            HiliteMenuItem(hwnd, hmnuTop, mds.idm,
+              MF_BYPOSITION | MF_HILITE);
+            }
+        break;
+
+    case WM_DESTROY:
+        CloseListMenu();    /* Clean up. */
+        break;
+        }   /* End switch wm. */
+
+    return CallWindowProc(lpfnMain, hwnd, wm, wp, lwp);
+    }
+
+void
+RemoveListMenu(BOOL fCommand)
+/*****************************************************/
+/* -- If a list menu is visible, remove it.          */
+/* -- fCommand : Generate a menu-style WM_COMMAND    */
+/*               message if set.                     */
+/*****************************************************/
+    {
+    MDS mds;
+    int imdsSav;
+
+    fButtonDown = FALSE;
+    if (imdsDown == imdsNil)
+        return;
+
+    GetMdsImds(&mds, imdsDown);
+    HiliteMenuItem(hwndMain, hmnuTop, mds.idm,
+      MF_BYPOSITION | MF_UNHILITE);
+    imdsSav = imdsDown;
+    imdsDown = imdsNil;
+
+    /* Remove focus first, so there isn't a ghost */
+    /* caret floating around until the parent */
+    /* windows gets a change to repaint itself. */
+    if (GetFocus() == mds.hwnd)
+        SetFocus(hwndMain);
+
+    /* Hide the list menu. */
+    MoveWindow(mds.hwnd, 0, 0, 0, 0, TRUE);
+
+    if (fCommand)   /* Notify the app. */
+        {
+        int     iidm;
+
+        iidm = (int)SendMessage(mds.hwnd, LB_GETCURSEL,
+          0, 0L);
+        if (iidm != LB_ERR)
+            PostMessage(hwndMain, WM_COMMAND,
+              IdmFromIidmImds(iidm, imdsSav), 0L);
+        }
+    }
+
+LONG FAR PASCAL
+ListFilter(HWND hwnd, WORD wm, WORD wp, LONG lwp)
+/*****************************************************/
+/* -- Subclasser for ListBox control.                */
+/*****************************************************/
+    {
+    switch (wm)
+        {
+    default:
+        break;
+
+    case WM_LBUTTONDOWN:
+        fButtonDown = TRUE;
+        break;
+
+    case WM_LBUTTONUP:
+        if (fButtonDown)
+            {
+            LONG    pt  = GetMessagePos();
+            RECT    rect;
+
+            /* Do not generate a command if the user */
+            /* releases the mouse outside the bounds */
+            /* of the ListBox. */
+            GetClientRect(hwnd, &rect);
+            ScreenToClient(hwnd, (LPPOINT)&pt);
+            RemoveListMenu(
+              PtInRect(&rect, *(POINT *)&pt));
+            }
+        break;
+
+    case WM_SIZE:
+        {
+        LONG    lVal;
+
+        /* Windows will put a bogus horizontal */
+        /* scroll bar style in the window in */
+        /* response to this message!  So stomp it */
+        /* out. */
+        lVal =
+          CallWindowProc(lpfnList, hwnd, wm, wp, lwp);
+        SetWindowLong(hwnd, GWL_STYLE,
+          GetWindowLong(hwnd, GWL_STYLE) & ~WS_HSCROLL);
+        return lVal;
+        }
+
+    case WM_KEYDOWN:
+        switch (wp)
+            {
+        default:
+            break;
+
+        case VK_RETURN:
+            RemoveListMenu(TRUE);
+            return 0L;
+
+        case VK_ESCAPE:
+            RemoveListMenu(FALSE);
+            return 0L;
+            }   /* End switch wp. */
+        break;  /* End case WM_KEYDOWN. */
+        }       /* End switch wm. */
+
+    return CallWindowProc(lpfnList, hwnd, wm, wp, lwp);
+    }
+
+void
+GetMdsImds(MDS * pmds, int imds)
+/*****************************************************/
+/* -- Given a list menu id, return its mds data.     */
+/* -- pmds : Fill this struct.                       */
+/* -- imds : Index of list menu in array.            */
+/*****************************************************/
+    {
+    LRGHMDS lrghmds = (LRGHMDS)GlobalLock(hrghmds);
+
+    *pmds = *(LPMDS)GlobalLock(lrghmds[imds]);
+    GlobalUnlock(lrghmds[imds]);
+    GlobalUnlock(hrghmds);
+    }
+
+WORD
+IdmFromIidmImds(int iidm, int imds)
+/*****************************************************/
+/* -- Return the requested MenuItem id.              */
+/* -- iidm : Index of MenuItem id in arrar of them.  */
+/* -- imds : Index of list menu in array of them.    */
+/*****************************************************/
+    {
+    LRGHMDS lrghmds = (LRGHMDS)GlobalLock(hrghmds);
+    WORD    idm;
+
+    idm =
+      ((LPMDS)GlobalLock(lrghmds[imds]))->rgidm[iidm];
+    GlobalUnlock(lrghmds[imds]);
+    GlobalUnlock(hrghmds);
+    return idm;
+    }
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=End Listing4-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=

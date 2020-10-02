@@ -1,0 +1,59 @@
+/* Demonstration program:  parallel poll of HP-IB (IEEE-488) device
+ * J. M. Anderson, F&M College, 1989.
+ *
+ * Only the function "process" is shown; other functions are very similar,
+ * or identical, to their counterparts in "tablspoll.c"
+ */
+
+int process()
+{
+	/* Process the interrupt.
+	 * This function is called when an interrupt
+	 * is detected on the bus.
+	 *
+	 * For the purpose of this demo, SRQ must be asserted by the
+	 * tablet for pen press or menu pick.
+	 */
+	 
+	int bstatus, tstatus;	/* bus status, tablet status */
+	int x, y, p, k;			/* pen position, menu key */
+	
+	/* See if interrupt was caused by the tablet.  Perform parallel poll.
+	 * The tablet will assert line 1 whose value is 2 when its address is
+	 * 06; all of this is fixed in the tablet's hardware.  Therefore,
+	 * we should look for a response to the parallel poll whose value is
+	 * 2.
+	 */
+	ieeewt("ppoll\n");
+	ieeescnf("%d", &bstatus);
+	if (bstatus == 2)			/* response from tablet */
+	{
+		/* Serial-poll the tablet to find its status;
+		 * We know that it is the tablet which caused the interrupt;
+		 * all we need to do now is find out why.
+		 */
+		ieeewt("spoll 06\n");
+		ieeescnf("%d", &tstatus);
+		if PENPRESS
+		{
+			ieeewt("output 06;OD\n");
+			ieeewt("enter 06\n");
+			ieeescnf("%d,%d,%d",&x, &y, &p);
+				/* beep high for stylus press on tablet */
+			ieeewt("output 06;BP 48,150,4\n");
+			printf("\ndigitized point: %d %d\n",x, y);
+			return(0);
+		}
+		
+		if MENUPICK
+		{
+			ieeewt("output 06;RS1\n");
+			ieeewt("enter 06\n");
+			ieeescnf("%d", &k);
+				/* beep low for stylus press on menu square */
+			ieeewt("output 06;BP 8,150,4\n");
+			printf("Menu square %d touched.\n", k);
+			return(1);
+		}
+	}
+}

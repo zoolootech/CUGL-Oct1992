@@ -1,0 +1,58 @@
+
+Qecho   off
+calias ; rem
+;---------------------- LISTING #l EDITENV.BAT ----------------------
+;   l)   { and } and : characters are used to reference
+;        PRO-CLI SYMBOLS and LOGICALS variables respectively.
+;   2)   The LEXICAL-FUNCTIONS are invoked as { F$function parameters, ... }
+;        LEXICAL-FUCNTIONS used:
+;          F$EOF - is file/stream at End of File
+;          F$CASE -  upper/lower case a string
+;   3)   PRO-CLI commands used:
+;        calias - create a command alias
+;        cdelete - delete a PRO-CLI variable
+;        copen, cclose - open, close a file/stream handle
+;        cwrite, cread - read/write from/to file/stream handle using PRO-CLI
+;                         SYMBOL variable.
+if "%1"=="" goto usage
+:begin
+  ;   SET definitions saved to file.
+  set >tdefs.dat
+  set BATFILE=%l
+  set  EDITOR=%2
+  ;   OPEN file handles for the BATFILE, and the sets datafile
+  copen /mode=read  input_file tdefs.dat
+  copen /mode=write bat_file   %BATFILE%
+  Echo  BUILDing new BATFILE "%BATFILE%" with current definitions
+  cwrite bat_file "@echo off"
+:loop
+  ;   Read from input_file (SET) variable=...
+  cread input_file token
+  if "{f$eof input_file}"=="TRUE"" goto done
+  ;   Write to BATFILE "SET" variable=...
+  cwrite bat_file "SET {token}"
+  goto loop
+:done
+  ;   Close the input_file, and bat_file
+  cclose *file
+  del tdefs.dat
+  if "%EDITOR%"=="" goto clean
+  ;  if EDITOR supplied on command line edit the BATFILE
+  %EDITOR% %BATFILE%
+  ;   Prompt to run the BATFILE
+  cask /LEN=3 /PROMPT=" the BATFILE (Yes or No) ? " response
+  if "{f$case {response} upper}"=="YES" call %BATFILE%
+  cdelete symbol response
+  goto clean
+:usage
+  echo       EDITS enviroment vars
+  echo ...........................................................
+  echo .              EDITENV [ (FILE) (EDITOR) ]
+  echo .  GETS enviroment variables and CREATES bat file
+  echo .  EDITOR to edit the bat file
+  echo .   ex)   editenv newset.bat edlin
+  echo ...........................................................
+:clean
+  set BATFILE=
+  set EDITOR=
+

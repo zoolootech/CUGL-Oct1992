@@ -1,0 +1,75 @@
+// suuser.cpp - Start Up User Tasks 
+//              Copyright 1990 by Cnapse
+//              Written by: M. de Champlain
+
+
+#include <stdio.h>
+#include "npx.hpp"
+
+void Background(void)
+    {
+    printf("[%x]\tBackground started.\n", running->Self());
+    loop
+        {
+        running->ReSchedule();
+        putchar('.');
+        }
+    }
+
+void Task0(void)
+    {
+    short n;
+
+    printf("[%x]\tTask0 started.\n", running->Self());
+
+    n = 10;
+    while (n--)
+        {
+        running->ReSchedule();
+        putchar('0');
+        }
+
+    running->Terminate(running);
+    }
+
+void Task1(void)
+    {
+    printf("[%x]\tTask1 started.\n", running->Self());
+    loop
+        {
+        running->ReSchedule();
+        putchar('1');
+        }
+    }
+
+void StartUpUserTasks(void)
+    {
+    short  n;
+    Task  *t0, *t1;
+
+    printf("[%x]\tStartUpUserTasks started.\n", running->Self());
+    (new Task(Background, 1024))->Start();
+    (t0 = new Task(     Task0, 1024))->Start();
+    (t1 = new Task(     Task1, 1024))->Start();
+
+    n = 20;
+    while (n--)
+        {
+        running->ReSchedule();
+        putchar('S');
+        }
+
+    running->Suspend(t1);
+
+    n = 5;
+    while (n--)
+        {
+        running->ReSchedule();
+        putchar('S');
+        }
+
+    running->Resume(t1);
+
+    (new Task(Task0, 1024))->Start();
+    running->Terminate(running);
+    }

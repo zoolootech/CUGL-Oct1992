@@ -1,0 +1,139 @@
+/*
+REPRATE.CPP
+
+Source for repetition rate classes
+Paul A. Cornelius, August 1991
+*/
+
+#include <math.h>
+#include <limits.h>
+#include <sound.h>
+#include <assert.h>
+
+#include "int70.hpp"
+#include "reprate.hpp"
+
+RepRateList TimerList;
+void handle_tick()  // called by int_70 handler
+{
+    // couple to list of RepRate objects
+    TimerList.HandleTick();     
+}
+
+RepRate::RepRate(double Hz,CALL_ME pfun)
+{
+    ChangeRepRate(Hz);
+    ChangeFunction(pfun);
+}
+
+double RepRate::ChangeRepRate(double Hz)
+{
+    // interval is integer number of timer events
+    double interval = 
+     floor(TICKS_PER_SECOND / Hz + 0.5);
+
+    // check for interval out of bounds
+    if (interval < 1.0)
+        interval = 1.0;
+    if (interval > LONG_MAX)
+        interval = LONG_MAX;
+    tick_interval = interval;
+    count_now = 0;
+
+    // return the "true" rep rate
+    return GetRepRate();
+}
+
+void RepRate::HandleTick()
+{
+    if (++count_now >= tick_interval)       
+    // if true, call user function
+    {
+        count_now = 0;
+        func();
+    }
+}
+
+RepRateList::RepRateList()
+{
+    assert(On == 0);    // 1 RepRateList per program!
+    On++;
+    TimerOn = 0;
+    Error = 0;
+}
+
+RepRateList::~RepRateList()
+{
+    TurnOffTimer();
+}
+
+void RepRateList::Linkin(RepRate *prep)
+{
+    // link in the object
+    Replist.linkin(prep);           
+    if (Replist.error())        // linked list error
+    {
+        TurnOffTimer();
+        Error |= 1;
+    }
+    // First object on list turns on timer
+    if (Replist.size() == 1)        
+        TurnOnTimer();
+}
+
+void RepRateList::Linkout(RepRate *prep)
+{
+    // Last object turns off timer
+    if (Replist.size() == 1)        
+        TurnOffTimer();
+    // no list objects, do nothing
+    if (Replist.size() == 0)        
+        return;
+
+    // rewind the iterator
+    Replist.start();                
+    for (int i=0;i<Replist.size();i++,++Replist)
+    {
+        // look for the object to be linked out
+        if (Replist.get() == prep)  
+        {
+            Replist.linkout();      // found it
+            return;
+        }
+    }
+    // prep was not found, thus 1 item still on list
+    if (Replist.size() == 1)        
+        TurnOnTimer();
+}
+
+void RepRateList::TurnOnTimer()
+{
+    if (TimerOn == 0)
+    {
+        if (start_timer() == 0)
+        {
+            TimerOn = 1;
+            // let me know the clock is started
+            sound_beep(400.0);      
+        }
+    }
+}
+
+
+void RepRateList::TurnOffTimer()
+{
+    if (TimerOn == 1)
+        stop_timer();
+    TimerOn = 0;
+}
+
+
+void RepRateList::HandleTick()
+{
+    Replist.start();
+    for (int i=0;i<Replist.size();i++,++Replist)
+    {
+        Replist()->HandleTick();
+    }
+}
+

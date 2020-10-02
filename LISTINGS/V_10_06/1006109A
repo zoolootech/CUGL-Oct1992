@@ -1,0 +1,371 @@
+  1: /************************************************************
+  *  Program: RMENU Menu Interpreter
+  *  Module: rmenu1.c
+  *      Main and Utility Functions
+  *  Written by: Leor Zolman, 7/91
+  ************************************************************/
+ 
+ #include "cmenu.h"
+ #include "rcmenu.h"
+ 
+ #if __STDC__
+ #   pragma hdrstop
+ #   include <stdarg.h>
+ #else
+ #   include <varargs.h>
+ #endif
+ 
+ /********************** Global Data *************************/
+ 
+ LEVELS LMenus[MAX_NEST];
+ int nestlev;                           /* current nesting level        */
+ int echox, echoy;                      /* Location of item # echo area */
+ int debug;                             /* true to display sys commands */
+ char SysShell[80];                     /* System command interpreter   */
+ 
+ /************************************************************
+  * main():
+  *  Initialize the program and run
+  *  the master menu
+  ************************************************************/
+ 
+ main(argc, argv)
+ int argc;
+ char **argv;
+ {
+     char *mname = "menu";
+     int i, j;
+ 
+     debug = 0;                         /* No debugging by default      */
+ 
+                                       /* Process command line options: */
+     for (i = 1; i < argc; i++)
+         if (argv[i][0] == '-')
+         {
+             switch (tolower(argv[i][1]))
+             {
+                 case 'd':   debug = TRUE;
+                             break;
+ 
+                 default:    fprintf(stderr, "Unknown option: '%s'\n",
+                                         argv[i]);
+                             exit(0);
+             }
+             for (j = i; j < argc - 1; j++)                 /* compress */
+                 argv[j] = argv[j + 1];                     /* arg list */
+             argc--;
+             i--;
+         }
+ 
+     init_win();                                   /* initialize curses */
+ 
+     if (argc == 2)
+         mname = argv[1];
+ 
+     nestlev = 0;
+     do_menu("", mname);
+     free_menus();
+     close_win();
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * do_menu(): 
+  *  Run a compiled menu file, supporting recursive
+  *  calls for nested external menus.
+  *  Default command/menu path is supplied as "path".
+  ************************************************************/
+ 
+ int do_menu(path, file)
+ char *path, *file;
+ {
+     char pathname[MAX_PATH];
+     
+     strcpy(pathname, path);
+     if (*path) 
+         strcat(pathname, "/");
+     strcat(pathname, file);
+     strcat(pathname, ".mnc");
+ 
+     if (ld_menu(pathname) == ERROR)
+         return EXITALL;
+ 
+     return sub_menu(0, path);                 /* run main menu in file */
+ }
+ 
+         
+ /************************************************************
+  * ld_menu():
+  *  Load a compiled menu object file from disk,
+  *  into nesting level nestlev, allocating memory
+  *  as required.
+  *  For each menu in the menu file being loaded,
+  *  compute screen placement as per spacing/columns
+  *  specifications and the total number of items.
+  ************************************************************/
+ 
+ int ld_menu(path)
+ char *path;
+ {
+     LEVELS *Levp = &LMenus[nestlev];
+     MENU *Mp;
+     ITEM *Ip;
+     MENU2 *M2p;
+ 
+     FILE *fp;
+     int widest;
+     int i, j, k, l;
+     
+     if ((fp = fopen(path, "rb")) == NULL)
+         return fatal("Can't open %s", path);
+     
+     if (fread((Void *) &Levp->n_menus, sizeof (int), 1, fp)
+                     != 1)
+         return fatal("Error reading menu count from %s", path);
+     
+     for (i = 0; i < Levp->n_menus; i++)
+     {
+         if (i < Levp -> max_menus)
+             M2p = Levp -> Menus[i];
+         else                               /* allocate memory for Menu */
+         {
+             M2p = Levp -> Menus[i] = (MENU2 *) malloc(sizeof(MENU2));
+             if (M2p == NULL)
+                 return fatal("Out of memory loading %s", path);
+             Levp -> max_menus++;
+             M2p -> most_items = 0;
+         }
+ 
+         Mp = &M2p -> Menu;
+         
+         if (fread((Void *) Mp, sizeof(MENU), 1, fp) != 1)
+             return fatal("Error reading Menu data from %s", path);
+         
+                            /* Now determine screen placement strategy. */
+ 
+         placement(Mp);
+ 
+         M2p -> field_len = min(MAX_TXTWID, 
+                     (SCREEN_COLS / Mp -> columns) - 5);
+ 
+                /* Read in each item, and assign screen coordinate info */
+                /* to each on-the-fly as per spacing/column parameters  */
+         
+         for (j = 0; j < Mp -> nitems; j++)
+         {
+             if (j < M2p -> most_items)
+                 Ip = M2p -> Items[j];
+             else
+             {
+                 Ip = M2p -> Items[j] = (ITEM *) malloc(sizeof(ITEM));
+                 if (Ip == NULL)
+                    return fatal("Out of RAM in %s, menu #%d/item #%d",
+                         path, i,j);
+                 M2p -> most_items++;
+             }
+             if (fread((Void *) Ip, sizeof(ITEM), 1, fp) != 1)
+                 return fatal("Error reading %s", path);
+ 
+             Ip -> text[M2p -> field_len - 1] = '\0';       /* truncate */
+ 
+             if ((Ip -> acttyp == ACT_LMENU ||
+                  Ip -> acttyp == ACT_EMENU) &&
+                 strlen(Ip -> text) + 6 < M2p -> field_len)
+             {
+                 int limit;
+                 
+                 limit = min (Mp -> widest + 2,
+                         M2p -> field_len - 7);
+                 for (k = strlen(Ip -> text);
+                         k < limit && k < (MAX_TXTWID - 6); k++)
+                     strcat(Ip -> text, " ");
+                 strcat(Ip -> text, "(MENU)");
+             }
+ 
+             M2p -> coords[j].ypos = 
+                     HOME_Y + (j % (MAX_IROWS / Mp -> spacing))
+                                 * Mp -> spacing;
+ 
+             widest = Mp -> widest;
+             M2p -> coords[j].xpos = HOME_X + 
+                     (
+                       (Mp -> columns == 1)
+                             ? 
+                       (
+                         (SCREEN_COLS - HOME_X -
+                          (widest + ((widest < 66) ? 14 : 6) )) / 2
+                       )
+                             :
+                       (j / (MAX_IROWS / Mp -> spacing) *
+                            (SCREEN_COLS / Mp -> columns))
+                     );
+ 
+ 
+             M2p -> coords[j].spaces_needed = 
+                     min(M2p -> field_len, Mp -> widest)
+                             - strlen(Ip -> text);
+         }
+     }
+     fclose(fp);
+     return OK;
+ }
+ 
+ 
+ /************************************************************
+  * placement():
+  *  Calculate values for columns and spacing 
+  *  for the given Menu:
+  ************************************************************/
+ 
+ Void placement(Mp)
+ MENU *Mp;
+ {
+     int columns = Mp -> columns;
+     int spacing = Mp -> spacing;
+     int nitems = Mp -> nitems;
+ 
+                            /* Step 1: fill in real values if either    */
+                            /*    columns or spacing was not specified: */
+ 
+     if (spacing == DEFAULT && columns == DEFAULT)
+     {
+         if (nitems <= (MAX_IROWS / 2))
+         {
+             Mp -> columns = 1;
+             Mp -> spacing = 2;
+         }
+         else if (nitems <= MAX_IROWS)
+             if ((Mp -> widest * 2 + 5) <= SCREEN_COLS)
+                 Mp -> columns = Mp -> spacing = 2;
+             else
+                 Mp -> columns = Mp -> spacing = 1;
+         else
+         {
+             Mp -> spacing = 1;
+             Mp -> columns = (nitems - 1) / MAX_IROWS + 1;
+         }
+     }
+     else if (spacing == DEFAULT)
+         Mp -> spacing =
+                 (nitems <= (MAX_IROWS / 2)) ? 2 : 1;
+     else if (columns == DEFAULT)
+         if (Mp -> spacing == 1)
+             Mp -> columns = (nitems - 1) / MAX_IROWS + 1;
+         else
+             Mp -> columns = (nitems - 1) / (MAX_IROWS / 2) + 1;
+         
+                                     /* Step 2: Adjust if out of range: */
+             
+     while (MAX_IROWS / Mp -> spacing * Mp -> columns < nitems)
+         if (Mp -> spacing != 1)
+             Mp -> spacing = 1;
+         else
+             Mp -> columns++;
+     return;
+ }
+ 
+ 
+ /************************************************************
+  * free_menus():
+  *  Free up memory allocated for ALL menu items:
+  ************************************************************/
+ 
+ Void free_menus()
+ {
+     int i, j, k;
+     MENU2 *m2p;
+     
+     for (i = 0; i < MAX_NEST; i++)
+         for (j = 0; j < LMenus[i].max_menus; j++)
+         {
+             m2p = LMenus[i].Menus[j];
+             for (k = 0; k < m2p -> most_items; k++)
+                 free(m2p -> Items[k]);
+             free(m2p);
+         }
+ }
+ 
+ 
+ /************************************************************
+  * fatal(): Complain and exit.
+  ************************************************************/
+ 
+ #if __STDC__                   /* use ANSI variable-#-of-args method   */
+ 
+ int fatal (char *fmt, ...)
+ {
+     char ftext[80], ffmt[55];
+     va_list arglist;
+     
+     va_start(arglist, fmt);
+ 
+ #else                          /* or old varargs method:               */
+ 
+ int fatal(fmt, va_alist)
+ char *fmt;
+ va_dcl
+ {
+     char ftext[80], ffmt[55];
+     va_list arglist;
+     
+     va_start(arglist);
+ #endif
+ 
+     vsprintf(ffmt, fmt, arglist);
+     sprintf(ftext, "Fatal error in rmenu: %s", ffmt);
+ 
+     put_msg(1, ftext);
+ 
+     va_end(arglist);
+     return ERROR;
+ }
+ 
+ 
+ /************************************************************
+  * put_msg(): Display a message on the menu screen
+  *  Return the character typed to continue
+  ************************************************************/
+ 
+ #if __STDC__
+ int put_msg (int bell, char *fmt, ...)
+ {
+     char ftext[80];
+     va_list arglist;
+     char c;
+     
+     va_start(arglist, fmt);
+     
+ #else
+ int put_msg(bell, fmt, va_alist)
+ int bell;
+ char *fmt;
+ va_dcl
+ {
+     char ftext[80];
+     va_list arglist;
+     char c;
+     
+     va_start(arglist);
+ #endif
+     
+     move(ERR_ROW, 0);
+     hlight_on();
+ 
+     if (bell)
+         beep();
+ 
+ /*  vwprintw(stdscr, fmt, arglist); */
+     vsprintf(ftext, fmt, arglist);
+     addstr(ftext);
+     va_end(arglist);
+     refresh();
+ 
+     c = getch();
+ 
+     move (ERR_ROW, 0);
+     hlight_end();
+     clrtoeol();
+     refresh();
+     return c;
+ }

@@ -1,0 +1,209 @@
+/*
+ * Listing 5 :
+ * 
+ * Syntax of QNX specific functions used in listings 1 thru 4
+ */
+
+/*
+ * createl() - start a task on any network CPU and attach to any tty device.
+ * 
+ * int createl(
+ *     (void *) cmd_buffer,  /* Work buffer, NULL will cause createl() to calloc() one. */
+ *     (unsigned) node_num,  /* Node number to run task on */
+ *     (unsigned) tty_num,   /* TTY number to attach task to */
+ *     (unsigned) transform, /* 0 = start new task, 1 = chain current task */
+ *     (unsigned) flags,     /* Create flags, defined in <task_msgs.h> */
+ *     (unsigned) priority,  /* Priority to run at */
+ *     (char *) stdin_str,   /* Device/file to open for stdin */
+ *     (char *) stdout_str,  /* Device/file to open for stdout */
+ *     (char *) stderr_str,  /* Device/file to open for stderr */
+ *     (char *) command_path,/* Command to execute */
+ *     (char *) arg1,        /* Argument passed to command */
+ *     .                                    "
+ *     .                                    "
+ *     .                                    "
+ *     (char *) argn,                       "
+ *     0                     /* End of arguments */
+ * );
+ * 
+ * Returns the task id if run concurrent or background, otherwise
+ * it will return the exit status of the task when it terminates.
+ * If the created task is not run concurrently or in the background,
+ * the current task will be suspended until the new task terminates.
+ * 
+ */
+
+/*
+ * send() - send a message to another task.
+ * 
+ * The current (sending) task will block until the receiving task replies.
+ * 
+ * int send(
+ *     (unsigned) task_id,    /* Task to send message to */
+ *     (char *) sent_message, /* Buffer containing message sent */
+ *     (char *) reply_message,/* Buffer to receive reply in */
+ *     (unsigned) msg_size    /* Size of message to send */
+ * );
+ * 
+ * Returns the id of the task the message was sent to.
+ * 0 means the remote task doesn't exist or died before it replied.
+ * -1 means that an exception condition occured.
+ * 
+ */
+
+/*
+ * receive() - receive a message from any or a specified task.
+ * 
+ * The current (receiving) task will block until a message is received.
+ * 
+ * int receive(
+ *     (unsigned) task_id,      /* Task id to receive message from */
+ *                              /* An id of 0 will receive from anyone */
+ *     (char *) message_buffer, /* Buffer to receive message into */
+ *     (unsigned) msg_size      /* Maximum message size to receive */
+ * );
+ * 
+ * Returns the id of the task the message was received from.
+ * 0 means the requested task does not exist or died before sending.
+ * -1 means an exception condition occured.
+ * 
+ */
+
+/*
+ * reply() - reply to a received message.
+ * 
+ * This does not block the task, and replies can be made to sending tasks
+ * in any order.
+ * 
+ * void reply(
+ *     (unsigned) task_id,     /* Task to reply to */
+ *     (char *) reply_message, /* Message to send */
+ *     (unsigned) msg_size     /* Number of bytes of message to send */
+ * );
+ * 
+ * This is a void function.
+ * A reply to a non-existent task or a task that is not awaiting a reply
+ * is a null operation.  The task replied to will unblock and resume
+ * processing.
+ * 
+ */
+
+/*
+ * error() - prints a formatted error message.
+ * 
+ * The syntax is identical to printf() except that it doesn't return.
+ * 
+ * void error(
+ *     (char *) format,  /* Pointer to format string */
+ *     arg1,             /* Argument to place in output */
+ *     .                                 "
+ *     .                                 "
+ *     .                                 "
+ *     argn                              "
+ * );
+ * 
+ * This function is identical to the following :
+ * {
+ *     printf(fmt, arg1, . . ., argn)
+ *     exit(-1);
+ * }
+ * 
+ */
+
+/*
+ * term_load() - loads terminal definition into a structure tcap_entry
+ * 
+ * int term_load( (FILE *) fp);
+ * 
+ * (FILE *) fp can be any open device, but usually stdout or stderr will
+ * be the device used.
+ * 
+ */
+
+/*
+ * term_cur() - position cursor at row, col of output device.
+ * 
+ * void term_cur(
+ *     (int) row,        /* 0,0 is upper left corner of display */
+ *     (int) col
+ * );
+ * 
+ */
+
+/*
+ * term_restore_image() - restores display from a memory buffer.
+ * 
+ * int term_restore_image(
+ *     (int) row, (int) col, /* Where to position the text */
+ *     (char *) buffer,      /* Pointer to buffer containing screen data */
+ *     (int) length,         /* Number of characters to put on screen */
+ *     (unsigned) segment    /* Segment that contains the buffer */
+ * );
+ * 
+ * Returns number of bytes per character, including attribute bytes.
+ * This will always be 3 on "dumb" terminals.
+ * 
+ * This function is identical to video_restore_image() except that it
+ * will function on any supported "dumb" terminal.
+ * 
+ * NOTE : If video_save_image() is used to read a display, and
+ * term_restore_image() is used to restore the data to another device,
+ * both must support the same number of bytes per character, otherwise
+ * the effect on the terminal that the image is restored to is likely
+ * to be chaos!
+ * 
+ */
+
+/*
+ * term_video_on() - sets up a "shadow" screen buffer for use with
+ * term_restore_image(), term_save_image(), etc.
+ * 
+ * void term_video_on();
+ * 
+ * Uses no arguments.
+ */
+
+/*
+ * video_save_image() - save a portion of the display to a buffer.
+ * 
+ * int video_save_image(
+ *     (int) device,         /* Window to save, -1 = current window */
+ *     (int) row, (int) col, /* Where to start the save */
+ *     (char *) buffer,      /* A buffer to save the screen data */
+ *     (int) length,         /* The number of characters to save */
+ *     (unsigned) segment    /* The segment where buffer is found */
+ * );
+ * 
+ * Returns number of bytes stored per character, including attribute bytes.
+ * This function is identical to term_save_image() except that it only
+ * works on a console (direct video) device, not a "dumb" terminal.
+ * 
+ */
+
+/*
+ * video_get_size() - get the size of the video device specified.
+ * 
+ * unsigned video_get_size(
+ *     (unsigned) device    /* Window number, -1 = current window */
+ * );
+ * 
+ * Returns a word if size information where :
+ *     n = video_get_size(-1);
+ *     rows = (n >> 8) & 0xff;
+ *     cols = n & 0xff;
+ * 
+ */
+
+/*
+ * video_get_state() - returns the display state information.
+ * 
+ * void video_get_state(
+ *     (int) device,           /* The device to read, -1 = current window */
+ *     (struct state_entry *) buffer  /* A pointer to a structure defined */
+ * );                                 /* in <dev.h> */
+ * 
+ * A void function.
+ * The buffer will contain cursor position, screen size, default attributes,
+ * and other display information.
+ * 
+ */

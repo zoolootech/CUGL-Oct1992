@@ -1,0 +1,207 @@
+Figure 1
+
+rmvmul(y, A, x, ncA, nrA)
+
+float y[], A[], x[];
+int   ncA, nrA;
+{
+    int   i,j;
+    float sum;
+    int   inca;
+ 
+    /* Check for errors on dimensions. */
+    if (ncA <= 0 || nrA <= 0)
+       return(-1);
+
+    for (i = 0; i < nrA; i++)    /* Step down a column. */
+    {
+        inca = i * ncA;
+        sum  = 0.0;
+        for (j = 0; j < ncA; j++) /* Step across a row. */
+            sum += A[inca + j] * x[j];
+        y[i] = sum;
+    }
+    return(0);
+}
+
+
+Figure 2
+
+
+
+/* Check for errors on dimensions. */
+if (ncA <= 0 || nrA <= 0)
+   return(-1);
+   {
+   /* computations */
+   }
+return(0);
+
+
+Figure 3
+
+
+_rmvmul: LDI     *-FP(5),R0     ;R0 = ncA
+         BLE     LL3
+         LDI     *-FP(6),R1     ;R1 = nrA
+         BGT     L1
+LL3:     LDI     -1,R0          ;return(-1)
+         B       EPI0_2
+L1:
+    ; /* computations */
+L3:      LDI     0,R0           ;return(0)
+EPI0_2:  SUBI    4,SP
+         POP     FP
+         RETS
+
+
+Figure 4
+
+
+
+
+LDI     *-FP(3),R1       ;*-FP(3) = A[]
+ADDI    *+FP(4),R1       ;*+FP(4) = inca
+ADDI    R0,R1,AR0        ;R0 = j
+ADDI    *-FP(4),R0       ;*-FP(4) = x[]
+LDI     R0,AR1
+MPYF    *AR1,*AR0,R0     ;R0 = A[inca + j] * x[j]
+ADDF    *+FP(3),R0       ;R0 += sum
+STF     R0,*+FP(3)       ;*+FP(3) = sum
+
+
+
+Figure 5
+
+
+rmvmul(y, A, x, ncA, nrA)
+
+register float y[], A[], x[];
+int ncA, nrA;
+{
+    register int i,j;
+    register float sum;
+    int inca;
+    {
+    /* Error checking and computations */
+    }
+}
+
+
+
+Figure 6
+
+
+
+LDI     *+FP(1),R0     ;*+FP(1) = inca
+ADDI    R0,AR5,R1      ;AR5 = A[]
+ADDI    R5,R1,AR0      ;R5 = j
+ADDI    R5,AR6,AR1     ;AR6 = x[]
+MPYF    *AR1,*AR0,R1   ;R1 = A[inca + j] * x[j]
+ADDF    R1,R6          ;R6 = sum
+
+
+
+Figure 7
+
+
+; Initialization
+_dotpr: PUSH    FP           ; Save the old FP.
+        LDI     SP,FP        ; Point to the top of the stack.
+ 	LDI     *-FP(2), AR0 ; AR0 = x
+	LDI     *-FP(3), AR1 ; AR1 = y
+	LDI     *-FP(4), RC  ; RC = n
+	SUBI    1, RC        ; RC = n-1
+	LDF	0.0, R0      ; R0 = 0
+ 	LDF     0.0, R2      ; R2 = 0
+; Dot product
+	RPTS    RC
+	MPYF    *AR0++, *AR1++, RO   ; R0 = x[1++] * y[j++]
+||	ADDF    R0, R2               ; R2 = sum' = sum +R0
+	ADDF    R0, R2               ; Last product.
+; Return
+	LDF     R2, R0       ; Put the results in R0.
+	POP     FP           ; Pop the old frame pointer.
+	RETS
+
+
+Figure 8
+
+
+
+
+rmvmul(y, A, x, ncA, nrA)
+
+register float y[], A[], x[];
+register int ncA;
+int nrA;
+{
+    register int i;
+    float dotpr();
+
+    /* Check for errors on dimensions. */
+    if (ncA <= 0 || nrA <= 0)
+       return(-1);
+
+    for (i = 0; i < nrA; i++)  /* Step down a column. */ 
+   	y[i] = dotpr(x, &A[i * ncA], ncA);
+
+return(0);
+}
+
+
+
+
+Figure 9a
+
+
+main()
+{
+register float *x, *y;
+register float sum;
+register int i, N;
+
+sum = 0.0;
+
+for (i = 0; i < N; i++)
+    sum += *x++ * *y++;
+}
+
+
+
+
+Figure 9b
+
+
+
+main()
+{
+register float *x, *y;
+register float sum;
+register float delta;
+register int i, N;
+
+sum = 0.0;
+
+for (i = 0; i < N; i++)
+    {
+    delta = *x++ - *y++;
+    sum += delta * delta;
+    }
+}
+
+
+
+
+Figure 9c
+
+
+main()
+{
+register float *x, *y, *z;
+register int i, N;
+
+for (i = 0; i < N; i++)
+    *z++ = *x++ * *y++;
+}
+

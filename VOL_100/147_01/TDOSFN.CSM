@@ -1,0 +1,267 @@
+; Contains:
+;
+;	open  lokrec  frerec
+;
+; set up for TurboDOS use
+;
+
+	INCLUDE <bds.lib>
+
+; Open:
+;	int open(filename,mode)
+;	    char *filename;
+;
+; Open a file for read (mode == 0), write (mode == 1) or both (mode = 2),
+; and detect a user-number prefix.  Returns a file descriptor.
+;
+; Modified version of open to open a TurboDOS file in shared mode,
+; i.e., set hi bit of f5 in FCB.
+
+	FUNCTION	open
+	call	arghak
+	xra	a
+	call	fgfcb	;any fcb's free?
+	jnc	open2	;if not, error
+	mvi	a,10	;"no more file slots"
+	jmp	error
+
+open2:	sta	tmp
+	xchg
+	lhld	arg1
+	xchg
+	push	b
+	call	setfcu	;parse name and set usenum
+	push	d	;save registers
+	push	h
+	lxi	h,5	;get offset to f5
+	dad	d	;add to fcb address
+	mov	a,m	;get character
+	ori	80h	;set shared file bit
+	mov	m,a	;restore updated character
+	pop	h	;restore registers
+	pop	d
+	lda	usrnum
+	call	setusr	;set new user number
+
+	mvi	c,openc
+	call	bdos
+	cpi	errorv	;successful open?
+	pop	b
+
+	mvi	a,11	; set error code in case of error
+	jz	oerror	;if error, go abort
+
+	lda	tmp
+	call	fgfd	;get HL pointing to fd table entry
+	lda	arg2
+	ora	a	;open for read?
+	mvi	d,3
+	jz	open4
+	dcr	a
+	mvi	d,5
+	jz	open4	;write?
+	dcr	a
+	mvi	a,12	;"bad mode" for open operation...
+	jnz	oerror	;...if not mode 2
+	mvi	d,7	;else must be mode 2.
+open4:	lda	usrnum	;get user number for the file
+	add	d	;add r/w bit codes
+	mov	m,a	;and store in fd table
+	inx	h	;clear max sector number field of fd entry
+	xra	a
+	mov	m,a
+	inx	h
+	mov	m,a
+	lda	tmp	;get back fd
+	mov	l,a
+	mvi	h,0
+	call	rstusr	;reset user number
+	ret
+
+oerror:	call	rstusr	;reset user number
+	sta	errnum	;store error code number
+	jmp	error	;and return general error condition
+	ENDFUNC
+
+;
+; Lokrec:
+; 	lokrec(fd,rec);
+; Lock specified record using Function 42.  If rec -1, lock whole file.
+;
+; Returns with A (and HL) =	0 if successful
+;				1 if positioning to unwritten data
+;				3 if error changing extents
+;				4 if positioning to unwritten extent
+;				6 if random record number too large
+;				8 if record locked by another process
+;
+; See the TurboDOS manual for more details on the use of this function.
+;
+
+	FUNCTION	lokrec
+	call	arghak
+	lda	arg1
+	call	fgfd
+	mov	d,m	;save fdt entry in D
+	mvi	a,7	;prepare for possible "bad fd"
+	jc	lerror
+
+	mov	a,d
+	ani	2
+	mvi	a,8	;prepare for possible "no read permission"
+	jz	lerror
+
+	push	b	;save BC
+	mov	a,d
+	call	setusr	;set user area to that of the file
+
+	lda	arg1
+	call	fgfcb	;get pointer to fd table entry
+
+	mov	d,h	;mov fcb address into DE
+	mov	e,l
+	lxi	h,33	;get to random record field
+	dad	d
+	push	h	;save ptr to random record field for after BDOS call
+	shld	tmp
+
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a	;HL = current setting
+	push	h	;save current value of random record field
+
+	lhld	tmp	;get address of random record field
+	lda	arg2
+	mov	m,a
+	inx	h
+	lda	arg2+1
+	mov	m,a
+	inx	h
+	cpi	0ffh
+	push	psw
+	mov	a,m
+	sta	tmp
+	pop	psw
+	jnz	lok2
+	mov	m,a
+lok2:
+	push	d
+	mvi	c,42	;Lock Random Record
+	call	bdos
+	pop	d
+	cpi	8
+	jz	lok2
+	
+	pop	b	;pop old random record value into BC
+	pop	h	;get pointer to random record field
+	mov	m,c	;restore original value
+	inx	h
+	mov	m,b
+	push	psw	;save returned value
+	lda	tmp
+	inx	h
+	mov	m,a	;restore 3rd byte of random record field
+	call	rstusr
+	pop	psw
+	mov	l,a
+	mvi	h,0
+	pop	b
+	ret
+
+lerror:	sta	errnum
+	jmp	error
+	ENDFUNC
+
+;
+; Frerec:
+; 	frerec(fd,rec);
+; Unlock specified record using Function 43.
+;
+; If rec = -1, release any all-inclusive lock,
+; but not any individual record locks.
+;
+; Returns with A (and HL) =	0 if successful
+;				1 if positioning to unwritten data
+;				3 if error changing extents
+;				4 if positioning to unwritten extent
+;				6 if random record number too large
+;
+; See the TurboDOS manual for more details on the use of this function.
+;
+
+	FUNCTION	frerec
+	call	arghak
+	lda	arg1
+	call	fgfd
+	mov	d,m	;save fdt entry in D
+	mvi	a,7	;prepare for possible "bad fd"
+	jc	uerror
+
+	mov	a,d
+	ani	2
+	mvi	a,8	;prepare for possible "no read permission"
+	jz	uerror
+
+	push	b	;save BC
+	mov	a,d
+	call	setusr	;set user area to that of the file
+
+	lda	arg1
+	call	fgfcb	;get pointer to fd table entry
+
+	mov	d,h	;restore fcb address into DE
+	mov	e,l
+	lxi	h,33	;get to random record field
+	dad	d
+	push	h	;save ptr to random record field for after BDOS call
+	shld	tmp
+
+	mov	a,m
+	inx	h
+	mov	h,m
+	mov	l,a	;HL = current setting
+	push	h	;save current value of random record field
+
+	lhld	tmp	;get address of random record field
+	lda	arg2
+	mov	m,a
+	inx	h
+	lda	arg2+1
+	mov	m,a
+	inx	h
+	cpi	0ffh
+	push	psw
+	mov	a,m
+	sta	tmp
+	pop	psw
+	jnz	ulok2
+	mov	m,a
+ulok2:
+
+	mvi	c,43	;Unlock Random Record
+	call	bdos
+	pop	b	;pop old random record value into BC
+	pop	h	;get pointer to random record field
+	mov	m,c	;restore original value
+	inx	h
+	mov	m,b
+	push	psw
+	lda	tmp
+	inx	h
+	mov	m,a
+	call	rstusr
+	pop	psw
+	mov	l,a
+	mvi	h,0
+	pop	b
+	ret
+
+uerror:	sta	errnum
+	jmp	error
+	ENDFUNC
+
+	END
+
+	ani	2
+	mvi	a,8	;prepare for possible "no read per
